@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import { narrativeReach } from '@insidor/core';
+import { narrativeReach, sortOrder } from '@insidor/core';
 
 import { SILENT } from './log.ts';
 import { SORT_CARDS_SQL, SORT_READINGS_SQL, createSorts, gainIn, parseSort, rankPost, rankScale, ranked, runsOf, type Reading } from './post-sorts.ts';
@@ -56,11 +56,26 @@ test('most viewed is views gained in the window, not lifetime views', () => {
   assert.equal(Math.round(small.gained), 6000);
 });
 
-test('trending puts a post that is picking up above a bigger one that is slowing', () => {
-  const takingOff = rankPost('up', readings(120, 5, (m) => (m < 30 ? 400 : 50)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
-  const slowing = rankPost('down', readings(120, 5, (m) => (m < 30 ? 1000 : 1500)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
-  assert.ok(takingOff !== null && slowing !== null);
-  assert.deepEqual(ranked([slowing, takingOff]).map((x) => x.id), ['up', 'down']);
+test('trending: over the floor, how many times faster it gains now than before, so a post picking up passes a bigger one gaining steadily', () => {
+  const floor = DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin;
+  const takingOff = rankPost('up', readings(120, 5, (m) => (m < 30 ? floor * 3 : floor / 2)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const steady = rankPost('steady', readings(120, 5, (m) => (m < 30 ? floor * 10 : floor * 8)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const slowing = rankPost('down', readings(120, 5, (m) => (m < 30 ? floor * 20 : floor * 30)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  assert.ok(takingOff !== null && steady !== null && slowing !== null);
+  assert.deepEqual(ranked([slowing, steady, takingOff]).map((x) => x.id), ['up', 'steady', 'down']);
+  assert.ok(takingOff.key > 4 && takingOff.key < 7, 'three times the floor against half of it: about six times faster');
+});
+
+test('★ trending: a post under the floor ranks below every post over it, by its speed, whatever its ratio', () => {
+  const floor = DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin;
+  const tiny = rankPost('tiny', readings(120, 5, (m) => (m < 30 ? floor / 2 : floor / 50)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const smaller = rankPost('smaller', readings(120, 5, (m) => (m < 30 ? floor / 4 : floor / 400)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const flat = rankPost('flat', readings(120, 5, () => floor * 2), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  /* Gained nothing before and is over the floor now: faster than any ratio. */
+  const woke = rankPost('woke', readings(120, 5, (m) => (m < 30 ? floor * 2 : 0)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  assert.ok(tiny !== null && smaller !== null && flat !== null && woke !== null);
+  assert.equal(tiny.group, 'under_floor');
+  assert.deepEqual(ranked([smaller, tiny, flat, woke]).map((x) => x.id), ['woke', 'flat', 'tiny', 'smaller']);
 });
 
 test('a post not read inside the window is not on the list', () => {
@@ -80,17 +95,8 @@ test('★ trending: a post with no before has no trend and is listed under every
   assert.deepEqual(ranked([glimpse, gap, steady]).map((x) => x.id), ['steady', 'gap', 'glimpse']);
 });
 
-test('★ trending is how much faster it gains now than before: a big post gaining steadily is under a small one picking up', () => {
-  const big = rankPost('big', readings(120, 5, () => 5000), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
-  const small = rankPost('small', readings(120, 5, (m) => (m < 30 ? 600 : 100)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
-  const fading = rankPost('fading', readings(120, 5, (m) => (m < 30 ? 2000 : 6000)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
-  assert.ok(big !== null && small !== null && fading !== null);
-  assert.deepEqual(ranked([big, fading, small]).map((x) => x.id), ['small', 'big', 'fading']);
-  assert.ok(Math.abs(big.key) < 1e-6);
-});
-
 test('★ freshness: a post last read 30 minutes ago or more is listed after every post read since, on both sorts', () => {
-  /* Gained a million, picking up hard, and stopped being read 40 minutes ago. */
+  /* Gained millions, picking up hard, and stopped being read 40 minutes ago. */
   const stopped = readings(400, 10, (m) => (m < 180 ? 9000 : 1000)).filter((r) => r.atMs <= NOW - 40 * MIN);
   /* Gains a tenth as much, read a minute ago. */
   const live = readings(400, 10, () => 300).map((r, i, all) => (i === all.length - 1 ? { ...r, atMs: NOW - MIN } : r));
@@ -98,11 +104,11 @@ test('★ freshness: a post last read 30 minutes ago or more is listed after eve
     const a = rankPost('stopped', stopped, null, by, w, NOW);
     const b = rankPost('live', live, null, by, w, NOW);
     assert.ok(a !== null && b !== null, by);
-    assert.ok(a.key > b.key, 'the stale post has the bigger key');
+    assert.deepEqual(sortOrder([a, b], 2, true).map((x) => x.id), ['stopped', 'live'], 'read just now, the stale post would lead');
     assert.deepEqual(ranked([a, b]).map((x) => x.id), ['live', 'stopped'], `${by} ${w}`);
   }
   const edge = rankPost('edge', readings(60, 5, () => 10).map((r) => ({ ...r, atMs: r.atMs - 30 * MIN })), null, 'most_viewed', 6 * 60 * MIN, NOW);
-  assert.equal(edge?.tier, 1, 'exactly 30 minutes old is stale');
+  assert.equal(edge?.fresh, false, 'exactly 30 minutes old is stale');
 });
 
 test("the sorts count from the card's counts, the first reading's included, and fall back to its views", () => {
@@ -131,8 +137,8 @@ function fakeDb(rows: readonly Row[], calls: string[] = []) {
 
 test('the reply is the cards in order with each one\'s views gained, and never the key', async () => {
   const rows: Row[] = [
-    { item_id: 'down', views: readings(120, 5, (m) => (m < 30 ? 1000 : 1500)), posted_ms: String(NOW - 120 * MIN) },
-    { item_id: 'up', views: readings(120, 5, (m) => (m < 30 ? 400 : 50)), posted_ms: String(NOW - 120 * MIN) },
+    { item_id: 'down', views: readings(120, 5, (m) => (m < 30 ? 3000 : 4500)), posted_ms: String(NOW - 120 * MIN) },
+    { item_id: 'up', views: readings(120, 5, (m) => (m < 30 ? 1200 : 150)), posted_ms: String(NOW - 120 * MIN) },
     { item_id: 'unread', views: [{ atMs: NOW - 10 * MIN, value: null }], posted_ms: null },
   ];
   const sorts = createSorts(() => NOW);

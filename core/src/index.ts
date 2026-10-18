@@ -134,6 +134,13 @@ export { rankByVelocity } from './track/velocity.ts';
 export type { VelocityRank } from './track/velocity.ts';
 
 /**
+ * For You's Trending and Most viewed: one rule for the read service that orders the lists and the
+ * runner that keeps their top posts read.
+ */
+export { gainIn as sortGainIn, runsOf as sortRunsOf, sortOrder, sortPlace } from './rank/post-sorts.ts';
+export type { GainRun, PostSortBy, SortGroup, SortPlace, SortReading } from './rank/post-sorts.ts';
+
+/**
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass
  * moves it. Not a stage; a budget lever with policy thresholds, so it lives here.
  */
