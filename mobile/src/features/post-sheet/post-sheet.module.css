@@ -687,3 +687,79 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* The sheet while its post is read (PostSheet.tsx): the post card's shape in quiet blocks, pulsing
+   as For You's placeholder cards do, so the sheet is open and full at once and fills in place. The
+   words "Reading the post." stay for screen readers only. With reduced motion they hold still. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: sheet-skeleton-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.skeletonHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skeletonHead > span:first-child {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--popup);
+}
+
+.skeletonHead > span:last-child {
+  width: 45%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--popup);
+}
+
+.skeletonLine {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--popup);
+}
+
+.skeletonShort {
+  width: 70%;
+}
+
+.skeletonMedia {
+  height: 160px;
+  border-radius: 14px;
+  background: var(--popup);
+}
+
+.skeletonChart {
+  height: 120px;
+  border-radius: 14px;
+  background: var(--popup);
+}
+
+.unseen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes sheet-skeleton-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

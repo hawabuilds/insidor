@@ -61,7 +61,7 @@ export function Search() {
 }
 
 function Results({ term }: { term: string }) {
-  const [loaded] = useLoad(`search:${term}`, (signal) => fetchSearch(term, signal));
+  const [loaded] = useLoad(`search:${term}`, (signal) => fetchSearch(term, signal), 'memory');
   if (loaded.state === 'loading') return <p className={styles['hint']}>Searching.</p>;
   if (loaded.state === 'failed') {
     const slow = loaded.error instanceof ReadError && loaded.error.said === 'slow down';

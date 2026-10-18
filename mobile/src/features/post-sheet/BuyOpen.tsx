@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 
 import { fetchTradeVenue, type TradeLimits } from '../../shared/api/index.ts';
+import { fresh, kept } from '../../shared/kept-reads.ts';
 import { pending } from '../../shared/format/measure.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
@@ -26,6 +27,8 @@ import { tickerText } from '../../shared/format/ticker.ts';
 
 /* Read once, at build time, as TradeBar.tsx reads it. */
 export const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
+/** A venue read this recently is used as it is; older, it is read again. */
+const VENUE_FRESH_MS = 60_000;
 
 export interface SheetNote {
   readonly line: string;
@@ -50,19 +53,30 @@ export function SheetToast({ note, onDone }: { note: SheetNote | null; onDone: (
   );
 }
 
-/** The coin a Buy was tapped on, while its venue is read; then the ticket, or the reason in the toast. */
+type Venue = Awaited<ReturnType<typeof fetchTradeVenue>>;
+
+/**
+ * The coin a Buy was tapped on: the ticket opens AT ONCE (the owner, 2026-10-18: the pop-up opens
+ * straight away), and the venue's limits fill in when they are read — the same ticket, the same
+ * steps, only sooner. A venue already read in the last minute (a coin page, a read ahead) is used
+ * as it is; one that says the coin cannot be traded here closes the ticket with the reason in the
+ * toast, as before.
+ */
 export function BuyOpen({ mint, ticker, onClose, onNote }: { mint: string; ticker: string; onClose: () => void; onNote: (n: SheetNote) => void }) {
   const soon = useComingSoon();
   useDismiss(onClose);
-  const [limits, setLimits] = useState<TradeLimits | null | 'reading'>('reading');
+  const known = kept<Venue>(`venue:${mint}`);
+  const knownOpen = known !== undefined && Date.now() - known.at < VENUE_FRESH_MS && availability(true, known.value.venue).kind === 'open';
+  const [limits, setLimits] = useState<TradeLimits | null>(knownOpen ? known.value.limits : null);
   useEffect(() => {
     if (!TRADING) {
       soon(`Buying ${tickerText(ticker)}`);
       onClose();
       return;
     }
+    if (knownOpen) return;
     const ac = new AbortController();
-    fetchTradeVenue(mint, ac.signal).then(
+    fresh(`venue:${mint}`, (signal) => fetchTradeVenue(mint, signal), false, ac.signal).then(
       (v) => {
         const a = availability(true, v.venue);
         if (a.kind === 'open') setLimits(v.limits);
@@ -80,6 +94,6 @@ export function BuyOpen({ mint, ticker, onClose, onNote }: { mint: string; ticke
     return () => ac.abort();
     // One read per tap: the props are fixed for this opener's life.
   }, []);
-  if (limits === 'reading') return null;
+  if (!TRADING) return null;
   return <OrderSheet mint={mint} ticker={ticker} side="buy" limits={limits} priceUsd={pending('not_read_yet')} onClose={onClose} />;
 }

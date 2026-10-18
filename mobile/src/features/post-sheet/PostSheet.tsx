@@ -116,7 +116,7 @@ function mediaHeight(width: number | null, height: number | null): number {
 }
 
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
-  const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal));
+  const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal), 'phone');
   usePreloadCreate(postId); /* Create coin then opens on this post's own names, with nothing filling in. */
   useOpenedPost(postId); /* The owner's opened posts (features/owner/useSeen.ts); nothing for anyone else. */
   /* Opening the sheet asks for a fresh view reading for its chart; a refusal or an outage changes nothing here. */
@@ -147,7 +147,16 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
           <>
             <SheetHead title="Post" />
             <SheetBody last>
-              {loaded.state === 'loading' ? <p className={styles['note']}>Reading the post.</p> : null}
+              {loaded.state === 'loading' ? (
+                <div className={styles['skeleton']} role="status">
+                  <span className={styles['unseen']}>Reading the post.</span>
+                  <div className={styles['skeletonHead']} aria-hidden="true"><span /><span /></div>
+                  <div className={styles['skeletonLine']} aria-hidden="true" />
+                  <div className={`${styles['skeletonLine']} ${styles['skeletonShort']}`} aria-hidden="true" />
+                  <div className={styles['skeletonMedia']} aria-hidden="true" />
+                  <div className={styles['skeletonChart']} aria-hidden="true" />
+                </div>
+              ) : null}
               {loaded.state === 'failed' ? (
                 <div className={styles['note']}>
                   <p>

@@ -31,7 +31,7 @@ export function TradeBar({ mint, ticker, priceUsd, off }: { mint: string; ticker
 }
 
 function OpenBar({ mint, ticker, priceUsd }: { mint: string; ticker: string; priceUsd: Measured }) {
-  const [venue] = useLoad(`venue:${mint}`, (signal) => fetchTradeVenue(mint, signal));
+  const [venue] = useLoad(`venue:${mint}`, (signal) => fetchTradeVenue(mint, signal), 'memory');
   const [side, setSide] = useState<'buy' | 'sell' | null>(null);
   const a = availability(true, venue.state === 'ready' ? venue.value.venue : venue.state === 'failed' ? 'unavailable' : 'loading');
   const limits = venue.state === 'ready' ? venue.value.limits : null;

@@ -26,7 +26,7 @@
  * side or slippage changes, so a price is never shown above a button that trades another size.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildTrade, fetchHolding, fetchPortfolio, fetchTradeQuote, type TradeLimits, type TradeQuote } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -95,6 +95,15 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
   const [activeSide, setActiveSide] = useState<'buy' | 'sell'>(side);
   const [text, setText] = useState('');
   const [slippageBps, setSlippage] = useState(() => readSlippage(limits?.defaultSlippageBps ?? 300, limits?.maxSlippageBps ?? 1_500));
+  /* Opened before the venue's limits were read (BuyOpen.tsx opens at once): when they arrive, the
+     slippage is the one it would have opened with, unless the person has already picked one. */
+  const picked = useRef(false);
+  const hadLimits = useRef(limits !== null);
+  useEffect(() => {
+    if (limits === null || hadLimits.current) return;
+    hadLimits.current = true;
+    if (!picked.current) setSlippage(readSlippage(limits.defaultSlippageBps, limits.maxSlippageBps));
+  }, [limits]);
   const [configOpen, setConfigOpen] = useState(false);
   const [held, setHeld] = useState<{ readonly amount: bigint; readonly decimals: number } | null | 'loading'>('loading');
   const [sol, setSol] = useState<Measured | 'loading'>('loading');
@@ -237,6 +246,7 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
             <div className={styles['choices']}>
               {choices.map((bps) => (
                 <button key={bps} type="button" aria-pressed={bps === slippageBps} className={bps === slippageBps ? styles['choiceOn'] : ''} onClick={() => reset(() => {
+                  picked.current = true;
                   setSlippage(bps);
                   writeSlippage(bps);
                 })}>
