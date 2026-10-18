@@ -93,6 +93,13 @@ where the app asks for a coin's copied logo first; unset, it uses the coin's own
 Leave `VITE_READ_URL`, `VITE_TRADE_URL`, `VITE_SOCIAL_URL`, `VITE_NOTIFY_URL` unset: the app
 then calls `/api/*` on its own origin and `api/proxy.js` forwards. Remove `VITE_SAMPLE_DATA`.
 
+`/api/read/*` is the exception: `vercel.json` rewrites it straight to the read service's Railway
+domain, written in the file, so Vercel's edge answers the replies read marks as shared
+(services/read/src/edge-cache.ts) and the rest skip the function. If the read service's Railway
+domain ever changes, change it in both `vercel.json` files, not only `READ_SERVICE_URL`. The
+function path stays at `/api/fn/read/*` for comparison; to go back to it, delete the first
+rewrite line, or Instant Rollback. Check either with `zsh tools/edge-cache-check.sh`.
+
 **Vercel `insidor`** (desktop) — `READ_SERVICE_URL`, `ENABLE_EXPERIMENTAL_COREPACK` (`1`).
 Remove `VITE_SAMPLE_DATA`.
 
