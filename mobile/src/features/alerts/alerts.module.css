@@ -371,8 +371,10 @@
 .section {
   margin: 0;
   padding: 20px 16px 4px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-3);
 }
 
@@ -390,8 +392,22 @@
 }
 
 /* What is new: Trador's soft purple row rather than a dot. */
+.note {
+  border: 1px solid transparent;
+  border-radius: 16px;
+}
+
+/* Unread, the owner's colours (2026-10-18), the same on every row and card. */
 .note.unread {
-  background: var(--brand-wash);
+  background: #1a1526;
+  border-color: #3a2d55;
+}
+
+/* The settings button on Notifications: round. */
+.roundButton {
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
 }
 
 .noteText {
@@ -658,4 +674,118 @@
 
 .askButtons > button {
   width: 100%;
+}
+
+/* A notification about a post or a narrative: a compact card, its reason on top (NoteCards.tsx). */
+.cardItem {
+  padding: 6px 0;
+}
+
+.noteCard {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+/* Unread, the owner's colours (2026-10-18): a light purple card. */
+.noteCardUnread {
+  background: #1a1526;
+  border-color: #3a2d55;
+}
+
+.reason {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.reasonIcon {
+  display: inline-flex;
+  color: var(--brand);
+}
+
+.reasonText {
+  flex: 1;
+  min-width: 0;
+}
+
+.reasonAge {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.cardRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cardText {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardMeta {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.cardUp {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--up);
+}
+
+.cardViews {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.cardViewsN {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text-1);
+}
+
+.cardCoin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 14px;
+}
+
+.cardCoinLabel {
+  color: var(--text-3);
 }

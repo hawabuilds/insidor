@@ -31,6 +31,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 
 import { follow, markAlertsSeen, type Alert } from '../../shared/api/people.ts';
+import { platformOf } from '../../shared/platform.ts';
+import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { cardOf, NarrativeNote, PostNote } from './NoteCards.tsx';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { goBack, replaceTo } from '../../shared/nav.ts';
@@ -86,7 +89,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
               <BackIcon size={22} />
             </button>
             <h1 className={`${styles['title']} ${styles['titleGrow']}`}>Notifications</h1>
-            <button type="button" className={styles['iconButton']} aria-label="Feed settings" onClick={() => setSheet(true)}>
+            <button type="button" className={`${styles['iconButton']} ${styles['roundButton']}`} aria-label="Alert settings" onClick={() => setSheet(true)}>
               <GearIcon size={19} />
             </button>
           </div>
@@ -94,12 +97,16 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
 
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
         {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications. Pull down to try again.</p> : null}
-        {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>Your coins' multiples and graduations, new followers and replies land here.</p> : null}
+        {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>First coins on what you saved or starred, posts blowing up, your coins, and people following or replying to you land here.</p> : null}
         {grouped(items, now).map((g) => (
           <section key={g.section}>
             <h2 className={styles['section']}>{g.section}</h2>
             <ul className={styles['list']}>
-              {g.items.map((a) => (
+              {g.items.map((a) => {
+                const card = cardOf(a);
+                if (card !== null) return <li key={a.id} className={styles['cardItem']}><PostNote a={a} post={card} now={now} unread={isNew(a)} /></li>;
+                if (a.story != null) return <li key={a.id} className={styles['cardItem']}><NarrativeNote a={a} now={now} unread={isNew(a)} /></li>;
+                return (
                 <li key={a.id}>
                   <a href={linkOf(a.href)} className={`${styles['note']} ${isNew(a) ? styles['unread'] : ''}`}>
                     <Mark a={a} />
@@ -113,9 +120,11 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
                       </p>
                     </div>
                     {a.kind === 'follow' && a.actor != null && !a.actor.iFollow ? <FollowBack actor={a.actor} /> : null}
+                    {a.kind !== 'follow' && a.thumb != null ? <Thumb url={a.thumb.url} video={a.thumb.video} size={48} radius={10} platform={a.thumb.sourceLabel === null ? null : platformOf(a.thumb.sourceLabel)} platformLabel={a.thumb.sourceLabel ?? ''} /> : null}
                   </a>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
         ))}

@@ -76,6 +76,14 @@ export interface Alert {
   readonly actor?: { readonly userId: string; readonly handle: string | null; readonly name: string | null; readonly iFollow: boolean } | null;
   /** Sent to this person's phone as a push: then it is listed in Notifications too, whatever its kind. Absent from an older service. */
   readonly pushed?: boolean;
+  /** The post's or narrative's picture beside the row (a video's cover with `video`), and the post's site label for its badge. */
+  readonly thumb?: { readonly url: string; readonly video: boolean; readonly sourceLabel: string | null } | null;
+  /** A row about a post: that post's For You card as the read service sends it, decoded by the screen (decodeRisingPost). */
+  readonly post?: unknown;
+  /** A post blowing up: the views it gained over the last `minutes`. */
+  readonly speed?: { readonly gain: number; readonly minutes: number } | null;
+  /** A narrative's row (`story` on the wire: `narrative` is a key the app refuses): its title, the last hour's new posts and views, and whether you starred it. */
+  readonly story?: { readonly title: string; readonly newPosts: number | null; readonly viewsGained: number | null; readonly starred: boolean } | null;
 }
 
 export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts' | 'starredFirstCoin' | 'blowingUp' | 'starredSpeed' | 'bigAccounts' | 'createdCoins';
