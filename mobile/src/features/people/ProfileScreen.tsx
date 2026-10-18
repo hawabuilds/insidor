@@ -3,8 +3,9 @@
  * and @handle with Follow / Following at the right (none on your own), their rank as one small
  * pill ("Intern, 0 rep"), the bio, "2 followers  1 following" (each opens its list), then their
  * portfolio: the total with "Portfolio value" under it and HOLDINGS, the same short rows as your
- * own Portfolio (portfolio/HoldingRow.tsx), SOL first. On your own profile, the switch "Show my
- * trades to followers" and Edit bio sit quietly at the bottom.
+ * own Portfolio (portfolio/HoldingRow.tsx), SOL first. On your own profile, Edit bio sits quietly
+ * at the bottom; the switch "Show my trades to followers" is in the Portfolio's gear, as Trador's
+ * is ("Hide it from the gear on your Stonkfolio").
  *
  * ★ A PRIVATE PORTFOLIO IS SAID, NOT DRAWN EMPTY. The social service withholds the wallet unless
  * "Show my trades to followers" is on (Trador's `portfolio_public`, one switch for the Feed and the
@@ -22,7 +23,6 @@
 import { useState } from 'react';
 
 import { fetchPortfolio, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import { saveTradesPublic } from '../../shared/api/following.ts';
 import { follow, fetchProfile, saveBio, type ProfileCard } from '../../shared/api/people.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { useLoad } from '../../shared/hooks.ts';
@@ -134,9 +134,6 @@ function Body({ p, reload }: { p: ProfileCard; reload: () => void }) {
 
       {p.isMe ? (
         <div className={styles['mine']}>
-          {/* ── Show my trades to followers (the Feed's switch; it also decides whether others see the portfolio above) ── */}
-          {typeof p.tradesPublic === 'boolean' ? <ShareTrades on={p.tradesPublic} /> : null}
-          {/* ── end of the switch block ── */}
           {editing ? (
             <>
               <textarea className={styles['bioField']} value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} aria-label="Bio" />
@@ -184,35 +181,5 @@ function PublicPortfolio({ wallet, at, self }: { wallet: string; at: string; sel
         </>
       )}
     </section>
-  );
-}
-
-/**
- * One's own "Show my trades to followers". Flipped at once and put back if the save fails, so the
- * switch never says something the server did not agree to.
- */
-function ShareTrades({ on: saved }: { on: boolean }) {
-  const toast = useToast();
-  const [on, setOn] = useState(saved);
-  const flip = async () => {
-    const next = !on;
-    setOn(next);
-    try {
-      await saveTradesPublic(next);
-    } catch (e) {
-      setOn(!next);
-      toast("Couldn't save", e instanceof Error ? e.message : '');
-    }
-  };
-  return (
-    <button type="button" role="switch" aria-checked={on} className={styles['shareTrades']} onClick={() => void flip()}>
-      <span>
-        <b>Show my trades to followers</b>
-        <small>{on ? 'Your buys and sells show in the Feed of people who follow you.' : 'Your buys and sells stay off the Feed. The chain itself is public either way.'}</small>
-      </span>
-      <span className={`${styles['toggle']} ${on ? styles['toggleOn'] : ''}`}>
-        <i />
-      </span>
-    </button>
   );
 }
