@@ -26,9 +26,10 @@ import { errorText, type Logger } from '../log.ts';
  * The capped lanes, by the name their finds are credited under (0088), and the judge's shadow
  * (judge-shadow.ts, Policy.judge.shadow), which keeps its day's spend in the same ledger for the
  * same reason: a restart must not hand it a fresh day's money. So do For You's view readings
- * (work/readings.ts, Policy.feed.readings). The table holds any lane name.
+ * (work/readings.ts, Policy.feed.readings). So does each catch-all search that reads past short
+ * pages (`search:<name>`, Policy.feed.paging), its search bill only. The table holds any lane name.
  */
-export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early';
+export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early' | `search:${string}`;
 
 export interface LaneLedger {
   /** Dollars the lane has recorded today, or null when that cannot be read (do not ask). */

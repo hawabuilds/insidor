@@ -176,6 +176,8 @@ async function main(): Promise<void> {
         log,
         watch: runtime.watch,
         floors: runtime.feedFloors,
+        /* The same ledger as the middle lane's: a search reading past short pages keeps its day there. */
+        ledger: runtime.middleLane.ledger,
         afterPass: [
           ['score-posts', runtime.scorePosts],
           ['name-guesses', runtime.guessNames],
