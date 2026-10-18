@@ -46,3 +46,50 @@ create index comment_top_level_idx on people.comment (created_at desc)
   where parent_id is null and hidden_at is null;
 
 grant select on public.trade to insidor_people;
+
+-- ── WHERE A TRADE STOOD: THE MARKET CAP WHEN IT LANDED ─────────────────────
+--
+-- The Feed says what Trador says and nothing more: a buy "at $48K market cap", a sell "in profit"
+-- or "at a loss", never an amount. `market_cap_usd` is the coin's market cap from our own market
+-- readings (public.market_reading) when the trade landed, and `market_cap_at` is when that
+-- reading was taken, so its distance from the landing can always be checked.
+--
+-- Recorded by record_trade_settled below, the trade service's own settle step (its signature is
+-- unchanged, so the running trade service needs no change): the newest reading of the coin taken
+-- in the ten minutes up to the landing. None in that window is null, never a guess; the Feed then
+-- looks either side of the landing within social.tradeCapWindowMs, and says nothing if that finds
+-- none either. Trades that landed before this migration have no recorded cap and are read that
+-- second way. Both columns are additive: nothing that reads public.trade today reads them.
+
+alter table public.trade add column market_cap_usd double precision, add column market_cap_at timestamptz;
+
+create or replace function public.record_trade_settled(p_id text, p_signature text, p_ok boolean, p_error text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_id !~ '^[0-9a-f]{64}$' or p_signature !~ '^[1-9A-HJ-NP-Za-km-z]{64,90}$' then return; end if;
+  update public.trade
+     set status = case when p_ok then 'confirmed' else 'failed' end,
+         error = coalesce(left(p_error, 500), error),
+         settled_at = now()
+   where id = p_id and signature = p_signature and status in ('sent', 'send_fail');
+  if p_ok then
+    update public.trade t
+       set (market_cap_usd, market_cap_at) = (
+             select m.market_cap_usd, m.taken_at
+               from public.market_reading m
+              where m.chain = 'solana' and m.address = t.mint and m.market_cap_usd is not null
+                and m.taken_at between t.settled_at - interval '10 minutes' and t.settled_at
+              order by m.taken_at desc
+              limit 1)
+     where t.id = p_id and t.signature = p_signature and t.status = 'confirmed'
+       and t.kind in ('buy', 'sell') and t.mint is not null and t.market_cap_usd is null;
+  end if;
+end;
+$$;
+
+revoke all on function public.record_trade_settled(text, text, boolean, text) from public;
+grant execute on function public.record_trade_settled(text, text, boolean, text) to insidor_app;

@@ -3,18 +3,17 @@ import { test } from 'node:test';
 
 import type { FeedComment, FeedItem, SuggestedPerson } from '../../shared/api/following.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { coinLabel, mergePage, peopleFacts, solText, whereOf } from './lines.ts';
+import { coinLabel, mergePage, peopleFacts, tradeDetail, whereOf } from './lines.ts';
 
 const MINT = 'FerryHorn1111111111111111111111111111111pump';
 const who = { userId: 'did:privy:1', handle: 'ana', name: 'Ana', pictureUrl: null, rank: 'intern' as const };
 
-test("a trade's SOL is the quote, said as about, and nothing when there is no amount", () => {
-  assert.equal(solText('500000000'), 'about 0.5 SOL');
-  assert.equal(solText('2500000000'), 'about 2.5 SOL');
-  assert.equal(solText('12345678'), 'about 0.012 SOL');
-  assert.equal(solText(null), null);
-  assert.equal(solText('0'), null, 'never "0 SOL"');
-  assert.equal(solText('-5'), null);
+test("a trade's second line is Trador's: a buy's market cap, a sell's profit or loss, never an amount", () => {
+  assert.match(tradeDetail({ side: 'buy', marketCapUsd: 48_000, outcome: null }) ?? '', /^at \$48K market cap$/);
+  assert.equal(tradeDetail({ side: 'buy', marketCapUsd: null, outcome: null }), null, 'no reading that close: nothing, never a guess');
+  assert.equal(tradeDetail({ side: 'sell', marketCapUsd: null, outcome: 'profit' }), 'in profit');
+  assert.equal(tradeDetail({ side: 'sell', marketCapUsd: null, outcome: 'loss' }), 'at a loss');
+  assert.equal(tradeDetail({ side: 'sell', marketCapUsd: null, outcome: null }), null);
 });
 
 test("a coin we never saw is its address, never a made-up name", () => {
@@ -42,6 +41,6 @@ test("someone to follow says the counts they have, and no trade count when they 
 });
 
 test('a page adds only rows not already shown', () => {
-  const t = (key: string): FeedItem => ({ kind: 'trade', key, at: 0, person: who, side: 'buy', coin: { mint: MINT, symbol: null, name: null, imageUrl: null }, quotedLamports: null, signature: null });
+  const t = (key: string): FeedItem => ({ kind: 'trade', key, at: 0, person: who, side: 'buy', coin: { mint: MINT, symbol: null, name: null, imageUrl: null }, marketCapUsd: null, outcome: null, signature: null });
   assert.deepEqual(mergePage([t('a'), t('b')], [t('b'), t('c')]).map((i) => i.key), ['a', 'b', 'c']);
 });
