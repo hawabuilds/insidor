@@ -480,7 +480,7 @@
   font-size: 14px;
 }
 
-/* "First post we caught": its own card above the list, a purple label, then Posted and Found. */
+/* The two moments, "First post" and "We found it", in their own card above the list, the first post under them. */
 .firstCard {
   margin: 18px 16px 0;
   padding: 12px 14px 0;
@@ -497,21 +497,18 @@
   border-bottom: 0;
 }
 
-.firstLabel {
-  display: block;
-  color: #b48cff;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .firstTimes {
   display: flex;
-  gap: 14px;
-  margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-bottom: 12px;
   color: #8b8794;
   font-size: 13px;
+}
+
+.firstTimes b {
+  color: #b48cff;
+  font-weight: 700;
 }
 
 .more {
