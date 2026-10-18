@@ -221,9 +221,10 @@ export async function fetchNarratives(viewId: string, signal?: AbortSignal): Pro
   return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}`, signal));
 }
 
-/** The All time list, a page at a time: every narrative, dead ones too, by views or by when we found it. */
-export async function fetchAllNarratives(viewId: string, sort: 'viewed' | 'new', offset: number, signal?: AbortSignal): Promise<NarrativesPage> {
-  return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}`, signal));
+/** The Narratives tab's lists, a page at a time (services/read narrative-sorts.ts): `on` keeps the narratives with a post on that site. */
+export type NarrativeListSort = 'new' | 'trending' | 'today' | 'week' | 'viewed';
+export async function fetchAllNarratives(viewId: string, sort: NarrativeListSort, offset: number, on: 'x' | 'tiktok' | null = null, signal?: AbortSignal): Promise<NarrativesPage> {
+  return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}${on === null ? '' : `&on=${on}`}`, signal));
 }
 
 /** A narrative's page, or null when it has none (a 404): a starred id with no page is left out, never an error. */

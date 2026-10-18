@@ -149,6 +149,15 @@ export interface Story {
   readonly foundAt: Instant | null;
   /** No post it lists went up in the last 48 hours: left out of Trending, still in Most viewed and New. False from a server that does not say. */
   readonly dead: boolean;
+  /**
+   * The tab's Trending: views a minute over the last 30 minutes (`now`) and over the hour before
+   * (`before`), its posts' speeds added up over those whose readings measure both. Null when no post
+   * was measured, or from a server that does not send it.
+   */
+  readonly viewsPerMinute: { readonly now: number; readonly before: number } | null;
+  /** Views gained over the last 24 hours and 7 days (Most viewed Today, Week). Null from a server that does not send them. */
+  readonly viewsGainedDay: Measured | null;
+  readonly viewsGainedWeek: Measured | null;
 }
 
 export interface ViewsGained {

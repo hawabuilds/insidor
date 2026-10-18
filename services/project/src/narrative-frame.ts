@@ -60,7 +60,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -234,6 +234,9 @@ function topCoinOf(addresses: readonly string[], facts: ReadonlyMap<string, Coin
   return first === undefined ? {} : { topCoin: projectCoin(first, options) };
 }
 
+/** Views a minute to one decimal under 10, whole above: what a card can say without false precision (as For You's). */
+const perMin = (v: number): number => (v < 10 ? Math.round(v * 10) / 10 : Math.round(v));
+
 export interface NarrativeFrame {
   /** False before 0093: nothing was read or written, and the caller projects the old board. */
   readonly migrated: boolean;
@@ -267,7 +270,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   );
   const rowOf = new Map(rows.map((r) => [r.item_id, r] as const));
   /* Every reading of the narrative window: a post's newest count may be older than the board's reach window. */
-  const reach = new Map(await loadReach(db, [...new Set(boardSet.flatMap((n) => n.members))], Math.min(reachSinceMs, options.nowMs - policy.narrative.windowMs) as Millis));
+  /* ★ Back a week: Most viewed's Week counts each post's gain over the last 7 days (about 12K readings, 18 Oct). */
+  const weekMs = policy.rising.forYouSorts.mostViewedSpansMs.week;
+  const reach = new Map(await loadReach(db, [...new Set(boardSet.flatMap((n) => n.members))], Math.min(reachSinceMs, options.nowMs - policy.narrative.windowMs, options.nowMs - weekMs) as Millis));
   /* An older page counts its posts' readings from its first post: a story four days old was read before the window. */
   const olderIds = [...new Set(offBoard.flatMap((n) => n.members))].filter((m) => !reach.has(m));
   const olderFrom = Math.min(...olderIds.map((m) => toMs(rowOf.get(m)?.posted_at ?? null) ?? toMs(rowOf.get(m)?.first_seen_at ?? null) ?? options.nowMs));
@@ -335,6 +340,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     });
     const memberReach = members.map((m) => ({ postedAtMs: m.postedAt, points: m.reach.map((x) => ({ atMs: x.atMs, reach: x.count ?? null })) }));
     const views = narrativeReach(memberReach, options.nowMs, policy);
+    /* The tab's sorts (core rank/narrative-sorts.ts): For You's speeds, added up over the measured posts, and the day's and week's gains. */
+    const speeds = narrativeSpeeds(members.map((m) => ({ readings: m.reach.map((x) => ({ atMs: x.atMs, value: x.count ?? null })), source: rowOf.get(m.itemId)?.source ?? '' })), options.nowMs, policy);
+    const spans = policy.rising.forYouSorts.mostViewedSpansMs;
     /* ★ FIRST FOUND: the earliest moment we saved any post it lists NOW, so removing a post moves it. */
     const found = used.map((r) => toMs(r.first_seen_at)).filter((t): t is number => t !== null && Number.isFinite(t));
     const foundAtMs = found.length === 0 ? null : Math.min(...found);
@@ -362,6 +370,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       viewsGained1hPosts: views.lastHour.counted,
       viewsGained: views.gained,
       viewsGainedAll: all,
+      viewsPerMinute: speeds === null ? null : { now: perMin(speeds.now), before: perMin(speeds.before), posts: speeds.posts, nowBySource: Object.fromEntries(Object.entries(speeds.nowBySource).map(([k, v]) => [k, perMin(v)])) },
+      viewsGainedDay: measured(reachGained(memberReach, options.nowMs - spans.today, options.nowMs).value, 'not_read_yet'),
+      viewsGainedWeek: measured(reachGained(memberReach, options.nowMs - spans.week, options.nowMs).value, 'not_read_yet'),
       postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null, foundAt: foundOf(m) })),
       foundAt: instant(foundAtMs, 'not_reported'),
       dead,

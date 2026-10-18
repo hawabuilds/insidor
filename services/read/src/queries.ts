@@ -76,19 +76,6 @@ export const NARRATIVES_SQL =
 export const PERMANENT_NARRATIVES_SQL = `select to_regclass('public.story_alias') is not null as ok`;
 
 /**
- * ★ ALL TIME: every narrative page ever written and still a narrative (0106), dead ones included,
- * a page at a time — by views (Most viewed, All time) or by when we found it (New). The order is
- * the projector's own copy of the page's facts beside it (story_view's 0106 columns), read through
- * their indexes; a page that does not say goes last, never as 0. Only observed pages, as Search.
- */
-export const ALL_NARRATIVES_VIEWED_SQL = `select payload from public.story_view
-  where payload #>> '{provenance,kind}' = 'observed'
-  order by views_total desc nulls last, story_id limit $1 offset $2`;
-export const ALL_NARRATIVES_NEW_SQL = `select payload from public.story_view
-  where payload #>> '{provenance,kind}' = 'observed'
-  order by found_at desc nulls last, story_id limit $1 offset $2`;
-
-/**
  * A merged narrative's link (0106 public.story_alias): the page of the narrative its posts are in
  * now. Read only when the id has no page of its own.
  */
