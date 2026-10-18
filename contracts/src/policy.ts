@@ -5810,7 +5810,7 @@ const POLICY_V1: Policy = {
       diskUsdPerGbMonth: 0.125,
       storageIncludedGb: 100,
       storageUsdPerGbMonth: 0.0213,
-      alertOverUsd: 40,
+      alertOverUsd: 90,
     },
   },
 
