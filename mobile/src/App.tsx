@@ -53,20 +53,21 @@ import { TabBar } from './shared/ui/TabBar.tsx';
  * still on its way the screen's place is empty for that moment, never a spinner.
  */
 const SCREENS = {
+  /* In the order they are fetched ahead: the tabs first, then where a tap most often leads. */
+  Search: () => import('./features/search/Search.tsx'),
+  AlertsScreen: () => import('./features/alerts/AlertsScreen.tsx'),
+  PortfolioScreen: () => import('./features/portfolio/PortfolioScreen.tsx'),
+  NarrativePage: () => import('./features/narrative/NarrativePage.tsx'),
+  TokenPage: () => import('./features/token/TokenPage.tsx'),
+  SearchedToken: () => import('./features/token/SearchedToken.tsx'),
   CreateCoin: () => import('./features/create/CreateCoin.tsx'),
   Learn: () => import('./features/learn/Learn.tsx'),
-  AlertsScreen: () => import('./features/alerts/AlertsScreen.tsx'),
   NotificationsScreen: () => import('./features/alerts/NotificationsScreen.tsx'),
   FollowList: () => import('./features/people/FollowList.tsx'),
   Leaderboard: () => import('./features/people/Leaderboard.tsx'),
   ProfileScreen: () => import('./features/people/ProfileScreen.tsx'),
   ImportScreen: () => import('./features/portfolio/ImportScreen.tsx'),
   WalletsScreen: () => import('./features/portfolio/WalletsScreen.tsx'),
-  NarrativePage: () => import('./features/narrative/NarrativePage.tsx'),
-  Search: () => import('./features/search/Search.tsx'),
-  SearchedToken: () => import('./features/token/SearchedToken.tsx'),
-  TokenPage: () => import('./features/token/TokenPage.tsx'),
-  PortfolioScreen: () => import('./features/portfolio/PortfolioScreen.tsx'),
 };
 const CreateCoin = lazy(() => SCREENS.CreateCoin().then((m) => ({ default: m.CreateCoin })));
 const Learn = lazy(() => SCREENS.Learn().then((m) => ({ default: m.Learn })));
