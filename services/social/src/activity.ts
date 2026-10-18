@@ -1,9 +1,9 @@
 /**
  * THE FEED OF PEOPLE: what the people you follow bought, sold and said, newest first, and the
- * People to follow shown to someone who follows nobody yet. Trador's Following and Latest feeds
+ * People to follow shown to someone who follows nobody yet. Trador's Following, Top calls and Latest
  * (lib/server/socialFeed.ts), on Insidor's own rows.
  *
- *   GET /feed?tab=following|latest&cursor=   twenty items a page, trades and comments merged by time
+ *   GET /feed?tab=following|top|latest&window=week|all&cursor=   twenty items a page (Following: trades and comments merged by time)
  *   GET /feed/people                          People to follow, ordered by what they did this week
  *
  * Separate from routes.ts because it reads a table the rest of the social service never touches
@@ -116,7 +116,7 @@ interface CommentRow extends Who {
   us: string;
 }
 
-/** Landed buys and sells of people who share them; `authors` null is everyone's (Latest). */
+/** Landed buys and sells of the people followed who share them. */
 async function tradeRows(deps: SocialDeps, authors: readonly string[] | null, cursor: Cursor | null, limit: number): Promise<TradeRow[]> {
   return deps.db.query<TradeRow>(
     `select t.id, t.kind as side, t.mint, t.signature,
@@ -209,21 +209,75 @@ async function storiesOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise
 const person = (r: Who, ranks: Map<string, RankId>) => ({ userId: r.userId, handle: r.handle, name: r.name, pictureUrl: r.pictureUrl, rank: ranks.get(r.userId) ?? 'intern' });
 const microsToMs = (us: string): number => Number(BigInt(us) / 1000n);
 
-async function feed(deps: SocialDeps, me: Person, tab: 'following' | 'latest', cursorRaw: string | null, ranks: Ranks): Promise<Reply> {
-  const limit = deps.policy.feedPageSize;
-  const cursor = decode(cursorRaw);
-  const followed = (await deps.db.query<{ id: string }>('select followee_id as id from people.follow where follower_id = $1', [me.userId])).map((r) => r.id);
-  const authors = tab === 'following' ? followed : null;
-  if (authors !== null && authors.length === 0) return json(200, { items: [], cursor: null, following: 0 });
+/**
+ * Top calls: comments by the likes holders gave them, as Trador ranks by Useful votes, newer first
+ * on a tie. Likes alone, not blended with age or reach, so the order is exactly the number beside
+ * each comment and anyone can count it. `since` null is all time.
+ */
+async function topRows(deps: SocialDeps, viewer: string, since: string | null, cursor: { likes: number; id: string } | null, limit: number): Promise<CommentRow[]> {
+  return deps.db.query<CommentRow>(
+    `select * from (
+       select c.comment_id::text as id, c.body, c.subject_kind as "subjectKind", c.subject_id as "subjectId", c.coin_mint as "coinMint",
+              ${US('c.created_at')} as us,
+              (select count(*)::int from people.comment_like l where l.comment_id = c.comment_id) as likes,
+              exists (select 1 from people.comment_like l where l.comment_id = c.comment_id and l.voter_id = $1) as "likedByMe",
+              (select count(*)::int from people.comment r where r.parent_id = c.comment_id and r.hidden_at is null) as replies,
+              p.user_id as "userId", p.handle, p.name, p.picture_url as "pictureUrl"
+         from people.comment c
+         join people.profile p on p.user_id = c.author_id
+        where c.parent_id is null and c.hidden_at is null
+          and not exists (select 1 from people.comment_hide h where h.comment_id = c.comment_id and h.user_id = $1)
+          and ($2::timestamptz is null or c.created_at >= $2::timestamptz)
+     ) ranked
+     where ($3::int is null or (ranked.likes, ranked.id::bigint) < ($3::int, $4::bigint))
+     order by ranked.likes desc, ranked.id::bigint desc
+     limit $5`,
+    [viewer, since, cursor?.likes ?? null, cursor?.id ?? '0', limit],
+  );
+}
 
-  /* One more than a page from each stream: the extra row says whether that stream goes on. */
-  const [trades, comments] = await Promise.all([tradeRows(deps, authors, cursor, limit + 1), commentRows(deps, me.userId, authors, cursor, limit + 1)]);
-  const merged = [
-    ...trades.map((r) => ({ k: 't' as const, id: r.id, us: r.us, trade: r, comment: null })),
-    ...comments.map((r) => ({ k: 'c' as const, id: padId(r.id), us: r.us, trade: null, comment: r })),
-  ].sort(after);
-  const page = merged.slice(0, limit);
-  const more = merged.length > limit;
+/** Top calls' cursor: the last comment's likes and id, opaque to the app. */
+const encodeRank = (likes: number, id: string): string => Buffer.from(`r|${likes}|${id}`).toString('base64url');
+function decodeRank(raw: string | null): { likes: number; id: string } | null {
+  if (raw === null || raw === '') return null;
+  const [r, likes, id] = Buffer.from(raw, 'base64url').toString('utf8').split('|');
+  return r === 'r' && likes !== undefined && id !== undefined && /^\d{1,9}$/.test(likes) && /^\d{1,19}$/.test(id) ? { likes: Number(likes), id } : null;
+}
+
+type Entry = { readonly k: 't' | 'c'; readonly id: string; readonly us: string; readonly trade: TradeRow | null; readonly comment: CommentRow | null };
+
+export type FeedTab = 'following' | 'top' | 'latest';
+
+/**
+ * One page of a tab, as Trador's three: Following is the trades and comments of the people you
+ * follow; Top calls is every comment by holders' likes, this week or all time; Latest is every
+ * comment, newest first. Trades appear in Following only, as in Trador.
+ */
+async function feed(deps: SocialDeps, me: Person, tab: FeedTab, window: 'week' | 'all', cursorRaw: string | null, ranks: Ranks): Promise<Reply> {
+  const limit = deps.policy.feedPageSize;
+  const followed = (await deps.db.query<{ id: string }>('select followee_id as id from people.follow where follower_id = $1', [me.userId])).map((r) => r.id);
+  let page: readonly Entry[];
+  let nextCursor: string | null;
+  if (tab === 'top') {
+    const since = window === 'week' ? new Date(deps.now() - deps.policy.peopleWindowMs).toISOString() : null;
+    const rows = await topRows(deps, me.userId, since, decodeRank(cursorRaw), limit + 1);
+    page = rows.slice(0, limit).map((r) => ({ k: 'c' as const, id: padId(r.id), us: r.us, trade: null, comment: r }));
+    const last = rows[limit - 1];
+    nextCursor = rows.length > limit && last !== undefined ? encodeRank(last.likes, last.id) : null;
+  } else {
+    const cursor = decode(cursorRaw);
+    const authors = tab === 'following' ? followed : null;
+    if (authors !== null && authors.length === 0) return json(200, { items: [], cursor: null, following: 0 });
+    /* One more than a page from each stream: the extra row says whether that stream goes on. */
+    const [trades, comments] = await Promise.all([authors === null ? Promise.resolve([]) : tradeRows(deps, authors, cursor, limit + 1), commentRows(deps, me.userId, authors, cursor, limit + 1)]);
+    const merged: Entry[] = [
+      ...trades.map((r) => ({ k: 't' as const, id: r.id, us: r.us, trade: r, comment: null })),
+      ...comments.map((r) => ({ k: 'c' as const, id: padId(r.id), us: r.us, trade: null, comment: r })),
+    ].sort(after);
+    page = merged.slice(0, limit);
+    const last = page[page.length - 1];
+    nextCursor = merged.length > limit && last !== undefined ? encode({ us: last.us, k: last.k, id: last.id }) : null;
+  }
 
   const pageComments = page.flatMap((x) => (x.comment === null ? [] : [x.comment]));
   const mints = new Set<string>();
@@ -256,8 +310,7 @@ async function feed(deps: SocialDeps, me: Person, tab: 'following' | 'latest', c
       on: { kind: c.subjectKind, id: c.subjectId, storyId, title: storyId === null ? null : (stories.title.get(storyId) ?? null), coin: coinMint === null ? null : coin(coinMint) },
     };
   });
-  const last = page[page.length - 1];
-  return json(200, { items, cursor: more && last !== undefined ? encode({ us: last.us, k: last.k, id: last.id }) : null, following: followed.length });
+  return json(200, { items, cursor: nextCursor, following: followed.length });
 }
 
 /**
@@ -302,8 +355,9 @@ export async function activityRoute(method: string, seg: readonly string[], quer
   if (method !== 'GET') return json(405, { error: 'method not allowed' });
   if (me === null) return json(401, { error: 'Sign in first.' });
   if (seg.length === 1) {
-    const tab = query.get('tab') === 'latest' ? 'latest' : 'following';
-    return feed(deps, me, tab, query.get('cursor'), ranks);
+    const asked = query.get('tab');
+    const tab: FeedTab = asked === 'latest' || asked === 'top' ? asked : 'following';
+    return feed(deps, me, tab, query.get('window') === 'all' ? 'all' : 'week', query.get('cursor'), ranks);
   }
   if (seg.length === 2 && seg[1] === 'people') return peopleToFollow(deps, me, ranks);
   return json(404, { error: 'not found' });

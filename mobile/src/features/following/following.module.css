@@ -8,6 +8,95 @@
  * so "bought" and "sold" use them and nothing else on the row does.
  */
 
+/* The title row: "Feed" at 24px, the round bell at its right with a purple dot when something is unread. */
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-1);
+}
+
+.bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text-1);
+}
+
+.dot {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--card);
+}
+
+/* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one #241A3A with #E4D6FF text. */
+.chips {
+  display: flex;
+  gap: 2px;
+  padding-bottom: 10px;
+}
+
+.chip {
+  flex: none;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: #8b8794;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.chipOn {
+  background: #241a3a;
+  color: #e4d6ff;
+}
+
+/* Top calls' This week / All time, as For You's window toggle. */
+.windowRow {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
+.windows {
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: #16151c;
+}
+
+.windows button {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: #8b8794;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.windows .windowOn {
+  background: #2a2733;
+  color: #fff;
+}
+
 /* A row: no box, spacing between rows (Trador: "a feed of boxes reads as a list of adverts"). */
 .row {
   display: flex;

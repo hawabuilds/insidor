@@ -15,10 +15,12 @@ import type { FeedPage, SuggestedPerson } from './wire/following.ts';
 
 export type { FeedCoin, FeedComment, FeedItem, FeedPage, FeedTrade, SuggestedPerson } from './wire/following.ts';
 
-export type FeedTab = 'following' | 'latest';
+export type FeedTab = 'following' | 'top' | 'latest';
+/** Top calls' window, as Trador's This week / All time. */
+export type FeedWindow = 'week' | 'all';
 
-export const fetchPeopleFeed = async (tab: FeedTab, cursor: string | null = null): Promise<FeedPage> =>
-  (await socialCall('GET', `/feed?tab=${tab}${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`)) as FeedPage;
+export const fetchPeopleFeed = async (tab: FeedTab, cursor: string | null = null, window: FeedWindow = 'week'): Promise<FeedPage> =>
+  (await socialCall('GET', `/feed?tab=${tab}${tab === 'top' ? `&window=${window}` : ''}${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`)) as FeedPage;
 
 export const fetchPeopleToFollow = async (): Promise<readonly SuggestedPerson[]> => ((await socialCall('GET', '/feed/people')) as { people: readonly SuggestedPerson[] }).people;
 

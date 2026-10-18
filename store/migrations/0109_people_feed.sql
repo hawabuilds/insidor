@@ -22,10 +22,13 @@
 --
 -- ── INDEXES ───────────────────────────────────────────────────────────────
 --
---   trade_landed_idx         a followed person's landed buys and sells, newest first, and the
---                            whole list's (Latest), each a page of 21 from the top of the index.
---   comment_top_level_idx    every visible top-level comment newest first, for Latest; a followed
---                            person's comments use comment_author_idx (0043).
+--   trade_landed_idx         a followed person's landed buys and sells, newest first, a page of 21
+--                            from the top of the index; and a seller's earlier buys of one coin.
+--   comment_top_level_idx    every visible top-level comment newest first, for Latest, and the
+--                            week's comments Top calls ranks; a followed person's comments use
+--                            comment_author_idx (0043). Top calls all time counts every comment's
+--                            likes before ordering: fine at today's size (0 comments), and the
+--                            first thing to keep a count column for when it is not.
 --   profile_wallet_idx       the join from a trade's wallet to the person who made it.
 -- Plain CREATE INDEX: the tables are a few rows today (9 trades, 0 comments on 18 Oct 2026), so
 -- the SHARE lock the migrator's transaction takes is milliseconds.
@@ -38,8 +41,6 @@ alter table people.profile add column trades_public boolean not null default tru
 create index profile_wallet_idx on people.profile (wallet) where wallet is not null;
 
 create index trade_landed_idx on public.trade (wallet, settled_at desc)
-  where status = 'confirmed' and kind in ('buy', 'sell') and settled_at is not null;
-create index trade_landed_all_idx on public.trade (settled_at desc)
   where status = 'confirmed' and kind in ('buy', 'sell') and settled_at is not null;
 
 create index comment_top_level_idx on people.comment (created_at desc)
