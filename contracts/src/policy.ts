@@ -1627,8 +1627,8 @@ export interface FeedPolicy {
     /**
      * ★ THE SORTS' TOP POSTS KEPT FRESH (the owner, 2026-10-18: yes for the text source's top 20,
      * about $0.13 a day; yes for the short-video source's top 10, about $0.46 a day). Every
-     * `recomputeMs` the runner ranks For You's scroll on each sort chip and window (`windowsMs`, the
-     * same as the read service's SORT_WINDOWS) as if every post were read just now (core
+     * `recomputeMs` the runner ranks For You's scroll on each list the app offers (Trending now, Most
+     * viewed Today and This week: rising.forYouSorts, the owner 2026-10-18) as if every post were read just now (core
      * rank/post-sorts.ts). A text-source post in a list's top `topN`, or a short video in a list's top
      * `shortVideoTopN` (each re-read is a paid credit, so fewer), whose newest reading is `everyMs` old
      * or more is due: at most `maxPerPass` text posts and `shortVideoMaxPerPass` short videos a pass,
@@ -1643,7 +1643,8 @@ export interface FeedPolicy {
       readonly maxPerPass: number;
       readonly shortVideoTopN: number;
       readonly shortVideoMaxPerPass: number;
-      readonly windowsMs: readonly number[];
+      /** Most viewed's lists' short-video top, under Trending's `shortVideoTopN`: see the cap below. */
+      readonly shortVideoViewedTopN: number;
     };
   };
   /**
@@ -4795,8 +4796,14 @@ const POLICY_V1: Policy = {
       bookReserveUsd: 3,
       /* On 2026-10-18, the owner's yes: the text source's top 20 about $0.11 to $0.13 a day, the short
          video's top 10 about $0.46 (each replayed over the 24 hours before). 25 minutes keeps the newest
-         reading under 30 with the pass's slack. Ten short videos a pass is about two cents at most. */
-      sortTop: { on: true, topN: 20, everyMs: 1_500_000, recomputeMs: 300_000, maxPerPass: 20, shortVideoTopN: 10, shortVideoMaxPerPass: 10, windowsMs: [3_600_000, 21_600_000, 86_400_000] },
+         reading under 30 with the pass's slack. Ten short videos a pass is about two cents at most.
+         The owner's redesign of 2026-10-18 (Trending now, Most viewed Today and This week), replayed on
+         the 24 hours to 2026-10-18 against the lists before it: with every list's short-video top at 10
+         it adds about $0.69 a day (text +$0.15, short video +$0.54), over the owner's ~$0.50. The per-pass
+         limits cannot hold it, since a pass runs every 30 seconds (one short video a pass still adds
+         $0.63), so Most viewed's two lists keep their top 7 short videos fresh and Trending its 10: about
+         +$0.33 a day (8 would be +$0.49). */
+      sortTop: { on: true, topN: 20, everyMs: 1_500_000, recomputeMs: 300_000, maxPerPass: 20, shortVideoTopN: 10, shortVideoMaxPerPass: 10, shortVideoViewedTopN: 7 },
     },
     /* The owner, 2026-10-18: "build the narrative-name search ... its own daily $ cap at your top
        estimate: $0.35". 52 of the 95-99 shown narratives had a safe name on 2026-10-18; one ask an hour
