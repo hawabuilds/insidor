@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MAX_ATTEMPTS, mirrorPass, resolveCoin, type DueCoin, type MirrorDeps } from './coin-logos.ts';
+import { MAX_ATTEMPTS, mirrorPass, resolveCoin, shownSetSql, type DueCoin, type MirrorDeps } from './coin-logos.ts';
 
 const A = 'So1aNaCoinMint1111111111111111111111111pmp';
 const coin = (over: Partial<DueCoin> = {}): DueCoin => ({ address: A, metadataUri: 'https://ipfs.example/ipfs/doc', metadataImage: null, lastOutcome: null, attempts: 0, ...over });
@@ -127,4 +127,28 @@ test('the launchpad stops being asked this pass after it fails in a row', async 
   const d = deps({ metadataPicture: async () => null, venuePicture: async () => { asked += 1; throw new Error('blocked'); } });
   for (let i = 0; i < 5; i += 1) await resolveCoin(coin(), d, new Map(), isOpen, result);
   assert.equal(asked, 3);
+});
+
+test('★ only coins the app shows are due: no backfill of every coin we hold, and the watchlist only when readable', async () => {
+  const withPeople = shownSetSql(true);
+  for (const t of ['public.rising_row', 'public.feed_post', 'public.same_name_coin', 'internal.coin_post_link', 'public.story_view', 'public.history_coin', 'people.watch_coin', 'people.alert', 'people.post_watch']) {
+    assert.ok(withPeople.includes(t), t);
+  }
+  assert.ok(!withPeople.includes('public.coin_name'));
+  assert.ok(!shownSetSql(false).includes('people.'));
+  const asked: string[] = [];
+  const d = deps({
+    db: {
+      query: async (sql: string) => {
+        asked.push(sql);
+        if (sql.includes('information_schema')) return [{ x: 1 }] as never[];
+        if (sql.includes('has_table_privilege')) return [{ ok: false }] as never[];
+        return [] as never[];
+      },
+    },
+  });
+  await mirrorPass(d);
+  const due = asked.find((s) => s.includes('with shown')) ?? '';
+  assert.ok(due.includes('public.feed_post') && !due.includes('people.'));
+  assert.ok(d.logged.some(([m]) => m.includes('watchlist')));
 });
