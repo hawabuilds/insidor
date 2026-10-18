@@ -1602,6 +1602,72 @@ export interface FeedPolicy {
     readonly dailyUsd: number;
     readonly bookReserveUsd: number;
   };
+  /**
+   * ★ THE NARRATIVE-NAME SEARCH (the owner, 2026-10-18): every `everyMs`, each open narrative on the
+   * board searched on the text source by its name, forward from that narrative's last search (or one
+   * `everyMs` back on its first), at `minApproval` likes and in `feed.langs`. Posts found are credited
+   * to the 'narrative_name' lane (0097), judged like any found post, and may reach For You — unlike
+   * the story-name backfill (`BackfillPolicy`), whose posts are judged and never shown.
+   *
+   * THE NAME (services/runner/src/work/narrative-names.ts): a phrase of 1 to `maxWords` words from the
+   * narrative's title or its posts' judged names that appears, word for word, in the text of at least
+   * `minMemberPosts` of its posts. Of two or more words, the last and at least one must not be in
+   * `commonWords` ("tesla roadster", "the hi"); a single word must be a name the judge gave a post,
+   * not in `commonWords`, of `minWordLetters` letters ("vaquita", never a title's "police"). A phrase
+   * is preferred to a single word, then the one in more posts. A narrative with no such name is not
+   * searched: a generic word ("cat", "Elon") would bring an hour of everything about it.
+   *
+   * Its own loop (loops/name-search.ts) and its own day in internal.lane_spend: `cap`, read before
+   * every page (work/lane-search.ts). A pass is bounded by `passDeadlineMs` and each name by
+   * `maxPagesPerAsk`; narratives searched longest ago go first, so a pass cut short resumes fairly.
+   * What breaks if changed carelessly: a floor much under the middle lane's lets every generic name
+   * fill its pages with posts the judge must then be paid for; the cap stops it, an hour early.
+   */
+  readonly narrativeNames: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly minApproval: number;
+    readonly maxNarratives: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly minMemberPosts: number;
+    readonly membersRead: number;
+    readonly maxWords: number;
+    readonly minWordLetters: number;
+    readonly commonWords: readonly string[];
+    readonly cap: LaneCapPolicy;
+  };
+  /**
+   * ★ THE QUOTE SEARCH ON BIG ACCOUNTS (the owner, 2026-10-18): a held text post by an account with
+   * at least `minFollowers` followers whose likes have reached `minApproval` has its quotes searched
+   * at about each age in `askAtMin` (within `askGraceMin` after it), at `reproductionMinApproval` likes. The
+   * quotes are credited to the 'quote' lane (0097), judged like any found post, and may reach For You.
+   * A quote of a giant account's post is where its meme is often made (the Tesla 7:55 post).
+   *
+   * Its own loop (loops/quotes.ts) and its own day in internal.lane_spend: `cap`. A pass asks at most
+   * `maxPostsPerPass` posts, most liked first, each at most `maxPagesPerAsk` pages, and stops at
+   * `passDeadlineMs`. Which ages a post was asked at is kept in the process: a restart may ask one
+   * post's current age once more, inside the cap. What breaks if changed carelessly: a grace as long
+   * as the gap between two ages asks every post at both on every restart.
+   */
+  readonly reproductions: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly minFollowers: number;
+    readonly minApproval: number;
+    readonly reproductionMinApproval: number;
+    readonly askAtMin: readonly number[];
+    readonly askGraceMin: number;
+    /** Big posts in the asking windows read from the store per pass, most liked first. */
+    readonly maxCandidates: number;
+    /** A reading under `minApproval` this old, at an asking age, is read again by id before deciding. */
+    readonly rereadAfterMin: number;
+    readonly maxRereadsPerPass: number;
+    readonly maxPostsPerPass: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 /**
@@ -4340,6 +4406,64 @@ const POLICY_V1: Policy = {
       passDeadlineMs: 25_000,
       dailyUsd: 3.75,
       bookReserveUsd: 3,
+    },
+    /* The owner, 2026-10-18: "build the narrative-name search ... its own daily $ cap at your top
+       estimate: $0.35". 52 of the 95-99 shown narratives had a safe name on 2026-10-18; one ask an hour
+       each is ~1,250 asks a day, $0.19 at the source's one-post floor a request. Probed that night, 52
+       asks at this floor over the last hour returned nothing; over the three days before, 115 held
+       posts carrying one of those names had 1,000 likes inside their first hour (87 at 2,000), ~40 a
+       day, most already found by another lane. With their re-finds and the new ones judged: ~$0.20-0.25
+       a day, so the cap is the top of the estimate.
+       1,000 likes, not the middle lane's 2,000: that lane already returns every post 15 minutes to
+       3 hours old at 2,000 in these languages, so a 2,000 floor over the last hour would find almost
+       nothing it does not; a name narrows the search enough to ask for half the likes. */
+    narrativeNames: {
+      on: true,
+      everyMs: 3_600_000, // hourly
+      minApproval: 1_000,
+      maxNarratives: 60,
+      maxPagesPerAsk: 3,
+      passDeadlineMs: 240_000,
+      minMemberPosts: 2,
+      membersRead: 40,
+      maxWords: 3,
+      minWordLetters: 5,
+      commonWords: [
+        'a', 'about', 'after', 'ai', 'all', 'an', 'and', 'are', 'as', 'at', 'baby', 'be', 'big', 'but', 'by',
+        'cat', 'cats', 'coin', 'coins', 'community', 'controversy', 'crypto', 'day', 'discovered', 'dog',
+        'dogs', 'elon', 'for', 'france', 'french', 'from', 'gains', 'goes', 'has', 'have', 'he', 'her',
+        'his', 'i', 'in', 'incident', 'into', 'is', 'it', 'its', 'just', 'man', 'meme', 'memes', 'musk',
+        'my', 'named', 'new', 'news', 'not', 'now', 'of', 'on', 'or', 'our', 'out', 'people', 'popularity',
+        'post', 'project', 'protests', 'rise', 'she', 'so', 'social', 'media', 'tesla', 'that', 'the',
+        'their', 'they', 'this', 'to', 'token', 'trump', 'up', 'video', 'viral', 'was', 'we', 'what',
+        'when', 'who', 'why', 'will', 'with', 'world', 'x', 'you', 'your',
+      ],
+      /* The middle lane's judging figures: the same judge, on the same kind of post. */
+      cap: { dailyUsd: 0.35, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+    },
+    /* The owner, 2026-10-18: "build ... the quote search on 10M+ accounts ... $1.00". Over the three
+       days to 2026-10-18, 325 held text posts by 10M+ accounts reached 5,000 likes within 3 hours by our
+       readings (~110 a day), and 469 more had only an early reading under 5,000 (re-read below). Two
+       asks each is ~220-300 asks a day; probed, a typical big post has 0-1 quotes at 300 likes by 3
+       hours and a viral one 12 or more (the Tesla post). Search ~$0.07, re-reads ~$0.11, and ~150
+       new quotes judged ~$0.20: ~$0.35-0.45 a day, the cap's $1.00 is a viral day's. */
+    reproductions: {
+      on: true,
+      everyMs: 300_000, // every 5 minutes
+      minFollowers: 10_000_000,
+      minApproval: 5_000,
+      reproductionMinApproval: 300,
+      askAtMin: [60, 180],
+      askGraceMin: 45,
+      maxCandidates: 200,
+      /* About 350 big posts a day have only an early reading under 5,000; one re-read by id an age is
+         ~700 ids, $0.11 a day, on this lane's cap. */
+      rereadAfterMin: 15,
+      maxRereadsPerPass: 50,
+      maxPostsPerPass: 40,
+      maxPagesPerAsk: 3,
+      passDeadlineMs: 120_000,
+      cap: { dailyUsd: 1, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
     },
   },
 

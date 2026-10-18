@@ -44,6 +44,8 @@ export type { RefillDue } from './repo/post-refill.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgLaneSpendRepo } from './repo/lane-spend.ts';
+/* The quote search's posts (Policy.feed.reproductions): big accounts' held posts past a like floor. */
+export { PgQuoteTargetRepo, type QuoteTarget } from './repo/quote-targets.ts';
 export { PgJudgeShadowRepo } from './repo/judge-shadow.ts';
 export type { ShadowPair } from './repo/judge-shadow.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
