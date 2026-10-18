@@ -22,11 +22,11 @@
  * envelope. If something here starts computing, it belongs in services/project.
  */
 
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
+import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
@@ -45,8 +45,6 @@ import {
   PAIR_VIEW_SQL,
   SOURCE_VIEW_SQL,
   NARRATIVES_SQL,
-  ALL_NARRATIVES_NEW_SQL,
-  ALL_NARRATIVES_VIEWED_SQL,
   PERMANENT_NARRATIVES_SQL,
   STORY_ALIAS_SQL,
   STORY_ALIAS_ID_SQL,
@@ -76,6 +74,8 @@ export interface Deps {
   readonly postSheet?: PostSheet;
   /** For You's Trending and Most viewed (post-sorts.ts), kept per projector run. Absent: worked out on every request. */
   readonly sorts?: ReturnType<typeof createSorts>;
+  /** The Narratives tab's lists (narrative-sorts.ts), ranked once per board tick. Absent: ranked on every request. */
+  readonly narrativeLists?: ReturnType<typeof createNarrativeLists>;
 }
 
 /*
@@ -258,30 +258,25 @@ async function pageIdOf(storyId: string, deps: Deps): Promise<string> {
 }
 
 /**
- * GET /narratives/:viewId/all?sort=viewed|new&offset=N
+ * GET /narratives/:viewId/all?sort=new|trending|today|week|viewed&offset=N[&on=x|tiktok]
  *
- * The Narratives tab's All time list (the owner, 2026-10-18): every narrative, dead ones included,
- * `narrative.dead.pageSize` (20) at a time, by views or by when we found it. `next` is the offset
- * of the next page, or null on the last. A view never projected is a 404, as the board's; so is a
- * database before 0106, which has no list to page.
+ * The Narratives tab's lists, as For You's sorts (the owner, 2026-10-18; narrative-sorts.ts says
+ * each): every narrative, dead ones included where the sort keeps them, 20 at a time. `next` is the
+ * offset of the next page, or null on the last. A view never projected is a 404, as the board's; so
+ * is a database before 0106, which has no list to page.
  */
 async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promise<Reply> {
-  const q = new URLSearchParams(rawUrl.split('?')[1] ?? '');
-  const sort = q.get('sort') ?? 'new';
-  const offset = Number(q.get('offset') ?? '0');
-  if ((sort !== 'viewed' && sort !== 'new') || !Number.isSafeInteger(offset) || offset < 0 || offset > MAX_OFFSET) return BAD_REQUEST;
+  const ask = parseNarrativeList(rawUrl);
+  if (ask === null) return BAD_REQUEST;
   const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
   const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
   if (ready?.['ok'] !== true) return NOT_FOUND;
-  const size = DEFAULT_POLICY.narrative.dead.pageSize;
-  const rows = await deps.db.query(sort === 'viewed' ? ALL_NARRATIVES_VIEWED_SQL : ALL_NARRATIVES_NEW_SQL, [size, offset]);
-  return json(200, { tick: tickNumber(view['tick']), stories: rows.map(payloadOf), provenance: columnOf(view, 'provenance'), next: rows.length < size ? null : offset + rows.length });
+  const tick = tickNumber(view['tick']);
+  const page = await (deps.narrativeLists ?? createNarrativeLists())(deps.db, tick, ask);
+  return json(200, { tick, stories: page.stories, provenance: columnOf(view, 'provenance'), next: page.next });
 }
-
-/** How deep the All time list pages: past this an offset is a malformed request, not a slow scan. */
-const MAX_OFFSET = 100_000;
 
 /**
  * GET /launches/:feedId

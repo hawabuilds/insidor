@@ -1,0 +1,97 @@
+/**
+ * The Narratives tab's lists: what is asked for is parsed strictly, the ranked sorts order by the
+ * page's facts (dead and stale off Trending, an unknown gain left off Today and Week), the site
+ * filter keeps only narratives with a post there, and pages are cut 20 at a time.
+ */
+
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import type { Row } from './queries.ts';
+import { LIST_NEW_SQL, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
+
+const NOW = Date.parse('2026-10-18T15:00:00Z');
+const MIN = 60_000;
+
+test('the ask: the sort, the offset and the site, nothing else', () => {
+  assert.deepEqual(parseNarrativeList('/narratives/default/all'), { sort: 'new', offset: 0, on: null });
+  assert.deepEqual(parseNarrativeList('/x/all?sort=week&offset=40&on=tiktok'), { sort: 'week', offset: 40, on: 'tiktok' });
+  assert.equal(parseNarrativeList('/x/all?sort=hot'), null);
+  assert.equal(parseNarrativeList('/x/all?sort=new&offset=-1'), null);
+  assert.equal(parseNarrativeList('/x/all?sort=new&offset=1.5'), null);
+  assert.equal(parseNarrativeList('/x/all?sort=new&on=facebook'), null);
+});
+
+const row = (id: string, o: Partial<Record<string, unknown>> = {}): Row => ({
+  story_id: id,
+  dead: false,
+  projected_at: new Date(NOW - 2 * MIN),
+  views_total: '1000',
+  speeds: null,
+  day: null,
+  week: null,
+  on_x: true,
+  on_tiktok: false,
+  ...o,
+});
+const speeds = (now: number, before: number) => ({ now, before, posts: 2, nowBySource: { x: now } });
+const nums = (rows: readonly Row[]): NumbersRow[] => rows.flatMap((r) => numbersOf(r) ?? []);
+
+test('Trending: risers by ratio; dead, stale and unmeasured narratives are not on it', () => {
+  const rows = nums([
+    row('a', { speeds: speeds(1000, 500) }),
+    row('b', { speeds: speeds(900, 300) }),
+    row('dead', { dead: true, speeds: speeds(5000, 100) }),
+    row('stale', { projected_at: new Date(NOW - 40 * MIN), speeds: speeds(5000, 100) }),
+    row('unread'),
+  ]);
+  assert.deepEqual(rankNarratives(rows, 'trending', null, NOW), ['b', 'a']);
+});
+
+test('Today and Week: by the gain, a narrative that does not say is left off, never 0', () => {
+  const rows = nums([row('a', { day: '500', week: '9000' }), row('b', { day: '800', week: '100' }), row('c'), row('d', { dead: true, day: '50', week: '20000' })]);
+  assert.deepEqual(rankNarratives(rows, 'today', null, NOW), ['b', 'a', 'd']);
+  assert.deepEqual(rankNarratives(rows, 'week', null, NOW), ['d', 'a', 'b']);
+});
+
+test('the site filter keeps only narratives with a post there', () => {
+  const rows = nums([row('a', { day: '5' }), row('t', { day: '9', on_x: false, on_tiktok: true }), row('both', { day: '1', on_tiktok: true })]);
+  assert.deepEqual(rankNarratives(rows, 'today', 'tiktok', NOW), ['t', 'both']);
+  assert.deepEqual(rankNarratives(rows, 'today', 'x', NOW), ['a', 'both']);
+});
+
+function db(numbers: readonly Row[]) {
+  const calls: { sql: string; params: readonly unknown[] }[] = [];
+  return {
+    calls,
+    db: {
+      query: async (sql: string, params: readonly unknown[] = []): Promise<Row[]> => {
+        calls.push({ sql, params });
+        if (sql === LIST_NUMBERS_SQL) return [...numbers];
+        if (sql === LIST_PAGES_SQL) return (params[0] as string[]).map((id) => ({ story_id: id, payload: { id } }));
+        if (sql === LIST_VIEWED_SQL || sql === LIST_NEW_SQL) return [{ payload: { id: 'p' } }];
+        return [];
+      },
+    },
+  };
+}
+
+test('a ranked list is cut 20 at a time from one ranking a tick', async () => {
+  const many = Array.from({ length: 25 }, (_, i) => row(`n${String(i).padStart(2, '0')}`, { day: String(1000 - i) }));
+  const f = db(many);
+  const list = createNarrativeLists(() => NOW);
+  const first = await list(f.db, 7, { sort: 'today', offset: 0, on: null });
+  assert.equal(first.stories.length, 20);
+  assert.equal(first.next, 20);
+  const second = await list(f.db, 7, { sort: 'today', offset: 20, on: null });
+  assert.deepEqual(second.stories, ['n20', 'n21', 'n22', 'n23', 'n24'].map((id) => ({ id })));
+  assert.equal(second.next, null);
+  assert.equal(f.calls.filter((c) => c.sql === LIST_NUMBERS_SQL).length, 1, 'one ranking for the tick');
+});
+
+test('New and Most viewed All page through the index with the site label', async () => {
+  const f = db([]);
+  const page = await createNarrativeLists(() => NOW)(f.db, 1, { sort: 'viewed', offset: 0, on: 'tiktok' });
+  assert.deepEqual(f.calls[0]?.params, [20, 0, 'TikTok']);
+  assert.equal(page.next, null, 'a short page is the last');
+});
