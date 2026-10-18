@@ -58,8 +58,9 @@ test('the alarm queues a recent crossing, a grow and the month bill once each, a
   const rows: SizeSample[] = hourly(START, 6, (i) => [4, 6.5, 7.3, 7.3, 7.3, 7.3][i] ?? 7.3);
   const queued: OwnerAlert[] = [];
   const now = { ms: START + 5 * H };
+  /* A $40 line, so plan and compute alone are over it whatever the live line is set to. */
   const alarm = diskAlarm({
-    policy: P,
+    policy: { ...P, bill: { ...P.bill, alertOverUsd: 40 } },
     sample: async () => undefined,
     samples: async () => rows,
     ownerWallets: ['w'],
