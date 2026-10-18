@@ -1,6 +1,7 @@
 /**
  * THE WALLET TAB — Trador's Stonkfolio, in Insidor: who you are, what your wallet holds and what
- * it is worth (Portfolio.tsx), Send and Receive, and the profile menu top right (ProfileMenu.tsx).
+ * it is worth (Portfolio.tsx), and top right the round QR button (Receive: the address and its QR
+ * code), Send in a trading build, and the profile menu's gear (ProfileMenu.tsx).
  *
  * ★ NOBODY SIGNS IN HERE. The front door is the only sign-in (shared/sign-in.ts gates the whole
  * app), so this tab is only ever reached signed in. Signing out is in the profile menu, and
@@ -17,7 +18,6 @@
 import { useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import { fetchMe } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { LINKED_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
@@ -25,7 +25,7 @@ import { Notice } from '../../shared/ui/Notice.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import { forgetEntered } from '../landing/entered.ts';
-import { Portfolio, type ChartRange, type Social, type WhoAmI } from './Portfolio.tsx';
+import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { withLive, type BalancePoint } from './balance-points.ts';
 import { ReceiveSheet } from './ReceiveSheet.tsx';
@@ -52,7 +52,6 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
 }) {
   const [range, setRange] = useState<ChartRange>('1w');
   const [scrubbed, setScrubbed] = useState<BalancePoint | null>(null);
-  const [copied, setCopied] = useState(false);
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
   const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
   const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
@@ -60,29 +59,21 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const live = portfolio?.kind === 'read' && portfolio.totalUsd.known ? portfolio.totalUsd.amount : null;
   const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());
   const holdings: readonly Holding[] = portfolio?.kind === 'read' ? portfolio.holdings : [];
-  /* Your followers, following and bio, as Trador's Stonkfolio header shows them; only on your own wallet. */
-  const [me] = useLoad(`profile:me:${canAct ? who.address : 'none'}`, async (): Promise<Social> => {
-    if (!canAct) return { kind: 'unread' };
-    const card = await fetchMe();
-    return { kind: 'read', key: card.handle ?? card.userId, followers: card.followers, following: card.following, bio: card.bio };
-  }, 'memory');
-  const social: Social | undefined = !canAct ? undefined : me.state === 'ready' ? me.value : me.state === 'failed' ? { kind: 'unread' } : null;
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(who.address);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
     } catch {
-      setCopied(false);
+      /* The menu's copy is a convenience; the address is also whole in Receive. */
     }
   };
 
-  const actions = canAct ? (
-    <div className={styles['actions']}>
-      {TRADING ? <button type="button" className={styles['action']} onClick={() => setSheet('send')}><Arrow up />Send</button> : null}
-      <button type="button" className={styles['action']} onClick={() => setSheet('receive')}><Arrow />Receive</button>
-    </div>
+  /* Round buttons before the gear: Send in a trading build, and the QR code that opens Receive. */
+  const buttons = canAct ? (
+    <>
+      {TRADING ? <button type="button" className={styles['round']} aria-label="Send" onClick={() => setSheet('send')}><Arrow up /></button> : null}
+      <button type="button" className={styles['round']} aria-label="Receive: your address and its QR code" onClick={() => setSheet('receive')}><QrGlyph /></button>
+    </>
   ) : null;
 
   return (
@@ -90,16 +81,13 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
       {switcher}
       <Portfolio
         who={who}
-        social={social}
         data={portfolio}
         points={points}
         range={range}
         onRange={setRange}
         scrubbed={scrubbed}
         onScrub={setScrubbed}
-        copied={copied}
-        onCopy={() => void copy()}
-        actions={actions}
+        buttons={buttons}
         notice={!canAct ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
         menu={
           <ProfileMenu
@@ -117,6 +105,17 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
       {sheet === 'send' ? <SendSheet holdings={holdings} onClose={() => setSheet(null)} /> : null}
       {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}
     </>
+  );
+}
+
+function QrGlyph() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM20 14v1M14 20h1M17 17h4v4h-4" />
+    </svg>
   );
 }
 

@@ -5,14 +5,15 @@
   flex-shrink: 0;
 }
 
+/* A round button, the QR button's twin beside it (portfolio.module.css .round). */
 .gear {
-  width: 36px;
-  height: 36px;
-  margin-right: -4px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   border-radius: 999px;
-  color: var(--text-2);
+  background: rgb(255 255 255 / 6%);
+  color: var(--text-1);
 }
 
 .gearOn {

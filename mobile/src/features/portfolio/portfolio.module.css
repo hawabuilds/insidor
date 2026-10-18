@@ -87,7 +87,7 @@
 
 .big {
   margin-top: 2px;
-  font-size: 38px;
+  font-size: 40px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.035em;
@@ -187,7 +187,7 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   margin: 12px calc(-1 * var(--gutter)) 0;
   padding: 2px 0 0;
   list-style: none;
@@ -195,7 +195,7 @@
 
 .row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 0 var(--gutter);
   color: inherit;
@@ -405,44 +405,49 @@
   color: var(--down);
 }
 
-/* Trador's follows row: two counts that open their lists, Edit profile at the end. */
-.social {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  color: var(--text-3);
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.social a,
-.social span {
+/* The QR button: round, the gear's twin. */
+.round {
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-  color: inherit;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.social b {
-  color: var(--text-1);
-  font-weight: 800;
-}
-
-.social .edit {
-  margin-left: auto;
-  padding: 8px 14px;
+  display: grid;
+  place-items: center;
+  border: 0;
   border-radius: 999px;
   background: rgb(255 255 255 / 6%);
   color: var(--text-1);
-  font-weight: 800;
 }
 
-.bio {
-  margin: 12px 0 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.5;
+/* "+$8.10 (+0.92%) this week": one line under the total. */
+.moveLine {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.holdingsLabel {
+  margin: 20px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.qr {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin: 4px auto 0;
+  border-radius: 16px;
+}
+
+.moveLine.upInline {
+  color: var(--up);
+}
+
+.moveLine.downInline {
+  color: var(--down);
 }
