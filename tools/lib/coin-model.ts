@@ -23,6 +23,12 @@
  * meme" taps whatever was coined. Never-coined posts are kept for the fit by a hash of the id
  * (`negativeShare`); every labelled post is kept.
  *
+ * ★ AND THE OWNER'S SOFT YES, AT A LOWER WEIGHT (Policy.learning.seenKept, the owner 2026-10-18). A
+ * post he saw and kept (store owner-seen.ts) that no label above names is y = 1 with sample weight
+ * `fitWeight` (every other row weighs 1); any explicit label or coin wins over it. In the FIT only:
+ * the validation's ranking, the threshold's table and the test count "coined" exactly as before, so
+ * a soft label cannot make the net look better at catching coins than it is.
+ *
  * ★ THE SPLIT. By decision time over the posts the live judge answered: the newest `testShare` is
  * the test, never fitted; of the rest, the newest `validationShare` chooses the ridge and the
  * threshold, fitted on what is older. The table is read with a fit on all the training time (fit
@@ -45,7 +51,7 @@ import { readFileSync } from 'node:fs';
 import { DEFAULT_POLICY, type Policy } from '../../contracts/src/policy.ts';
 import { clearsReachBar, coinModelFeatures, coinModelProbability, oneHotsOf, standardised, type CoinModelFacts, type CoinModelFit } from '../../core/src/index.ts';
 import { POST_SPACE } from '../../adapters/embed/voyage/src/index.ts';
-import { asDb, createPool, DB_ROLE, PgCoinModelRepo, PgLearningRepo, type AppliedCoinModel, type CoinFactRow, type Db, type FirstAnswer } from '../../store/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgCoinModelRepo, PgLearningRepo, PgOwnerSeenRepo, type AppliedCoinModel, type CoinFactRow, type Db, type FirstAnswer } from '../../store/src/index.ts';
 import { PgJunkFilterRepo } from '../../store/src/repo/junk-filter.ts';
 import { averagePrecision, chooseThreshold, fitLogistic, scoreRow, standardisation, tableRow, THRESHOLDS, type FitRow, type LogisticFit, type TablePost, type TableRow } from '../../eval/src/feed/coin-fit.ts';
 import { loadJunkLabels } from './junk-filter.ts';
@@ -69,7 +75,7 @@ export interface Example {
   readonly facts: CoinModelFacts;
   readonly vector: Float32Array | null;
   readonly y: 0 | 1;
-  readonly why: 'coined' | 'gold' | 'missed' | 'meme' | 'backtest' | 'not' | 'none';
+  readonly why: 'coined' | 'gold' | 'missed' | 'meme' | 'backtest' | 'not' | 'kept' | 'none';
   /** Answered by the live judge: part of the time split. Others are taught only. */
   readonly live: boolean;
   readonly answer: FirstAnswer | null;
@@ -146,6 +152,8 @@ export async function loadExamples(db: Db, p: Policy, opts: { readonly since: Da
   const owner = await loadJunkLabels(db, p);
   const taps = new Map((await new PgLearningRepo(db).postCalls()).map((t) => [t.itemId, t.verdict] as const));
   const backtest = new Set((JSON.parse(readFileSync(BACKTEST, 'utf8')) as { posts: { id: string }[] }).posts.map((x) => x.id));
+  const K = p.learning.seenKept;
+  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: opts.since, until: opts.now, keepWindowMs: K.keepWindowMs, now: opts.now });
 
   const labelOf = (id: string): { y: 0 | 1; why: Example['why'] } => {
     if (taps.get(id) === 'not') return { y: 0, why: 'not' };
@@ -157,6 +165,7 @@ export async function loadExamples(db: Db, p: Policy, opts: { readonly since: Da
     if (backtest.has(id)) return { y: 1, why: 'backtest' };
     if (g === 'missed') return { y: 1, why: 'missed' };
     if (g === 'not') return { y: 0, why: 'not' };
+    if (kept.has(id)) return { y: 1, why: 'kept' };
     return { y: 0, why: 'none' };
   };
 
@@ -231,8 +240,11 @@ function rowOf(e: Example, d: Design, p: Policy): FitRow {
   const x = new Float64Array(d.names.length + d.dim);
   x.set(standardised({ ...coinModelFeatures(e.facts, d.sources, d.langs, p), no_vector: e.vector === null || e.vector.length !== d.dim ? 1 : 0 }, d.names, d.means, d.spreads), 0);
   if (e.vector !== null && e.vector.length === d.dim) for (let j = 0; j < d.dim; j++) x[d.names.length + j] = e.vector[j] as number;
-  return { x, y: e.y };
+  return { x, y: e.y, w: e.why === 'kept' ? p.learning.seenKept.fitWeight : 1 };
 }
+
+/** The label every measurement reads: coined or labelled; a soft yes is taught, never counted as caught. */
+const measuredY = (e: Example): 0 | 1 => (e.why === 'kept' ? 0 : e.y);
 
 /** Fits on `xs`, never-coined posts kept by hash (`negativeShare`) and every labelled one. */
 function fitOn(xs: readonly Example[], l2: number, p: Policy): { readonly d: Design; readonly f: LogisticFit; readonly score: (e: Example) => number } {
@@ -272,7 +284,7 @@ async function tablePosts(db: Db, p: Policy, posts: readonly Example[], score: (
     return {
       itemId: e.itemId,
       score: score(e),
-      coined: e.y === 1 && e.why !== 'not',
+      coined: measuredY(e) === 1 && e.why !== 'not',
       shown: shown.has(e.itemId),
       judgeNo: e.answer !== null && !e.answer.newestCoinable,
       gates: tap !== 'not' && clearsReachBar('fyp', inAge, posted, p, scale),
@@ -321,7 +333,7 @@ export async function refitCoinModel(db: Db, opts: { readonly record: boolean; r
   let best: { l2: number; ap: number; fit: ReturnType<typeof fitOn> } | null = null;
   for (const l2 of C.l2s) {
     const fit = fitOn(trainA, l2, p);
-    const a = averagePrecision(val.map((e) => ({ score: fit.score(e), y: e.y })));
+    const a = averagePrecision(val.map((e) => ({ score: fit.score(e), y: measuredY(e) })));
     ap[String(l2)] = a;
     log(`l2 ${l2}: validation average precision ${a?.toFixed(4)}`);
     if (a !== null && (best === null || a > best.ap)) best = { l2, ap: a, fit };
