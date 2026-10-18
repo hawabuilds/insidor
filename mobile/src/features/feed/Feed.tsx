@@ -12,11 +12,13 @@
  * id from before the rebuild — is left out, never drawn as a broken card.
  * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
  * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
- * ★ FOR YOU'S SORT CHIPS (feed-sort.ts): New, the default, is the feed as it always was; Trending
- * and Most viewed, over 1h, 6h or 24h, are the read service's lists of For You's own posts in its
- * order (`GET /rising/fyp/sorted`, services/read/src/post-sorts.ts), each card saying what it gained
- * in the window. The choice is remembered on this phone. The live slide-ins and the endless scroll are
- * New's: a ranked list is the top fifty, read again every two minutes and on pull to refresh.
+ * ★ FOR YOU'S SORT CHIPS (feed-sort.ts, the owner's design of 2026-10-18): New, the default, is the
+ * feed as it always was; Trending (right now, no window) and Most viewed (Today or This week) are the
+ * read service's lists of For You's own posts in its order (`GET /rising/fyp/sorted`,
+ * services/read/src/post-sorts.ts). A Trending card says its views a minute now and before; a Most
+ * viewed card's big views number is what the list is ordered by. The choice is remembered on this
+ * phone. The live slide-ins are New's; a sorted list comes 20 at a time as it is scrolled
+ * (useSortedPages.ts), its first page read again every two minutes and on pull to refresh.
  *
  * Pulling the list down from the top reads it again (alerts/pull.ts); For You comes newest first, so
  * new posts land at the top.
@@ -78,7 +80,8 @@ import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
-import { SORTS, WINDOWS, loadChoice, saveChoice, windowOf, type SortChoice } from './feed-sort.ts';
+import { SORTS, SPANS, loadChoice, saveChoice, speedLine, windowOf, type SortChoice } from './feed-sort.ts';
+import { useSortedPages } from './useSortedPages.ts';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
@@ -164,8 +167,10 @@ export function Feed({
   const win = windowOf(choice);
   const sortedOn = tab === 'fyp' && choice.sort !== 'new';
   const [sorted, reloadSorted] = useLoad<RisingSorted | null>(sortedOn ? `rising:fyp:${choice.sort}:${win ?? ''}` : 'rising:fyp:new', (signal) =>
-    sortedOn && win !== null ? fetchRisingSorted(choice.sort, win, signal) : Promise.resolve(null),
+    sortedOn && win !== null ? fetchRisingSorted(choice.sort, win, null, signal) : Promise.resolve(null),
   );
+  /* The pages under the first, as the person scrolls (useSortedPages.ts). */
+  const sortedPages = useSortedPages(`${choice.sort}:${win ?? ''}`, sortedOn && sorted.state === 'ready' ? sorted.value : null);
   useEffect(() => {
     if (!sortedOn) return;
     const t = setInterval(() => {
@@ -252,10 +257,10 @@ export function Feed({
   lastFyp.current = headPosts?.[headPosts.length - 1]?.id ?? null;
   const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, newestPosted)), [headPosts, older.posts]);
   /* The ranked list in place of the feed while Trending or Most viewed is chosen; New is the feed. */
-  const ranked = sortedOn && sorted.state === 'ready' ? sorted.value : null;
+  const ranked = sortedOn ? sortedPages.list : null;
   const listLoad = sortedOn ? sorted : feed;
   const listPosts = sortedOn ? (ranked?.posts ?? null) : feedPosts;
-  const paging = sortedOn ? null : older;
+  const paging = sortedOn ? sortedPages : older;
   const posts = listLoad.state === 'ready' && listPosts !== null ? applyPostFilters(withoutHidden(listPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const liveOn = live.rows !== null && !sortedOn;
@@ -273,7 +278,7 @@ export function Feed({
         </>
       }
       watch={<WatchStar postId={p.id} />}
-      gained={ranked !== null && ranked.gained.has(p.id) ? { views: ranked.gained.get(p.id) ?? 0, window: ranked.window } : null}
+      sortLine={ranked !== null && ranked.by === 'trending' && ranked.speeds.has(p.id) ? speedLine(ranked.speeds.get(p.id) ?? null) : null}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
@@ -306,11 +311,11 @@ export function Feed({
                 </button>
               ))}
             </div>
-            {choice.sort !== 'new' && win !== null ? (
-              <div className={styles['windows']} role="group" aria-label="Time window">
-                {WINDOWS.map((w) => (
-                  <button key={w} type="button" className={w === win ? styles['windowOn'] : ''} aria-pressed={w === win} onClick={() => choose({ ...choice, windows: { ...choice.windows, [choice.sort]: w } })}>
-                    {w}
+            {choice.sort === 'most_viewed' ? (
+              <div className={styles['windows']} role="group" aria-label="Posted">
+                {SPANS.map((s) => (
+                  <button key={s.key} type="button" className={s.key === choice.span ? styles['windowOn'] : ''} aria-pressed={s.key === choice.span} onClick={() => choose({ ...choice, span: s.key })}>
+                    {s.label}
                   </button>
                 ))}
               </div>
@@ -403,14 +408,23 @@ export function Feed({
                 {paging?.phase === 'loading' ? <Placeholders /> : null}
                 {paging?.phase === 'failed' ? (
                   <div className={styles['empty']}>
-                    <p>Couldn't read older posts. The ones above are everything read so far.</p>
+                    <p>{sortedOn ? "Couldn't read more of this list. The posts above are everything read so far." : "Couldn't read older posts. The ones above are everything read so far."}</p>
                     <Button look="quiet" onClick={paging.retry}>Try again</Button>
                   </div>
                 ) : null}
                 {ranked !== null && ranked.posts.length === 0 ? (
-                  <p className={styles['empty']}>No For You post was read in the last {ranked.window}, so there is nothing to rank yet.</p>
+                  <p className={styles['empty']}>
+                    {ranked.by === 'trending'
+                      ? 'No For You post was read in the last hour, so nothing can be shown as trending yet.'
+                      : `No For You post was posted ${ranked.window === 'week' ? 'this week' : 'today'} and read since, so there is nothing to show yet.`}
+                  </p>
                 ) : null}
-                {paging !== null && (feedPosts?.length ?? 0) === 0 && paging.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}
+                {ranked !== null && ranked.by === 'most_viewed' && ranked.undated > 0 ? (
+                  <p className={styles['hidden']}>
+                    {ranked.undated === 1 ? '1 of these posts has' : `${ranked.undated} of these posts have`} no posted time and {ranked.undated === 1 ? 'is' : 'are'} counted from when we first saw {ranked.undated === 1 ? 'it' : 'them'}.
+                  </p>
+                ) : null}
+                {!sortedOn && (feedPosts?.length ?? 0) === 0 && paging.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}
                 {(listPosts?.length ?? 0) > 0 && posts.rows.length === 0 && posts.unknown === 0 && (paging === null || paging.phase === 'done') ? (
                   <p className={styles['empty']}>No posts match these filters.</p>
                 ) : null}

@@ -103,19 +103,33 @@ export interface RisingFeed {
  * the last.
  */
 /**
- * For You by Trending or Most viewed over a window (`GET /rising/fyp/sorted`,
- * services/read/src/post-sorts.ts): the posts in the server's order, and each one's views gained
- * in the window, the one number the sort is about that a card shows. The order's key is never sent.
+ * For You by Trending now or Most viewed Today / This week (`GET /rising/fyp/sorted`,
+ * services/read/src/post-sorts.ts, the owner's design of 2026-10-18): one page of posts in the
+ * server's order, and per post the facts the list is about. Trending: its views a minute in the last
+ * half hour and the half hour before, real views, or null when it has not been read often enough to
+ * say. Most viewed: its total views, the number its card shows. The order's key is never sent.
  */
 export type PostSortBy = 'trending' | 'most_viewed';
-export type PostSortWindow = '1h' | '6h' | '24h';
+export type PostSortWindow = 'now' | 'today' | 'week';
+
+/** Views a minute in the last half hour (`now`) and the half hour before (`before`). */
+export interface PostSpeeds {
+  readonly now: number;
+  readonly before: number;
+}
 
 export interface RisingSorted {
   readonly by: PostSortBy;
   readonly window: PostSortWindow;
   readonly posts: readonly RisingPost[];
-  /** Per post id: views gained in the window. Every listed post has one. */
-  readonly gained: ReadonlyMap<string, number>;
+  /** Trending: per post id, its speeds or null. Every listed post has an entry; empty on Most viewed. */
+  readonly speeds: ReadonlyMap<string, PostSpeeds | null>;
+  /** Most viewed: per post id, its total views. Every listed post has one; empty on Trending. */
+  readonly views: ReadonlyMap<string, number>;
+  /** Most viewed: how many posts of the whole list have no posted time and are placed by when they were first seen. */
+  readonly undated: number;
+  /** The next page's cursor, null when this was the last. */
+  readonly next: string | null;
 }
 
 export interface RisingPage {

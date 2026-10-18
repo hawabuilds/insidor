@@ -33,7 +33,8 @@
   grid-template-areas:
     'title spark views'
     'trans trans views'
-    'byline byline views';
+    'byline byline views'
+    'sortline sortline sortline';
   column-gap: 8px;
   align-items: start;
 }
@@ -122,13 +123,22 @@
   letter-spacing: -0.02em;
 }
 
-/* The views gained in Trending's or Most viewed's window: green, as every gain in the app. */
-.gained {
-  margin-top: 3px;
+/* Trending's speed line under the byline, the card's full width: green when it is gaining faster
+   than the half hour before, as every gain in the app; the quieter text colour otherwise. */
+.gained,
+.speed {
+  grid-area: sortline;
+  margin-top: 4px;
   font-size: 12.5px;
   font-weight: 700;
+}
+
+.gained {
   color: #2fd47a;
-  white-space: nowrap;
+}
+
+.speed {
+  color: var(--text-3);
 }
 
 .viewsL {
