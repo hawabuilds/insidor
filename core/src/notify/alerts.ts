@@ -35,6 +35,13 @@
  *   4g. A NARRATIVE YOU STARRED GOT ITS FIRST COIN (`starred_first_coin`, the owner 2026-10-18, for
  *      buyers): once per person and narrative, on its own switch, behind the hourly limit like any
  *      coin alert. Only a settled coin counts; coins that merely share its name do not.
+ *   4h. THE OWNER'S NOTIFICATION DESIGN (2026-10-18) — people won't sit in the app, so a push must be
+ *      worth opening: an urgent money moment, or something about you. Pushed: the first coin of a
+ *      post you saved or a narrative you starred, a For You post or brand-new narrative blowing up
+ *      (at most three a day, `DAILY_KINDS`), a starred narrative picking up speed, a big account
+ *      posting in one, a reply, a coin you hold doubling or halving, a coin you made getting its
+ *      first buyers; new followers and likes pushed as one group (`GROUPED_KINDS`). Everything else
+ *      about the pipeline — every new For You post, every coin found for one — is `LIST_ONLY`.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -78,6 +85,15 @@ export const ALERT_KINDS = [
   'outage',
   /* A narrative someone starred got its first coin (services/notify first-coin.ts). */
   'starred_first_coin',
+  /* The owner's notification design (2026-10-18): a watched post's first coin, a For You post or new
+     narrative blowing up (three a day), a starred narrative picking up speed, a big account posting
+     in one, a coin you hold halving, and a coin you made getting its first buyers. */
+  'watched_first_coin',
+  'blowing_up',
+  'starred_speed',
+  'starred_big_account',
+  'holding_down',
+  'creator_buyers',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -91,7 +107,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin', 'blowingUp', 'starredSpeed', 'bigAccounts', 'createdCoins'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -119,6 +135,12 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   push_test: 'always',
   outage: 'always',
   starred_first_coin: 'starredFirstCoin',
+  watched_first_coin: 'watchedPosts',
+  blowing_up: 'blowingUp',
+  starred_speed: 'starredSpeed',
+  starred_big_account: 'bigAccounts',
+  holding_down: 'holdings',
+  creator_buyers: 'createdCoins',
 };
 
 export interface AlertPrefs {
@@ -138,7 +160,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true, blowingUp: true, starredSpeed: true, bigAccounts: true, createdCoins: true },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,
@@ -209,20 +231,81 @@ export function isQuiet(localMinutes: number | null, prefs: AlertPrefs): boolean
  * for a post someone is watching (the owner: "notify me within seconds" — a busy hour of For You
  * posts must not be what keeps it off the phone), and the test someone just tapped.
  */
-const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'push_test', 'outage'];
+const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'watched_first_coin', 'push_test', 'outage'];
+
+/**
+ * ★ LISTED, NEVER PUSHED (the owner's notification design, 2026-10-18: people won't sit in the app,
+ * so a push must be worth opening — an urgent money moment or something personal). Every new For
+ * You post, every coin found for one, a narrative reaching the board or matched to a coin, and each
+ * further coin for a post you watch are in the list only. What is pushed about them instead: the
+ * fastest risers (`blowing_up`, three a day), the first coin of what you saved or starred
+ * (`watched_first_coin`, `starred_first_coin`). A rank-up was always list-only (Trador).
+ */
+export const LIST_ONLY: readonly AlertKind[] = ['rank_up', 'rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched', 'fyp_coin', 'fyp_proven', 'watch_coin'];
+
+/**
+ * ★ PUSHED AS A GROUP: each follow and each like is listed as it comes, but held from the phone and
+ * pushed together ("3 new followers") by the deliverer's group pass (Policy.notify.grouped).
+ */
+export const GROUPED_KINDS: readonly AlertKind[] = ['follow', 'comment_useful'];
+
+/**
+ * ★ PACED KINDS: how often one may reach a person's phone; past it, it is listed (`daily-limit`).
+ * Blowing up: at most `perDay` in any day, `minGapMs` apart, all of them together. A starred
+ * narrative's speed and a big account posting in it: one push per narrative every `gapMs`, counted
+ * per narrative (the subject up to its first `|` is the narrative).
+ */
+export interface Pacing {
+  readonly perDay: number | null;
+  readonly dayMs: number;
+  readonly minGapMs: number;
+  readonly per: 'kind' | 'narrative';
+}
+export function pacingOf(kind: AlertKind, P: NotifyPolicy): Pacing | null {
+  if (kind === 'blowing_up') return { perDay: P.blowingUp.perDay, dayMs: P.blowingUp.dayMs, minGapMs: P.blowingUp.minGapMs, per: 'kind' };
+  if (kind === 'starred_speed') return { perDay: null, dayMs: P.blowingUp.dayMs, minGapMs: P.starredSpeed.gapMs, per: 'narrative' };
+  if (kind === 'starred_big_account') return { perDay: null, dayMs: P.blowingUp.dayMs, minGapMs: P.bigAccount.gapMs, per: 'narrative' };
+  return null;
+}
+/** The narrative a paced alert counts against: its subject up to the first `|`. */
+export const pacedScope = (subject: string): string => subject.split('|')[0] ?? subject;
 
 export type Delivery =
   | { readonly kind: 'skip'; readonly why: 'muted' | 'off' }
-  | { readonly kind: 'list'; readonly why: 'list-only' | 'quiet' | 'hourly-limit' | 'no-device' }
+  | { readonly kind: 'list'; readonly why: 'list-only' | 'quiet' | 'hourly-limit' | 'daily-limit' | 'no-device' }
+  | { readonly kind: 'hold' }
   | { readonly kind: 'push' };
 
-/** What happens to one alert for one person, after its level was claimed. */
-export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: AlertPrefs; readonly localMinutes: number | null; readonly pushedLastHour: number; readonly devices: number }): Delivery {
+/** How many of this kind reached this person's phone in the last day, and how long ago the last did (null: none). */
+export interface PushedOfKind {
+  readonly lastDay: number;
+  readonly sinceLastMs: number | null;
+}
+
+/** Whether a paced kind may still be pushed: under `perDay` in the day (when it has one) and `minGapMs` since the last. */
+export function underDailyAllowance(o: PushedOfKind, rule: Pacing): boolean {
+  return (rule.perDay === null || o.lastDay < rule.perDay) && (o.sinceLastMs === null || o.sinceLastMs >= rule.minGapMs);
+}
+
+/** Whether a held group is due its push: its oldest member waited `waitMs`, and the group's last push was `gapMs` ago or never. */
+export function groupDue(oldestHeldAgoMs: number, sinceLastPushMs: number | null, rule: { readonly waitMs: number; readonly gapMs: number }): boolean {
+  return oldestHeldAgoMs >= rule.waitMs && (sinceLastPushMs === null || sinceLastPushMs >= rule.gapMs);
+}
+
+/**
+ * What happens to one alert for one person, after its level was claimed. `ofKind` and `policy` are
+ * needed for a paced kind (`pacingOf`) (absent: it is held to the hourly limit alone); `grouped` is the
+ * group pass asking for the group's one push, which is then decided like any other.
+ */
+export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: AlertPrefs; readonly localMinutes: number | null; readonly pushedLastHour: number; readonly devices: number; readonly ofKind?: PushedOfKind; readonly policy?: NotifyPolicy; readonly grouped?: boolean }): Delivery {
   if (r.prefs.muted) return { kind: 'skip', why: 'muted' };
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
-  if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
+  if (LIST_ONLY.includes(r.kind)) return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
   if (!PAST_THE_LIMIT.includes(r.kind) && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  const pacing = r.policy === undefined ? null : pacingOf(r.kind, r.policy);
+  if (pacing !== null && r.ofKind !== undefined && !underDailyAllowance(r.ofKind, pacing)) return { kind: 'list', why: 'daily-limit' };
   if (r.devices === 0) return { kind: 'list', why: 'no-device' };
+  if (GROUPED_KINDS.includes(r.kind) && r.grouped !== true) return { kind: 'hold' };
   return { kind: 'push' };
 }

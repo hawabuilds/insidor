@@ -146,15 +146,38 @@ const whosePost = (f: Facts): string => {
   return `${possessive(who)}${subject === '' ? '' : ` ${subject}`} post`;
 };
 
+/** "6 new posts, +2.1M views in the last hour", leaving out what is not known. */
+function lastHour(f: Facts): string {
+  const posts = n(f['newPosts']);
+  const views = n(f['viewsGained']);
+  const parts = [posts === null || posts <= 0 ? null : `${posts} new ${posts === 1 ? 'post' : 'posts'}`, views === null || views <= 0 ? null : `+${compact(views)} views`].filter((x): x is string => x !== null);
+  return parts.length === 0 ? 'Picking up speed in the last hour.' : `${parts.join(', ')} in the last hour`;
+}
+
 export function alertText(kind: AlertKind, f: Facts): { readonly title: string; readonly body: string } {
   switch (kind) {
-    case 'follow':
+    case 'follow': {
+      /* One push for a group (deliver.ts `deliverGroups`): "3 new followers" / "@a, @b and 1 other followed you". */
+      const count = n(f['count']);
+      if (f['grouped'] === true && count !== null && count > 1) {
+        const named = [s(f['who'], ''), ...(Array.isArray(f['others']) ? (f['others'] as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim() !== '') : [])].filter((x) => x !== '');
+        const rest = count - named.length;
+        const who = named.length === 0 ? `${count} people` : rest > 0 ? `${named.join(', ')} and ${rest} ${rest === 1 ? 'other' : 'others'}` : named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`;
+        return { title: `${count} new followers`, body: `${who} followed you` };
+      }
       return { title: 'New follower', body: `${s(f['who'], 'Someone')} followed you` };
+    }
     case 'reply':
       return { title: `${s(f['who'], 'Someone')} replied`, body: s(f['excerpt'], 'Someone replied to your comment') };
     case 'comment_useful': {
       /* Trador's votes line: the people counted, never the points they gave. */
       const count = n(f['count']);
+      if (f['grouped'] === true) {
+        /* The day's one push (deliver.ts `deliverGroups`): "12 people liked your comment". */
+        const comments = n(f['comments']) ?? 1;
+        const what = comments > 1 ? 'your comments' : 'your comment';
+        return { title: count === null || count <= 1 ? `Someone liked ${what}` : `${count} people liked ${what}`, body: comments > 1 ? `On ${comments} of your comments.` : s(f['excerpt'], 'A holder liked your comment.') };
+      }
       return { title: count === null || count <= 1 ? 'Someone found your comment useful' : `${count} people found your comment useful`, body: s(f['excerpt'], 'A holder liked your comment.') };
     }
     case 'post_coin':
@@ -168,6 +191,18 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     }
     case 'watchlist_multiple':
       return { title: `${ticker(f)} is up ${n(f['multiple']) ?? '?'}x`, body: `Since you started watching ${s(f['title'], 'its narrative')}.` };
+    case 'holding_down': {
+      /* "$GOLIATH is down 50% since you bought" / "Your position is worth $42". */
+      const value = n(f['positionUsd']);
+      const pct = n(f['downPercent']);
+      return { title: `${ticker(f)} is down ${pct === null ? 'by half' : `${Math.round(pct)}%`} since you bought`, body: value === null ? 'A coin you hold fell to half of what you paid.' : `Your position is worth $${compact(value)}` };
+    }
+    case 'creator_buyers': {
+      /* "$PANCAKE has its first buyers" / "2 wallets bought the coin you made. $6K MC." */
+      const buyers = n(f['buyers']);
+      const mc = cap(f);
+      return { title: `${ticker(f)} has its first ${buyers === 1 ? 'buyer' : 'buyers'}`, body: `${buyers === null || buyers <= 1 ? 'A wallet' : `${buyers} wallets`} bought the coin you made.${mc === null ? '' : ` ${mc}.`}` };
+    }
     case 'graduating_soon': {
       const pct = n(f['percent']);
       return { title: `${ticker(f)} is close to graduating`, body: pct === null ? 'Most of the way through its curve.' : `${Math.floor(pct)}% of the way through its curve` };
@@ -228,6 +263,39 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post you watch' : `${possessive(who)} post`;
       const tail = [ticker(f), mc, moved(f)].filter((x): x is string => x !== null).join(', ');
       return { title: 'Watchlist: coin found', body: `${post} now has a coin: ${tail}.` };
+    }
+    case 'watched_first_coin': {
+      /* "$FALCON is the first coin for a post you saved" / '"Falcon 9 lands…" (@SpaceX). $3K MC.' */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const who = s(f['author'], '');
+      const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post you saved' : `${possessive(who)} post`;
+      const mc = cap(f);
+      return { title: `${ticker(f)} is the first coin for a post you saved`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
+    }
+    case 'blowing_up': {
+      /* A narrative: "New narrative taking off: Pancake the cat" / "6 new posts, +2.1M views in the last hour". */
+      if (f['what'] === 'narrative') return { title: `New narrative taking off: ${s(f['title'], 'a new narrative')}`, body: lastHour(f) };
+      /* A post: "Rising fast, no coin yet" / "@rawsalerts: Goliath closed… 1.2M views, +240K in 30m". */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const views = n(f['views']);
+      const gain = n(f['gain']);
+      const minutes = n(f['gainMinutes']);
+      const counted = [views === null ? null : `${compact(views)} views`, gain !== null && gain > 0 && minutes !== null ? `+${compact(gain)} in ${Math.round(minutes)}m` : null].filter((x): x is string => x !== null).join(', ');
+      const said = [words, counted].filter((x) => x !== null && x !== '').join(' ');
+      const who = s(f['author'], '');
+      const mc = cap(f);
+      const coin = f['noCoin'] === true || typeof f['symbol'] !== 'string' || f['symbol'] === '' ? '' : ` ${ticker(f)}${mc === null ? '' : ` ${mc}`}.`;
+      return { title: f['noCoin'] === true ? 'Rising fast, no coin yet' : 'Rising fast on FYP', body: `${who === '' ? said || 'A post is rising fast on For You.' : `${who}: ${said || 'a post rising fast'}`}${coin}` };
+    }
+    case 'starred_speed':
+      /* "Pancake the cat is taking off" / "6 new posts, +2.1M views in the last hour". */
+      return { title: `${s(f['title'], 'A narrative you starred')} is taking off`, body: lastHour(f) };
+    case 'starred_big_account': {
+      /* "@elonmusk posted in Pancake the cat" / "220M followers: words…". */
+      const followers = n(f['followers']);
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const lead = followers === null ? null : `${compact(followers)} followers`;
+      return { title: `${s(f['author'], 'A big account')} posted in ${s(f['title'], 'a narrative you starred')}`, body: [lead, words].filter((x): x is string => x !== null).join(': ') || 'A narrative you starred.' };
     }
     case 'push_test':
       /* The owner's one-off alarm test (tools/send-test-alert.ts): labelled a test so it is never read as an alarm. */
