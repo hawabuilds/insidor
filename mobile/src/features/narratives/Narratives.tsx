@@ -1,38 +1,36 @@
 /**
- * NARRATIVES — viral posts grouped by the story they are about, as the owner drew the tab
- * (2026-10-17): the header; the chips Trending (the default), Most viewed and New, and beside them
- * the window, 1h 6h 24h on Trending and 1h 6h 24h All time on Most viewed (narrative-order.ts says
- * what each means and in what order; the choice is remembered on the phone); one card per real
- * narrative. A card opens the narrative's page.
+ * NARRATIVES — viral posts grouped by the story they are about, sorted exactly as For You's posts
+ * are (the owner, 2026-10-18): the header; the sort chips New, Trending and Most viewed in For You's
+ * order and style (features/feed feed-sort.ts SORTS, feed.module.css); under them the All / X /
+ * TikTok pills, plain words, and on Most viewed its Today / Week / All at the right end of that row,
+ * as For You's. The choice is remembered on the phone (narrative-order.ts). One card per real
+ * narrative; a card opens the narrative's page.
  *
- * ★ ALL TIME (the owner, 2026-10-18): Most viewed on All time and New read the server's whole list
- * of narratives — every one ever made, dead ones too — 20 at a time, the next 20 loaded as the end
- * of the list comes into view (or on "Show 20 more"). Trending and the short windows read the board.
+ * ★ EVERY LIST IS THE SERVER'S (services/read narrative-sorts.ts, GET /narratives/:view/all), 20 at
+ * a time, the next 20 loaded as the end of the list comes into view (or on "Show 20 more"). While
+ * only the first 20 are showing they are read again every minute, and a narrative whose place
+ * changed glides to it (each card's move is measured before and after and animated across the gap).
  *
- * Each card: its place in the list, picture, title; "3 new posts   28m old" (posts found in the
- * window, the story's age since we found it; on New, its post count); on the right the views it
- * gained in the window in green with "views 1h" under it; and the coin line in the owner's three
- * states (narrative/story-coin.ts): the checked coin with its market cap and Buy, a top coin said as
- * "Top coin, not checked" with Buy, or "No coin yet" with Create. Buy opens the existing Buy pop-up.
+ * Each card: its place, picture, title; "12 posts   28m old" (and Dead); on the right its views,
+ * and under them on Most viewed Today or Week "+8.1M today" / "+3.2M this week"; on Trending a line
+ * under the title in For You's words, "394 views a minute, up 1.4x in the last hour"; and the coin
+ * line in the owner's three states (narrative/story-coin.ts): the checked coin with its market cap
+ * and Buy, a top coin said as "Top coin, not checked" with Buy, or "No coin yet" with Create. Buy
+ * opens the existing Buy pop-up.
  *
- * ★ FACTS ONLY. Trending's order is the server's place for the window; the number behind it is never
- * sent, and the card shows only what it is made of a reader can check: views gained, new posts, age.
+ * ★ FACTS ONLY. The order is the server's; the number behind it is never sent. A card shows only
+ * what a reader can check: views, views gained, views a minute, posts, age.
  *
- * ★ LIVE, LIKE FOR YOU (features/feed useLiveFeed.ts, on when the build sets VITE_LIVE_FEED=on):
- * while the tab is open and on screen a newer read slides new narratives in, and a narrative whose
- * place in the chosen order changed glides to it (each card's move is measured before and after the
- * list changes and animated across the gap), so a new ranking is seen arriving, not jumping.
- *
- * What breaks if changed carelessly: the window's gain must be the server's views GAINED in it, never
- * a total; a total always climbs and would make every narrative look like it is rising.
+ * What breaks if changed carelessly: Most viewed's line must be the server's views GAINED in the
+ * span, never a total; a total always climbs and would make every narrative look like it is rising.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { BOARD_VIEW, fetchAllNarratives, fetchNarratives, type NarrativesList, type Story } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
-import { useLoad, useNow } from '../../shared/hooks.ts';
+import { useNow } from '../../shared/hooks.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -40,19 +38,18 @@ import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { NO_RISERS, SORTS, SPANS, gainedLine, speedLine, type ViewedSpan } from '../feed/feed-sort.ts';
+import feedStyles from '../feed/feed.module.css';
 import { LIVE_FEED } from '../feed/live-feed.ts';
-import { LiveCard } from '../feed/LiveCard.tsx';
-import { useLiveFeed } from '../feed/useLiveFeed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { ALL_TIME, ORDERS, ORDER_LABEL, WINDOW_LABEL, allTimeOf, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, windowOf, windowsOf, type Choice, type Window } from './narrative-order.ts';
+import { SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
 import styles from './narratives.module.css';
-
-/** The rows a read holds: real ones only, in the server's order (the chip sorts them). */
-const rowsOf = (list: NarrativesList): readonly Story[] => realNarratives(list.stories);
 
 /** How long a card takes to glide to its new place. */
 const MOVE_MS = 320;
+/** How often the first 20 are read again while they are all that is showing. */
+const REFRESH_MS = 60_000;
 
 /** The phone's own store, or none where the browser refuses it. */
 const store = (): Storage | null => {
@@ -64,8 +61,6 @@ const store = (): Storage | null => {
 };
 
 export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
-  const [list, reload] = useLoad('narratives', (signal) => fetchNarratives(BOARD_VIEW, signal));
-  const live = useLiveFeed(LIVE_FEED, list, reload, rowsOf, false);
   const [choice, setChoiceState] = useState<Choice>(() => loadChoice(store()));
   const setChoice = (c: Choice) => {
     setChoiceState(c);
@@ -74,12 +69,8 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
   const now = useNow();
-  const whole = allTimeOf(choice);
-  const all = useAllTime(whole);
-  const boardRows = live.rows ?? (list.state === 'ready' ? rowsOf(list.value) : null);
-  const base = whole === null ? boardRows : all.rows;
-  const rows = base === null ? null : ordered(base, choice);
-  const hours = windowOf(choice);
+  const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site);
+  const rows = list.rows;
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
@@ -90,40 +81,47 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
         {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
       </header>
-      <div className={styles['bar']}>
-        <div className={styles['chips']} role="group" aria-label="Order">
-          {ORDERS.map((o) => (
-            <button key={o} type="button" className={`${styles['chip']} ${o === choice.order ? styles['chipOn'] : ''}`} aria-pressed={o === choice.order} onClick={() => setChoice({ ...choice, order: o })}>
-              {ORDER_LABEL[o]}
+      <div className={feedStyles['sortRow']}>
+        <div className={feedStyles['sorts']} role="group" aria-label="Sort">
+          {SORTS.map((o) => (
+            <button key={o.key} type="button" className={`${feedStyles['sortChip']} ${o.key === choice.sort ? feedStyles['sortOn'] : ''}`} aria-pressed={o.key === choice.sort} onClick={() => setChoice({ ...choice, sort: o.key })}>
+              {o.label}
             </button>
           ))}
         </div>
-        {hours !== null && choice.order !== 'new' ? (
-          <div className={styles['windows']} role="group" aria-label="Window">
-            {windowsOf(choice.order).map((w) => (
-              <button key={w} type="button" className={`${styles['win']} ${w === hours ? styles['winOn'] : ''}`} aria-pressed={w === hours} onClick={() => setChoice({ ...choice, windows: { ...choice.windows, [choice.order]: w } })}>
-                {WINDOW_LABEL[w]}
+      </div>
+      <div className={feedStyles['filterRow']}>
+        <div className={feedStyles['quick']} role="group" aria-label="Site">
+          {SITES.map((p) => (
+            <button key={p.key} type="button" className={`${feedStyles['quickPill']} ${p.key === choice.site ? feedStyles['quickOn'] : ''}`} aria-pressed={p.key === choice.site} onClick={() => setChoice({ ...choice, site: p.key })}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {choice.sort === 'most_viewed' ? (
+          <div className={feedStyles['windows']} role="group" aria-label="Window">
+            {SPANS.map((w) => (
+              <button key={w.key} type="button" className={w.key === choice.span ? feedStyles['windowOn'] : ''} aria-pressed={w.key === choice.span} onClick={() => setChoice({ ...choice, span: w.key })}>
+                {w.label}
               </button>
             ))}
           </div>
         ) : null}
       </div>
 
-      <Notice notice={list.state === 'ready' ? boardNotice(list.value.provenance) : null} />
+      <Notice notice={list.provenance === null ? null : boardNotice(list.provenance)} />
 
-      {(whole === null ? list.state === 'loading' : all.state === 'loading') && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
-      {(whole === null ? list.state === 'failed' : all.state === 'failed') && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
-      {rows !== null && rows.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
+      {list.state === 'loading' && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
+      {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
+      {rows !== null && rows.length === 0 ? <p className={styles['empty']}>{choice.sort === 'trending' ? NO_RISERS : 'No narratives yet.'}</p> : null}
       <div className={styles['cards']}>
         {rows?.map((s, i) => (
           <div key={s.id} ref={glide(s.id)}>
-            <LiveCard id={s.id} arrival={live.arrivals.get(s.id)}>
-              <Card story={s} place={i + 1} hours={hours} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
-            </LiveCard>
+            <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
           </div>
         ))}
       </div>
-      {whole !== null && all.next !== null ? <More onMore={all.more} busy={all.state === 'loading'} failed={all.state === 'failed'} /> : null}
+      {list.next !== null ? <More onMore={list.more} busy={list.state === 'loading'} failed={list.state === 'failed'} /> : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
       <SheetToast note={note} onDone={() => setNote(null)} />
     </section>
@@ -131,45 +129,60 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
 }
 
 /**
- * The server's whole list for `sort` (Most viewed on All time, New), 20 at a time: the first page when
- * the choice turns to it, then each next page on `more`. A page already asked for is not asked twice,
- * and a story already listed is not listed again if the list moved between two pages.
+ * The server's list for `sort` and `on`, 20 at a time: the first page when the choice turns to it,
+ * then each next page on `more`. A page already asked for is not asked twice, and a story already
+ * listed is not listed again if the list moved between two pages. While only the first page is
+ * showing it is read again every minute, so the list stays current; once more are loaded it holds
+ * still, so a scrolled list does not move under the thumb.
  */
-function useAllTime(sort: 'viewed' | 'new' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
-  const [got, setGot] = useState<{ sort: string; rows: readonly Story[]; next: number | null } | null>(null);
+function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
+  const key = `${sort}:${on ?? 'all'}`;
+  const [got, setGot] = useState<{ key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] } | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const asking = useRef<string | null>(null);
-  const load = (s: 'viewed' | 'new', offset: number, prev: readonly Story[]) => {
-    const key = `${s}:${offset}`;
-    if (asking.current === key) return;
-    asking.current = key;
-    setState('loading');
-    fetchAllNarratives(BOARD_VIEW, s, offset).then(
+  const current = useRef(key);
+  current.current = key;
+  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false) => {
+    const ask = `${key}:${offset}:${pages}`;
+    if (asking.current === ask) return;
+    asking.current = ask;
+    if (!quiet) setState('loading');
+    fetchAllNarratives(BOARD_VIEW, sort, offset, on).then(
       (page) => {
         asking.current = null;
+        if (current.current !== key) return;
         const seen = new Set(prev.map((x) => x.id));
-        setGot({ sort: s, rows: [...prev, ...realNarratives(page.stories).filter((x) => !seen.has(x.id))], next: page.next });
+        setGot({ key, rows: [...prev, ...realNarratives(page.stories).filter((x) => !seen.has(x.id))], next: page.next, pages: pages + 1, provenance: page.provenance });
         setState('ready');
       },
       () => {
         asking.current = null;
+        if (current.current !== key || quiet) return;
         setState('failed');
       },
     );
   };
   useEffect(() => {
-    if (sort === null) return;
     setGot(null);
-    load(sort, 0, []);
-    // `load` is a fresh closure every render; the sort is what decides a fresh list.
-  }, [sort]);
-  const mine = got !== null && got.sort === sort ? got : null;
+    load(0, [], 0);
+    // `load` is a fresh closure every render; the sort and site are what decide a fresh list.
+  }, [key]);
+  const mine = got !== null && got.key === key ? got : null;
+  const firstOnly = mine !== null && mine.pages === 1;
+  useEffect(() => {
+    if (!firstOnly) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') load(0, [], 0, true);
+    }, REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [key, firstOnly]);
   return {
     rows: mine?.rows ?? null,
     next: mine?.next ?? null,
+    provenance: mine?.provenance ?? null,
     state,
     more: () => {
-      if (sort !== null && mine !== null && mine.next !== null) load(sort, mine.next, mine.rows);
+      if (mine !== null && mine.next !== null) load(mine.next, mine.rows, mine.pages);
     },
   };
 }
@@ -218,14 +231,18 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
 }
 
 /**
- * One narrative card. Home's Watchlist draws the same card (features/feed/Feed.tsx) with no place
- * and its own line under the title (`line`: posts and views, narrative-order.ts watchLine).
+ * One narrative card. Home's Watchlist draws the same card (features/feed/Feed.tsx) with no place,
+ * no `view`, and its own line under the title (`line`: posts and views, narrative-order.ts
+ * watchLine); there the right side is the last hour's gain, as it always was. `hours` is what the
+ * Watchlist still passes and is not read.
  */
-export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; hours: Window | null; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
   const coin = storyCoinState(story);
-  /* On New, the last hour's gain: the tab's default window. On All time, its views. */
-  const h: Window = hours ?? 1;
-  const gain = gainText(story, h);
+  const right = view === undefined ? hourGainText(story) : viewsText(story);
+  const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
+  const gainLine = view !== undefined && gained !== null ? gainedLine(gained, view.span) : null;
+  const speeds = view?.sort === 'trending' ? speedsOf(story) : null;
+  const speed = speeds === null ? null : speedLine(speeds);
   return (
     <article className={styles['card']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
       if (e.key === 'Enter') onOpen();
@@ -236,12 +253,16 @@ export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }
         <div className={styles['text']}>
           <b className={styles['title']}>{story.title}</b>
           <span className={styles['sub']}>
-            {(line ?? cardLine(story, hours, now)).map((w) => <span key={w}>{w}</span>)}
+            {(line ?? cardLine(story, now)).map((w) => <span key={w}>{w}</span>)}
           </span>
+          {speed !== null ? <span className={`${styles['speed']} ${speed.up ? styles['up'] : ''}`}>{speed.text}</span> : null}
         </div>
         <div className={styles['gain']}>
-          {gain !== null ? <b className={gain.startsWith('-') ? styles['down'] : gain === '+0' ? styles['dash'] : styles['up']}>{gain}</b> : <b className={styles['dash']}>—</b>}
-          <span>{h === ALL_TIME ? 'views' : `views ${WINDOW_LABEL[h]}`}</span>
+          {view === undefined
+            ? right !== null ? <b className={right.startsWith('-') ? styles['down'] : right === '+0' ? styles['dash'] : styles['up']}>{right}</b> : <b className={styles['dash']}>—</b>
+            : right !== null ? <b className={styles['views']}>{right}</b> : <b className={styles['dash']} title="No post reported its views">—</b>}
+          <span>{view === undefined ? 'views 1h' : 'views'}</span>
+          {gainLine !== null ? <span className={gainLine.up ? styles['up'] : ''}>{gainLine.text}</span> : null}
         </div>
       </div>
       <div className={styles['coin']}>

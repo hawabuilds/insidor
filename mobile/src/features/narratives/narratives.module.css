@@ -29,69 +29,12 @@
   letter-spacing: -0.03em;
 }
 
-/* The chips on the left, the window on the right; Most viewed's four windows wrap under the chips on a phone. */
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px var(--gutter) 14px;
-}
-
-.chips {
-  display: flex;
-  flex: none;
-  gap: 2px;
-  margin-left: -6px;
-}
-
-.windows {
-  display: flex;
-  flex: none;
-  padding: 2px;
-  border: 1px solid #1f1e26;
-  border-radius: 10px;
-  background: #111116;
-}
-
-.win {
-  height: 28px;
-  padding: 0 7px;
-  border-radius: 8px;
-  background: transparent;
-  color: #8b8794;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.winOn {
-  background: #241a3a;
-  color: #e4d6ff;
-}
-
-.chip {
-  height: 34px;
-  padding: 0 10px;
-  white-space: nowrap;
-  border-radius: 999px;
-  background: transparent;
-  color: #8b8794;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.chipOn {
-  background: #241a3a;
-  color: #e4d6ff;
-}
-
 .empty {
   padding: 24px var(--gutter);
   color: #8b8794;
 }
 
-/* The All time list's next 20: loaded as it comes into view, or on a tap. */
+/* A list's next 20: loaded as it comes into view, or on a tap. */
 .more {
   display: block;
   margin: 12px auto 0;
@@ -162,7 +105,7 @@
   text-align: center;
 }
 
-/* The window's gain on the right: green, "views 1h" under it in grey. */
+/* On the right: its views (Home's Watchlist: the last hour's gain, green), "views" under it in grey, and on Most viewed Today or Week the span's gain in green. */
 .gain {
   display: flex;
   flex: none;
@@ -174,6 +117,18 @@
 
 .gain b {
   font-size: 16px;
+}
+
+.views {
+  color: #fff;
+}
+
+/* Trending's line under the title, For You's words: green when it is speeding up. */
+.speed {
+  display: block;
+  margin-top: 3px;
+  color: #8b8794;
+  font-size: 12.5px;
 }
 
 .dash {
