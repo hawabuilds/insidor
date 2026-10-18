@@ -77,8 +77,10 @@ const answered = new Map<string, { readonly body: unknown; readonly at: number }
 async function readOnce(path: string, signal: AbortSignal): Promise<unknown> {
   const response = await fetch(`${BASE}${path}`, {
     headers: { accept: 'application/json' },
-    /* Every number on the board is stale within a tick; a cached one is worse than none. */
-    cache: 'no-store',
+    /* Every number on the board is stale within a tick, so nothing is ever used without asking the
+       server; but asked with the last answer's ETag (the read service sends one), an unchanged
+       answer comes back as an empty 304 instead of the whole body again. */
+    cache: 'no-cache',
     signal,
   });
   if (!response.ok) throw new ReadError(path, response.status, await saidBy(response));
