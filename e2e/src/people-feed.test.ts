@@ -108,16 +108,26 @@ test('★ the Feed shows the people you follow: their landed trades unless they 
   const latest = (await as(me)('GET', '/feed?tab=latest')).body['items'] as Item[];
   assert.deepEqual(latest.map((i) => i.body), ['not followed', 'FERRY has a horn now']);
 
-  /* A comment on a narrative carries its title, for the line under it. */
+  /* A comment on a narrative carries its title and picture, for its pill. */
   await db.query(`insert into public.story (story_id, earliest_post_at, state, promoted_at, origin) values ('st_ferry', now(), 'promoted', now(), 'observed')`);
-  await db.query(`insert into public.story_view (story_id, payload) values ('st_ferry', $1::jsonb)`, [JSON.stringify({ id: 'st_ferry', title: 'The ferry horn' })]);
+  await db.query(`insert into public.story_view (story_id, payload) values ('st_ferry', $1::jsonb)`, [JSON.stringify({ id: 'st_ferry', title: 'The ferry horn', thumbUrl: 'https://example.test/ferry.jpg' })]);
   assert.equal((await as(friend)('POST', '/comments', { subject: 'story:st_ferry', body: 'loud' })).status, 201);
-  const top = ((await as(me)('GET', '/feed')).body['items'] as (Item & { on?: { kind: string; storyId: string | null; title: string | null } })[])[0]!;
-  assert.deepEqual([top.body, top.on?.kind, top.on?.storyId, top.on?.title], ['loud', 'story', 'st_ferry', 'The ferry horn']);
+  type On = { kind: string; storyId: string | null; title: string | null; pictureUrl: string | null; video: boolean; site: string | null; author: string | null };
+  const top = ((await as(me)('GET', '/feed')).body['items'] as (Item & { on?: On })[])[0]!;
+  assert.deepEqual([top.body, top.on?.kind, top.on?.storyId, top.on?.title, top.on?.pictureUrl], ['loud', 'story', 'st_ferry', 'The ferry horn', 'https://example.test/ferry.jpg']);
+
+  /* A comment on a post carries the post's small picture, whether it is a video's cover, its site and its author, from its For You card. */
+  await db.query(
+    `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at) values ('fyp', 'tiktok:77', now(), now(), $1::jsonb, now())`,
+    [JSON.stringify({ id: 'tiktok:77', thumbUrl: 'https://example.test/cover.jpg', thumbIsVideo: true, sourceLabel: 'TikTok', authorLabel: '@ferryfan' })],
+  );
+  await db.query(`insert into people.comment (author_id, subject_kind, subject_id, body) values ($1, 'post', 'tiktok:77', 'that horn')`, [friend.userId]);
+  const onPost = ((await as(me)('GET', '/feed')).body['items'] as (Item & { on?: On })[])[0]!;
+  assert.deepEqual(onPost.on && [onPost.on.kind, onPost.on.pictureUrl, onPost.on.video, onPost.on.site, onPost.on.author], ['post', 'https://example.test/cover.jpg', true, 'TikTok', '@ferryfan']);
 
   /* Turned off again, the trades go with it. */
   await as(friend)('PUT', '/me', { tradesPublic: false });
-  assert.deepEqual(((await as(me)('GET', '/feed')).body['items'] as Item[]).map((i) => i.kind), ['comment', 'comment']);
+  assert.deepEqual(((await as(me)('GET', '/feed')).body['items'] as Item[]).map((i) => i.kind), ['comment', 'comment', 'comment']);
 
   assert.equal((await handle({ method: 'GET', url: '/feed', body: null, token: null, client: 't' }, { db: (await setup()).db, identity: { verify: async () => null }, chain: null, policy: P, now: () => NOW, pace: () => true })).status, 401, 'personal: signed in only');
 });

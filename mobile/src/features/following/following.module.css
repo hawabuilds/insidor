@@ -97,14 +97,7 @@
   color: #fff;
 }
 
-/* A row: no box, spacing between rows (Trador: "a feed of boxes reads as a list of adverts"). */
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 0;
-  color: var(--text-1);
-}
+/* ── Trador's rows: no box, spacing between them ("a feed of boxes reads as a list of adverts") ── */
 
 .face {
   flex-shrink: 0;
@@ -113,8 +106,19 @@
 }
 
 .text {
+  display: block;
   min-width: 0;
   flex: 1;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+/* FeedTradeRow: items-start, gap 12, 14px above and below. */
+.tradeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
 }
 
 .line {
@@ -123,7 +127,7 @@
   gap: 8px;
 }
 
-/* The coin never truncates: it is the point of the row; a long name gives way instead. */
+/* The coin never truncates: it is the point of the row; a long handle gives way instead. */
 .what {
   display: flex;
   min-width: 0;
@@ -140,8 +144,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  color: var(--text-1);
-  text-decoration: none;
 }
 
 .bought,
@@ -158,14 +160,9 @@
   color: var(--down);
 }
 
-.coin {
-  display: inline-flex;
+.ticker {
   flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
   font-weight: 600;
-  color: var(--text-1);
-  text-decoration: none;
 }
 
 .age {
@@ -180,21 +177,86 @@
   color: var(--text-3);
 }
 
-/* A comment: name, rank and age; where it was said; the words; the counts as readouts. */
-.where {
+/* FeedCommentRow: 16px above and below, gap 12. */
+.commentRow {
+  display: flex;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.commentHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+/* What it was said on, in Trador's coin spot: a pill with the coin's logo, a post's or a narrative's picture. */
+.pill {
   display: flex;
   width: fit-content;
   max-width: 100%;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 6px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  background: var(--overlay-wash);
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--text-2);
   text-decoration: none;
+}
+
+.pill > span:last-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pillPicture,
+.pillTile {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pillPicture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pillTile {
+  display: grid;
+  place-items: center;
+  background: var(--hover);
+  color: var(--text-2);
+}
+
+.pillPlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 28%);
+  color: #fff;
 }
 
 .body {
@@ -208,13 +270,20 @@
 
 .counts {
   display: flex;
+  align-items: center;
   gap: 20px;
   margin-top: 10px;
   font-size: 13px;
   color: var(--text-3);
 }
 
-/* People to follow, above the latest activity while you follow nobody. */
+.counts span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* People to follow, in Following's place while you follow nobody. */
 .heading {
   margin: 20px 0 4px;
   font-size: 15px;
