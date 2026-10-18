@@ -459,6 +459,13 @@
   border-bottom: 1px solid #1f1e26;
 }
 
+.editCheck {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: #b48cff;
+}
+
 .editRowText {
   flex: 1;
   min-width: 0;
