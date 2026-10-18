@@ -8,13 +8,20 @@
  * The tab bar is always there. A story and a coin page belong to whichever list they were
  * reached from, and light that tab, so the bar always says where "back" leads.
  *
+ * ★ THE FIVE TABS STAY OPEN (the owner, 2026-10-18: "switching tabs must not reload them from
+ * scratch"). A bottom tab's screen is drawn the first time it is opened and then only hidden when
+ * left, never unmounted, so coming back shows it at once, as it was, at the scroll position it was
+ * left at; it reads again in the background (shared/hooks.ts useLoad). A hidden tab is told it is
+ * not on screen (shared/screen-active.ts) and polls nothing. Every other screen (a story, a coin
+ * page, a profile) is drawn fresh as before and starts at its top.
+ *
  * ★ SIGN IN ONCE, AT THE DOOR. Every address is behind one gate (shared/sign-in.ts): signed in,
  * the app; signed out, the front door, with the address kept so signing in lands on it; a
  * returning person, a moment's hold while their session comes back. No screen inside asks anyone
  * to sign in.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { Learn } from './features/learn/Learn.tsx';
@@ -49,9 +56,63 @@ import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
 import { noticeFor } from './shared/story-source.ts';
 import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
+import { ScreenActive } from './shared/screen-active.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
-function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Route; create: (from: CreateFrom) => void; unread: number; onAlertsSeen: () => void; readUnread: () => void }) {
+/** The bottom tabs' own screens: kept open once visited (see the header). */
+const KEPT_TABS = ['feed', 'narratives', 'search', 'alerts', 'portfolio'] as const;
+type KeptTab = (typeof KEPT_TABS)[number];
+
+/** The kept tab this address shows, or null for any other screen. `#/post/<id>` is For You with a sheet over it. */
+function keptTabOf(route: Route): KeptTab | null {
+  if (route.screen === 'post') return 'feed';
+  return (KEPT_TABS as readonly string[]).includes(route.screen) ? (route.screen as KeptTab) : null;
+}
+
+type ScreenProps = { route: Route; create: (from: CreateFrom) => void; unread: number; onAlertsSeen: () => void; readUnread: () => void };
+
+/**
+ * The kept tabs, each drawn from its first visit and hidden (display: none) when another screen is
+ * showing; `display: contents` on the one showing, so the wrapper changes no layout.
+ */
+function KeptTabs({ shown, ...props }: ScreenProps & { shown: KeptTab | null }) {
+  const [opened, setOpened] = useState<readonly KeptTab[]>(() => (shown === null ? [] : [shown]));
+  if (shown !== null && !opened.includes(shown)) setOpened([...opened, shown]);
+  return (
+    <>
+      {KEPT_TABS.filter((t) => opened.includes(t)).map((t) => (
+        <div key={t} style={{ display: t === shown ? 'contents' : 'none' }}>
+          <ScreenActive.Provider value={t === shown}>
+            <Screen {...props} route={t === shown ? props.route : { screen: t }} />
+          </ScreenActive.Provider>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Where each kept tab was scrolled to, so coming back lands there; any other screen starts at its
+ * top. Read on every scroll while the tab is showing and put back before the first paint of a return.
+ */
+function useScrollPerTab(shown: KeptTab | null, route: Route): void {
+  const at = useRef(new Map<KeptTab, number>());
+  const current = useRef<KeptTab | null>(shown);
+  useEffect(() => {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    const onScroll = () => {
+      if (current.current !== null) at.current.set(current.current, window.scrollY);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  useLayoutEffect(() => {
+    current.current = shown;
+    window.scrollTo(0, shown === null ? 0 : (at.current.get(shown) ?? 0));
+  }, [shown, route]);
+}
+
+function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps): ReactNode {
   switch (route.screen) {
     case 'feed':
     case 'post':
@@ -153,6 +214,9 @@ export function App() {
     const t = setInterval(readUnread, 60_000);
     return () => clearInterval(t);
   }, [inside, readUnread]);
+  const keptTab = keptTabOf(route);
+  useScrollPerTab(keptTab, route);
+  const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
   const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered });
   if (gate === 'holding') return <Holding />;
@@ -170,7 +234,8 @@ export function App() {
   return (
     <ComingSoonProvider>
       <main>
-        <Screen route={route} create={setCreating} unread={unread} onAlertsSeen={() => setUnread(0)} readUnread={readUnread} />
+        <KeptTabs shown={keptTab} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
+        {keptTab === null ? <Screen route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} /> : null}
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />

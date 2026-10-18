@@ -3,8 +3,9 @@
  * load with its three honest states (and, when asked, the last answer shown while it reads).
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { fresh, kept as keptRead } from './kept-reads.ts';
+import { useScreenActive } from './screen-active.ts';
 import { watchlist } from './watchlist.ts';
 
 /**
@@ -40,7 +41,8 @@ export type KeptIn = 'memory' | 'phone';
  *
  * With `kept`, the key's last answer is shown at once, marked `stale`, and the fresh read replaces
  * it in place; reads of the same key already on their way (a read ahead, another screen) are
- * shared rather than repeated. The key then names the read across the whole app.
+ * shared rather than repeated. The key then names the read across the whole app. A kept load in
+ * a kept tab (App.tsx) reads again each time its tab comes back on screen.
  */
 export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T>, kept?: KeptIn): [Load<T>, () => void] {
   const [result, setResult] = useState<Load<T>>(() => {
@@ -68,5 +70,11 @@ export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T
     // `load` is a fresh closure every render; the key is what decides a reload.
   }, [key, attempt]);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const active = useScreenActive();
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current && kept !== undefined) reload();
+    wasActive.current = active;
+  }, [active]);
   return [result, reload];
 }

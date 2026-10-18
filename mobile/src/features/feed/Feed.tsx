@@ -66,6 +66,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type PostSpeeds, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
 import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
@@ -175,13 +176,15 @@ export function Feed({
   );
   /* The pages under the first, as the person scrolls (useSortedPages.ts). */
   const sortedPages = useSortedPages(`${choice.sort}:${win ?? ''}`, sortedOn && sorted.state === 'ready' ? sorted.value : null);
+  /* Hidden behind another tab (App.tsx keeps it open), For You asks nothing. */
+  const active = useScreenActive();
   useEffect(() => {
-    if (!sortedOn) return;
+    if (!sortedOn || !active) return;
     const t = setInterval(() => {
       if (document.visibilityState === 'visible') reloadSorted();
     }, SORTED_EVERY_MS);
     return () => clearInterval(t);
-  }, [sortedOn, reloadSorted]);
+  }, [sortedOn, reloadSorted, active]);
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp' && !sortedOn, fyp, reloadFyp, postsOf, true, newestPosted);
@@ -219,12 +222,13 @@ export function Feed({
 
   /* Coming back to the app is when somebody expects it to be current. */
   useEffect(() => {
+    if (!active) return;
     const onShow = () => {
       if (document.visibilityState === 'visible') reload();
     };
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
-  }, [reload]);
+  }, [reload, active]);
 
   /* Pull to refresh: everything is read again, and the spinner stops when this tab's list is back.
      For You comes newest first from the server, so new posts arrive at the top; a post the owner

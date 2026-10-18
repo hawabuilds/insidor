@@ -8,11 +8,9 @@ import { parseRoute, type Route } from './route.ts';
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   useEffect(() => {
-    const onHash = () => {
-      setRoute(parseRoute(window.location.hash));
-      /* A new screen starts at its top, not at the scroll position of the last one. */
-      window.scrollTo(0, 0);
-    };
+    /* Where the new screen is scrolled to is the shell's (App.tsx): a kept tab comes back where
+       it was left, any other screen starts at its top. */
+    const onHash = () => setRoute(parseRoute(window.location.hash));
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
