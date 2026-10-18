@@ -46,6 +46,8 @@ settleLaunch();
 /* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
 trackHistory();
 listenForOpens();
+/* iPhone Safari draws a pressed (:active) state only on a page that listens for touches (tokens.css). */
+document.addEventListener('touchstart', () => undefined, { passive: true });
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   /* A newer build seen while the kept one stood in: taken at the next return to the app. */
