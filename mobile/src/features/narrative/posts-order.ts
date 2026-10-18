@@ -1,20 +1,23 @@
 /**
  * THE NARRATIVE PAGE'S POSTS, AS DECISIONS (the owner, 2026-10-17: "the narrative page shows the
- * whole story, not just 24h"): which post is pinned as "First post we caught", the order of the
- * rest, and how many are drawn before the next screenful. Apart from NarrativePage.tsx so
- * `node --test` holds the rules.
+ * whole story, not just 24h"; 2026-10-18: "show both moments honestly"): which post is pinned as the
+ * story's first post, the page's two moments, the order of the rest, and how many are drawn before
+ * the next screenful. Apart from NarrativePage.tsx so `node --test` holds the rules.
  *
- *   First post we caught   the post we FOUND first (the server's per-post `foundAt`, the save time
- *                          of item.first_seen_at) among the posts the page lists now — so when the
- *                          owner removes it, the next earliest takes its place at the next frame.
- *                          Not the earliest posted: a post can go up days before we see it. No post
- *                          with a found time (an older server): nothing is pinned, never a guess
- *   All posts              every other post the page lists, since the first, newest posted first;
- *                          a post with no posted time goes last
- *   Screenful              `PAGE` rows, and `PAGE` more each time the list's end comes into view
+ *   First post     the post that WENT UP first among the posts the page lists now (its site's own
+ *                  posted time), even when we found it later than others: the earliest post we
+ *                  know of. Removing it pins the next earliest at the next frame. No listed post
+ *                  with a posted time: nothing is pinned and the moment is a dash with its reason
+ *   We found it    the earliest moment we saved ANY post the page lists (the server's `foundAt`,
+ *                  item.first_seen_at): the story's, not the pinned post's. Unknown: a dash
+ *   All posts      every other post the page lists, newest posted first; a post with no posted
+ *                  time goes last
+ *   Screenful      `PAGE` rows, and `PAGE` more each time the list's end comes into view
  *
- * What breaks if changed carelessly: pinning by posted time would show a post we never caught
- * first as "the first post we caught" — the one claim on this card.
+ * What breaks if changed carelessly: the two moments are two different facts. Until 2026-10-18 the
+ * card pinned the post we found first and called it "First post we caught"; on the Tesla Roadster
+ * page that was a Friday post while the story's posts went back to Wednesday. A post found first is
+ * not a post posted first, and the page now says each for what it is.
  */
 
 import type { Evidence, Story } from '../../shared/api/index.ts';
@@ -22,15 +25,26 @@ import type { Evidence, Story } from '../../shared/api/index.ts';
 /** Rows drawn at first, and added each time the end of the list is reached. */
 export const PAGE = 20;
 
-/** The pinned post and when we found it, or null when no post has a found time. */
-export function firstCaught(story: Story): { readonly post: Evidence; readonly foundAt: number } | null {
-  let best: { post: Evidence; foundAt: number } | null = null;
+/** The post that went up first, and when; null when no listed post has a posted time. */
+export function firstPosted(story: Story): { readonly post: Evidence; readonly postedAt: number } | null {
+  let best: { post: Evidence; postedAt: number } | null = null;
   for (const e of story.evidence) {
-    const f = story.postViews?.get(e.evidenceId)?.foundAt ?? null;
-    if (f === null) continue;
-    if (best === null || f < best.foundAt || (f === best.foundAt && e.evidenceId < best.post.evidenceId)) best = { post: e, foundAt: f };
+    if (!e.postedAt.known) continue;
+    const at = e.postedAt.at;
+    if (best === null || at < best.postedAt || (at === best.postedAt && e.evidenceId < best.post.evidenceId)) best = { post: e, postedAt: at };
   }
   return best;
+}
+
+/** The page's two moments, each a time or a dash with its reason. */
+export type Moment = { readonly known: true; readonly at: number } | { readonly known: false; readonly why: string };
+
+export function moments(story: Story): { readonly firstPost: Moment; readonly found: Moment } {
+  const first = firstPosted(story);
+  return {
+    firstPost: first !== null ? { known: true, at: first.postedAt } : { known: false, why: story.evidence.length === 0 ? 'no posts listed' : 'the sites gave no post times' },
+    found: story.foundAt?.known === true ? { known: true, at: story.foundAt.at } : { known: false, why: 'not recorded for this narrative' },
+  };
 }
 
 /** Every listed post but `pinned`, newest posted first; unknown posted times last, in the page's order. */

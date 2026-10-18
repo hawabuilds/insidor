@@ -145,7 +145,7 @@ export interface Story {
   readonly topCoin: Coin | null;
   /** How many posts the page lists, as the server counts them. */
   readonly postCount: number | null;
-  /** First found: the earliest moment we saved any post it lists now. Null from a server that does not say. */
+  /** We found it: the earliest moment we saved any post it lists now. Null from a server that does not say. */
   readonly foundAt: Instant | null;
 }
 
