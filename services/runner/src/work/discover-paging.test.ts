@@ -34,7 +34,8 @@ const USD_PER_POST = 0.00015;
 const PROBE = [6, 12, 3, 5, 1];
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
-const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, ...feed } });
+/* One language: these tests are about lanes and paging. Asking each language as its own search is work/discover-languages.test.ts. */
+const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], ...feed } });
 const ON = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true } });
 const OLD_MIDDLE = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true, fullPaging: false } });
 const searchOn = (name: string, over: Partial<SearchPagingPolicy> = {}): Policy => {

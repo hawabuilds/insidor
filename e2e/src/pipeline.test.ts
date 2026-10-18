@@ -45,6 +45,7 @@ import type { Logger } from '@insidor/runner/src/log.ts';
 import { storeArrivals } from '@insidor/runner/src/work/arrivals.ts';
 import { startFloors } from '@insidor/core';
 import { feedQueryFor } from '@insidor/runner/src/work/discover.ts';
+import { languageAsks } from '@insidor/runner/src/work/languages.ts';
 import { scorePosts } from '@insidor/runner/src/work/score-posts.ts';
 import { storeWork } from '@insidor/runner/src/work/stages.ts';
 import {
@@ -250,8 +251,9 @@ before(async () => {
   /* Discovery exactly as the runner does it: the adapter's page, then the accounts, then
      the posts — `wiring.ts`'s `store`. */
   const x = xPlatform({ client: recordedX, meter, now: () => (NOW - 10 * MINUTE) as Millis });
-  /* Through the catch-all lane, as the runner asks it now: no keyword, the lane's floor. */
-  const page = await x.discover(feedQueryFor('all', startFloors(DEFAULT_POLICY), (NOW - 10 * MINUTE) as Millis, DEFAULT_POLICY), {
+  /* Through the catch-all lane, as the runner asks it now: no keyword, the lane's floor, and one
+     language a search (its first, English: the source answers an OR of languages with the last only). */
+  const page = await x.discover(languageAsks(feedQueryFor('all', startFloors(DEFAULT_POLICY), (NOW - 10 * MINUTE) as Millis, DEFAULT_POLICY))[0]!.query, {
     capUsd: 1,
     spentUsd: 0,
     maxCalls: null,

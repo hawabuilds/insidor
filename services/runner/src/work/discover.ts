@@ -78,6 +78,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 import { errorText, type Logger } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
 import type { CappedLane, LaneLedger } from './lane-ledger.ts';
+import { languageAsks, roundOrder, type LanguageAsk } from './languages.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Page sizes and lookbacks — how much is fetched, never what is decided. Nothing
@@ -507,11 +508,20 @@ export function memoryFreshClock(): FreshClock {
   };
 }
 
-/** The clock key of one band on one source. */
-export const bandKey = (source: string, ageMin: number): string => `${source}:${ageMin}`;
+/**
+ * The clock key of one band on one source, and of one language's search of it (work/languages.ts):
+ * each language keeps its own window, so a language that failed is asked again from where it
+ * stood while the others move on.
+ */
+export const bandKey = (source: string, ageMin: number, lang: string | null = null): string => `${source}:${ageMin}${lang === null ? '' : `:${lang}`}`;
 
 /** The clock key of one late band (`feed.fresh.late`): its own, so a late band at a fresh band's age keeps its own window. */
-export const lateBandKey = (source: string, ageMin: number): string => `${source}:late:${ageMin}`;
+export const lateBandKey = (source: string, ageMin: number, lang: string | null = null): string => `${source}:late:${ageMin}${lang === null ? '' : `:${lang}`}`;
+
+/** One language's search of a fresh or late band, with the clock key its window is kept under. */
+export interface BandLanguageAsk extends LanguageAsk {
+  readonly clockKey: string;
+}
 
 /**
  * ★ THE FRESH BANDS (`feed.fresh`), in place of the 'all' lane's ten-minute window: for each age
@@ -522,26 +532,30 @@ export const lateBandKey = (source: string, ageMin: number): string => `${source
  * What breaks if changed carelessly: a band window computed without the clock overlaps the last
  * one and buys the same posts again, which is the waste this replaces.
  */
-export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean }[] {
+export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] {
   const base = feedQueryFor('all', floors, now, policy);
-  const ask = (age: number, key: string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean }[] => {
-    const window = bandWindow(age, clock?.lastUntil(key) ?? null, now, policy);
-    if (window === null) return [];
-    return [{
-      age,
-      late,
-      query: {
-        ...base,
-        sinceMs: Math.round(window.since) as Millis,
-        untilMs: Math.round(window.until) as Millis,
-        filter: { ...base.filter!, minApproval },
-      },
-    }];
+  const ask = (age: number, keyOf: (lang: string | null) => string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] => {
+    const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval } };
+    /* ★ EACH LANGUAGE ITS OWN WINDOW (work/languages.ts): from where that language's last answered
+       ask ended, so one that failed is asked again and the others are not re-bought. */
+    const languages = languageAsks(banded).flatMap((l): BandLanguageAsk[] => {
+      const clockKey = keyOf(l.lang);
+      const window = bandWindow(age, clock?.lastUntil(clockKey) ?? null, now, policy);
+      if (window === null) return [];
+      return [{ ...l, clockKey, query: { ...l.query, sinceMs: Math.round(window.since) as Millis, untilMs: Math.round(window.until) as Millis } }];
+    });
+    const first = languages[0];
+    if (first === undefined) return [];
+    /* The band as one query, for pricing and the log: the widest of its languages' windows. */
+    const sinceMs = Math.min(...languages.map((l) => l.query.sinceMs ?? now)) as Millis;
+    return [{ age, late, languages, query: { ...banded, sinceMs, untilMs: first.query.untilMs } }];
   };
+  /* A single language (or none) keeps the band's own key, so its clock reads as it always has. */
+  const one = languageAsks(base).length === 1;
   return [
-    ...policy.feed.fresh.bandAgesMin.flatMap((age) => ask(age, bandKey(source, age), bandFloor(age, floors, policy), false)),
+    ...policy.feed.fresh.bandAgesMin.flatMap((age) => ask(age, (lang) => bandKey(source, age, one ? null : lang), bandFloor(age, floors, policy), false)),
     /* ★ LATE BANDS (`feed.fresh.late`): the same tiling at an age in hours, at a fixed floor. Empty while off. */
-    ...lateBands(policy).flatMap((b) => ask(b.ageMin, lateBandKey(source, b.ageMin), lateBandFloor(b.minApproval, floors, policy), true)),
+    ...lateBands(policy).flatMap((b) => ask(b.ageMin, (lang) => lateBandKey(source, b.ageMin, one ? null : lang), lateBandFloor(b.minApproval, floors, policy), true)),
   ];
 }
 
@@ -647,6 +661,26 @@ interface PageRule {
   readonly ledger: { readonly lane: CappedLane; readonly dailyUsd: number; readonly spentUsd: number } | null;
 }
 
+/** Why one language's search stopped, for the log: the source's end, or which of our limits. */
+type Stop = 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'deadline' | 'empty' | 'aborted' | 'failed';
+
+/** One language's search inside an ask (work/languages.ts): its own cursor, pages, empty run and end. */
+interface Thread {
+  readonly lang: string | null;
+  readonly query: DiscoveryQuery;
+  /** A band's: the key its window is kept under (`bandKey`). */
+  readonly clockKey: string | undefined;
+  cursor: string | null;
+  hasMore: boolean;
+  items: Item[];
+  authors: Author[];
+  pages: number;
+  emptyRun: number;
+  open: boolean;
+  stop: Stop;
+  error: string | null;
+}
+
 /**
  * The name a catch-all ask is listed under in `feed.paging.searches`, or null for an ask that
  * is never paged (a term or the watch list) and for the middle lane, which has its own switch.
@@ -711,6 +745,11 @@ interface SourcePlan {
   readonly late: boolean;
   /** The middle lane (`feed.middle`): fixed floor, its own cap, paged to the end of its window. */
   readonly middle: boolean;
+  /**
+   * ★ THE SEARCHES THIS ASK IS MADE OF: one per language (work/languages.ts), each paged on its own
+   * cursor under the ask's caps. A band's carry the clock key each language's window is kept under.
+   */
+  readonly languages: readonly (LanguageAsk & { readonly clockKey?: string })[];
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -762,7 +801,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean; readonly middle?: boolean }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean; readonly middle?: boolean; readonly languages?: readonly (LanguageAsk & { readonly clockKey?: string })[] }[] = [];
     const middleOnly = deps.only === 'middle';
     const hasCatchAll = adapter.capabilities.discovery.includes('catchall');
     if (hasCatchAll && !middleOnly) {
@@ -772,7 +811,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         /* Fresh bands replace both main lanes: the media lane's posts clear the bands' floor too. */
         else if (fresh && lane === 'media') continue;
         /* A late band's posts are the slow lane's kind (found hours in), so they are stored as its finds. */
-        else if (fresh && lane === 'all') for (const { query, age, late } of freshBandQueries(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane: late ? 'slow' : lane, band: age, late });
+        else if (fresh && lane === 'all') for (const { query, age, late, languages } of freshBandQueries(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane: late ? 'slow' : lane, band: age, late, languages });
         else asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
       }
     }
@@ -840,10 +879,12 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       continue;
     }
 
-    for (const { query, lane, spaced, watch, slice, band, late, middle } of asks) {
+    for (const { query, lane, spaced, watch, slice, band, late, middle, languages: banded } of asks) {
+      const languages = banded ?? languageAsks(query);
       let estimate: CostEstimate;
       try {
-        estimate = adapter.estimate({ kind: 'discover', query });
+        /* A page of one language's search: what each call the pass makes is checked against. */
+        estimate = adapter.estimate({ kind: 'discover', query: languages[0]?.query ?? query });
       } catch (e) {
         /* An adapter that cannot price its own call is a configuration fault of ours —
            a missing row in a price book — and it is `unasked` rather than `failed`:
@@ -853,7 +894,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null, late: late === true, middle: middle === true });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null, late: late === true, middle: middle === true, languages });
     }
   }
 
@@ -879,7 +920,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       targets,
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
       /* The middle lane is in neither figure: it stops at its own cap (`feed.middle.cap`), which is its worst day. */
-      worstUsd: usdPerPage * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length + lateBands(deps.policy).length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
+      /* Every language is its own search (work/languages.ts), so each ask's pages are counted once a language. */
+      worstUsd: usdPerPage * Math.max(1, deps.policy.feed.langs.length) * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length + lateBands(deps.policy).length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
@@ -1046,122 +1088,160 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      * low before they have spent anything finding out. Only the request is missing.
      */
     if (deps.mode === 'dry') {
-      estimatedUsd += estimate.usd;
+      /* One first page a language: each is its own search (work/languages.ts). */
+      const asked = Math.max(1, plan.languages.length);
+      estimatedUsd += estimate.usd * asked;
       outcomes.push({
         kind: 'planned',
         ...tag,
         source,
         mode: query.mode,
-        estUnits: estimate.estUnits,
-        wouldSpendUsd: estimate.usd,
+        estUnits: estimate.estUnits * asked,
+        wouldSpendUsd: estimate.usd * asked,
       });
       return;
     }
 
-    let items: readonly Item[];
-    let authors: readonly Author[];
-    let hasMore: boolean;
+    /**
+     * ★ ONE SEARCH PER LANGUAGE, EACH ON ITS OWN CURSOR (work/languages.ts): the supplier answers an
+     * OR of languages with the last one only (since 2026-10-16). Each language keeps its own page
+     * count, empty run and end; the ask's caps — the meter's line, the middle lane's cap, the
+     * search's own day, its deadline — are totals across them, checked before every page of every
+     * language. Paged round-robin: every language's first page before any language's second.
+     */
+    const threads: Thread[] = (plan.languages.length > 0 ? plan.languages : [{ lang: null, query }]).map((l) => ({
+      lang: l.lang, query: l.query, clockKey: 'clockKey' in l ? l.clockKey : undefined,
+      cursor: null, hasMore: false, items: [], authors: [], pages: 0, emptyRun: 0, open: true, stop: 'end', error: null,
+    }));
     /* What this ask's pages were billed, for its ledger (the middle lane's, or the search's own). */
     let laneUsd = 0;
-    let pages = 1;
-    /* Why the paging stopped, for the log: the source's end, or which of our limits. */
-    let stop: 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'deadline' | 'empty' | 'aborted' = 'end';
+    /* A limit shared by every language (the meter, a cap, the deadline, a shutdown): it ends the ask. */
+    let shared: Stop | null = null;
+    /* The meter refused at the vendor edge (`BudgetRefused`): nothing went out on that call. */
+    let refused: string | null = null;
+    let calls = 0;
     /* The middle lane's deadline runs from its pass's start; a search's own from its first page. */
     const pagingFrom = middle ? now : deps.now();
     /* Set as the call goes out, not when it comes back: a run that fails was still billed. */
     if (spaced) deps.watch?.asked(source, now);
-    try {
-      const result = await adapter.discover(query, budget);
-      laneUsd += result.spend.usd;
-      items = result.value.items;
-      authors = result.value.authors;
-      hasMore = result.value.hasMore;
 
-      /* ★ MORE PAGES, AND EACH ONE CHECKED BEFORE IT IS ASKED FOR: against the meter's paced line,
-         the lane's own day (the middle lane's cap, or the search's `dailyUsd`), its deadline and
-         `maxPages`. Under the old rule a short page also ends it — the earlier build's paging, from
-         when a short page meant the window was exhausted. Under `full` it does not (`feed.paging`):
-         the supplier now answers short pages with more to come, so only its own "no more" ends the
-         window, or `maxEmptyRun` empty pages in a row, each billed, which no window needs. */
-      let cursor = result.value.cursor;
-      let emptyRun = items.length === 0 ? 1 : 0;
-      if (rule.maxPages === 1 && hasMore && cursor !== null) stop = 'pages';
-      for (let page = 2; page <= rule.maxPages; page += 1) {
-        if (cursor === null || !hasMore) { stop = 'end'; break; }
-        if (!rule.full && items.length < (page - 1) * query.limit) { stop = 'short'; break; }
-        if (rule.full && emptyRun >= deps.policy.feed.paging.maxEmptyRun) { stop = 'empty'; break; }
-        if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) { stop = 'meter'; break; }
-        if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) { stop = 'cap'; break; }
-        if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > rule.ledger.dailyUsd) { stop = 'cap'; break; }
-        if (deps.signal.aborted) { stop = 'aborted'; break; }
-        /* ★ THE DEADLINE (`feed.middle.passDeadlineMs`, a search's `passDeadlineMs`): a slow or
-           refusing supplier costs the ask its deeper pages this pass, never minutes. The next pass
-           asks again. */
-        if (rule.deadlineMs !== null && deps.now() - pagingFrom >= rule.deadlineMs) {
-          stop = 'deadline';
-          deps.log.warn(middle ? 'the middle lane reached its deadline; the rest of its window waits for the next pass' : 'a search reached its deadline; the rest of its window waits for the next pass', { source, search: key ?? 'middle', pages: page - 1, returned: items.length, deadlineMs: rule.deadlineMs });
-          break;
-        }
-        const next = await adapter.discover({ ...query, cursor }, budget);
-        pages = page;
-        laneUsd += next.spend.usd;
-        estimatedUsd += estimate.usd;
-        items = [...items, ...next.value.items];
-        authors = [...authors, ...next.value.authors];
-        hasMore = next.value.hasMore;
-        cursor = next.value.cursor;
-        emptyRun = next.value.items.length === 0 ? emptyRun + 1 : 0;
-        if (page === rule.maxPages && hasMore && cursor !== null) stop = 'pages';
+    /* ★ EACH PAGE AFTER THE ASK'S FIRST IS CHECKED BEFORE IT IS ASKED FOR: against the meter's paced
+       line, the lane's own day (the middle lane's cap, or the search's `dailyUsd`), a shutdown and
+       the deadline. The first was checked above, where a refusal is recorded as `paused`. */
+    const sharedStop = (): Stop | null => {
+      if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) return 'meter';
+      if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) return 'cap';
+      if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > rule.ledger.dailyUsd) return 'cap';
+      if (deps.signal.aborted) return 'aborted';
+      /* ★ THE DEADLINE (`feed.middle.passDeadlineMs`, a search's `passDeadlineMs`): a slow or
+         refusing supplier costs the ask its deeper pages this pass, never minutes. The next pass
+         asks again. */
+      if (rule.deadlineMs !== null && deps.now() - pagingFrom >= rule.deadlineMs) {
+        deps.log.warn(middle ? 'the middle lane reached its deadline; the rest of its window waits for the next pass' : 'a search reached its deadline; the rest of its window waits for the next pass', { source, search: key ?? 'middle', pages: calls, deadlineMs: rule.deadlineMs });
+        return 'deadline';
       }
-    } catch (e) {
-      /**
-       * ★ OUR OWN REFUSAL IS NOT A VENDOR FAILURE, AND IS CAUGHT SEPARATELY.
-       *
-       * `metered()` is the backstop behind the pre-check above, and it throws rather
-       * than returning — so it arrives here as an exception, on the same path as a
-       * timeout. It is a different fact. Recording it as `failed` would inflate the
-       * consecutive-failure count on a source that is working perfectly, and after
-       * three passes the board would call it broken because we could not afford it.
-       */
-      /* A page that threw was still billed (see below), and the middle lane's ledger says so too. */
-      if (middle) await deps.middle?.ledger.add('middle', now, laneUsd + (e instanceof BudgetRefused ? 0 : estimate.usd));
-      if (rule.ledger !== null) await deps.ledger?.add(rule.ledger.lane, now, laneUsd + (e instanceof BudgetRefused ? 0 : estimate.usd));
-      if (e instanceof BudgetRefused) {
+      return null;
+    };
+
+    /* ★ PAGE BY PAGE, ROUND-ROBIN: round r asks page r of every language still open, the order turned
+       by one each round. Under the old rule a short page ends that language — the earlier build's
+       paging, from when a short page meant the window was exhausted. Under `full` it does not
+       (`feed.paging`): the supplier answers short pages with more to come, so only its own "no more"
+       ends a language's window, or `maxEmptyRun` empty pages in a row, each billed. */
+    rounds: for (let round = 1; round <= rule.maxPages; round += 1) {
+      for (const t of roundOrder(threads, round - 1)) {
+        if (!t.open) continue;
+        if (round > 1) {
+          if (t.cursor === null || !t.hasMore) { t.open = false; t.stop = 'end'; continue; }
+          if (!rule.full && t.items.length < (round - 1) * t.query.limit) { t.open = false; t.stop = 'short'; continue; }
+          if (rule.full && t.emptyRun >= deps.policy.feed.paging.maxEmptyRun) { t.open = false; t.stop = 'empty'; continue; }
+        }
+        if (calls > 0) {
+          shared = sharedStop();
+          if (shared !== null) break rounds;
+        }
+        calls += 1;
+        try {
+          const page = await adapter.discover(t.cursor === null ? t.query : { ...t.query, cursor: t.cursor }, budget);
+          laneUsd += page.spend.usd;
+          estimatedUsd += estimate.usd;
+          t.pages = round;
+          t.items.push(...page.value.items);
+          t.authors.push(...(page.value.authors ?? []));
+          t.hasMore = page.value.hasMore;
+          t.cursor = page.value.cursor;
+          t.emptyRun = page.value.items.length === 0 ? t.emptyRun + 1 : 0;
+        } catch (e) {
+          /**
+           * ★ OUR OWN REFUSAL IS NOT A VENDOR FAILURE, AND IS CAUGHT SEPARATELY.
+           *
+           * `metered()` is the backstop behind the pre-check above, and it throws rather
+           * than returning — so it arrives here as an exception, on the same path as a
+           * timeout. It is a different fact. Recording it as `failed` would inflate the
+           * consecutive-failure count on a source that is working perfectly, and after
+           * three passes the board would call it broken because we could not afford it.
+           * It ends the whole ask: the line is every language's.
+           */
+          if (e instanceof BudgetRefused) {
+            refused = e.reason;
+            shared = 'meter';
+            break rounds;
+          }
+          /* ★ A FAILED CALL STILL COST MONEY. The vendor bills on receipt, not on our ability
+             to parse the answer, so the pass's total and the lane's day say so. One language
+             failing ends that language only: the others are asked as if it had answered. */
+          laneUsd += estimate.usd;
+          estimatedUsd += estimate.usd;
+          t.open = false;
+          t.stop = 'failed';
+          t.error = errorText(e);
+          continue;
+        }
+        if (round === rule.maxPages && t.hasMore && t.cursor !== null) { t.open = false; t.stop = 'pages'; }
+      }
+    }
+    for (const t of threads) {
+      if (!t.open) continue;
+      t.stop = shared ?? (t.hasMore && t.cursor !== null ? 'pages' : 'end');
+    }
+    const answeredThreads = threads.filter((t) => t.error === null && t.pages > 0);
+    const failedThreads = threads.filter((t) => t.error !== null);
+    const pages = threads.reduce((n, t) => n + t.pages, 0);
+    const byLang = Object.fromEntries(threads.map((t) => [t.lang ?? 'any', { pages: t.pages, returned: t.items.length, stop: t.stop }]));
+
+    if (answeredThreads.length === 0) {
+      /* Nothing answered. A page that threw was still billed, and the lane's day says so too. */
+      if (middle) await deps.middle?.ledger.add('middle', now, laneUsd);
+      if (rule.ledger !== null) await deps.ledger?.add(rule.ledger.lane, now, laneUsd);
+      const failure = failedThreads[0];
+      if (failure === undefined) {
         const line = deps.meter.line(estimate.vendor);
-        outcomes.push({
-          kind: 'paused',
-          ...tag,
-          source,
-          wouldSpendUsd: estimate.usd,
-          remainingUsd: line.remainingUsd,
-          spentUsd: line.spentUsd,
-          capUsd: line.capUsd,
-        });
-        deps.log.warn('source paused for budget at the vendor edge', { source, reason: e.reason });
+        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: line.remainingUsd, spentUsd: line.spentUsd, capUsd: line.capUsd });
+        deps.log.warn('source paused for budget at the vendor edge', { source, reason: refused ?? shared });
         return;
       }
-      /* ★ A FAILED CALL STILL COST MONEY. The vendor bills on receipt, not on our
-         ability to parse the answer, so this pass spent those dollars and the running
-         total has to say so. Counting only the successful calls would make an incident
-         — the hours when everything fails — look like the cheapest day of the month,
-         which is the same understatement `metered()` records the spend on the throw
-         path to prevent. */
-      estimatedUsd += estimate.usd;
-
       /* The health record was already written by the wrapper around the adapter. What
          happens here is only accounting: one source failing must not end the pass, or
          a single dark vendor would take the working ones down with it. */
-      const text = errorText(e);
+      const text = failure.error ?? '';
       firstError ??= `${source}: ${text}`;
       outcomes.push({ kind: 'failed', source, reason: text, ...tag });
-      deps.log.error('source failed', { source, mode: query.mode, err: text });
+      deps.log.error('source failed', { source, mode: query.mode, err: text, languages: byLang });
       return;
     }
+    /* Some languages answered and some failed: each failed one is said, by its language. */
+    for (const t of failedThreads) {
+      const text = `${t.lang === null ? '' : `lang ${t.lang}: `}${t.error ?? ''}`;
+      firstError ??= `${source}: ${text}`;
+      outcomes.push({ kind: 'failed', source, reason: text, ...tag });
+      deps.log.error('a language of a search failed; the others answered', { source, mode: query.mode, lang: t.lang, err: t.error });
+    }
 
-    /* Quoted, not measured. The measured figure is in the ledger, recorded by the
-       adapter; this is the pass's own running total and is what makes the dry and live
-       numbers comparable. */
-    estimatedUsd += estimate.usd;
+    /* A post is in one language, so the languages' pages never hold the same post twice. */
+    const items: Item[] = threads.flatMap((t) => t.items);
+    const authors: Author[] = threads.flatMap((t) => t.authors);
+    const hasMore = answeredThreads.some((t) => t.hasMore && t.cursor !== null);
+    const stop: Stop = shared ?? (threads.length === 1 ? threads[0]!.stop : 'end');
     itemsSeen += items.length;
 
     /* A free source that answered covers this term for the paid ones behind it. Only
@@ -1173,8 +1253,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     }
     /* A slow lane's slices add up, and so do the fresh bands: the lane's floor moves on what all of them returned. */
     if (lane !== null && !late) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice || band !== null ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
-    /* The band's window is answered: the next ask starts where this one ended. */
-    if (band !== null && query.untilMs !== null) deps.fresh?.ran(late ? lateBandKey(source, band) : bandKey(source, band), query.untilMs);
+    /* Each language's band window that answered: its next ask starts where this one ended. A language
+       that failed, or was never reached, keeps its window open. */
+    if (band !== null) {
+      for (const t of answeredThreads) {
+        if (t.query.untilMs === null) continue;
+        deps.fresh?.ran(t.clockKey ?? (late ? lateBandKey(source, band) : bandKey(source, band)), t.query.untilMs);
+      }
+    }
 
     /* ★ THE MIDDLE LANE'S DAY: its pages' bill, and the judging of the posts it found first, counted
        before the store writes their lane (`LaneCapPolicy`). A count that fails is charged as if
@@ -1187,12 +1273,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.warn("could not count the middle lane's new posts; charging it for all of them", { err: errorText(e) });
       }
       await deps.middle.ledger.add('middle', now, laneUsd + laneJudgeUsd(fresh, cap));
-      deps.log.info('middle lane', { source, returned: items.length, new: fresh, pages, stop, fullPaging: rule.full, searchUsd: round(laneUsd), judgeUsd: round(laneJudgeUsd(fresh, cap)), spentBeforeUsd: round(laneSpent), capUsd: cap.dailyUsd });
+      deps.log.info('middle lane', { source, returned: items.length, new: fresh, pages, stop, languages: byLang, fullPaging: rule.full, searchUsd: round(laneUsd), judgeUsd: round(laneJudgeUsd(fresh, cap)), spentBeforeUsd: round(laneSpent), capUsd: cap.dailyUsd });
     }
     /* ★ A SEARCH READING PAST SHORT PAGES: its pages' bill, in its own day (`feed.paging`). */
     if (rule.ledger !== null) {
       await deps.ledger?.add(rule.ledger.lane, now, laneUsd);
-      deps.log.info('paged search', { source, search: key, returned: items.length, pages, stop, searchUsd: round(laneUsd), spentBeforeUsd: round(rule.ledger.spentUsd), capUsd: rule.ledger.dailyUsd });
+      deps.log.info('paged search', { source, search: key, returned: items.length, pages, stop, languages: byLang, searchUsd: round(laneUsd), spentBeforeUsd: round(rule.ledger.spentUsd), capUsd: rule.ledger.dailyUsd });
+    } else if (!middle && threads.length > 1) {
+      deps.log.info('search by language', { source, lane: lane ?? 'term', band, late, returned: items.length, pages, stop, languages: byLang });
     }
 
     let stored: number | null = null;

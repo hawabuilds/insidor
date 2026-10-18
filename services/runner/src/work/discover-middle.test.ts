@@ -28,8 +28,9 @@ const PAGE = 20;
 const USD_PER_POST = 0.00015;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 /* The middle lane on, the fresh bands as live; the numbers asserted are read from the policy. */
-const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, middle: { ...DEFAULT_POLICY.feed.middle, on: true } } };
-const OFF: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, middle: { ...DEFAULT_POLICY.feed.middle, on: false } } };
+/* One language: these tests are about lanes and paging. Asking each language as its own search is work/discover-languages.test.ts. */
+const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], middle: { ...DEFAULT_POLICY.feed.middle, on: true } } };
+const OFF: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], middle: { ...DEFAULT_POLICY.feed.middle, on: false } } };
 const CAP = ON.feed.middle.cap;
 
 function item(i: number): Item {
