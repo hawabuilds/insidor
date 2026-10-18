@@ -2279,8 +2279,13 @@ export interface RisingPolicy {
    * judge passed or the owner's call on a post has landed since the last frame began. When one has, and the answers have
    * been quiet for `settleMs` (a pass files its kind answers after its yeses), it runs a quick frame
    * (services/project quick-frame.ts): only the changed posts are weighed, and For You is the last
-   * frame with them added, re-placed or taken off. Never while another frame runs (the jobs run one
-   * at a time), never within `minGapMs` of the last quick one; the full frame keeps its own minute.
+   * frame with them added, re-placed or taken off. Beside a full frame that is still running (each
+   * takes For You's write lock only to write, for-you-lock.ts), never within `minGapMs` of the last
+   * quick one; the full frame keeps its own minute.
+   * ★ `kindsInSkipsWait` (the owner, 2026-10-18: "run a quick feed update straight after an
+   * instant-path answer, with no 10-second wait"): when every yes filed since the last quick frame
+   * already has its kind answer — the instant coin path asks both in one pass — there is nothing to
+   * wait for, and the frame runs at the next check with no settle and no gap.
    * Off: For You moves only with the full frame.
    */
   readonly quickFrame: {
@@ -2288,6 +2293,7 @@ export interface RisingPolicy {
     readonly checkEveryMs: number;
     readonly minGapMs: number;
     readonly settleMs: number;
+    readonly kindsInSkipsWait: boolean;
   };
 }
 
@@ -3343,11 +3349,22 @@ export interface FindersPolicy {
      * by a lane and never answered, is judged at once — the post judge, its kind question and the
      * not-a-meme hold, as the scoring pass would — instead of waiting for the next discovery pass.
      * At most `perMinute` posts a minute. Off: such a post waits for the scoring pass.
+     *
+     * ★ A VIDEO WHOSE FRAME CANNOT BE READ YET (the owner, 2026-10-18: "retry at most 5 times over 10
+     * minutes. Then park them and try again when their video frame is readable. They must not use up
+     * the instant path's 6 a minute"). A video post the judge could not look at comes back unanswered
+     * and was asked again every pass: 244 times in a day, taking the minute's places from posts it
+     * could answer. Now such a post is asked at most `frameTries` times, spread evenly over
+     * `frameTriesOverMs`, and a post waiting for its next try takes no place; after the last it is
+     * parked until its frame is a different picture (a later read of the post brought a new one),
+     * then tried afresh. The scoring pass still asks it as before.
      */
     readonly instant: {
       readonly on: boolean;
       readonly perMinute: number;
       readonly lookbackMs: number;
+      readonly frameTries: number;
+      readonly frameTriesOverMs: number;
     };
   };
   /**
@@ -4905,7 +4922,7 @@ const POLICY_V1: Policy = {
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and
        311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
        hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
-    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000 },
+    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true },
   },
 
   rank: {
@@ -5179,7 +5196,7 @@ const POLICY_V1: Policy = {
       /* 2026-10-16, three days: 144 posts `rising.coinLinked` passes had no answer yet when the link
          was recorded, about 50 a day, a few in the busiest minute; at the open judge's $0.00017 a
          post, under a cent a day with the kind question. */
-      instant: { on: true, perMinute: 6, lookbackMs: 600_000 },
+      instant: { on: true, perMinute: 6, lookbackMs: 600_000, frameTries: 5, frameTriesOverMs: 600_000 },
     },
     reposts: {
       /* On from 2026-10-15: over 3.7 days of held X posts climbing fast, 22,774 short links led to

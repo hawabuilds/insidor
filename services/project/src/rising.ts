@@ -103,6 +103,7 @@ import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCo
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
+import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
 import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
@@ -602,6 +603,24 @@ export function forYouOrder(a: { readonly at: number; readonly id: string }, b: 
 }
 
 /**
+ * A For You list with the changed posts put in, re-placed or taken off (before the variety rule and
+ * the cut): the cards of `showing` that did not change as they were, the changed ones as `built` has
+ * them, newest first by `at`. The quick frame merges its newly built posts into the committed list;
+ * the full frame merges the committed cards of posts that changed since it began into its own.
+ */
+export function mergeForYou<P extends { readonly id: string }>(
+  showing: readonly P[],
+  changed: ReadonlySet<string>,
+  built: readonly P[],
+  at: (post: P) => number,
+): P[] {
+  const kept = showing.filter((p) => !changed.has(p.id));
+  const keptIds = new Set(kept.map((p) => p.id));
+  const all = [...kept, ...built.filter((p) => !keptIds.has(p.id))];
+  return all.sort((a, b) => forYouOrder({ at: at(a), id: a.id }, { at: at(b), id: b.id }));
+}
+
+/**
  * Each post's newest split crypto read (0064; rows from before the split are not read). Empty when
  * the table cannot be read: every post then passes or not by the judge alone, as before.
  */
@@ -637,6 +656,24 @@ async function loadCryptoReads(db: Db, itemIds: readonly string[]): Promise<Read
  */
 export function underScoreBar(score: number | null, bar: number | null, ownerCall: OwnerPostCall | null): boolean {
   return bar !== null && score !== null && score < bar && ownerCall !== 'meme';
+}
+
+/**
+ * ★ THE COIN THAT BROUGHT THE POST IN IS ON ITS LIST (the owner, 2026-10-18: "show the coin that brought
+ * the post in: put it in the card's coin list, not as 'Links this post'"). A post For You takes on a
+ * coin's word (`coinVouches`) lists that first coin among its coins — "See N coins", the post sheet's
+ * "All N coins" — as one more listed coin: added after the weighing, so it is never the card's
+ * proven coin and carries none of the weighing's facts, "Links this post" among them. Since
+ * 2026-10-16 the coins whose metadata names a post are not weighed (Policy.postCoin.linkedCandidates),
+ * and six of seven coin-path cards did not list the coin that put them there. A coin the owner called
+ * wrong on the post stays off; a coin already listed or proven is left where it is; a post whose
+ * search found nothing, or has not finished, lists this one coin.
+ */
+export function withVouchingCoin(lookup: PostLookup | undefined, address: string, check: CoinCheck | undefined): PostLookup | undefined {
+  if (check?.none === true || check?.wrong.has(address) === true) return lookup;
+  if (lookup === undefined || !('coins' in lookup)) return { coins: [address], more: false };
+  if (lookup.coins.includes(address) || (lookup.match?.kind === 'matched' && lookup.match.coin.address === address)) return lookup;
+  return { ...lookup, coins: [address, ...lookup.coins] };
 }
 
 /** Whether the first coin naming a post puts it past For You's view bar (core `coinVouches`); no coin, no. */
@@ -690,7 +727,14 @@ export async function buildRising(
   const stories = await loadStoryCoins(db, rowIds, calls, policy);
   const checks = coinChecks(rowIds, calls, stories);
   const searched = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));
-  const lookups = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
+  const weighed = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
+  /* ★ THE COIN THAT BROUGHT THE POST IN, ON ITS LIST (`withVouchingCoin`), after the weighing so it is listed and never proven. */
+  const lookups = new Map(weighed);
+  for (const [id, facts] of vouch) {
+    if (!coinVouchesFor(facts, policy) || facts.firstCoinAddress === null || facts.firstCoinAddress === undefined) continue;
+    const listed = withVouchingCoin(lookups.get(id), facts.firstCoinAddress, checks.get(id));
+    if (listed !== undefined) lookups.set(id, listed);
+  }
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
   /* The order model: the latest applied fit, and crypto attention only when the fit weighs it. */
   const scores = new PgScoreModelRepo(db);
@@ -921,7 +965,14 @@ async function withMatches(
   return withPlausibleLists(db, out, weighed, policy, nowMs);
 }
 
-/** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
+/**
+ * Write one feed's frame: the view row first, then its rows, in the caller's transaction.
+ *
+ * ★ THE ROWS IN ONE STATEMENT. They were written one insert each: fifty round trips for For You, a
+ * hundred for both feeds, and from the project service to the database a round trip costs a large
+ * part of a second — a quick frame that wrote took 18.5 s at the median where one that did not took
+ * 5 s. A post listed twice keeps its last place, as the one-by-one writes left it.
+ */
 export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly WireRisingPost[]): Promise<number> {
   const current = await db.query<{ tick: string }>(`select tick::text as tick from public.rising_view where feed_id = $1`, [feedId]);
   const tick = current[0] === undefined ? 1 : Number(current[0].tick) + 1;
@@ -934,11 +985,14 @@ export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly Wi
     feedId,
     posts.map((post) => post.id),
   ]);
-  for (const [position, post] of posts.entries()) {
+  const last = new Map(posts.map((post, position) => [post.id, { post, position }] as const));
+  if (last.size > 0) {
+    const rows = [...last.values()];
     await db.query(
-      `insert into public.rising_row (feed_id, item_id, position, payload) values ($1, $2, $3, $4::jsonb)
+      `insert into public.rising_row (feed_id, item_id, position, payload)
+       select $1, r.id, r.position, r.payload from unnest($2::text[], $3::int[], $4::jsonb[]) as r(id, position, payload)
        on conflict (feed_id, item_id) do update set position = excluded.position, payload = excluded.payload`,
-      [feedId, post.id, position, JSON.stringify(post)],
+      [feedId, rows.map((r) => r.post.id), rows.map((r) => r.position), rows.map((r) => JSON.stringify(r.post))],
     );
   }
   return posts.length;
@@ -946,6 +1000,33 @@ export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly Wi
 
 /** A held post's rejection detail: `kind:TRAGEDY`, `kind:AD` and so on; null for any other reason. */
 export const kindDetail = (kind: HeldKind | undefined): string | null => (kind === undefined ? null : `kind:${kind}`);
+
+/**
+ * ★ A NEWER ANSWER WINS (for-you-lock.ts, rule 2). For each For You post that changed since this frame
+ * began, the card For You shows now — the quick frame's, or none — instead of this frame's older one;
+ * For You re-ordered, held to the variety rule and cut as a frame's list is. `deferred` are the posts
+ * whose same-name list this frame must not rewrite. Nothing changed: the frame as built.
+ */
+export async function withNewerCards(db: Db, frame: RisingFrame, began: QuickCursor, nowMs: Millis, policy = DEFAULT_POLICY): Promise<{ readonly frame: RisingFrame; readonly deferred: readonly string[] }> {
+  const changed = new Set(await changedPosts(db, began));
+  if (changed.size === 0) return { frame, deferred: [] };
+  const committed = (await db.query<{ payload: WireRisingPost }>(
+    `select payload from public.rising_row where feed_id = 'fyp' and item_id = any($1::text[]) order by position`,
+    [[...changed]],
+  )).map((r) => r.payload);
+  const touched = frame.fyp.some((p) => changed.has(p.id)) || committed.length > 0;
+  if (!touched) return { frame, deferred: [] };
+  const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
+  const ids = [...new Set([...frame.fyp.map((p) => p.id), ...committed.map((p) => p.id)])];
+  const rows = await loadCandidates(db, sinceMs, ids, ids);
+  const rowAt = new Map(rows.map((r) => [r.item_id, new Date(r.posted_at ?? r.first_seen_at).getTime()] as const));
+  const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
+  const cards = mergeForYou(frame.fyp, changed, committed, at).map((post) => ({ at: at(post), post }));
+  const fyp = (policy.rising.varietyOn ? await varied(db, cards, rows, policy) : cards).slice(0, policy.rising.maxRows).map((c) => c.post);
+  const deferred = committed.map((p) => p.id);
+  const sameName = new Map([...frame.sameName].filter(([id]) => !deferred.includes(id)));
+  return { frame: { ...frame, fyp, sameName }, deferred };
+}
 
 /** Both feeds, built and written: what one projection run does. `main.ts` and the e2e test call this. */
 export async function projectRisingFeeds(
@@ -956,9 +1037,15 @@ export async function projectRisingFeeds(
   policy = DEFAULT_POLICY,
   answers: AnswerPolicies = onePolicy(policy),
 ): Promise<number> {
+  /* ★ WHERE THIS FRAME BEGAN, read before any post (for-you-lock.ts): a post that changes after it is
+     the quick frame's, which may already have placed it while this frame was building. */
+  const began = await frameCursor(db);
   /* The feeds' members for good (feed-members.ts, 0075); null before it is applied. */
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
-  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership, answers);
+  const built = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership, answers);
+  /* ★ Built; now the one right to write For You, and For You as committed under it. */
+  await lockForYou(db);
+  const { frame, deferred } = await withNewerCards(db, built, began, nowMs, policy);
   /* ★ WHAT LEFT, AND WHY. A post that was on a feed and is not now is recorded with the check it
      failed — kept as a "no" example, never deleted. A post that only aged out of the window is
      not a rejection and has no reason here, so it is not recorded. */
@@ -987,7 +1074,8 @@ export async function projectRisingFeeds(
   /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
   const projected = new Set(frame.members.map((p) => p.id));
   const unrefreshed = membership === null ? [] : [...membership.all].filter((id) => !projected.has(id));
-  await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence, unrefreshed);
+  /* A post the quick frame placed since this frame began keeps the list the quick frame wrote: its card's count is that list's length. */
+  await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence, [...unrefreshed, ...deferred]);
   /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */
   await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
   const written = (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
