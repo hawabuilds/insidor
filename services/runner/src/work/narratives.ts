@@ -376,6 +376,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const touchedIds = [...kept.grown.keys()];
     const storedOf = new Map((await deps.repo.byIds(touchedIds)).map((s) => [s.id, s] as const));
     const atOf = (m: string) => byId.get(m)?.atMs ?? 0;
+    const accountsOf = (members: readonly string[]) => new Set(members.map((m) => byId.get(m)?.authorKey ?? `post:${m}`)).size;
     const hideOf = (id: string, members: readonly string[]) => hiddenByOwner(id, members, calls, p);
     const narratives: NarrativePass['narratives'][number][] = [];
     for (const [id, added] of kept.grown) {
@@ -384,12 +385,14 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       const own = s.members.filter((m) => !(s.early ?? []).includes(m));
       const members = [...own, ...added];
       const newest = Math.max(s.newestPostAtMs ?? 0, ...added.map(atOf));
-      /* ★ Once shown, shown: only the owner's "Not a narrative" takes it off. */
-      const shown = !hideOf(id, members) && (s.shown || narrativeShown(members.length, false, false, p) === 'shown');
+      /* ★ Once shown, shown: only the owner's "Not a narrative" takes it off. (The projector still
+         lists it only with `minAccounts` accounts.) Posts outside the window count as their own account
+         here; the projector, which reads every post's account, decides. */
+      const shown = !hideOf(id, members) && (s.shown || narrativeShown(members.length, false, false, p, accountsOf(members)) === 'shown');
       narratives.push({ id, members, added, anchor: s.anchor, newestPostAtMs: newest > 0 ? newest : null, shown, changed: true });
     }
     for (const c of kept.created) {
-      const shown = narrativeShown(c.members.length, c.members.length === 1 && single.has(c.members[0] ?? ''), hideOf(c.id, c.members), p) === 'shown';
+      const shown = narrativeShown(c.members.length, c.members.length === 1 && single.has(c.members[0] ?? ''), hideOf(c.id, c.members), p, accountsOf(c.members)) === 'shown';
       const newest = Math.max(...c.members.map(atOf));
       narratives.push({ id: c.id, members: c.members, added: c.members, anchor: c.members[0] ?? '', newestPostAtMs: Number.isFinite(newest) && newest > 0 ? newest : null, shown, changed: true });
     }

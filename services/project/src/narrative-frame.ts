@@ -14,7 +14,9 @@
  *              he says so): the bar decides which posts join a narrative, not which stay. On 16-18
  *              Oct 46 of the 208 narratives the old regroup dropped went because their first post
  *              no longer passed the bar of the day
- *   the rule   two good posts, or the one post the runner found huge and climbing; the owner's
+ *   the rule   two good posts from two accounts (`minPosts`, `minAccounts`; the one post the
+ *              runner found huge and climbing only while `single.on`); under it the narrative is
+ *              kept but its page, its posts' tags and its search entry go until it grows; the owner's
  *              "Not a narrative" hides it, and any narrative made of its posts, until it has
  *              `minPosts` good posts he never saw in it (core `hiddenByOwner`)
  *   the coin   ★ FROM THE POSTS' OWN CARDS, so there is one truth: the owner's call on the
@@ -142,7 +144,11 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
     const listed = n.members.filter((m) => good(byId.get(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
     const single = n.members.length === 1 && n.shown;
-    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy) !== 'shown') {
+    /* ★ Two accounts at least (the owner, 2026-10-18): one account's two posts are not a narrative; a
+       post whose account is not known counts as its own. Under the rule its page goes (below) and it
+       is kept, listed again the frame it grows. */
+    const accounts = new Set(listed.map((m) => byId.get(m)?.authorKey ?? `post:${m}`)).size;
+    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy, accounts) !== 'shown') {
       dropped.push(n.id);
       return null;
     }

@@ -655,7 +655,7 @@ export function hugeAndClimbing(reach: number | null, perMinute: number | null, 
 }
 
 /** Why a group is or is not shown as a narrative. */
-export type NarrativeShown = 'shown' | 'too_few_posts' | 'hidden_by_owner';
+export type NarrativeShown = 'shown' | 'too_few_posts' | 'too_few_accounts' | 'hidden_by_owner';
 
 /**
  * ★ "NOT A NARRATIVE" STAYS SAID. A hide applies to the narrative it was said on and to any
@@ -679,15 +679,18 @@ export function hiddenByOwner(narrativeId: string, members: readonly string[], c
 }
 
 /**
- * ★ A NARRATIVE NEEDS `minPosts` GOOD POSTS, OR ONE POST THAT IS HUGE AND CLIMBING. Otherwise it
- * is just a post, and For You already shows posts. `goodPosts` are the posts still good NOW (the
- * projector re-reads their standing: an owner's "Not a meme" since the pass takes a post out at
- * once); `hidden` is the owner's "Not a narrative" as `hiddenByOwner` holds it.
+ * ★ A NARRATIVE NEEDS `minPosts` GOOD POSTS FROM `minAccounts` ACCOUNTS (the owner, 2026-10-18).
+ * Otherwise it is just a post — or one account posting it twice — and For You already shows posts.
+ * The one post that is huge and climbing counts only while `single.on` (off since that day).
+ * `goodPosts` are the posts still good NOW (the projector re-reads their standing: an owner's "Not
+ * a meme" since the pass takes a post out at once), `accounts` how many accounts posted them (a
+ * caller that cannot tell passes `goodPosts`, and the projector, which can, holds it to the rule);
+ * `hidden` is the owner's "Not a narrative" as `hiddenByOwner` holds it.
  */
-export function narrativeShown(goodPosts: number, single: boolean, hidden: boolean, p: Policy): NarrativeShown {
+export function narrativeShown(goodPosts: number, single: boolean, hidden: boolean, p: Policy, accounts: number = goodPosts): NarrativeShown {
   if (hidden) return 'hidden_by_owner';
-  if (goodPosts >= p.narrative.minPosts) return 'shown';
-  return goodPosts === 1 && single ? 'shown' : 'too_few_posts';
+  if (goodPosts >= p.narrative.minPosts) return accounts >= p.narrative.minAccounts ? 'shown' : 'too_few_accounts';
+  return goodPosts === 1 && single && p.narrative.single.on ? 'shown' : 'too_few_posts';
 }
 
 /* ── the coin ─────────────────────────────────────────────────────────── */

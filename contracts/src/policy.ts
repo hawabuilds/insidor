@@ -3382,7 +3382,16 @@ export interface NarrativePolicy {
    */
   readonly mergeMeaning: number;
   readonly minPosts: number;
+  /**
+   * ★ AND FROM THIS MANY ACCOUNTS (the owner, 2026-10-18: "only shown once it has 2 posts from 2
+   * different accounts"). One account posting the same thing twice is a post, not a narrative. A
+   * narrative under it is kept — narratives are permanent — but not listed, paged or tagged on a
+   * post until it grows (services/project narrative-frame.ts).
+   */
+  readonly minAccounts: number;
   readonly single: {
+    /** Off from 2026-10-18 (the owner's two posts from two accounts): a single post is no narrative however big. */
+    readonly on: boolean;
     readonly minReach: number;
     readonly minPerMinute: number;
     readonly growthWindowMs: number;
@@ -5601,7 +5610,8 @@ const POLICY_V1: Policy = {
        big group's average drifts toward the feed's, and GTA 6 and the Roadster read 0.56 that way. */
     mergeMeaning: 0.55,
     minPosts: 2,
-    single: { minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
+    minAccounts: 2,
+    single: { on: false, minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
     /* Five minutes over the day, 288 numbers a page: the phone's finest chart interval is 5m, and it
        adds these up into 15m, 1h, 4h and 1D. */
     /* "All" in half-hours: two days at most is 96 numbers a page. */
