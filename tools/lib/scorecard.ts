@@ -19,6 +19,11 @@
  *     2026-10-14). So (a) labelled only, (b) every untapped post counted memeable (a ceiling: what
  *     he did not tap), and (c) the floor: a post counted memeable only on evidence — his meme
  *     label, a gold sheet, his missed list, or a coin naming it — and never against his "not".
+ *     And (d), from 2026-10-18, his soft yes: of the posts he SAW (on his screen for two seconds, or
+ *     opened; store owner-seen.ts), "seen and kept" counted memeable with his explicit meme calls,
+ *     against his "Not a meme"; a post still inside its 24 hours is out of both sides. A post he
+ *     never scrolled to is in none of them. Row 7 counts, per day of first sight, how many he saw
+ *     and kept against how many he tapped "Not a meme".
  *   - 24 h views: posts stop being read long before a day is up, so a reading within
  *     `NEAR_24H_MS` of posted + 24 h is rare. Without one the post's highest reading stands in and
  *     is counted as such ("final is the last reading"); it is smaller than the true day's views,
@@ -44,8 +49,9 @@
  * new line is stated beside the number it moves.
  */
 
+import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { launchClock } from '../../services/read/src/post-sheet.ts';
-import type { Db } from '../../store/src/index.ts';
+import { PgOwnerSeenRepo, type Db, type SeenOutcome, type SeenRow } from '../../store/src/index.ts';
 
 /**
  * THE VIRAL LINE, by source, in the source's own views counter (X impressions, TikTok plays).
@@ -191,6 +197,8 @@ export interface FypRow {
   readonly top: Reading;
   readonly firstCoinAtMs: number | null;
   readonly firstCoinClock: 'chain' | 'within' | 'unknown' | null;
+  /** What the owner's screen says of it (store owner-seen.ts); null when he never saw it. Absent: not read. */
+  readonly seen?: SeenOutcome | null;
 }
 
 export interface CoverRow {
@@ -273,7 +281,9 @@ export function rightTally(right: readonly RightRow[], rival: (r: RightRow) => b
 export interface Scorecard {
   readonly label: string;
   readonly fyp: number;
-  readonly memeable: { readonly labelledMeme: number; readonly labelledNot: number; readonly evidence: number };
+  readonly memeable: { readonly labelledMeme: number; readonly labelledNot: number; readonly evidence: number; readonly seen: { readonly kept: number; readonly meme: number; readonly not: number; readonly waiting: number } };
+  /** By day of first sight: posts the owner saw, kept, tapped "Not a meme" on, or still inside the window. */
+  readonly screen: { readonly seen: number; readonly kept: number; readonly not: number; readonly notInWindow: number; readonly meme: number; readonly waiting: number };
   readonly earliness: { readonly measured: number; readonly at24: number; readonly noReadingBefore: number; readonly medianRatio: number | null; readonly under20: number };
   readonly coverage: { readonly viral: number; readonly shownEarly: number; readonly shownLate: number; readonly byWhy: Readonly<Record<string, number>> };
   readonly beforeCoin: { readonly coined: number; readonly coinedFirst: number; readonly uncoined: number; readonly unknownClock: number; readonly medianAheadMin: number | null };
@@ -289,7 +299,7 @@ const asIn = <T>(xs: readonly T[], at: (x: T) => number | null, from: number, to
 });
 
 /** One column of the table: the rows already cut to the window by their own clock. */
-export function scorecard(label: string, fyp: readonly FypRow[], cover: readonly CoverRow[], speed: readonly SpeedRow[], right: readonly RightRow[], lines: Readonly<Record<string, number>> = VIRAL_LINE): Scorecard {
+export function scorecard(label: string, fyp: readonly FypRow[], cover: readonly CoverRow[], speed: readonly SpeedRow[], right: readonly RightRow[], lines: Readonly<Record<string, number>> = VIRAL_LINE, screen: readonly SeenRow[] = []): Scorecard {
   const ratios: number[] = [];
   let at24 = 0;
   let noReadingBefore = 0;
@@ -315,7 +325,20 @@ export function scorecard(label: string, fyp: readonly FypRow[], cover: readonly
   return {
     label,
     fyp: fyp.length,
-    memeable: { labelledMeme: fyp.filter((r) => r.label === 'meme').length, labelledNot: fyp.filter((r) => r.label === 'not').length, evidence: fyp.filter((r) => r.label !== 'not' && (r.label === 'meme' || r.evidence)).length },
+    memeable: {
+      labelledMeme: fyp.filter((r) => r.label === 'meme').length,
+      labelledNot: fyp.filter((r) => r.label === 'not').length,
+      evidence: fyp.filter((r) => r.label !== 'not' && (r.label === 'meme' || r.evidence)).length,
+      seen: { kept: fyp.filter((r) => r.seen === 'kept').length, meme: fyp.filter((r) => r.seen === 'meme').length, not: fyp.filter((r) => r.seen === 'not').length, waiting: fyp.filter((r) => r.seen === 'waiting').length },
+    },
+    screen: {
+      seen: screen.length,
+      kept: screen.filter((r) => r.outcome === 'kept').length,
+      not: screen.filter((r) => r.outcome === 'not').length,
+      notInWindow: screen.filter((r) => r.notInWindow).length,
+      meme: screen.filter((r) => r.outcome === 'meme').length,
+      waiting: screen.filter((r) => r.outcome === 'waiting').length,
+    },
     earliness: { measured: ratios.length, at24, noReadingBefore, medianRatio: median(ratios), under20: ratios.filter((x) => x < EARLY_SHARE).length },
     coverage: { viral: viral.length, shownEarly: early.length, shownLate: viral.filter((r) => r.shownAtMs !== null).length - early.length, byWhy },
     beforeCoin: { coined: coined.length, coinedFirst: coined.filter((r) => r.firstCoinClock !== 'unknown' && (r.firstCoinAtMs ?? 0) > r.shownAtMs).length, uncoined: fyp.length - coined.length, unknownClock: coined.length - ahead.length, medianAheadMin: median(ahead) },
@@ -344,20 +367,25 @@ export interface ScorecardRows {
   readonly cover: readonly CoverRow[];
   readonly speed: readonly SpeedRow[];
   readonly right: readonly RightRow[];
+  /** The posts the owner first saw in the window (store owner-seen.ts); empty before 0098. */
+  readonly screen: readonly SeenRow[];
 }
 
 /** Every row the window needs, read once; `scorecards` cuts them by day. */
-export async function scorecardRows(db: Db, since: Date, until: Date, lines: Readonly<Record<string, number>> = VIRAL_LINE): Promise<ScorecardRows> {
+export async function scorecardRows(db: Db, since: Date, until: Date, lines: Readonly<Record<string, number>> = VIRAL_LINE, keepWindowMs: number = DEFAULT_POLICY.learning.seenKept.keepWindowMs): Promise<ScorecardRows> {
   type F = { item_id: string; first_shown_at: Date; posted_at: Date | null; label: 'meme' | 'not' | null; listed: boolean; at_shown: (string | number)[] | null; before24: (string | number)[] | null; after24: (string | number)[] | null; top: (string | number)[] | null; first_coin_at: Date | null; first_coin_source: string | null; first_coin_bound: number | null };
   type C = { item_id: string; source: string; posted_at: Date; why: string[]; first_shown_at: Date | null; top: number | null; crossed_at: Date | null };
   type S = { item_id: string; address: string; minted_at: Date; minted_at_source: string | null; minted_at_bound_s: number | null; found_at: Date; seen_at: Date | null };
   type R = { item_id: string; mint: string; seen_at: Date; address: string; cap_1h: number | null; names_post: boolean };
-  const [f, c, s, r] = await Promise.all([
+  const [f, c, s, r, screen] = await Promise.all([
     db.query<F>(FYP_ROWS, [since, until]),
     db.query<C>(COVER_ROWS, [since, until, EARLY_SHARE, lines['x'] ?? null, lines['tiktok'] ?? null]),
     db.query<S>(SPEED_ROWS, [since, until]),
     db.query<R>(RIGHT_ROWS, [since, until, SAME_NAME_MS, CAP_WINDOW_MS, CAP_AT_MS]),
+    /* A post first shown in the window is first seen after it was shown: the same window holds both. */
+    new PgOwnerSeenRepo(db).seen({ since, until, keepWindowMs, now: until }),
   ]);
+  const seenOf = new Map(screen.map((x) => [x.itemId, x.outcome] as const));
   return {
     fyp: f.map((x) => ({
       itemId: x.item_id,
@@ -371,21 +399,23 @@ export async function scorecardRows(db: Db, since: Date, until: Date, lines: Rea
       top: reading(x.top),
       firstCoinAtMs: ms(x.first_coin_at),
       firstCoinClock: x.first_coin_at === null ? null : clockOf(x.first_coin_source, x.first_coin_bound),
+      seen: seenOf.get(x.item_id) ?? null,
     })),
     cover: c.map((x) => ({ itemId: x.item_id, source: x.source, postedAtMs: new Date(x.posted_at).getTime(), why: x.why, shownAtMs: ms(x.first_shown_at), top: x.top === null ? null : Number(x.top), crossedAtMs: ms(x.crossed_at) })),
     speed: s.map((x) => ({ itemId: x.item_id, mintedAtMs: new Date(x.minted_at).getTime(), clock: clockOf(x.minted_at_source, x.minted_at_bound_s), foundAtMs: new Date(x.found_at).getTime(), seenAtMs: ms(x.seen_at) })),
     right: r.map((x) => ({ itemId: x.item_id, mint: x.mint, seenAtMs: new Date(x.seen_at).getTime(), address: x.address, cap1h: x.cap_1h === null ? null : Number(x.cap_1h), namesPost: x.names_post })),
+    screen,
   };
 }
 
 /** The whole window, then each UTC day in it (oldest first), each number on its own clock. */
 export function scorecards(rows: ScorecardRows, since: Date, until: Date): readonly Scorecard[] {
-  const all = scorecard('all', rows.fyp, rows.cover, rows.speed, rows.right);
+  const all = scorecard('all', rows.fyp, rows.cover, rows.speed, rows.right, VIRAL_LINE, rows.screen);
   const days: Scorecard[] = [];
   for (let d = Math.floor(since.getTime() / DAY_MS) * DAY_MS; d < until.getTime(); d += DAY_MS) {
     const from = Math.max(d, since.getTime());
     const to = Math.min(d + DAY_MS, until.getTime());
-    days.push(scorecard(new Date(d).toISOString().slice(0, 10), asIn(rows.fyp, (x) => x.shownAtMs, from, to), asIn(rows.cover, (x) => x.postedAtMs, from, to), asIn(rows.speed, (x) => x.mintedAtMs, from, to), asIn(rows.right, (x) => x.seenAtMs, from, to)));
+    days.push(scorecard(new Date(d).toISOString().slice(0, 10), asIn(rows.fyp, (x) => x.shownAtMs, from, to), asIn(rows.cover, (x) => x.postedAtMs, from, to), asIn(rows.speed, (x) => x.mintedAtMs, from, to), asIn(rows.right, (x) => x.seenAtMs, from, to), VIRAL_LINE, asIn(rows.screen, (x) => x.firstSeenAtMs, from, to)));
   }
   return [...days, all];
 }
@@ -404,6 +434,7 @@ export function scorecardTable(cards: readonly Scorecard[], lines: Readonly<Reco
     ['1a memeable, labelled only', (c) => frac(c.memeable.labelledMeme, c.memeable.labelledMeme + c.memeable.labelledNot)],
     ['1b memeable, untapped = memeable', (c) => frac(c.fyp - c.memeable.labelledNot, c.fyp)],
     ['1c memeable, on evidence only', (c) => frac(c.memeable.evidence, c.fyp)],
+    ['1d memeable, seen and kept = yes', (c) => frac(c.memeable.seen.kept + c.memeable.seen.meme, c.memeable.seen.kept + c.memeable.seen.meme + c.memeable.seen.not)],
     ['2  median views shown / at 24h', (c) => (c.earliness.medianRatio === null ? '— (no readings)' : `${Math.round(100 * c.earliness.medianRatio)}% of final`)],
     ['2  shown under 20% of final', (c) => frac(c.earliness.under20, c.earliness.measured)],
     ['2  final read near 24h', (c) => frac(c.earliness.at24, c.earliness.measured)],
@@ -419,6 +450,7 @@ export function scorecardTable(cards: readonly Scorecard[], lines: Readonly<Reco
     ['6  right coin (biggest at +1h)', (c) => frac(c.right.alone + c.right.biggest, c.right.coins)],
     ['6  beaten / can\'t tell / alone', (c) => `${c.right.beaten} / ${c.right.cantTell} / ${c.right.alone}`],
     ['6  right, rivals naming the post', (c) => frac(c.rightNaming.alone + c.rightNaming.biggest, c.rightNaming.coins)],
+    ['7  seen: kept / Not a meme / waiting', (c) => (c.screen.seen === 0 ? '— (nothing seen yet)' : `${c.screen.kept} / ${c.screen.not} / ${c.screen.waiting} of ${c.screen.seen}`)],
   ];
   const width = Math.max(...rows.map((r) => r[0].length));
   const cols = cards.map((c) => [c.label, ...rows.map((r) => r[1](c))]);
@@ -430,6 +462,7 @@ export function scorecardTable(cards: readonly Scorecard[], lines: Readonly<Reco
     line('', cols.map((c) => c[0] ?? '')),
     ...rows.map((r, i) => line(r[0], cols.map((c) => c[i + 1] ?? ''))),
     `Viral line: X ${lines['x']?.toLocaleString('en-GB')} views, TikTok ${lines['tiktok']?.toLocaleString('en-GB')} plays (our own readings). Days are UTC: 1, 2, 4 by first shown; 3 by posted; 5 by launch; 6 by the coin's first sight on the line.`,
+    `1d and 7 count only posts on the owner's screen for 2 s or opened (0098): kept = no "Not a meme" in the 24 h after first sight and no other call of his; 1d by first shown, 7 by first seen; 1d counts his explicit meme calls with "kept", and "waiting" is still inside its 24 h.`,
     `Memeable for coverage: the owner's meme label, a gold sheet, his missed list or a coin naming the post, never his "not"; the viral ones by evidence: ${why || '—'}.`,
   ];
 }
