@@ -94,6 +94,7 @@ import {
   PgLabelEmbeddingRepo,
   PgPostEmbeddingRepo,
   PgJunkFilterRepo,
+  PgCoinModelRepo,
   PgNameExampleRepo,
   PgNameGuessRepo,
   PgTranslationRepo,
@@ -127,6 +128,7 @@ import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { narrativeGrouper, type NarrativeResult } from './work/narratives.ts';
+import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
@@ -211,6 +213,8 @@ export interface Runtime {
   readonly missedPosts: () => Promise<MissedResult>;
   /** The posts the judge passed, regrouped into narratives every couple of minutes. See work/narratives.ts. */
   readonly narratives: () => Promise<NarrativeResult>;
+  /** Each post the judge said no to, scored once by our own coin model (the safety net). See work/coin-model.ts. */
+  readonly coinModel: () => Promise<CoinModelResult>;
   /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
   readonly finders: {
     readonly coinLinks: () => Promise<CoinLinkResult>;
@@ -1588,6 +1592,18 @@ export async function withRuntime<T>(
             });
             return () => grouper.pass();
           })(),
+          /* ★ OUR OWN COIN MODEL (the owner, 2026-10-18): the posts the judge said no to, scored once
+             each on their facts at the answer, in its own loop; free, no paid call. Shadow until the
+             owner switches Policy.judge.coinModel.on. */
+          coinModel: () =>
+            scoreCoinModel({
+              repo: new PgCoinModelRepo(db),
+              vectors: new PgJunkFilterRepo(db),
+              policy,
+              mode: cfg.spend.kind,
+              log: log.child({ step: 'coin-model' }),
+              now: () => Date.now() as Millis,
+            }),
           refillPosts: async () => {
             const r = await refillPosts(
               {
