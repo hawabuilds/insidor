@@ -11,7 +11,7 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` hourly; the
+ * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` and the post slimming hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
  * minutes; and, when a judge's answer has landed, the quick For You frame) in three lanes — the full
  * frame, the quick frame, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
@@ -87,6 +87,10 @@ if (service in MAIN) {
     /* The namer's first day, watched (tools/name-watch.ts): coins it adds to feed cards, the owner's
        Wrong coin / No coin calls on them, and its veto if wrong coins go up. Free; database only. */
     { name: 'name-watch', everyMs: 600_000, args: ['tools/name-watch.ts', 'run'] },
+    /* Posts that never made For You, slimmed a week after we found them (tools/post-slim.ts,
+       Policy.slim): a minute or so a run, one short transaction per 500 posts. Says "off" and exits
+       while Policy.slim.on is false. */
+    { name: 'slim', everyMs: 3_600_000, args: ['tools/post-slim.ts', 'run'] },
   ];
   /* A quick frame that has not finished in this long is stopped: it is seconds of work, and a hung
      one would stop this lane until the service restarts (the health check watches the full frame). */
