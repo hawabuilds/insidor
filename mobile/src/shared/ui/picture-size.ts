@@ -13,8 +13,15 @@
 
 const PICTURE_HOST = 'pbs.twimg.com';
 const CARD_SIZE = '360x360';
+/** The host's next size down: for the small square pictures in lists (up to 80 points). */
+const SMALL_SIZE = '240x240';
+/** Boxes up to this many points take SMALL_SIZE: 240 pixels covers 80 points at three per point. */
+const SMALL_BOX_PT = 80;
 
-export function cardPictureUrl(url: string): string {
+/** The size a box of `box` points asks the host for. */
+export const sizeForBox = (box: number): string => (box <= SMALL_BOX_PT ? SMALL_SIZE : CARD_SIZE);
+
+export function cardPictureUrl(url: string, size: string = CARD_SIZE): string {
   let u: URL;
   try {
     u = new URL(url);
@@ -26,6 +33,6 @@ export function cardPictureUrl(url: string): string {
   if (m === null) return url;
   u.pathname = m[1] ?? u.pathname;
   u.searchParams.set('format', (m[2] ?? 'jpg').toLowerCase());
-  u.searchParams.set('name', CARD_SIZE);
+  u.searchParams.set('name', size);
   return u.toString();
 }

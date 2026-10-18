@@ -13,6 +13,10 @@ test('a post picture is asked for at the card size', () => {
   );
 });
 
+test('a small box asks for the host\'s smaller square', () => {
+  assert.equal(cardPictureUrl('https://pbs.twimg.com/media/HUkz.jpg', '240x240'), 'https://pbs.twimg.com/media/HUkz?format=jpg&name=240x240');
+});
+
 test('a link that names a size, another host, or no picture is left alone', () => {
   const sized = 'https://pbs.twimg.com/media/HUkz?format=jpg&name=small';
   assert.equal(cardPictureUrl(sized), sized);

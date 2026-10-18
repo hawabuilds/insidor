@@ -15,6 +15,7 @@ import { useState } from 'react';
 
 import type { Platform } from '../platform.ts';
 import { ImageIcon, PlayIcon } from './icons.tsx';
+import { cardPictureUrl, sizeForBox } from './picture-size.ts';
 import { PlatformBadge } from './PlatformMark.tsx';
 import styles from './ui.module.css';
 
@@ -45,12 +46,14 @@ export function Thumb({
   /** The picture is a still of a video: a play icon sits on it. */
   video?: boolean;
 }) {
-  const [failed, setFailed] = useState<string | null>(null);
-  const shown = url !== null && failed !== url ? url : null;
+  const [failed, setFailed] = useState<readonly string[]>([]);
+  /* The host's copy at the box's size first (picture-size.ts), the link as it came if that fails. */
+  const sources = url === null ? [] : [...new Set([cardPictureUrl(url, sizeForBox(Math.max(width, height))), url])];
+  const shown = sources.find((s) => !failed.includes(s)) ?? null;
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>
       {shown !== null ? (
-        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={shown} alt="" width={width} height={height} loading="lazy" decoding="async" onError={() => setFailed(shown)} />
+        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={shown} alt="" width={width} height={height} loading="lazy" decoding="async" onError={() => setFailed((f) => [...f, shown])} />
       ) : (
         <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }}>
           {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(Math.min(width, height) * 0.42)} />}
