@@ -71,6 +71,7 @@ import { GainChart, type ChartMarker } from './GainChart.tsx';
 import { firstWords, hm, lastGain, launchTime, plus, postSlots } from './gain-chart.ts';
 import { pctText } from './mc-change.ts';
 import { useMcChange } from './useMcChange.ts';
+import { useOpenedPost } from '../owner/useSeen.ts';
 import styles from './post-sheet.module.css';
 
 export interface PostSheetProps {
@@ -117,6 +118,7 @@ function mediaHeight(width: number | null, height: number | null): number {
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal));
   usePreloadCreate(postId); /* Create coin then opens on this post's own names, with nothing filling in. */
+  useOpenedPost(postId); /* The owner's opened posts (features/owner/useSeen.ts); nothing for anyone else. */
   /* Opening the sheet asks for a fresh view reading for its chart; a refusal or an outage changes nothing here. */
   useEffect(() => {
     askForReading(postId).catch(() => undefined);

@@ -52,6 +52,7 @@ import { Sheet } from '../../shared/ui/Sheet.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
+import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
@@ -157,8 +158,11 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   const visible = rest.slice(0, shownCount);
   const cards = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
   const end = useEndInView(() => setShownCount((n) => (n < rest.length ? n + PAGE : n)));
+  /* The owner's screen (features/owner/useSeen.ts): this page's posts in view for two seconds, the owner's sign-in only. */
+  const owner = useIsOwner();
+  const seen = useSeenOnScreen('narrative', owner);
   const row = (e: Evidence) => (
-    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} now={now} onOpen={setOpen} />
+    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} now={now} onOpen={setOpen} rowRef={owner ? seen(e.evidenceId) : undefined} />
   );
 
   return (
@@ -236,7 +240,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 }
 
 /** One post row: thumbnail with its site's badge, a line of text, handle and age, views and the last hour. */
-function PostRow({ e, story, card, now, onOpen }: { e: Evidence; story: Story; card: RisingPost | undefined; now: number; onOpen: (id: string) => void }) {
+function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: Story; card: RisingPost | undefined; now: number; onOpen: (id: string) => void; rowRef?: ((el: Element | null) => void) | undefined }) {
   const platform = platformOf(e.sourceLabel);
   const pv = story.postViews?.get(e.evidenceId) ?? null;
   const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
@@ -246,7 +250,7 @@ function PostRow({ e, story, card, now, onOpen }: { e: Evidence; story: Story; c
     else window.open(e.permalink, '_blank', 'noopener');
   };
   return (
-    <button type="button" className={styles['row']} onClick={tap}>
+    <button type="button" className={styles['row']} onClick={tap} ref={rowRef}>
       <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} />
       <span className={styles['rowText']}>
         <span className={styles['rowLine']}>{e.excerpt}</span>

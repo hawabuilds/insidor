@@ -82,6 +82,8 @@ export { PgJobFileRepo } from './repo/job-files.ts';
 export { PgCoinedPictureRepo } from './repo/coined-pictures.ts';
 export { LABEL_RANK, PgLabelEmbeddingRepo, mergeLabels } from './repo/label-embeddings.ts';
 export { CURRENT_COIN_CALLS, PgOwnerCoinCallRepo } from './repo/owner-coin-calls.ts';
+export { PgOwnerSeenRepo, seenOutcome } from './repo/owner-seen.ts';
+export type { SeenFacts, SeenOutcome, SeenRow } from './repo/owner-seen.ts';
 export type { StoredCoinCall } from './repo/owner-coin-calls.ts';
 export { PgPostEmbeddingRepo } from './repo/post-embeddings.ts';
 export { PgJunkFilterRepo } from './repo/junk-filter.ts';

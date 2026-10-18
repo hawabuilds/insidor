@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { animalOrObject, atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, junkBRose, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
+import { animalOrObject, atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, keptYes, gate, goalsText, isExample, latestSlot, junkBRose, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds, checkSplit } from './owner-split.ts';
 
 const L = DEFAULT_POLICY.learning;
@@ -405,4 +405,25 @@ test("the owner's numbers come from one grading as live decides; the line says a
   assert.deepEqual(s.hand, { passed: 2, tested: 4 });
   assert.deepEqual(s.junkB, { passed: 1, tested: 3 });
   assert.match(ownerLine(s, s, 0.4567), /untaught misses caught 0\/2 \(live 0\/2\), fixed test set 1\/3 .*junk \(a\) Not a meme taps 50\.0% 1\/2 .*junk \(b\) untapped sample 33\.3% 1\/3 .*cost \$0\.457/);
+});
+
+test("★ the owner's soft yes is taught last: never displacing his calls or missed posts, after the coined posts unless the policy says before, never tested", () => {
+  const kept = keptYes([{ itemId: 'x:s1', text: 'left on the feed', imageUri: null, firstSeenAt: 2 }, { itemId: 'x:s2', text: 'also left', imageUri: null, firstSeenAt: 1 }, { itemId: 'x:s3', text: '  ', imageUri: null, firstSeenAt: 3 }], DEFAULT_POLICY, new Set(['x:s2']));
+  assert.deepEqual(kept.map((k) => k.itemId), ['x:s1'], 'a post the run tests or called, and one with no words, are never taught');
+  assert.equal(kept[0]?.from, 'kept');
+  const soft = keptYes(ids(5, 's').map((itemId, i) => ({ itemId, text: `kept ${itemId}`, imageUri: null, firstSeenAt: i })), DEFAULT_POLICY, new Set());
+  const coined = coinedYes([coinedPost('x:k1'), coinedPost('x:k2')], DEFAULT_POLICY, new Set());
+  const owner = [call('x:m', 'meme', 'tap', 1), call('x:missed', 'meme', 'missed', 2), ...ids(40, 'n').filter((id) => isExample(id)).slice(0, 4).map((id, i) => call(id, 'not', 'tap', i))];
+  const b = buildBlock(owner, [], 10, { coinedYes: coined, keptYes: soft });
+  assert.ok(b.exampleIds.includes('x:m') && b.used.missed + b.testMissed.length === 1, "the owner's calls first");
+  assert.equal(b.used.coined, 2, 'then the coined posts');
+  assert.equal(b.used.kept, 10 - b.owner.yesTaught - b.owner.noTaught - 2, 'then the soft yes, in what is left');
+  assert.match(b.text, /YES, LESS SURE — posts the owner looked at/);
+  const before = buildBlock(owner, [], 10, { coinedYes: coined, keptYes: soft, keptBeforeCoined: true });
+  assert.equal(before.used.kept, Math.min(5, 10 - before.owner.yesTaught - before.owner.noTaught));
+  const called = buildBlock([call('x:s0', 'not', 'tap', 9)], [], 10, { keptYes: soft });
+  assert.ok(!called.text.includes('"kept x:s0"'), 'his "Not a meme" wins over a keep');
+  assert.ok([...b.testMemes, ...b.testNegatives].every((c) => c.from !== 'kept'), 'a kept post is never tested');
+  const off = { ...DEFAULT_POLICY, learning: { ...DEFAULT_POLICY.learning, seenKept: { ...DEFAULT_POLICY.learning.seenKept, teach: false } } };
+  assert.deepEqual(keptYes([{ itemId: 'x:s1', text: 'x', imageUri: null, firstSeenAt: 1 }], off, new Set()), [], 'the switch');
 });
