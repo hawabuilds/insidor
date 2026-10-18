@@ -11,7 +11,7 @@
  * only merge of two streams in the service.
  *
  * ★ A TRADE IS SHOWN ONLY WHEN ITS PERSON TURNED ON "Show my trades to followers"
- * (`people.profile.trades_public`, off by default, 0109). The filter is in the same statement that
+ * (`people.profile.trades_public`, on by default as Trador's, 0109). The filter is in the same statement that
  * reads the trades, joined on the person, so no path reads a trade without it. Only trades that
  * landed and succeeded (`confirmed`) are shown: a trade that was built, sent and never seen
  * landing did not happen as far as anyone can tell.

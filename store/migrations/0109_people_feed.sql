@@ -5,10 +5,11 @@
 --
 -- ── WHOSE TRADES MAY BE SHOWN ─────────────────────────────────────────────
 --
--- `people.profile.trades_public` is the profile switch "Show my trades to followers". It is OFF
--- by default. Trador's equivalent (`users.portfolio_public`, its 0012) defaults ON, on the
--- reasoning that showing what you hold is the point of being followed; here a person's trades
--- appear to anyone only after they turn it on. The chain is public either way; this governs what
+-- `people.profile.trades_public` is the profile switch "Show my trades to followers". It is ON
+-- by default, as Trador's (`users.portfolio_public`, its 0012): following someone is following
+-- what they do, and their trades are the point of it (the owner, 2026-10-18, knowing it makes
+-- every existing person's landed trades visible to their followers when this runs). Turning it
+-- off takes them off the Feed at once. The chain is public either way; this governs what
 -- Insidor shows, and the switch says so. The social service filters on it in the same query that
 -- reads the trades, so there is no second place that could forget it.
 --
@@ -29,10 +30,10 @@
 -- Plain CREATE INDEX: the tables are a few rows today (9 trades, 0 comments on 18 Oct 2026), so
 -- the SHARE lock the migrator's transaction takes is milliseconds.
 --
--- What breaks if changed carelessly: a default of true on `trades_public` publishes every
--- existing person's trades the moment this runs, without anyone having agreed to it.
+-- What breaks if changed carelessly: `trades_public` is read on every Feed page; dropping its
+-- filter from the trade read shows the trades of people who turned the switch off.
 
-alter table people.profile add column trades_public boolean not null default false;
+alter table people.profile add column trades_public boolean not null default true;
 
 create index profile_wallet_idx on people.profile (wallet) where wallet is not null;
 
