@@ -8,6 +8,7 @@
  *   GET  /owner/hidden                      posts whose current call is "Not a meme", newest first
  *   POST /owner/coin-check, /owner/coin-label   a pasted coin address checked, then saved (owner-coin.ts)
  *   POST /owner/narrative                   a call on a narrative: not one, merge, remove a post, its coin (owner-narrative.ts)
+ *   POST /owner/seen                        posts on the owner's screen for 2 s, and opened (owner-seen.ts, 0098)
  *
  * A coin call `cleared` (0072) is "Remove my label": a new row that says no call from here on.
  *
@@ -36,6 +37,7 @@ import type { Person } from '@insidor/contracts/ports/people.ts';
 import { json, type Reply } from './http.ts';
 import { ownerCoinRoute, type CoinCheck } from './owner-coin.ts';
 import { ownerNarrativeRoute } from './owner-narrative.ts';
+import { ownerSeenRoute } from './owner-seen.ts';
 
 interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
@@ -279,6 +281,8 @@ export async function ownerRoute(
   if (sub === 'coin-check' || sub === 'coin-label') return ownerCoinRoute(r.method, sub, r.body, me, ref, deps);
   /* The owner's calls on a narrative (owner-narrative.ts, 0093). */
   if (sub === 'narrative') return ownerNarrativeRoute(r.method, r.body, me.userId, ref, deps.db);
+  /* What was on the owner's screen (owner-seen.ts, 0098): the source of the "seen and kept" soft yes. */
+  if (sub === 'seen') return ownerSeenRoute(r.method, r.body, ref, deps.db, Date.now());
 
   return bad('method not allowed', 405);
 }
