@@ -48,6 +48,7 @@ export {
   fetchPostNames,
   fetchTickerCoins,
   fetchStory,
+  fetchStoryIfAny,
   fetchStorySheet,
   fetchStoryPosts,
   submitTrade,
