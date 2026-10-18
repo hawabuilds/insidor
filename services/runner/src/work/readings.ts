@@ -10,6 +10,9 @@
  *     `shortVideoCadence` for the short-video source), stalest first;
  *   - every post whose sheet was opened (internal.reading_ask, 0090) when its newest reading was
  *     over `openReadMinGapMs` old at the open, up to `openMaxPerPass`, newest open first;
+ *   - every text-source post that would be in a top `sortTop.topN` of For You's sorts (sort-top.ts)
+ *     whose newest reading is `sortTop.everyMs` old, up to `sortTop.maxPerPass`, stalest first, so the
+ *     read service never lists it low for want of a reading (the owner, 2026-10-18);
  * and appends what came back exactly as TRACK does (core's `observationsFrom`).
  *
  * ★ ITS OWN LOOP, TIME AND MONEY. Not a tier inside TRACK and not a step after discovery: a slow
@@ -53,6 +56,8 @@ export interface ReadingsDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /** The sorts' top text-source posts (sort-top.ts); absent, none are read for the sorts. */
+  readonly sortTop?: () => Promise<ReadonlySet<string>>;
 }
 
 export interface ReadingsResult {
@@ -60,6 +65,8 @@ export interface ReadingsResult {
   readonly due: number;
   /** Of those, how many were owed one because their sheet was opened. */
   readonly opened: number;
+  /** Of those, how many were owed one only because they would be in a sort's top (sort-top.ts). */
+  readonly sorts: number;
   readonly asked: number;
   readonly answered: number;
   readonly spentUsd: number;
@@ -68,7 +75,7 @@ export interface ReadingsResult {
   readonly held: readonly string[];
 }
 
-const NONE: ReadingsResult = { due: 0, opened: 0, asked: 0, answered: 0, spentUsd: 0, wouldSpendUsd: 0, held: [] };
+const NONE: ReadingsResult = { due: 0, opened: 0, sorts: 0, asked: 0, answered: 0, spentUsd: 0, wouldSpendUsd: 0, held: [] };
 
 /** How often a post this old is read: the first step it is younger than, else `thenEveryMs`. */
 export function stepFor(ageMs: number | null, cadence: ReadingCadence): number {
@@ -94,19 +101,30 @@ export function openDue(c: ReadingCandidate, p: Policy): boolean {
   return c.lastReadAt === null || c.lastReadAt < c.openedAt - p.feed.readings.openReadMinGapMs;
 }
 
-/** The posts to read this pass, in the order they are owed: opened sheets first, then For You stalest first. */
-export function dueReadings(candidates: readonly ReadingCandidate[], now: number, p: Policy): { readonly posts: readonly ReadingCandidate[]; readonly opened: number } {
+/** A text-source post in a sort's top that has gone `sortTop.everyMs` without a reading. */
+export function sortDue(c: ReadingCandidate, now: number, top: ReadonlySet<string>, p: Policy): boolean {
+  if (!p.feed.readings.sortTop.on || c.source === SHORT_VIDEO_SOURCE || !top.has(c.itemId)) return false;
+  return c.lastReadAt === null || now - c.lastReadAt >= p.feed.readings.sortTop.everyMs - p.feed.readings.dueSlackMs;
+}
+
+/** The posts to read this pass, in the order they are owed: opened sheets first, then For You's cadence and the sorts' top posts, stalest first. */
+export function dueReadings(candidates: readonly ReadingCandidate[], now: number, p: Policy, top: ReadonlySet<string> = new Set()): { readonly posts: readonly ReadingCandidate[]; readonly opened: number; readonly sorts: number } {
   const r = p.feed.readings;
   const opened = candidates
     .filter((c) => openDue(c, p))
     .sort((a, b) => (b.openedAt ?? 0) - (a.openedAt ?? 0))
     .slice(0, r.openMaxPerPass);
   const taken = new Set(opened.map((c) => c.itemId));
-  const cadence = candidates
-    .filter((c) => !taken.has(c.itemId) && cadenceDue(c, now, p))
-    .sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity));
-  const posts = [...opened, ...cadence].slice(0, r.maxPostsPerPass);
-  return { posts, opened: Math.min(opened.length, posts.length) };
+  const cadence = candidates.filter((c) => !taken.has(c.itemId) && cadenceDue(c, now, p));
+  for (const c of cadence) taken.add(c.itemId);
+  const sorts = candidates
+    .filter((c) => !taken.has(c.itemId) && sortDue(c, now, top, p))
+    .sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity))
+    .slice(0, r.sortTop.maxPerPass);
+  const owed = [...cadence, ...sorts].sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity));
+  const posts = [...opened, ...owed].slice(0, r.maxPostsPerPass);
+  const kept = new Set(posts.map((c) => c.itemId));
+  return { posts, opened: Math.min(opened.length, posts.length), sorts: sorts.filter((c) => kept.has(c.itemId)).length };
 }
 
 /** What the loop remembers between passes: which held reasons it has already said, so a quiet day is not a log line a pass. */
@@ -138,14 +156,16 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
     return { ...NONE, held };
   }
 
+  let top: ReadonlySet<string> = new Set();
+  if (r.sortTop.on && deps.sortTop !== undefined) top = await deps.sortTop().catch(() => new Set<string>());
   let candidates: readonly ReadingCandidate[];
   try {
-    candidates = await deps.readings.candidates(new Date(started - r.openAskMaxAgeMs));
+    candidates = await deps.readings.candidates(new Date(started - r.openAskMaxAgeMs), false, [...top]);
   } catch (e) {
     /* Before 0090 the opens cannot be read; For You's cadence does not need them. */
     deps.log.warn('opened sheets could not be read; For You alone this pass', { err: errorText(e) });
     try {
-      candidates = await deps.readings.candidates(new Date(started), true);
+      candidates = await deps.readings.candidates(new Date(started), true, [...top]);
     } catch (e2) {
       deps.log.warn('posts to read could not be listed; tried again next pass', { err: errorText(e2) });
       return NONE;
@@ -153,7 +173,7 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
   }
   await deps.readings.expire(new Date(started - r.openAskMaxAgeMs)).catch(() => 0);
 
-  const { posts, opened } = dueReadings(candidates, started, p);
+  const { posts, opened, sorts } = dueReadings(candidates, started, p, top);
   if (posts.length === 0) return NONE;
 
   let asked = 0;
@@ -233,7 +253,7 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
   /* Once a hold clears, say it again the next time it happens. */
   for (const why of [...memory.said]) if (!held.includes(why)) memory.said.delete(why);
 
-  if (deps.mode === 'dry') deps.log.info('DRY RUN — readings priced, not taken', { due: posts.length, opened, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
-  else if (asked > 0) deps.log.info('readings taken', { due: posts.length, opened, asked, answered, usd: Number(spentUsd.toFixed(6)), ms: deps.now() - started });
-  return { due: posts.length, opened, asked, answered, spentUsd, wouldSpendUsd, held };
+  if (deps.mode === 'dry') deps.log.info('DRY RUN — readings priced, not taken', { due: posts.length, opened, sorts, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
+  else if (asked > 0) deps.log.info('readings taken', { due: posts.length, opened, sorts, asked, answered, usd: Number(spentUsd.toFixed(6)), ms: deps.now() - started });
+  return { due: posts.length, opened, sorts, asked, answered, spentUsd, wouldSpendUsd, held };
 }

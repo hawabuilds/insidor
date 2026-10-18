@@ -136,6 +136,7 @@ import { launchClockPass } from './work/launch-clock.ts';
 import { narrativeBackPass } from './work/narrative-back.ts';
 import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
+import { sortTop } from './work/sort-top.ts';
 import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
 import { quoteClock, quoteSearchPass, type QuoteSearchResult } from './work/quote-search.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
@@ -847,6 +848,14 @@ export async function withRuntime<T>(
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
       const readingNotes = readingsMemory();
+      /* The sorts' top text-source posts, ranked every few minutes and kept between passes (work/sort-top.ts). */
+      const sortTopPosts = sortTop({
+        members: () => new PgReadingsRepo(db).forYouMembers(),
+        series: (ids, sinceMs) => repos.observations.seriesForItems(ids, sinceMs),
+        policy,
+        log: log.child({ step: 'sort-top' }),
+        now: () => Date.now() as Millis,
+      });
       /* Where each narrative's name search last began, and which ages each big post was asked at (this process). */
       const nameClock = narrativeNameClock();
       const quotesAsked = quoteClock();
@@ -1275,6 +1284,7 @@ export async function withRuntime<T>(
                 policy,
                 log: log.child({ step: 'readings' }),
                 now: () => Date.now() as Millis,
+                sortTop: sortTopPosts,
               },
               readingNotes,
             ),

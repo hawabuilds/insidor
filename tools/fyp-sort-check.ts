@@ -10,9 +10,10 @@
  *
  *   Fresh truth, per post: Most viewed W is its views now (the fresh read) less its views at now - W,
  *   worked out from its stored readings by the narratives' rule (between two readings evenly; a post
- *   first read inside the window counts from that first reading). Trending is how many views a minute
- *   faster it gained in the last half of the window (fresh read less its views at the half) than in
- *   the half before, a short video at the policy's short-video scale, as the sort ranks it.
+ *   first read inside the window counts from that first reading). Trending is the sort's own rule on
+ *   the fresh numbers: speed now (fresh read less its views at the half, a minute) over speed before,
+ *   for posts at or over the policy's floor; a post under it below them by its speed; a short video
+ *   at the policy's short-video scale.
  *   In order: the longest run of the ten that the fresh truth keeps in the same order (9 of 10 means
  *   one post out of place), with exact places and pairs agreeing beside it.
  *
@@ -158,7 +159,11 @@ function truth(id: string, by: SortBy, w: SortWindow): number | null {
   if (mid === null) return null;
   const minutes = W / 2 / 60_000;
   const scale = rankScale(info.get(id)!.source, DEFAULT_POLICY.rising.shortVideoReachScale);
-  return ((f.views - mid) - (mid - start)) / scale / minutes;
+  const speed = (f.views - mid) / scale / minutes;
+  const before = (mid - start) / scale / minutes;
+  /* Over the floor ranks by the ratio, above every post under it, which ranks by speed (core rank/post-sorts.ts). */
+  if (speed < DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin) return speed - Number.MAX_SAFE_INTEGER;
+  return before > 0 ? speed / before : Number.MAX_SAFE_INTEGER;
 }
 
 function inOrder(list: readonly string[], by: SortBy, w: SortWindow): string {
@@ -193,7 +198,7 @@ for (const name of chosen) {
       const f = fresh.get(id);
       const k = truth(id, by, w);
       const sorted = list.map((x) => truth(x, by, w)).filter((x): x is number => x !== null).sort((a, b) => b - a);
-      console.log(`  ${i + 1}. ${id}  fresh views ${f?.views ?? '-'}  ${by === 'most_viewed' ? 'gained' : 'trend /min'} ${k === null ? '-' : Math.round(k)}  fresh place ${k === null ? '-' : sorted.indexOf(k) + 1}`);
+      console.log(`  ${i + 1}. ${id}  fresh views ${f?.views ?? '-'}  ${k === null ? '-' : by === 'most_viewed' ? `gained ${Math.round(k)}` : k < 0 ? `under the floor, ${Math.round(k + Number.MAX_SAFE_INTEGER)}/min` : k === Number.MAX_SAFE_INTEGER ? 'ratio: from nothing' : `ratio ${k.toFixed(2)}`}  fresh place ${k === null ? '-' : sorted.indexOf(k) + 1}`);
     });
   }
 }
