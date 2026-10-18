@@ -1,76 +1,31 @@
 /**
- * WHICH OF THE LIST GOES WHERE, Trador's split: the Feed tab shows what is happening (rising
- * posts, new narratives, a narrative getting its coin, a coin matched to a narrative you watch),
- * and the bell opens Notifications, what happened to YOU (your coins' multiples and curves,
- * follows, replies, rank-ups, and the owner's supplier and learning reports). It is the line
- * Trador draws between its Feed of other people's trades and its list of things about you.
+ * WHAT THE BELL'S LIST SHOWS, AND WHAT THE BELL COUNTS (the owner's notification design,
+ * 2026-10-18). The Feed tab is now the people you follow (features/following); the alert rows it
+ * showed — new For You posts, new narratives, a narrative's coin, a coin matched to one you star —
+ * are in Notifications with everything else, as in-app rows: the alert service lists them and never
+ * pushes them. So Notifications shows every kind, newest first.
  *
- * Its own pure file because the split decides what the bell counts and what each Feed tab
- * shows, and both are tested here without rendering.
+ * ★ THE BELL COUNTS WHAT IS ABOUT YOU, OR REACHED YOUR PHONE. The in-app-only kinds arrive by the
+ * hundred a day; counting them would keep the bell at "9+" and say nothing. `QUIET_KINDS` is the
+ * phone's copy of the alert service's listed-only kinds (core LIST_ONLY with the old Feed kinds;
+ * the app may not import core); one of them that was pushed is counted. A kind added later and left
+ * off is counted, rather than hidden.
  *
- * What breaks if changed carelessly: a kind on neither side is never shown. `onFeed` names the
- * Feed's kinds and everything else is a notification, so a kind added to the alert service later
- * lands in Notifications (seen and counted) rather than nowhere.
+ * Its own pure file because these rules are tested here without rendering.
  */
 
 import { tickerText } from '../../shared/format/ticker.ts';
 
-const FEED_KINDS: readonly string[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
+/** Listed in Notifications, never pushed, not counted on the bell (unless it was pushed). */
+const QUIET_KINDS: readonly string[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched', 'fyp_coin', 'fyp_proven', 'watch_coin'];
 
-export const onFeed = (kind: string): boolean => FEED_KINDS.includes(kind);
+export const isQuiet = (kind: string): boolean => QUIET_KINDS.includes(kind);
 
-export type FeedTab = 'watching' | 'rising' | 'latest';
-export type FeedWindow = 'week' | 'all';
+/** The bell's number: unread rows about you, or that reached the phone. */
+export const bellCount = (items: readonly { readonly kind: string; readonly unread: boolean; readonly pushed?: boolean }[]): number => items.filter((a) => a.unread && (!isQuiet(a.kind) || a.pushed === true)).length;
 
-const DAY = 86_400_000;
-
-/** The narrative an alert's link opens (`/#/story/<id>`), or null. */
-export function storyOf(href: string): string | null {
-  const m = /#\/story\/([^/?#]+)/.exec(href);
-  if (m === null || m[1] === undefined) return null;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch {
-    return null;
-  }
-}
-
-/** Seven calendar days, as Trador's "This week": since six days before this morning. */
-export function weekStart(now: number): number {
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  return midnight.getTime() - 6 * DAY;
-}
-
-/**
- * One Feed tab. Watching: a coin matched to a narrative you starred, and any news about one you
- * starred. Rising: the rising posts, this week or all of them. Latest: the whole Feed. Newest
- * first throughout, as the list arrives.
- */
-export function feedTab<T extends { readonly kind: string; readonly href: string; readonly at: number }>(items: readonly T[], tab: FeedTab, opts: { readonly starred: readonly string[]; readonly window: FeedWindow; readonly now: number }): readonly T[] {
-  const feed = items.filter((a) => onFeed(a.kind));
-  if (tab === 'latest') return feed;
-  if (tab === 'rising') {
-    const from = opts.window === 'week' ? weekStart(opts.now) : -Infinity;
-    return feed.filter((a) => a.kind === 'rising_post' && a.at >= from);
-  }
-  return feed.filter((a) => {
-    if (a.kind === 'coin_matched') return true;
-    const story = storyOf(a.href);
-    return story !== null && opts.starred.includes(story);
-  });
-}
-
-/**
- * Notifications: everything not on the Feed, and anything that reached the phone as a push (the
- * owner, 2026-10-14: "every notification also shows in the Notifications list") — a New on FYP post
- * that was pushed is in both.
- */
-export const isNotification = (a: { readonly kind: string; readonly pushed?: boolean }): boolean => !onFeed(a.kind) || a.pushed === true;
-export const notifications = <T extends { readonly kind: string; readonly pushed?: boolean }>(items: readonly T[]): readonly T[] => items.filter(isNotification);
-
-/** The bell's number: unread notifications only, as Trador's bell counts its own list. */
-export const bellCount = (items: readonly { readonly kind: string; readonly unread: boolean; readonly pushed?: boolean }[]): number => items.filter((a) => a.unread && isNotification(a)).length;
+/** An alert's link as the app's own hash route (`/#/token/…` → `#/token/…`); the Feed when it has none. */
+export const linkOf = (href: string): string => (href.startsWith('/') ? href.replace(/^\//, '') || '#/' : '#/');
 
 /**
  * A title with its ticker picked out, for Trador's bold symbol: `["", "$FERRY", " graduated"]`.

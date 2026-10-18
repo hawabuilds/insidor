@@ -52,14 +52,13 @@ test('★ Notifications page twenty at a time, with no row twice and no empty la
     assert.equal(r.status, 200);
     for (const a of r.body.alerts) {
       assert.ok(!seen.has(a.id), 'no row twice');
-      assert.notEqual(a.kind, 'rising_post', 'a Feed row that was only listed is not a notification');
       seen.add(a.id);
     }
     assert.equal(r.body.bell, 45, 'the bell counts every unread notification, not the page');
     sizes.push(r.body.alerts.length);
     cursor = r.body.cursor;
   } while (cursor !== null);
-  assert.deepEqual(sizes, [20, 20, 5]);
+  assert.deepEqual(sizes, [20, 20, 10], '★ the old Feed rows are in Notifications too, as in-app rows; the bell leaves them out');
 });
 
 test('the Feed pages its own side, by tab: Rising takes rising posts inside its window, Watching the starred narratives', async () => {
@@ -130,12 +129,12 @@ test('one row per comment found useful, the newest count, in the list and on the
   assert.equal(r.body.bell, 2);
 });
 
-test('★ a New on FYP post that reached the phone is a notification too, and on the bell', async () => {
+test('★ a New on FYP post is an in-app row in Notifications; only one that reached the phone is on the bell', async () => {
   const { get, add } = await setup();
   await add('rising_post', 1, '/#/post/x%3A1', 'x:1', 'push');
   await add('rising_post', 2, '/#/post/x%3A2', 'x:2', 'hourly-limit');
   const r = await get('?list=notifications');
-  assert.deepEqual(r.body.alerts.map((a) => (a as unknown as { kind: string; pushed: boolean }).pushed), [true]);
+  assert.deepEqual(r.body.alerts.map((a) => (a as unknown as { kind: string; pushed: boolean }).pushed), [true, false]);
   assert.equal(r.body.bell, 1);
 });
 

@@ -20,7 +20,7 @@
  *     profile; off by default, where Trador's is on). The server decides; this screen cannot.
  *
  * The rows of this tab before (Watching, Rising and Latest, from the alert service: starred
- * narratives' coins and rising posts) are features/alerts/AlertsScreen.tsx, left as it was; the
+ * narratives' coins and rising posts) are now rows in Notifications (features/alerts/split.ts); the
  * bell and Notifications are untouched.
  */
 

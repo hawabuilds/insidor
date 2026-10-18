@@ -57,7 +57,7 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 const SCREENS = {
   /* In the order they are fetched ahead: the tabs first, then where a tap most often leads. */
   Search: later(() => import('./features/search/Search.tsx'), (m) => m.Search),
-  /* The Feed tab: the people you follow's trades and comments (the alert rows it showed before are AlertsScreen.tsx's, no longer a tab). */
+  /* The Feed tab: the people you follow's trades and comments (the alert rows it showed before are in Notifications, behind the bell). */
   FollowingScreen: later(() => import('./features/following/FollowingScreen.tsx'), (m) => m.FollowingScreen),
   PortfolioScreen: later(() => import('./features/portfolio/PortfolioScreen.tsx'), (m) => m.PortfolioScreen),
   NarrativePage: later(() => import('./features/narrative/NarrativePage.tsx'), (m) => m.NarrativePage),
