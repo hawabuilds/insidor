@@ -658,6 +658,24 @@ export function underScoreBar(score: number | null, bar: number | null, ownerCal
   return bar !== null && score !== null && score < bar && ownerCall !== 'meme';
 }
 
+/**
+ * ★ THE COIN THAT BROUGHT THE POST IN IS ON ITS LIST (the owner, 2026-10-18: "show the coin that brought
+ * the post in: put it in the card's coin list, not as 'Links this post'"). A post For You takes on a
+ * coin's word (`coinVouches`) lists that first coin among its coins — "See N coins", the post sheet's
+ * "All N coins" — as one more listed coin: added after the weighing, so it is never the card's
+ * proven coin and carries none of the weighing's facts, "Links this post" among them. Since
+ * 2026-10-16 the coins whose metadata names a post are not weighed (Policy.postCoin.linkedCandidates),
+ * and six of seven coin-path cards did not list the coin that put them there. A coin the owner called
+ * wrong on the post stays off; a coin already listed or proven is left where it is; a post whose
+ * search found nothing, or has not finished, lists this one coin.
+ */
+export function withVouchingCoin(lookup: PostLookup | undefined, address: string, check: CoinCheck | undefined): PostLookup | undefined {
+  if (check?.none === true || check?.wrong.has(address) === true) return lookup;
+  if (lookup === undefined || !('coins' in lookup)) return { coins: [address], more: false };
+  if (lookup.coins.includes(address) || (lookup.match?.kind === 'matched' && lookup.match.coin.address === address)) return lookup;
+  return { ...lookup, coins: [address, ...lookup.coins] };
+}
+
 /** Whether the first coin naming a post puts it past For You's view bar (core `coinVouches`); no coin, no. */
 export const coinVouchesFor = (facts: CoinVouchRow | undefined, policy = DEFAULT_POLICY): boolean => facts !== undefined && coinVouches(facts, policy);
 
@@ -709,7 +727,14 @@ export async function buildRising(
   const stories = await loadStoryCoins(db, rowIds, calls, policy);
   const checks = coinChecks(rowIds, calls, stories);
   const searched = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));
-  const lookups = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
+  const weighed = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
+  /* ★ THE COIN THAT BROUGHT THE POST IN, ON ITS LIST (`withVouchingCoin`), after the weighing so it is listed and never proven. */
+  const lookups = new Map(weighed);
+  for (const [id, facts] of vouch) {
+    if (!coinVouchesFor(facts, policy) || facts.firstCoinAddress === null || facts.firstCoinAddress === undefined) continue;
+    const listed = withVouchingCoin(lookups.get(id), facts.firstCoinAddress, checks.get(id));
+    if (listed !== undefined) lookups.set(id, listed);
+  }
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
   /* The order model: the latest applied fit, and crypto attention only when the fit weighs it. */
   const scores = new PgScoreModelRepo(db);
