@@ -2,39 +2,42 @@
  * THE FEED TAB — Trador's Feed (app/(app)/feed/FeedScreen.tsx) as the owner approved it: the buys,
  * sells and comments of the people you follow, newest first.
  *
- * Trador's page, piece by piece: a sticky "Feed" title with the bell at its right (it opens
- * Notifications, the only place their count is shown), tabs under the title, rows with no box
- * (FeedTradeRow: "Ana bought FERRY", the age, and a second line; FeedCommentRow: name, rank, age,
- * the coin or narrative it was said on, the words, and the likes and replies as readouts), four
- * skeleton rows while loading, twenty rows at a time with Load more, "You have seen everything" at
- * the end, and pull to refresh. Trador's tabs are Following, Top calls and Latest; Insidor has no
- * vote-ranked list of calls, so its tabs are Following and Latest (everyone's).
+ * Trador's page, piece by piece, in Insidor's look (the owner's design, 2026-10-18): a sticky
+ * "Feed" title with a round bell at its right (it opens Notifications; a purple dot while anything
+ * there is unread, from the same count App reads for it), Trador's three tabs, Following, Top calls
+ * and Latest, as For You's sort chips, Top calls' This week / All time, rows with no box
+ * (FeedTradeRow and FeedCommentRow), four skeleton rows while loading, twenty rows at a time with
+ * Load more, "You have seen everything" at the end, Trador's sentence on an empty tab ("See all
+ * time" on a quiet week), and pull to refresh.
+ *
+ *   Following  the trades and comments of the people you follow, newest first
+ *   Top calls  every comment by the likes holders gave it, as Trador ranks by Useful votes
+ *   Latest     every comment, newest first
  *
  * Insidor's differences, each a rule of the product:
- *   - A trade shows no amount, as Trador: "at $48K market cap" under a buy, "in profit" or "at a
- *     loss" under a sell, and nothing when the server could not say (no market reading close to the
- *     landing, no known average buy) rather than a guess.
- *   - Someone who follows nobody sees People to follow (their counts this week, a Follow button)
- *     above Latest, instead of Trador's switch to another tab: the first visit is never empty.
- *   - A person's trades appear only once they turn on "Show my trades to followers" (their
- *     profile; on by default, as Trador's). The server decides; this screen cannot.
+ *   - Someone who follows nobody sees People to follow (their counts this week, a Follow button) in
+ *     Following's place, rather than an empty tab.
+ *   - A trade with no market reading near its landing, or a sell with no known average buy, has no
+ *     second line rather than a guess.
  *
  * The rows of this tab before (Watching, Rising and Latest, from the alert service: starred
- * narratives' coins and rising posts) are now rows in Notifications (features/alerts/split.ts); the
- * bell and Notifications are untouched.
+ * narratives' coins and rising posts) are now rows in Notifications (features/alerts/split.ts);
+ * the Notifications screen is only linked to.
  */
 
 import { useState } from 'react';
 
-import { fetchPeopleToFollow, type FeedComment, type FeedItem, type FeedTab, type FeedTrade, type SuggestedPerson } from '../../shared/api/following.ts';
+import { fetchPeopleToFollow, type FeedComment, type FeedItem, type FeedTab, type FeedTrade, type FeedWindow, type SuggestedPerson } from '../../shared/api/following.ts';
 import { follow } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
+import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import { BellIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
-import { Bell, LoadMore, PageTabs, PullIndicator } from '../alerts/Parts.tsx';
+import { LoadMore, PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import alerts from '../alerts/alerts.module.css';
 import { RankTag } from '../people/RankBadge.tsx';
@@ -45,7 +48,13 @@ import styles from './following.module.css';
 
 const TABS: readonly { readonly key: FeedTab; readonly label: string }[] = [
   { key: 'following', label: 'Following' },
+  { key: 'top', label: 'Top calls' },
   { key: 'latest', label: 'Latest' },
+];
+
+const WINDOWS: readonly { readonly key: FeedWindow; readonly label: string }[] = [
+  { key: 'week', label: 'This week' },
+  { key: 'all', label: 'All time' },
 ];
 
 const age = (at: number, now: number) => <Value r={formatAge({ known: true, at: at as never }, now as never)} />;
@@ -55,42 +64,62 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
   const { state } = useWallet();
   const account = state.kind === 'connected' ? state.account : 'signed-out';
   const [tab, setTab] = useState<FeedTab>('following');
-  const feed = usePeopleFeed(tab, account);
-  /* Following nobody: Latest is read underneath People to follow, so the first visit has something to read. */
+  const [period, setPeriod] = useState<FeedWindow>('week');
+  const feed = usePeopleFeed(tab, account, true, period);
+  /* Following nobody: People to follow in the list's place, so the first visit is not a dead end. */
   const nobody = tab === 'following' && feed.list.state === 'ready' && feed.list.value.following === 0;
-  const latest = usePeopleFeed('latest', account, nobody);
   const { pull, refreshing } = usePullToRefresh(async () => {
-    await Promise.all([feed.refresh(), nobody ? latest.refresh() : Promise.resolve()]);
+    await feed.refresh();
     onRefreshed();
   });
+
+  /* Trador's sentences for an empty tab, and its "See all time" on a quiet week. */
+  const empty = tab === 'following' ? 'Follow a few people and their buys, sells and takes land here.' : tab === 'top' ? (period === 'week' ? 'No calls this week yet.' : 'No calls yet.') : 'No takes yet. Open a coin and post the first one.';
 
   return (
     <>
       <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={alerts['page']} style={pullStyle(pull)}>
         <header className={alerts['sticky']}>
-          <div className={alerts['titleRow']}>
-            <h1 className={alerts['title']}>Feed</h1>
-            <Bell unread={unread} />
+          <div className={styles['titleRow']}>
+            <h1 className={styles['title']}>Feed</h1>
+            <a className={styles['bell']} href={hrefFor({ screen: 'notifications' })} aria-label={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}>
+              <BellIcon size={20} />
+              {unread > 0 ? <span className={styles['dot']} /> : null}
+            </a>
           </div>
-          <PageTabs tabs={TABS} current={tab} onChange={setTab} label="Feed" />
+          <div className={styles['chips']} role="tablist" aria-label="Feed">
+            {TABS.map((t) => (
+              <button key={t.key} type="button" role="tab" aria-selected={t.key === tab} className={`${styles['chip']} ${t.key === tab ? styles['chipOn'] : ''}`} onClick={() => setTab(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </header>
 
+        {tab === 'top' ? (
+          <div className={styles['windowRow']}>
+            <div className={styles['windows']} role="group">
+              {WINDOWS.map((w) => (
+                <button key={w.key} type="button" aria-pressed={w.key === period} className={w.key === period ? styles['windowOn'] : ''} onClick={() => setPeriod(w.key)}>
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {nobody ? (
-          <>
-            <PeopleToFollow onFollowed={() => void feed.refresh()} />
-            <h2 className={styles['heading']}>Latest from everyone</h2>
-            <Listed feed={latest} now={now} empty="Nobody has traded or commented yet." />
-          </>
+          <PeopleToFollow onFollowed={() => void feed.refresh()} />
         ) : (
-          <Listed feed={feed} now={now} empty={tab === 'following' ? 'Nobody you follow has traded or commented yet.' : 'Nobody has traded or commented yet.'} />
+          <Listed feed={feed} now={now} empty={empty} {...(tab === 'top' && period === 'week' ? { emptyAction: { label: 'See all time', onAct: () => setPeriod('all') } } : {})} />
         )}
       </section>
     </>
   );
 }
 
-function Listed({ feed, now, empty }: { feed: ReturnType<typeof usePeopleFeed>; now: number; empty: string }) {
+function Listed({ feed, now, empty, emptyAction }: { feed: ReturnType<typeof usePeopleFeed>; now: number; empty: string; emptyAction?: { label: string; onAct: () => void } }) {
   const { list } = feed;
   if (list.state === 'loading') return <Skeleton />;
   if (list.state === 'failed') return <p className={alerts['centred']}>Your feed couldn't be read just now. Pull down to try again.</p>;
@@ -99,6 +128,11 @@ function Listed({ feed, now, empty }: { feed: ReturnType<typeof usePeopleFeed>; 
     return (
       <div className={alerts['emptyBox']}>
         <p className={alerts['emptyText']}>{empty}</p>
+        {emptyAction !== undefined ? (
+          <button type="button" className={alerts['emptyAction']} onClick={emptyAction.onAct}>
+            {emptyAction.label}
+          </button>
+        ) : null}
       </div>
     );
   }

@@ -104,10 +104,9 @@ test('★ the Feed shows the people you follow: their landed trades unless they 
   assert.equal(after[2]!.outcome, null);
   assert.ok(!('quotedLamports' in after[2]!) && !('amount' in after[2]!), 'no amounts, as Trador');
 
-  /* Latest is everyone who shares, and every comment. */
+  /* Latest is every comment, as Trador's, and no trades. */
   const latest = (await as(me)('GET', '/feed?tab=latest')).body['items'] as Item[];
-  assert.ok(latest.some((i) => i.person.userId === stranger.userId && i.kind === 'trade'));
-  assert.ok(latest.some((i) => i.body === 'not followed'));
+  assert.deepEqual(latest.map((i) => i.body), ['not followed', 'FERRY has a horn now']);
 
   /* A comment on a narrative carries its title, for the line under it. */
   await db.query(`insert into public.story (story_id, earliest_post_at, state, promoted_at, origin) values ('st_ferry', now(), 'promoted', now(), 'observed')`);
@@ -208,4 +207,34 @@ test('★ a trade records the market cap when it lands, from a reading at most t
   const items = (await as(me)('GET', '/feed')).body['items'] as Item[];
   const old = items.find((i) => i.key === `t:${tradeId('old')}`);
   assert.equal(old?.marketCapUsd, null, 'thirty minutes away is not the market cap at the trade');
+});
+
+test("★ Top calls ranks every comment by holders' likes, newer first on a tie, this week or all time", async () => {
+  const me = person(1);
+  const a = person(2);
+  const b = person(3);
+  const c = person(4);
+  const d = person(5);
+  const { as, db } = await setup();
+  for (const p of [me, a, b, c, d]) await as(p)('POST', '/me');
+  const ids: number[] = [];
+  for (const [who, body] of [[a, 'one like'], [b, 'three likes'], [a, 'none'], [b, 'one like too']] as const) {
+    ids.push(((await as(who)('POST', '/comments', { subject: `coin:${MINT}`, body })).body['comment'] as { id: number }).id);
+  }
+  /* Likes as the like route leaves them (it checks holders on the chain, which this test has none of). */
+  const like = (comment: number, voter: Person) => db.query('insert into people.comment_like (comment_id, voter_id) values ($1, $2)', [comment, voter.userId]);
+  await like(ids[0]!, me);
+  await like(ids[1]!, me);
+  await like(ids[1]!, a);
+  await like(ids[1]!, c);
+  await like(ids[3]!, a);
+  /* An old comment with the most likes: all time only. */
+  const [old] = await db.query<{ id: number }>(`insert into people.comment (author_id, subject_kind, subject_id, body, created_at) values ($1, 'coin', $2, 'old call', now() - interval '30 days') returning comment_id::int as id`, [a.userId, MINT]);
+  for (const v of [me, b, c, d]) await like(old!.id, v);
+
+  const week = (await as(me)('GET', '/feed?tab=top')).body['items'] as (Item & { likes: number })[];
+  assert.deepEqual(week.map((i) => [i.body, i.likes]), [['three likes', 3], ['one like too', 1], ['one like', 1], ['none', 0]]);
+  const all = (await as(me)('GET', '/feed?tab=top&window=all')).body['items'] as (Item & { likes: number })[];
+  assert.equal(all[0]?.body, 'old call');
+  assert.ok(all.every((i) => i.kind === 'comment'), 'Top calls is comments only');
 });

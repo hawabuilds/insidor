@@ -1,5 +1,5 @@
 /**
- * THE FEED OF PEOPLE'S READ, A PAGE AT A TIME: one tab's list (Following or Latest) with its three
+ * THE FEED OF PEOPLE'S READ, A PAGE AT A TIME: one tab's list (Following, Top calls or Latest) with its three
  * honest states, the cursor for the next page, a refresh that resolves when the first page is read
  * again (pull to refresh waits on it), and a read again whenever the tab comes back on screen or
  * the app comes back to the front. `on` false reads nothing (the Latest under People to follow,
@@ -22,14 +22,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { fetchPeopleFeed, type FeedPage, type FeedTab } from '../../shared/api/following.ts';
+import { fetchPeopleFeed, type FeedPage, type FeedTab, type FeedWindow } from '../../shared/api/following.ts';
 import type { Load } from '../../shared/hooks.ts';
 import { keep, kept } from '../../shared/kept-reads.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
 import { mergePage } from './lines.ts';
 
-export function usePeopleFeed(tab: FeedTab, account: string, on = true): { readonly list: Load<FeedPage>; readonly refresh: () => Promise<void>; readonly loadMore: () => void; readonly loadingMore: boolean } {
-  const key = `people-feed:${account}:${tab}`;
+export function usePeopleFeed(tab: FeedTab, account: string, on = true, period: FeedWindow = 'week'): { readonly list: Load<FeedPage>; readonly refresh: () => Promise<void>; readonly loadMore: () => void; readonly loadingMore: boolean } {
+  const key = `people-feed:${account}:${tab}:${tab === 'top' ? period : ''}`;
   const initial = (): Load<FeedPage> => {
     const held = kept<FeedPage>(key);
     return held !== undefined ? { state: 'ready', value: held.value, stale: true } : { state: 'loading' };
@@ -44,13 +44,13 @@ export function usePeopleFeed(tab: FeedTab, account: string, on = true): { reado
     const asked = current.current;
     const tabAsked = tab;
     try {
-      const page = await fetchPeopleFeed(tabAsked);
+      const page = await fetchPeopleFeed(tabAsked, null, period);
       keep(asked, page, false);
       if (alive.current && asked === current.current) setList({ state: 'ready', value: page });
     } catch (error) {
       if (alive.current && asked === current.current) setList((prev) => (prev.state === 'ready' ? prev : { state: 'failed', error }));
     }
-  }, [tab]);
+  }, [tab, period]);
 
   const more = useRef(false);
   const loadMore = useCallback(() => {
@@ -59,7 +59,7 @@ export function usePeopleFeed(tab: FeedTab, account: string, on = true): { reado
     const held = list.value;
     more.current = true;
     setLoadingMore(true);
-    fetchPeopleFeed(tab, held.cursor)
+    fetchPeopleFeed(tab, held.cursor, period)
       .then(
         (page) => {
           if (alive.current && asked === current.current) setList({ state: 'ready', value: { ...page, items: mergePage(held.items, page.items) } });
@@ -70,7 +70,7 @@ export function usePeopleFeed(tab: FeedTab, account: string, on = true): { reado
         more.current = false;
         if (alive.current) setLoadingMore(false);
       });
-  }, [list, tab]);
+  }, [list, tab, period]);
 
   /* A new tab or a new person: its own list, from what was kept for it, then read fresh. */
   useEffect(() => {
