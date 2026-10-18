@@ -117,7 +117,7 @@ export const narrativeNameClock = (): NarrativeNameClock => ({ since: new Map(),
 export interface NarrativeNamesDeps {
   readonly sources: () => readonly PlatformAdapter[];
   readonly narratives: {
-    open(): Promise<readonly StoredNarrative[]>;
+    live(sinceMs: number): Promise<readonly StoredNarrative[]>;
     standingRows(itemIds: readonly string[]): Promise<readonly NarrativePostRow[]>;
   };
   readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number>;
@@ -159,7 +159,8 @@ export async function narrativeNamesPass(deps: NarrativeNamesDeps, clock: Narrat
   const started = deps.now();
   const deadline = (started + p.passDeadlineMs) as Millis;
 
-  const open = (await deps.narratives.open()).filter((n) => n.shown);
+  /* Live ones only (shown, a post inside `narrative.dead.afterMs`): a dead story is not searched forward. */
+  const open = (await deps.narratives.live(started - deps.policy.narrative.dead.afterMs)).filter((n) => n.shown);
   const named: { readonly id: string; readonly name: ChosenName }[] = [];
   for (const n of open) {
     const members = [...n.members].sort().slice(-p.membersRead);
