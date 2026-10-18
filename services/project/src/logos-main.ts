@@ -1,6 +1,6 @@
 /**
- * THE COIN-LOGO MIRROR, run once: find the coins whose logo is not in our storage yet (the ones on
- * screen first, then a slice of every other coin we hold), copy each one's picture there, record
+ * THE COIN-LOGO MIRROR, run once: find the coins the app shows whose logo is not in our storage
+ * yet (only those: coin-logos.ts says which), copy each one's picture there, record
  * the outcome and, for a coin left as a letter, why; then copy the profile pictures of the posters
  * on the feeds the same way (poster-pics.ts); exit. Scheduled every two minutes by
  * tools/railway-start.mjs beside the board's projector.

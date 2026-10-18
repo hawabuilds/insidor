@@ -8,12 +8,24 @@
  * The mirror therefore tries every place the picture can be, and logs each coin it still could
  * not fill (`coin logo is a letter`) with the reason, countable from the ledger's `why`.
  *
- * Which coins, in two lists per pass: first every coin a person can see — named on a feed card or
- * a narrative page (no age window: a page still open shows its coins), in a post sheet's or a
- * "See N coins" list (which holds every coin a lookup found, so a coin is taken as soon as it is
- * first listed), a history narrative, a running older coin, or created on Insidor; then, within a
- * per-pass cap, every other coin we hold (public.coin_name), newest first, so a token page opened
- * from Search or a link has its logo too.
+ * ★ WHICH COINS: ONLY THE ONES THE APP SHOWS (the owner, 2026-10-18: "Only store logos for coins
+ * shown in the app (linked to a post, a narrative or the watchlist)"). Until then a backfill also
+ * copied every other coin we hold, newest first: about 1 GB of storage a day for pictures nobody
+ * opened, when 4,546 of the 128,464 coins we hold were on any surface. The set, each part a table
+ * the read or alert service draws coins from (SHOWN_PARTS), with no age window, since a page still
+ * open shows its coins:
+ *   linked to a post   the For You and Popular frame (public.rising_row), the infinite scroll
+ *                      (public.feed_post, not withdrawn), a post sheet's or a narrative's "See N
+ *                      coins" list (public.same_name_coin, every coin a lookup found, so a coin
+ *                      is taken as soon as it is first listed), the coin links of those posts and
+ *                      of watched posts (internal.coin_post_link), a card's running older coins;
+ *   a narrative        its page and the board (public.story_view, public.board_row), a history
+ *                      narrative in Search (public.history_coin), a coin created on Insidor;
+ *   the watchlist      a watched coin (people.watch_coin) and every coin an alert names
+ *                      (people.alert), which is what the Alerts and Watching lists draw.
+ * A token page opened from Search or a link, for a coin outside the set, shows the coin's own
+ * picture and then its letter, as it did before the mirror. The people schema is read only when
+ * this role may read it; when it may not, the pass says so and mirrors the rest.
  *
  * Where from, in the owner's order, each tried only when the one before gave nothing:
  *   1. `launch` the picture the coin's own metadata names — the one already read
@@ -25,7 +37,9 @@
  * Separate from logos-main.ts so the order, the selection and the ledger are tested with
  * stand-ins; the entry only wires real pools, the sources and storage to this.
  *
- * What breaks if changed carelessly: the retry bounds. `none` is asked again only after
+ * What breaks if changed carelessly: SHOWN_PARTS is also the removal tool's keep list
+ * (tools/logo-prune.ts). A surface that starts drawing coins from a new table must be added there,
+ * or its logos are copied by nobody and deleted by the tool. And the retry bounds. `none` is asked again only after
  * NONE_RETRY_MS, and `failed` waits FAILED_RETRY_MS doubled per attempt up to MAX_ATTEMPTS, then
  * GAVE_UP_RETRY_MS;
  * without them a coin with a dead picture host would be fetched every pass forever. And the pass
@@ -35,10 +49,8 @@
 
 import type { Db } from '@insidor/store';
 
-/** Coins a person can see, looked at per pass. */
-export const SHOWN_PER_PASS = 60;
-/** Every other coin we hold, looked at per pass behind them: a background backfill. */
-export const BACKFILL_PER_PASS = 120;
+/** Coins a person can see, looked at per pass: the 60 shown plus the 120 the old backfill took. */
+export const SHOWN_PER_PASS = 180;
 /** Coins worked on at once. Each one's tries are in order; coins run side by side. */
 export const CONCURRENCY = 8;
 /** No new coin is started after this much of a pass; the ones under way finish. */
@@ -74,34 +86,60 @@ const JOINS = `
   left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
   left join internal.coin_logo l on l.address = s.address`;
 
-/** The coins on screen whose logo is missing, retryable, or never tried. `$6` limit. */
-export const SHOWN_SQL = `
-with shown as (
-  select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' as address from public.rising_row
-  union
-  select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' from public.story_view
-  union
-  select address from public.same_name_coin
-  union
-  select address from public.created_coin
-  union
-  select address from public.history_coin
-  union
-  select address from internal.older_coin where running
+/**
+ * Every table the app draws a coin from, one address column each. The `people` parts are read only
+ * when the role may (PEOPLE_READABLE_SQL); the removal tool refuses to run without them.
+ */
+export const SHOWN_PARTS: readonly { readonly name: string; readonly people: boolean; readonly sql: string }[] = [
+  { name: 'rising_row', people: false, sql: `select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' as address from public.rising_row` },
+  { name: 'feed_post', people: false, sql: `select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' from public.feed_post where withdrawn_at is null and payload is not null` },
+  { name: 'same_name_coin', people: false, sql: `select address from public.same_name_coin` },
+  {
+    name: 'coin_post_link',
+    people: false,
+    sql: `select l.address from internal.coin_post_link l
+           where l.source || ':' || l.source_item_id in (select item_id from public.rising_row union select item_id from public.feed_post where withdrawn_at is null)`,
+  },
+  { name: 'older_coin', people: false, sql: `select address from internal.older_coin where running` },
+  { name: 'story_view', people: false, sql: `select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' from public.story_view` },
+  { name: 'board_row', people: false, sql: `select jsonb_path_query(payload, 'lax $.**.address') #>> '{}' from public.board_row` },
+  { name: 'history_coin', people: false, sql: `select address from public.history_coin` },
+  { name: 'created_coin', people: false, sql: `select address from public.created_coin` },
+  { name: 'watch_coin', people: true, sql: `select mint from people.watch_coin` },
+  { name: 'watched_post_link', people: true, sql: `select l.address from internal.coin_post_link l join people.post_watch w on w.item_id = l.source || ':' || l.source_item_id` },
+  { name: 'alert', people: true, sql: `select jsonb_path_query(facts, 'lax $.**.address') #>> '{}' from people.alert` },
+];
+
+/** Whether this role may read the watchlist's tables; false, not an error, where they do not exist. */
+export const PEOPLE_READABLE_SQL = `
+select coalesce(has_table_privilege(to_regclass('people.watch_coin'), 'select')
+            and has_table_privilege(to_regclass('people.post_watch'), 'select')
+            and has_table_privilege(to_regclass('people.alert'), 'select'), false) as ok`;
+
+/** The shown set as one `address` column, with or without the people parts. */
+export function shownSetSql(withPeople: boolean): string {
+  return SHOWN_PARTS.filter((p) => withPeople || !p.people)
+    .map((p) => p.sql)
+    .join('\n  union\n  ');
+}
+
+/** The shown coins whose logo is missing, retryable, or never tried. `$6` limit. */
+export function shownSql(withPeople: boolean): string {
+  return `
+with shown(address) as (
+  ${shownSetSql(withPeople)}
 )
 select s.address, ${COLUMNS}
   from shown s ${JOINS}
  where s.address ~ '${ADDRESS}' and ${DUE}
  order by l.checked_at asc nulls first
  limit $6`;
+}
 
-/** Every other coin we hold, newest first. `$6` limit, `$7` addresses already taken this pass. */
-export const BACKFILL_SQL = `
-select s.address, ${COLUMNS}
-  from public.coin_name s ${JOINS}
- where s.address ~ '${ADDRESS}' and not (s.address = any($7::text[])) and ${DUE}
- order by coalesce(a.minted_at, s.launched_at) desc nulls last
- limit $6`;
+export async function peopleReadable(db: Db): Promise<boolean> {
+  const [row] = await db.query<{ ok: boolean }>(PEOPLE_READABLE_SQL, []);
+  return row?.ok === true;
+}
 
 export const RECORD_SQL = `
 insert into internal.coin_logo (address, outcome, source, attempts, checked_at, why)
@@ -146,11 +184,10 @@ const toCoin = (r: Row): DueCoin => ({
   attempts: r.attempts ?? 0,
 });
 
-export async function dueCoins(db: Db, nowMs: number): Promise<{ readonly shown: readonly DueCoin[]; readonly backfill: readonly DueCoin[] }> {
+export async function dueCoins(db: Db, nowMs: number, withPeople: boolean): Promise<{ readonly shown: readonly DueCoin[] }> {
   const common = [new Date(nowMs - NONE_RETRY_MS), new Date(nowMs), FAILED_RETRY_MS, MAX_ATTEMPTS, new Date(nowMs - GAVE_UP_RETRY_MS)];
-  const shown = (await db.query<Row>(SHOWN_SQL, [...common, SHOWN_PER_PASS])).map(toCoin);
-  const backfill = (await db.query<Row>(BACKFILL_SQL, [...common, BACKFILL_PER_PASS, shown.map((c) => c.address)])).map(toCoin);
-  return { shown, backfill };
+  const shown = (await db.query<Row>(shownSql(withPeople), [...common, SHOWN_PER_PASS])).map(toCoin);
+  return { shown };
 }
 
 export interface MirrorDeps {
@@ -269,7 +306,7 @@ export async function resolveCoin(
   return { outcome: outage ? 'failed' : 'none', source: null, why: notes.join('; ').slice(0, 500) };
 }
 
-/** One pass: the coins on screen first, then the backfill, inside the pass budget. */
+/** One pass: the shown coins due, inside the pass budget. */
 export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
   const bySource: Record<LogoSource, number> = { launch: 0, venue: 0, market: 0 };
   const empty: PassResult = { stored: 0, none: 0, failed: 0, letters: 0, bySource, skippedForTime: 0 };
@@ -277,8 +314,9 @@ export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
     deps.log('coin logos wait for migration 0071', {});
     return empty;
   }
-  const { shown, backfill } = await dueCoins(deps.db, deps.nowMs);
-  const due = [...shown, ...backfill];
+  const withPeople = await peopleReadable(deps.db);
+  if (!withPeople) deps.log('coin logos: the watchlist tables are not readable by this role; its coins are not mirrored', {});
+  const { shown: due } = await dueCoins(deps.db, deps.nowMs, withPeople);
   if (due.length === 0) return empty;
 
   /* One batch read of the market source for the whole pass; an outage there is not "no picture". */

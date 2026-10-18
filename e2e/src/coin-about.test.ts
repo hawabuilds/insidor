@@ -69,7 +69,8 @@ test('a coin with no read metadata has no launch links; one we do not hold is a 
 });
 
 test('★ the mirror finds the coin on screen, prefers the picture its metadata names, and stores it once', async () => {
-  const due = await dueCoins(db, NOW);
+  /* B is a coin we hold that no surface shows: it is never due, whatever its ledger says. */
+  const due = await dueCoins(db, NOW, true);
   assert.deepEqual(due.shown.map((c) => c.address), [A]);
   assert.equal(due.shown[0]?.metadataImage, 'https://gw.example/ipfs/cid');
   const copied: string[] = [];
@@ -85,11 +86,10 @@ test('★ the mirror finds the coin on screen, prefers the picture its metadata 
     log: () => {},
   });
   assert.equal(r.stored, 1);
-  assert.deepEqual(due.backfill.map((c) => c.address), [B]);
   assert.equal(r.bySource.launch, 1);
-  assert.equal(copied[0], 'https://gw.example/ipfs/cid');
-  const after = await dueCoins(db, NOW);
-  assert.deepEqual([...after.shown, ...after.backfill], []);
+  assert.deepEqual(copied, ['https://gw.example/ipfs/cid']);
+  const after = await dueCoins(db, NOW, true);
+  assert.deepEqual(after.shown, []);
 });
 
 test('★ a coin no source has a picture for is recorded with why, and counted as a letter', async () => {
