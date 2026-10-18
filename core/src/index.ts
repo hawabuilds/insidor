@@ -60,6 +60,9 @@ export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from '.
 export type { PictureInputs } from './group/picture.ts';
 /* Narratives: the posts the judge passed, grouped by meaning and one shared detail (group/narrative.ts). */
 export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, reachGained, sharedDetail } from './group/narrative.ts';
+/* The early posts: stored posts the regroup could not see, matched back into its narratives (group/narrative-early.ts). */
+export { earlyMatches, earlyShortlist } from './group/narrative-early.ts';
+export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';
 export type { TrendCoin, TrendFacts, TrendInput, TrendPost, TrendStanding } from './group/narrative-trend.ts';
