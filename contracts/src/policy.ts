@@ -1624,6 +1624,24 @@ export interface FeedPolicy {
     readonly passDeadlineMs: number;
     readonly dailyUsd: number;
     readonly bookReserveUsd: number;
+    /**
+     * ★ THE SORTS' TOP POSTS KEPT FRESH (the owner, 2026-10-18: yes for the text source, about
+     * $0.11 a day). Every `recomputeMs` the runner ranks For You's scroll on each sort chip and window
+     * (`windowsMs`, the same as the read service's SORT_WINDOWS) as if every post were read just now
+     * (core rank/post-sorts.ts), and any text-source post in a list's top `topN` whose newest reading
+     * is `everyMs` old or more is due, at most `maxPerPass` a pass, inside this lane's `dailyUsd`.
+     * So a post that would top a list is never left below it for want of a reading
+     * (rising.forYouSorts.freshMs). The short-video source is not read here: its credits are the
+     * owner's call, priced separately.
+     */
+    readonly sortTop: {
+      readonly on: boolean;
+      readonly topN: number;
+      readonly everyMs: number;
+      readonly recomputeMs: number;
+      readonly maxPerPass: number;
+      readonly windowsMs: readonly number[];
+    };
   };
   /**
    * ★ THE NARRATIVE-NAME SEARCH (the owner, 2026-10-18): every `everyMs`, each open narrative on the
@@ -4542,6 +4560,8 @@ const POLICY_V1: Policy = {
       passDeadlineMs: 25_000,
       dailyUsd: 3.75,
       bookReserveUsd: 3,
+      /* On 2026-10-18, the owner's yes: about $0.11 to $0.13 a day (replayed over the 24 hours before). 25 minutes keeps the newest reading under 30 with the pass's slack. */
+      sortTop: { on: true, topN: 20, everyMs: 1_500_000, recomputeMs: 300_000, maxPerPass: 20, windowsMs: [3_600_000, 21_600_000, 86_400_000] },
     },
     /* The owner, 2026-10-18: "build the narrative-name search ... its own daily $ cap at your top
        estimate: $0.35". 52 of the 95-99 shown narratives had a safe name on 2026-10-18; one ask an hour

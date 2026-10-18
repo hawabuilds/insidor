@@ -148,6 +148,43 @@ function setup(opts: { policy?: Policy; candidates?: ReadingCandidate[]; ledger?
   return { deps, calls, appended, answered, ledger };
 }
 
+test("★ the sorts' top: a text post that would top a list and has gone 25 minutes unread is due, off the frame or not; a short video never", () => {
+  const top = new Set(['x:old', 'x:fresh', 'tiktok:v', 'x:never']);
+  const everyMs = ON.feed.readings.sortTop.everyMs;
+  const off = { onForYou: false, postedAt: NOW - 30 * H };
+  const cs = [
+    post('old', { ...off, lastReadAt: NOW - everyMs }),
+    post('fresh', { ...off, lastReadAt: NOW - everyMs / 2 }),
+    post('never', { ...off, lastReadAt: null }),
+    post('outside', { ...off, lastReadAt: NOW - 10 * H }),
+    video('v', { ...off, lastReadAt: NOW - 10 * H }),
+  ];
+  const { posts, sorts } = dueReadings(cs, NOW, ON, top);
+  assert.deepEqual(posts.map((c) => c.itemId), ['x:never', 'x:old']);
+  assert.equal(sorts, 2);
+  /* Off, nothing is read for the sorts. */
+  const quietPolicy = { ...ON, feed: { ...ON.feed, readings: { ...ON.feed.readings, sortTop: { ...ON.feed.readings.sortTop, on: false } } } };
+  assert.equal(dueReadings(cs, NOW, quietPolicy, top).posts.length, 0);
+  /* Bounded a pass. */
+  const many = Array.from({ length: 50 }, (_, i) => post(`m${i}`, { ...off, lastReadAt: null }));
+  const capped = dueReadings(many, NOW, ON, new Set(many.map((c) => c.itemId)));
+  assert.equal(capped.sorts, ON.feed.readings.sortTop.maxPerPass);
+});
+
+test("★ the pass asks the store for the sorts' top posts too, and reads them", async () => {
+  const off = { onForYou: false, postedAt: NOW - 30 * H, lastReadAt: NOW - H };
+  const { deps, calls } = setup({ candidates: [post('top', off)] });
+  let extra: readonly string[] = [];
+  const out = await readingsPass({
+    ...deps,
+    readings: { ...deps.readings, candidates: async (_since, _only, ids = []) => ((extra = ids), [post('top', off)]) },
+    sortTop: async () => new Set(['x:top']),
+  });
+  assert.deepEqual(extra, ['x:top']);
+  assert.deepEqual(calls, [{ source: 'x', ids: ['top'] }]);
+  assert.equal(out.sorts, 1);
+});
+
 test('★ off: nothing is listed, nothing asked', async () => {
   const off = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, on: false } } };
   const { deps, calls } = setup({ policy: off });

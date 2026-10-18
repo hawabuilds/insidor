@@ -60,9 +60,11 @@ export class PgReadingsRepo {
 
   /**
    * For You's posts and the posts opened since `openedSince` that a feed still holds. Before 0090
-   * the open half throws; the caller then reads For You alone (`forYouOnly`).
+   * the open half throws; the caller then reads For You alone (`forYouOnly`). `extra` adds posts
+   * the caller wants considered too (the sorts' top posts, work/sort-top.ts), each still required to
+   * be on For You's scroll (public.feed_post), so an id the caller got wrong reads nothing.
    */
-  async candidates(openedSince: Date, forYouOnly = false): Promise<readonly ReadingCandidate[]> {
+  async candidates(openedSince: Date, forYouOnly = false, extra: readonly string[] = []): Promise<readonly ReadingCandidate[]> {
     const asked = forYouOnly
       ? `select null::text as item_id, null::timestamptz as asked_at where false`
       : `select k.item_id, k.asked_at from internal.reading_ask k
@@ -72,7 +74,9 @@ export class PgReadingsRepo {
     const rows = await this.#db.query<CandidateRow>(
       `with fyp as (select distinct item_id from public.rising_row where feed_id = 'fyp'),
             asked as (${asked}),
-            pool as (select item_id from fyp union select item_id from asked)
+            extra as (select f.item_id from public.feed_post f
+                       where f.feed_id = 'fyp' and f.withdrawn_at is null and f.item_id = any($${forYouOnly ? 2 : 3}::text[])),
+            pool as (select item_id from fyp union select item_id from asked union select item_id from extra)
        select i.item_id, i.source, i.source_item_id, a.handle, i.posted_at,
               (select max((select o.captured_at from public.observation o
                              where o.item_id = i.item_id and o.kind = k.kind
@@ -83,7 +87,7 @@ export class PgReadingsRepo {
          from pool p
          join public.item i on i.item_id = p.item_id
          left join public.author a on a.author_key = i.author_key`,
-      forYouOnly ? [[...COUNTER_KINDS]] : [[...COUNTER_KINDS], openedSince],
+      forYouOnly ? [[...COUNTER_KINDS], [...extra]] : [[...COUNTER_KINDS], openedSince, [...extra]],
     );
     return rows.map((r) => ({
       itemId: r.item_id,
@@ -95,6 +99,16 @@ export class PgReadingsRepo {
       onForYou: r.on_for_you,
       openedAt: at(r.opened_at),
     }));
+  }
+
+  /** For You's scroll, every member not withdrawn, with its source and posting time: what the sorts rank. */
+  async forYouMembers(): Promise<readonly { readonly itemId: string; readonly source: string; readonly postedAt: number | null }[]> {
+    const rows = await this.#db.query<{ item_id: string; source: string; posted_at: TimestampColumn | null }>(
+      `select f.item_id, i.source, i.posted_at
+         from public.feed_post f join public.item i on i.item_id = f.item_id
+        where f.feed_id = 'fyp' and f.withdrawn_at is null`,
+    );
+    return rows.map((r) => ({ itemId: r.item_id, source: r.source, postedAt: at(r.posted_at) }));
   }
 
   /** Clears the opens these reads answered: rows asked at or before `readAt`, and only those. */
