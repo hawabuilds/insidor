@@ -187,7 +187,7 @@ export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: 
       const vb = postVectors.get(b.itemId);
       if (vb === undefined) continue;
       const meaning = dot(va, vb);
-      if (meaning < n.sameMeaning) continue;
+      if (meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
       const pa = pictureVectors.get(a.itemId);
       const pb = pictureVectors.get(b.itemId);
       pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: pa !== undefined && pb !== undefined && dot(pa, pb) >= p.group.image.likely });

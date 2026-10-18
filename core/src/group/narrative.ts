@@ -7,7 +7,9 @@
  * four days, and the board's narratives were built from ads, shills and posts the owner hid. A
  * narrative here is built only from GOOD posts, and only on two things at once:
  *
- *   meaning     the two posts' words-and-picture vectors are close (`narrative.sameMeaning`)
+ *   meaning     the two posts' words-and-picture vectors are close (`narrative.sameMeaning`, or
+ *               `nameMeaning` when the detail is the same name: a text post and a short video on
+ *               one story read further apart than two text posts)
  *   a detail    they share a name, the same picture, or a topic word that is not a hashtag —
  *               the story coins' rule (match/story-coin.ts), so a narrative and a story coin
  *               agree on what "the same story" means
@@ -335,14 +337,15 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
   const links = { name: 0, picture: 0, topic: 0 };
   const edges: [string, string][] = [];
   for (const pair of input.pairs) {
-    if (pair.a === pair.b || pair.meaning < n.sameMeaning) continue;
+    if (pair.a === pair.b || pair.meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
     const da = details.get(pair.a);
     const db = details.get(pair.b);
     if (da === undefined || db === undefined) continue;
     if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.maxGapMs) continue;
     if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
     const kind = sharedDetail(da, db, pair.samePicture);
-    if (kind === null) continue;
+    /* ★ A shared name links at `nameMeaning`; a shared topic word or picture only at `sameMeaning`. */
+    if (kind === null || pair.meaning < (kind === 'name' ? n.nameMeaning : n.sameMeaning)) continue;
     links[kind] += 1;
     edges.push([pair.a, pair.b]);
   }
