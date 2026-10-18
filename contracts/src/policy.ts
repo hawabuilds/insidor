@@ -3372,6 +3372,8 @@ export interface NarrativePolicy {
    */
   readonly searchedPosts: boolean;
   readonly sameMeaning: number;
+  /** Two posts the judge gave the same name link from this alike; any other shared detail needs `sameMeaning`. */
+  readonly nameMeaning: number;
   readonly maxGapMs: number;
   readonly maxSpanMs: number;
   readonly minLinkShare: number;
@@ -5599,7 +5601,18 @@ const POLICY_V1: Policy = {
     /* Off, the owner's to turn on: on 2026-10-16 38 of the board's 48 narratives were built from such
        posts, and 1,148 of the two days' judged-yes ones had no vector — about $0.10 a day to embed. */
     searchedPosts: true, // the owner, 2026-10-16: in, if they pass the judge like every other post
-    sameMeaning: 0.6,
+    /* 0.7 (a shared topic word or picture), `nameMeaning` 0.6 (a shared name) and `mergeMeaning` 0.7
+       from 2026-10-18 (tools/narrative-tune.ts: the two days' 1,500 good posts replayed with no pins
+       and none of the owner's calls). At 0.6 / 0.6 / 0.55 the two biggest groups held 277 and 263
+       posts ("France protests and cat memes"), 28% of a narrative's posts carried its most common
+       name, and 1,780 links were a shared topic word alone; now the biggest is 29, 67% carry its
+       name, 147 links are a topic word, 1 of the 43 post pairs the owner called Not a narrative is
+       still grouped (as before), and 245 of the 251 same-name pairs from different accounts at 0.75
+       or closer join (242 before: the blobs' drift step pushed some out). `nameMeaning` 0.65 is a
+       little purer (0 of 43, 248 of 251) but loses the text post and short video of one story at
+       0.64 (GTA 6), so it stays 0.6. */
+    sameMeaning: 0.7,
+    nameMeaning: 0.6,
     maxGapMs: 86_400_000, // a day: an old story and a new one with the same word stay apart
     maxSpanMs: 172_800_000, // two days
     minLinkShare: 0.5,
@@ -5608,7 +5621,7 @@ const POLICY_V1: Policy = {
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49
        (GTA 6's posts from the Roadster's average). Averages against averages do not separate them: a
        big group's average drifts toward the feed's, and GTA 6 and the Roadster read 0.56 that way. */
-    mergeMeaning: 0.55,
+    mergeMeaning: 0.7,
     minPosts: 2,
     minAccounts: 2,
     single: { on: false, minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
