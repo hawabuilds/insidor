@@ -25,7 +25,7 @@
  * span, never a total; a total always climbs and would make every narrative look like it is rising.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -49,6 +49,8 @@ import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
+import { useIsOwner } from '../owner/hooks.ts';
+import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
 import styles from './narratives.module.css';
 
 /** The space between two cards (narratives.module.css .cards had it as its gap). */
@@ -81,7 +83,10 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [note, setNote] = useState<SheetNote | null>(null);
   const now = useNow();
   const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site);
-  const rows = list.rows;
+  /* The owner's "Not a narrative" (features/owner/OwnerNarrative.tsx): drawn only for the owner, and a card it hid leaves at once. */
+  const owner = useIsOwner();
+  const { hidden } = useHiddenNarratives();
+  const rows = useMemo(() => (list.rows === null || hidden.size === 0 ? list.rows : list.rows.filter((s) => !hidden.has(s.id))), [list.rows, hidden]);
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
   const places = useMemo(() => new Map((rows ?? []).map((s, i) => [s.id, i])), [rows]);
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
@@ -138,7 +143,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
               const i = places.get(s.id) ?? 0;
               return (
                 <div ref={glide(s.id)} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
-                  <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
+                  <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} extra={owner ? <NotANarrativeStrip storyId={s.id} /> : null} />
                 </div>
               );
             }}
@@ -151,6 +156,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
       {list.next !== null ? <More onMore={list.more} busy={list.state === 'loading'} failed={list.state === 'failed'} /> : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
       <SheetToast note={note} onDone={() => setNote(null)} />
+      {owner ? <NarrativeHideBar /> : null}
     </section>
   );
 }
@@ -288,7 +294,7 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
  * watchLine); there the right side is the last hour's gain, as it always was. `hours` is what the
  * Watchlist still passes and is not read.
  */
-export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, extra = null }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void; extra?: ReactNode }) {
   const coin = storyCoinState(story);
   const right = view === undefined ? hourGainText(story) : viewsText(story);
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
@@ -342,6 +348,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }:
           <span className={styles['coinNone']}>{coin.line}</span>
         )}
       </div>
+      {extra}
     </article>
   );
 }
