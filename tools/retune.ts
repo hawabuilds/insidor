@@ -393,7 +393,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* The junk filter before the post judge (tools/lib/junk-filter.ts): free, refitted at every slot, never fails the run. */
       const junk = await refitJunkForRetune(url, { record: opts.record && !opts.dry });
       log('info', 'junk filter refitted', { slot: slot.toISOString(), ...junk.log });
-      /* Our own coin model, the safety net (tools/lib/coin-model.ts): free, refitted at the slots
+      /* Our own coin model, the safety net (tools/lib/coin-model.ts): every target in Policy.judge.coinModel.targets, free, refitted at the slots
          Policy.judge.coinModel.refitAt names (the owner: the 20:00 one), replaced only when it catches
          more held-out missed posts with no more junk; never fails the run. */
       const slotClock = new Intl.DateTimeFormat('en-GB', { timeZone: L.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(slot);

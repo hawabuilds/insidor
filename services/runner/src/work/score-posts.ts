@@ -310,9 +310,10 @@ export async function kindCatchUp(
   const floor = Math.min(...Object.values(deps.policy.qualify.minJudgeConfidence)) - deps.policy.rising.boostBarMargin;
   /* With the safety net on (Policy.judge.coinModel.on), a "no" it would let through is screened by kind too. */
   const net = deps.policy.judge.coinModel.on;
+  const netTarget = net ? deps.policy.judge.coinModel.liveTarget : null;
   let found: Awaited<ReturnType<NonNullable<ScoringDeps['items']['catchAllKindUnasked']>>>;
   try {
-    found = await find(opts.since, cap * PREFETCH_FACTOR, opts.kindLabel, floor, net);
+    found = await find(opts.since, cap * PREFETCH_FACTOR, opts.kindLabel, floor, netTarget);
   } catch (e) {
     deps.log.warn('posts the kind question missed could not be read; caught up next pass', { err: errorText(e) });
     return 0;

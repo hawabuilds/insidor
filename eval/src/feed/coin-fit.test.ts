@@ -27,7 +27,7 @@ test('average precision is 1 when every coined post ranks first', () => {
   assert.equal(averagePrecision([{ score: 0.9, y: 0 }]), null);
 });
 
-const post = (o: Partial<TablePost>): TablePost => ({ itemId: 'x:1', score: 0.9, coined: false, shown: false, judgeNo: true, gates: true, junk: null, tappedNot: false, ...o });
+const post = (o: Partial<TablePost>): TablePost => ({ itemId: 'x:1', score: 0.9, hit: false, shown: false, judgeNo: true, gates: true, junk: null, tappedNot: false, memeViral: false, earlyAtMs: null, shownAtMs: null, addAtMs: null, viewsShown: null, viewsAdd: null, views24: null, ...o });
 
 test('★ only a judged-no post, not already shown, that clears the other gates is an extra', () => {
   assert.equal(added(post({}), 0.8), true);
@@ -39,23 +39,45 @@ test('★ only a judged-no post, not already shown, that clears the other gates 
 
 test('the table: extras an hour, coined caught alone and combined, and the junk rise in points', () => {
   const posts = [
-    post({ itemId: 'a', shown: true, judgeNo: false, coined: true, junk: false }),
+    post({ itemId: 'a', shown: true, judgeNo: false, hit: true, junk: false }),
     post({ itemId: 'b', shown: true, judgeNo: false, junk: true, tappedNot: true }),
-    post({ itemId: 'c', coined: true, junk: false }),
+    post({ itemId: 'c', hit: true, junk: false }),
     post({ itemId: 'd', junk: true, score: 0.95 }),
     post({ itemId: 'e', score: 0.2, junk: true }),
   ];
   const r = tableRow(posts, 0.8, 2);
   assert.equal(r.extras, 2);
   assert.equal(r.extrasPerHour, 1);
-  assert.equal(r.extrasCoined, 1);
-  assert.deepEqual(r.coined, { alone: 1, combined: 2, model: 2, of: 2 });
+  assert.equal(r.extrasHit, 1);
+  assert.deepEqual(r.hits, { alone: 1, combined: 2, model: 2, of: 2 });
   assert.equal(r.junkAlone, 0.5);
   assert.equal(r.junkCombined, 0.5);
   assert.equal(r.junkRise, 0);
   assert.deepEqual(r.tapsAlone, { not: 1, shown: 2 });
   assert.equal(chooseThreshold(posts, [0.1, 0.8, 0.99], 2, 0.03, 0.5), 0.99, 'one an hour is over a cap of 0.5');
   assert.equal(chooseThreshold(posts, [0.1, 0.8], 2, 0.03, 5), 0.8, 'at 0.1 the junk rises');
+});
+
+test('★ coverage counts a memeable viral post only when it was on For You before the early share of the line; earliness leaves out a post with no day\'s views', () => {
+  const posts = [
+    /* shown by the judge before 20% of the line */
+    post({ itemId: 'a', shown: true, judgeNo: false, memeViral: true, shownAtMs: 10, earlyAtMs: 20, viewsShown: 100, views24: 1000 }),
+    /* shown by the judge after it */
+    post({ itemId: 'b', shown: true, judgeNo: false, memeViral: true, shownAtMs: 30, earlyAtMs: 20, viewsShown: 900, views24: 1000 }),
+    /* the net adds it in time */
+    post({ itemId: 'c', memeViral: true, addAtMs: 5, earlyAtMs: 20, viewsAdd: 50, views24: 1000 }),
+    /* the net adds it too late */
+    post({ itemId: 'd', memeViral: true, addAtMs: 25, earlyAtMs: 20, viewsAdd: 300, views24: null }),
+    /* never clears the reach bar */
+    post({ itemId: 'e', memeViral: true, gates: false, addAtMs: null, earlyAtMs: 20 }),
+  ];
+  const r = tableRow(posts, 0.5, 1);
+  assert.deepEqual(r.coverage, { alone: 1, combined: 2, model: 1, of: 5 });
+  assert.equal(r.extrasMemeViral, 2);
+  assert.deepEqual(r.earliness.alone, { n: 2, medianShare: 0.5, medianViewsAt: 500, median24: 1000 });
+  assert.equal(r.earliness.extras.n, 1, 'the post with no day\'s views is left out, never a zero');
+  assert.equal(r.earliness.extras.medianShare, 0.05);
+  assert.equal(r.earliness.combined.n, 3);
 });
 
 test('★ a row\'s weight: all ones is the unweighted fit, a zero-weight row is no row, a half-weight yes pulls less than a full one', () => {
