@@ -4,9 +4,12 @@
   "buildCommand": "cd .. && pnpm --filter @insidor/mobile build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/api/read/:path*", "destination": "https://read-production-a6c0.up.railway.app/:path*" },
+    { "source": "/api/fn/:service(read|trade|social|notify)/:path*", "destination": "/api/proxy?service=:service&path=:path*" },
     { "source": "/api/:service(read|trade|social|notify)/:path*", "destination": "/api/proxy?service=:service&path=:path*" }
   ],
   "headers": [
+    { "source": "/api/read/:path*", "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "1" }] },
     { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }, { "key": "Service-Worker-Allowed", "value": "/" }] },
     { "source": "/manifest.webmanifest", "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }] }
   ],
