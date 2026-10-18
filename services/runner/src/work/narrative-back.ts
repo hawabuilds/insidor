@@ -1,25 +1,33 @@
 /**
- * ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (Policy.narrative.backSearch, off until the owner has
- * the cost): a narrative first shown in the last `formedWithinMs` is searched once on the text
- * source by its narrative-name search name (work/narrative-names.ts `chooseName`), from `lookbackMs`
- * before its first post up to that post, in all languages at once.
+ * ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (Policy.narrative.backSearch, on from 2026-10-18): a
+ * shown narrative of at least `minPosts` posts, first shown in the last `formedWithinMs`, is
+ * searched once on the text source by its narrative-name search name (work/narrative-names.ts
+ * `chooseName`), from `lookbackMs` before its first post up to that post, in all languages at once.
  *
  * Why: the owner's missed post #16 (x:2110225239515041849, the Roadster's "Timing is everything"
  * quote of 14 Oct) was never found by a lane; we saved it only when he pasted it. The forward
  * name search (narrative-names.ts) asks from a narrative's last search onwards, so it can never
  * find what went up before the narrative formed. This asks that once.
  *
- * Its posts are credited to the 'narrative_name' lane (0097) and charged to that lane's day
- * (`feed.narrativeNames.cap`), so the two name searches together can never pass its cap; they are
- * judged like every found post, and the ones that pass reach the narrative through the early posts
- * (work/narratives.ts step 6), which take stored posts up to seven days back.
+ * ★ ITS OWN DAY: charged to the 'narrative_back' ledger lane at `cap` ($0.50 a day, the owner),
+ * apart from the forward name search's $0.35, so neither takes the other's room. Its posts are
+ * still credited to the 'narrative_name' found-by lane (0097): a found-by lane of its own would
+ * need the lane check rebuilt, and both are the same kind of find. They are judged like every
+ * found post, and the ones that pass reach the narrative through the early posts (work/
+ * narratives.ts step 6), which take stored posts up to seven days back.
  *
- * ★ ONCE PER NARRATIVE, kept in the process: a restart may ask a narrative formed in the last
- * `formedWithinMs` again, inside the cap. An ask that failed or was cut short is asked next pass.
+ * Biggest first: a pass asks the narratives with the most posts first, so a day's cap is spent on
+ * the stories people are reading. Under `minPosts` a narrative is too small to name safely and
+ * waits; it is asked if it reaches `minPosts` while still inside `formedWithinMs`.
  *
- * What breaks if changed carelessly: the window's end. `untilMs` is the narrative's first post as
- * we hold it; leaving it open would ask the narrative's whole life again, which the forward search
- * already pays for.
+ * ★ ONCE PER NARRATIVE, kept in the process: a restart asks again the narratives formed in the
+ * last `formedWithinMs`, inside the cap (mostly posts we already hold, so mostly the search bill,
+ * at most $0.009 an ask). An ask that failed or was cut short is asked next pass.
+ *
+ * What breaks if changed carelessly: the window's end. `untilMs` is the narrative's earliest post
+ * as we hold it, over ALL its posts (early ones included); leaving it open, or taking it from the
+ * newest posts only, would ask the narrative's life again, which the forward search already pays
+ * for.
  */
 
 import type { Author, Item, Millis } from '@insidor/contracts';
@@ -72,8 +80,8 @@ export async function narrativeBackPass(deps: NarrativeBackDeps, asked: Narrativ
   const started = deps.now();
   const deadline = (started + b.passDeadlineMs) as Millis;
   const due = (await deps.narratives.open())
-    .filter((n) => n.shown && n.firstShownAtMs !== null && n.firstShownAtMs >= started - b.formedWithinMs && !asked.has(n.id))
-    .sort((x, y) => (y.firstShownAtMs ?? 0) - (x.firstShownAtMs ?? 0) || x.id.localeCompare(y.id))
+    .filter((n) => n.shown && n.members.length >= b.minPosts && n.firstShownAtMs !== null && n.firstShownAtMs >= started - b.formedWithinMs && !asked.has(n.id))
+    .sort((x, y) => y.members.length - x.members.length || (y.firstShownAtMs ?? 0) - (x.firstShownAtMs ?? 0) || x.id.localeCompare(y.id))
     .slice(0, b.perPass);
 
   let n = 0;
@@ -81,15 +89,16 @@ export async function narrativeBackPass(deps: NarrativeBackDeps, asked: Narrativ
   let fresh = 0;
   let usd = 0;
   for (const nar of due) {
-    let rows: readonly NarrativePostRow[];
+    let all: readonly NarrativePostRow[];
     try {
-      rows = await deps.narratives.standingRows([...nar.members].sort().slice(-names.membersRead));
+      all = await deps.narratives.standingRows([...nar.members]);
     } catch (e) {
       deps.log.warn("a narrative's posts could not be read; it is searched back next pass", { narrative: nar.id, err: errorText(e) });
       continue;
     }
-    const name = chooseName(nar.title, rows, names);
-    const first = Math.min(...rows.map((r) => r.atMs));
+    /* The name from its newest posts, as the forward search reads them; the window's end from all of them. */
+    const name = chooseName(nar.title, [...all].sort((x, y) => x.atMs - y.atMs).slice(-names.membersRead), names);
+    const first = Math.min(...all.map((r) => r.atMs));
     if (name === null || !Number.isFinite(first)) {
       asked.add(nar.id); // no safe name: never searched, as the forward search
       continue;
@@ -104,7 +113,7 @@ export async function narrativeBackPass(deps: NarrativeBackDeps, asked: Narrativ
       /* All languages in one search: a filter naming several is asked once per language (lane-search.ts). */
       filter: { minApproval: Math.round(names.minApproval), mediaOnly: false, langs: [], excludeRebroadcasts: true },
     };
-    const r = await laneSearch(deps, { adapter: source, query, lane: 'narrative_name', cap: names.cap, maxPages: b.maxPagesPerAsk, deadline });
+    const r = await laneSearch(deps, { adapter: source, query, lane: 'narrative_name', ledgerLane: 'narrative_back', cap: b.cap, maxPages: b.maxPagesPerAsk, deadline });
     usd += r.usd;
     returned += r.returned;
     fresh += r.fresh;
