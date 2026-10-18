@@ -529,28 +529,56 @@ export class PgNarrativeRepo {
         );
       }
 
-      /* ★ Counted from what is stored, never from what this pass held: its posts, its newest and its oldest. */
-      const touched = [...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...removed.map((r) => r.narrativeId)])];
-      if (touched.length > 0) {
-        await this.#db.query(
-          `update internal.narrative n
-              set member_count = s.c, newest_post_at = s.newest, anchor_item = coalesce(s.anchor, n.anchor_item), updated_at = now()
-             from (select m.narrative_id, count(*)::int as c,
-                          max(coalesce(i.posted_at, i.first_seen_at)) as newest,
-                          (array_agg(m.item_id order by coalesce(i.posted_at, i.first_seen_at), m.item_id))[1] as anchor
-                     from internal.narrative_member m
-                     left join public.item i on i.item_id = m.item_id
-                    where m.narrative_id = any($1::text[])
-                    group by m.narrative_id) s
-            where n.narrative_id = s.narrative_id`,
-          [touched],
-        );
-      }
+      await this.#recount([...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...removed.map((r) => r.narrativeId)])]);
       return true;
     } catch (e) {
       if (notMigrated(e)) return false;
       throw e;
     }
+  }
+
+  /* ★ Counted from what is stored, never from what a pass held: its posts, its newest and its oldest. */
+  async #recount(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.#db.query(
+      `update internal.narrative n
+          set member_count = s.c, newest_post_at = s.newest, anchor_item = coalesce(s.anchor, n.anchor_item), updated_at = now()
+         from (select m.narrative_id, count(*)::int as c,
+                      max(coalesce(i.posted_at, i.first_seen_at)) as newest,
+                      (array_agg(m.item_id order by coalesce(i.posted_at, i.first_seen_at), m.item_id))[1] as anchor
+                 from internal.narrative_member m
+                 left join public.item i on i.item_id = m.item_id
+                where m.narrative_id = any($1::text[])
+                group by m.narrative_id) s
+        where n.narrative_id = s.narrative_id`,
+      [[...ids]],
+    );
+  }
+
+  /**
+   * ★ UNDO A MERGE NOBODY ASKED FOR (tools/narrative-unmerge.ts): each narrative the old regroup
+   * folded away is open again under its own id and title, with `items` moved back to it from the
+   * narrative they are in now (`from`) — only posts still in `from`, so a post another narrative
+   * holds stays there. A narrative not merged any more is left as it is, so a second run does
+   * nothing. The projector drops its public.story_alias row and writes its page next frame. Run it
+   * inside the caller's transaction.
+   */
+  async unmerge(list: readonly { readonly id: string; readonly from: string; readonly items: readonly string[] }[]): Promise<number> {
+    if (list.length === 0 || !(await this.migrated())) return 0;
+    const restored = (await this.#hasColumn('narrative', 'restored_at')) ? ', restored_at = now()' : '';
+    let done = 0;
+    for (const u of list) {
+      const opened = await this.#db.query<{ narrative_id: string }>(
+        `update internal.narrative set state = 'open', merged_into = null, shown = true, posts_changed_at = now(), updated_at = now()${restored}
+          where narrative_id = $1 and state = 'merged' returning narrative_id`,
+        [u.id],
+      );
+      if (opened.length === 0) continue;
+      await this.#db.query(`update internal.narrative_member set narrative_id = $1 where narrative_id = $2 and item_id = any($3::text[])`, [u.id, u.from, [...u.items]]);
+      done += 1;
+    }
+    await this.#recount([...new Set(list.flatMap((u) => [u.id, u.from]))]);
+    return done;
   }
 
   readonly #columns = new Map<string, Promise<boolean>>();
