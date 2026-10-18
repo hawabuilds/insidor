@@ -99,6 +99,8 @@ export interface DiscoverLoopDeps {
    * it did not do waits for the next.
    */
   readonly afterPass?: readonly (readonly [string, () => Promise<unknown>])[];
+  /** The capped lanes' ledger (0088), for a search reading past short pages (`feed.paging`). Absent: every search keeps the old rule. */
+  readonly ledger?: DiscoverDeps['ledger'];
   /* ★ NO MIDDLE LANE HERE. It has its own loop (loops/middle.ts): inside this pass its paging
      held the steps after it, the live judge first, for 15 to 26 minutes a pass on 2026-10-16. */
 }
@@ -161,6 +163,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         lanes: slowDue ? [...MAIN_LANES, 'slow'] : MAIN_LANES,
         watch,
         fresh,
+        ...(deps.ledger === undefined ? {} : { ledger: deps.ledger }),
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always

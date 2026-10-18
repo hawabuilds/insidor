@@ -77,7 +77,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
-import type { LaneLedger } from './lane-ledger.ts';
+import type { CappedLane, LaneLedger } from './lane-ledger.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Page sizes and lookbacks — how much is fetched, never what is decided. Nothing
@@ -623,6 +623,39 @@ export interface DiscoverDeps {
    * Absent: the discover pass, which asks the middle lane only if `middle` is given.
    */
   readonly only?: 'middle';
+  /**
+   * ★ THE CAPPED LANES' LEDGER (0088), for a catch-all search that reads past short pages
+   * (`feed.paging`): its day is read before it asks and added to after. Absent, or unreadable,
+   * every such search keeps the old rule, so no search spends past a day nobody can count.
+   */
+  readonly ledger?: LaneLedger;
+}
+
+/**
+ * How one ask pages (`feed.paging`, `feed.middle.fullPaging`).
+ *
+ *   full      read while the source says there is more; false is the old rule, which stops at
+ *             the first page that came back short.
+ *   maxPages  pages this ask may read, the first included.
+ *   deadline  how long it may page from `from`; null, no deadline (the old rule).
+ *   ledger    the search's own day (lane and cap) when it is not the middle lane's; null, none.
+ */
+interface PageRule {
+  readonly full: boolean;
+  readonly maxPages: number;
+  readonly deadlineMs: number | null;
+  readonly ledger: { readonly lane: CappedLane; readonly dailyUsd: number; readonly spentUsd: number } | null;
+}
+
+/**
+ * The name a catch-all ask is listed under in `feed.paging.searches`, or null for an ask that
+ * is never paged (a term or the watch list) and for the middle lane, which has its own switch.
+ */
+export function pagingKey(plan: { readonly lane: FeedLane | null; readonly slice: boolean; readonly band: number | null; readonly late: boolean; readonly middle: boolean }): string | null {
+  if (plan.middle || plan.lane === null) return null;
+  if (plan.slice) return 'slow';
+  if (plan.band !== null) return `${plan.late ? 'late' : 'band'}_${plan.band}`;
+  return plan.lane;
 }
 
 /**
@@ -945,6 +978,30 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       laneSpent = spent;
     }
 
+    /* ★ HOW THIS ASK PAGES. The middle lane by its own switch; a catch-all search listed `full` in
+       `feed.paging` only with its day readable and not yet spent; everything else by the old rule —
+       a term or watch-list ask and a slow slice one page, a catch-all lane `maxPagesPerLane` while
+       each page comes back full. */
+    const key = pagingKey(plan);
+    const listed = key === null ? undefined : deps.policy.feed.paging.searches[key];
+    const oldPages = middle ? deps.policy.feed.middle.maxPages : lane !== null && !slice ? deps.policy.feed.maxPagesPerLane : 1;
+    let rule: PageRule = middle
+      ? { full: deps.policy.feed.middle.fullPaging, maxPages: oldPages, deadlineMs: deps.policy.feed.middle.passDeadlineMs, ledger: null }
+      : { full: false, maxPages: oldPages, deadlineMs: null, ledger: null };
+    if (key !== null && listed?.full === true) {
+      const ledgerLane: CappedLane = `search:${key}`;
+      const spent = deps.ledger === undefined ? null : await deps.ledger.spent(ledgerLane, now);
+      if (spent === null) {
+        deps.log.warn('a search set to read past short pages has no readable day; it keeps the old rule', { source, search: key });
+      } else if (spent + estimate.usd > listed.dailyUsd) {
+        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: Math.max(0, listed.dailyUsd - spent), spentUsd: spent, capUsd: listed.dailyUsd });
+        deps.log.info('a search has spent its day; not asked', { source, search: key, spentUsd: spent, capUsd: listed.dailyUsd });
+        return;
+      } else {
+        rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: listed.dailyUsd, spentUsd: spent } };
+      }
+    }
+
     /**
      * ★ THE CEILING, CHECKED BEFORE THE CALL AND NOT AFTER IT.
      *
@@ -1004,8 +1061,13 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let items: readonly Item[];
     let authors: readonly Author[];
     let hasMore: boolean;
-    /* What the middle lane's pages were billed, for its ledger. */
+    /* What this ask's pages were billed, for its ledger (the middle lane's, or the search's own). */
     let laneUsd = 0;
+    let pages = 1;
+    /* Why the paging stopped, for the log: the source's end, or which of our limits. */
+    let stop: 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'deadline' | 'empty' | 'aborted' = 'end';
+    /* The middle lane's deadline runs from its pass's start; a search's own from its first page. */
+    const pagingFrom = middle ? now : deps.now();
     /* Set as the call goes out, not when it comes back: a run that fails was still billed. */
     if (spaced) deps.watch?.asked(source, now);
     try {
@@ -1015,32 +1077,41 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       authors = result.value.authors;
       hasMore = result.value.hasMore;
 
-      /* ★ MORE PAGES, ONLY FOR A CATCH-ALL LANE, ONLY WHILE EACH PAGE CAME BACK FULL, and
-         each one checked against the paced line before it is asked for — the earlier build's
-         paging. A short page means the window is exhausted; a refused check means the line
-         is, for now. Either way the lane stops with what it has. */
+      /* ★ MORE PAGES, AND EACH ONE CHECKED BEFORE IT IS ASKED FOR: against the meter's paced line,
+         the lane's own day (the middle lane's cap, or the search's `dailyUsd`), its deadline and
+         `maxPages`. Under the old rule a short page also ends it — the earlier build's paging, from
+         when a short page meant the window was exhausted. Under `full` it does not (`feed.paging`):
+         the supplier now answers short pages with more to come, so only its own "no more" ends the
+         window, or `maxEmptyRun` empty pages in a row, each billed, which no window needs. */
       let cursor = result.value.cursor;
-      /* The middle lane pages to the end of its window (`feed.middle.maxPages` at most), each page
-         inside its own cap as well as the day's. */
-      const maxPages = middle ? deps.policy.feed.middle.maxPages : deps.policy.feed.maxPagesPerLane;
-      for (let page = 2; (middle || (lane !== null && !slice)) && page <= maxPages; page += 1) {
-        if (cursor === null || !hasMore || items.length < (page - 1) * query.limit) break;
-        if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) break;
-        if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) break;
-        if (deps.signal.aborted) break;
-        /* ★ THE MIDDLE PASS'S DEADLINE (`feed.middle.passDeadlineMs`): a slow or refusing supplier
-           costs the lane its deeper pages this pass, never minutes. The next pass asks again. */
-        if (middle && deps.now() - now >= deps.policy.feed.middle.passDeadlineMs) {
-          deps.log.warn('the middle lane reached its deadline; the rest of its window waits for the next pass', { source, pages: page - 1, returned: items.length, deadlineMs: deps.policy.feed.middle.passDeadlineMs });
+      let emptyRun = items.length === 0 ? 1 : 0;
+      if (rule.maxPages === 1 && hasMore && cursor !== null) stop = 'pages';
+      for (let page = 2; page <= rule.maxPages; page += 1) {
+        if (cursor === null || !hasMore) { stop = 'end'; break; }
+        if (!rule.full && items.length < (page - 1) * query.limit) { stop = 'short'; break; }
+        if (rule.full && emptyRun >= deps.policy.feed.paging.maxEmptyRun) { stop = 'empty'; break; }
+        if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) { stop = 'meter'; break; }
+        if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) { stop = 'cap'; break; }
+        if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > rule.ledger.dailyUsd) { stop = 'cap'; break; }
+        if (deps.signal.aborted) { stop = 'aborted'; break; }
+        /* ★ THE DEADLINE (`feed.middle.passDeadlineMs`, a search's `passDeadlineMs`): a slow or
+           refusing supplier costs the ask its deeper pages this pass, never minutes. The next pass
+           asks again. */
+        if (rule.deadlineMs !== null && deps.now() - pagingFrom >= rule.deadlineMs) {
+          stop = 'deadline';
+          deps.log.warn(middle ? 'the middle lane reached its deadline; the rest of its window waits for the next pass' : 'a search reached its deadline; the rest of its window waits for the next pass', { source, search: key ?? 'middle', pages: page - 1, returned: items.length, deadlineMs: rule.deadlineMs });
           break;
         }
         const next = await adapter.discover({ ...query, cursor }, budget);
+        pages = page;
         laneUsd += next.spend.usd;
         estimatedUsd += estimate.usd;
         items = [...items, ...next.value.items];
         authors = [...authors, ...next.value.authors];
         hasMore = next.value.hasMore;
         cursor = next.value.cursor;
+        emptyRun = next.value.items.length === 0 ? emptyRun + 1 : 0;
+        if (page === rule.maxPages && hasMore && cursor !== null) stop = 'pages';
       }
     } catch (e) {
       /**
@@ -1054,6 +1125,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        */
       /* A page that threw was still billed (see below), and the middle lane's ledger says so too. */
       if (middle) await deps.middle?.ledger.add('middle', now, laneUsd + (e instanceof BudgetRefused ? 0 : estimate.usd));
+      if (rule.ledger !== null) await deps.ledger?.add(rule.ledger.lane, now, laneUsd + (e instanceof BudgetRefused ? 0 : estimate.usd));
       if (e instanceof BudgetRefused) {
         const line = deps.meter.line(estimate.vendor);
         outcomes.push({
@@ -1115,7 +1187,12 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.warn("could not count the middle lane's new posts; charging it for all of them", { err: errorText(e) });
       }
       await deps.middle.ledger.add('middle', now, laneUsd + laneJudgeUsd(fresh, cap));
-      deps.log.info('middle lane', { source, returned: items.length, new: fresh, searchUsd: round(laneUsd), judgeUsd: round(laneJudgeUsd(fresh, cap)), spentBeforeUsd: round(laneSpent), capUsd: cap.dailyUsd });
+      deps.log.info('middle lane', { source, returned: items.length, new: fresh, pages, stop, fullPaging: rule.full, searchUsd: round(laneUsd), judgeUsd: round(laneJudgeUsd(fresh, cap)), spentBeforeUsd: round(laneSpent), capUsd: cap.dailyUsd });
+    }
+    /* ★ A SEARCH READING PAST SHORT PAGES: its pages' bill, in its own day (`feed.paging`). */
+    if (rule.ledger !== null) {
+      await deps.ledger?.add(rule.ledger.lane, now, laneUsd);
+      deps.log.info('paged search', { source, search: key, returned: items.length, pages, stop, searchUsd: round(laneUsd), spentBeforeUsd: round(rule.ledger.spentUsd), capUsd: rule.ledger.dailyUsd });
     }
 
     let stored: number | null = null;

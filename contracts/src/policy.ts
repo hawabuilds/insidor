@@ -1271,6 +1271,15 @@ export interface LaneCapPolicy {
   readonly judgedShare: number;
 }
 
+/** One catch-all search's paging (`FeedPolicy.paging`). Only `full` is read while it is false. */
+export interface SearchPagingPolicy {
+  readonly full: boolean;
+  readonly maxPages: number;
+  readonly passDeadlineMs: number;
+  /** Its search bill a UTC day, at most: today's measured spend when it was set. */
+  readonly dailyUsd: number;
+}
+
 /**
  * The catch-all search: no keywords, two lanes (everything, and posts with an image or a
  * video), each narrowed by an approval floor that moves to keep the day inside budget.
@@ -1516,6 +1525,38 @@ export interface FeedPolicy {
      */
     readonly passDeadlineMs: number;
     readonly cap: LaneCapPolicy;
+    /**
+     * ★ READ WHILE THE SOURCE SAYS THERE IS MORE (true), or stop at the first page that is not full
+     * (false, the old rule). True, the pass stops only at `maxPages`, `passDeadlineMs`, `cap`, the
+     * meter, or `paging.maxEmptyRun` empty pages in a row. See `paging` for why.
+     */
+    readonly fullPaging: boolean;
+  };
+  /**
+   * ★ PAGING PAST SHORT PAGES (the owner, 2026-10-18). Since about 23:15 UTC on 2026-10-16 the
+   * posts supplier's search answers pages of 1 to 12 posts while still saying there are more
+   * (probe: five middle pages of 6, 12, 3, 5 and 1, every one with more to come). The old rule
+   * took a short page as the end of the window, so every catch-all search read one page a pass and
+   * the adaptive floors fell to their lowest while the window went mostly unread.
+   *
+   * A search listed in `searches` with `full` reads on while the source says there is more, up to
+   * its `maxPages` and `passDeadlineMs` (from the ask's start), within its own day `dailyUsd` (its
+   * search bill only, kept in the capped lanes' ledger as lane `search:<name>`, 0088), the meter,
+   * and `maxEmptyRun` empty pages in a row (each still billed the supplier's floor). A search not
+   * listed, or listed without `full`, keeps the old rule and is not capped here, as before.
+   *
+   * Names: `band_<age>` a fresh band, `late_<age>` a late band, `slow` the slow lane's slices (one
+   * page each under the old rule), and `all` / `media` the main lanes when fresh discovery is off.
+   * The middle lane has its own switch (`middle.fullPaging`) and cap.
+   *
+   * What breaks if changed carelessly: a search's bill is per post returned, so reading on costs
+   * the posts the old rule left unread. A `dailyUsd` below what the search needs for a whole day
+   * stops it mid-day, which loses more than the short pages did; that is why each one is on only
+   * once its day fits.
+   */
+  readonly paging: {
+    readonly maxEmptyRun: number;
+    readonly searches: Readonly<Record<string, SearchPagingPolicy>>;
   };
   /**
    * ★ VIEW READINGS OFTEN ENOUGH FOR THE SHEET'S CHART: every post on For You is read again on a
@@ -4220,6 +4261,29 @@ const POLICY_V1: Policy = {
          only when the supplier is slow or refusing. */
       passDeadlineMs: 180_000,
       cap: { dailyUsd: 6, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+      /* On from 2026-10-18, the owner's approval: "keep reading while there's more, with your limits:
+         40 pages a pass, 3 minutes a pass, and its own $6 a day cap". */
+      fullPaging: true,
+    },
+    /* The owner's rule for the other searches (2026-10-18): each reads on only with its own day set
+       at today's spend, and stays on the old rule if reading its extra pages would need more.
+       Today, measured over the 24 hours to 01:15 UTC on 2026-10-18: the bands' posts from the
+       runner's "catch-all lane floor" lines (4,799 posts, $0.72, split between the two bands by the
+       order each pass asks them in, 61:39), the slow slices' the same way (2,109, $0.32), and the
+       late band's from internal.spend by that order (about 3,000, $0.45). Every one would need more:
+       before the short pages (16 Oct 03:10 to 11:00 UTC) the bands returned 38 posts a pass against
+       11.7 now, the slices 62 a slow pass against 24 and the late band about 16 against 7, so reading
+       their extra pages costs 2 to 3.3 times today's spend, and a day set at today's would stop them
+       by early afternoon. So all four stay on the old rule; the days below are the ones they would
+       get, kept so turning one on is one switch. */
+    paging: {
+      maxEmptyRun: 3, // an empty page is still billed $0.00015; three in a row ends a pass
+      searches: {
+        band_6: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.44 },
+        band_50: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.28 },
+        late_300: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.45 },
+        slow: { full: false, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.32 },
+      },
     },
     /* OFF until the owner approves the cost (asked 2026-10-16: "show me the extra cost per day
        before switching on; keep the day within ~$50").
