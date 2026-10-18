@@ -32,6 +32,9 @@
  *      taken no new post for a while, the judge is asked but nothing it is asked is paid for, or the
  *      alert service cannot read the database — once when it starts, once when it is back. No
  *      switch, past the hourly limit; mute and quiet hours still hold.
+ *   4g. A NARRATIVE YOU STARRED GOT ITS FIRST COIN (`starred_first_coin`, the owner 2026-10-18, for
+ *      buyers): once per person and narrative, on its own switch, behind the hourly limit like any
+ *      coin alert. Only a settled coin counts; coins that merely share its name do not.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -73,6 +76,8 @@ export const ALERT_KINDS = [
   /* The owner's outage alarm (services/notify alarm.ts): For You stalled, the judge refused, the database unreadable;
      and from the runner (language-alarm.ts), one language's finds fallen against the day before. */
   'outage',
+  /* A narrative someone starred got its first coin (services/notify first-coin.ts). */
+  'starred_first_coin',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -86,7 +91,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -113,6 +118,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   watch_coin: 'watchedPosts',
   push_test: 'always',
   outage: 'always',
+  starred_first_coin: 'starredFirstCoin',
 };
 
 export interface AlertPrefs {
@@ -132,7 +138,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,

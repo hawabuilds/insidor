@@ -2919,6 +2919,12 @@ export interface NotifyPolicy {
   readonly watchMetadataPerPass: number;
   /** A guessed name or ticker shorter than this never matches a new coin on its own: three letters match too much by chance. */
   readonly watchMinNameChars: number;
+  /**
+   * Starred narratives whose first coin one pipeline pass pushes about (services/notify
+   * first-coin.ts). The rest wait, unmarked, for the next pass, so a burst of coins cannot make one
+   * pass queue a push for every starrer of every narrative at once; nothing is dropped.
+   */
+  readonly firstCoinPerPass: number;
   /** A push undelivered after this long is dropped by the push service. */
   readonly pushTtlS: number;
   /** Reads and writes one person may make per `windowMs`. */
@@ -5232,6 +5238,8 @@ const POLICY_V1: Policy = {
     watchLoopMs: 5_000,
     watchMetadataPerPass: 40,
     watchMinNameChars: 4,
+    /* Twenty narratives a pass, a pass every twenty seconds: 18 Oct had 13 first coins in three days. */
+    firstCoinPerPass: 20,
     pushTtlS: 86_400,
     perClient: 60,
     windowMs: 60_000,

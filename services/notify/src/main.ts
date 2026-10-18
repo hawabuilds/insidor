@@ -108,7 +108,7 @@ if (cfg.notifyOn) {
   /* The owner's Not-a-meme alarm (junk.ts): his taps per 100 For You posts shown, clearly above the 3 days before. */
   const junk = junkMemory();
   every(JUNK_LOOP_MS, 'not a meme alarms', () => checkJunk({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, junk));
-  every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db, { quotes, ownerWallets: DEFAULT_POLICY.owner.wallets }));
+  every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db, { quotes, ownerWallets: DEFAULT_POLICY.owner.wallets, policy: P }));
   const watchState: WatchState = { cursor: null };
   every(P.watchLoopMs, 'watched post alerts', () => checkWatched(db, { policy: P, now: Date.now, quotes, fetchText }, watchState));
   if (cfg.rpcUrl !== null) {
