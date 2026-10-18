@@ -36,6 +36,7 @@ import { detectLoop } from './loops/detect.ts';
 import { discoverLoop } from './loops/discover.ts';
 import { universeLoop } from './loops/universe.ts';
 import { missedLoop } from './loops/missed.ts';
+import { coinModelLoop } from './loops/coin-model.ts';
 import { narrativesLoop } from './loops/narratives.ts';
 import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
@@ -216,6 +217,9 @@ async function main(): Promise<void> {
       /* The posts the judge passed, regrouped into narratives: its own loop so the owner's calls on a
          narrative take effect within a pass whatever discovery is doing (loops/narratives.ts). */
       narrativesLoop(runtime.loopDeps.policy.narrative.everyMs, runtime.narratives),
+      /* Our own coin model, the safety net behind the judge: the posts it said no to scored once each,
+         in its own loop so the discover pass and the judge never wait on it (loops/coin-model.ts). */
+      coinModelLoop(runtime.coinModel),
       /* Older feed posts' video files, read again on the posts line: its own loop so a post opened
          in the sheet with no playable file gets one within a minute (loops/refill.ts). */
       refillLoop(runtime.refillPosts),
