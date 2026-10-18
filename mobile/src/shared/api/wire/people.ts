@@ -78,7 +78,7 @@ export interface Alert {
   readonly pushed?: boolean;
 }
 
-export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts' | 'starredFirstCoin';
+export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts' | 'starredFirstCoin' | 'blowingUp' | 'starredSpeed' | 'bigAccounts' | 'createdCoins';
 export interface AlertPrefs {
   readonly muted: boolean;
   readonly on: Readonly<Record<AlertSwitch, boolean>>;

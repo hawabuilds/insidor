@@ -21,22 +21,27 @@ import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { blockedHow, currentPush, disablePush, permission, pushPlace, turnOnPush, type Permission } from './push.ts';
 import styles from './alerts.module.css';
 
-/* The owner's push list (2026-10-14) first, each with its own switch, then the rest. */
+/* The owner's notification design (2026-10-18): what reaches the phone first, each with its own
+   switch; then what is only listed, never pushed. Everything also lands in Notifications. */
 const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readonly hint: string }[] = [
-  { key: 'rising', label: 'New on FYP', hint: 'Every post that enters For You, one by one. A tap opens the post.' },
-  { key: 'fypCoins', label: 'Coin launched or found for an FYP post', hint: "As soon as a coin with the post's name exists. A tap opens the coin." },
-  { key: 'proven', label: 'Proven coin', hint: 'A coin whose own links carry an FYP post.' },
-  { key: 'storyCoins', label: 'Coin for this story', hint: 'A new FYP post on a story whose coin you confirmed.' },
-  { key: 'watchedPosts', label: 'Watched posts', hint: 'A coin for a post you starred, the moment it launches or is found. Not held back by the hourly limit.' },
-  { key: 'narratives', label: 'New narratives', hint: 'When a narrative reaches the board, and when one gets its first coin.' },
+  { key: 'watchedPosts', label: 'First coin for posts you save', hint: "The moment a post you starred gets its own coin. Not held back by the hourly limit. Coins that only share its name are listed, not pushed." },
   { key: 'starredFirstCoin', label: 'First coin for narratives you star', hint: 'When a narrative you starred gets its first coin. A tap opens the narrative.' },
-  { key: 'coins', label: 'Coins for narratives you star', hint: 'When a coin is matched to a narrative you starred.' },
-  { key: 'holdings', label: 'Your holdings', hint: 'When a coin you hold reaches a multiple of what you paid.' },
-  { key: 'watchlist', label: 'Your watchlist', hint: 'When a coin of a narrative you watch reaches a multiple. Off to start: a watchlist is for browsing.' },
-  { key: 'graduations', label: 'Graduations', hint: 'When a coin you hold or watch is close to finishing its curve, and when it does.' },
-  { key: 'follows', label: 'New followers', hint: '' },
+  { key: 'blowingUp', label: 'Blowing up on FYP', hint: 'The fastest-rising posts and brand-new narratives taking off. At most 3 a day, posts with no coin yet first.' },
+  { key: 'starredSpeed', label: 'Narratives you star taking off', hint: 'New posts and views in the last hour. At most one per narrative every few hours.' },
+  { key: 'bigAccounts', label: 'Big accounts in narratives you star', hint: 'When an account with a million followers or more posts in one.' },
+  { key: 'holdings', label: 'Your holdings', hint: 'When a coin you hold doubles (or reaches another multiple below) or halves from what you paid.' },
+  { key: 'createdCoins', label: 'Coins you made', hint: 'When a coin you created gets its first buyers.' },
   { key: 'replies', label: 'Replies to your comments', hint: '' },
-  { key: 'useful', label: 'Comments found useful', hint: 'When holders of a coin like a comment of yours.' },
+  { key: 'follows', label: 'New followers', hint: 'Grouped: one push for several, at most one an hour.' },
+  { key: 'useful', label: 'Likes on your comments', hint: 'Grouped: at most one push a day.' },
+  { key: 'graduations', label: 'Graduations', hint: 'When a coin you hold or watch is close to finishing its curve, and when it does.' },
+  { key: 'watchlist', label: 'Your watchlist', hint: 'When a coin of a narrative you watch reaches a multiple. Off to start: a watchlist is for browsing.' },
+  { key: 'rising', label: 'New on FYP', hint: 'Every post that enters For You. In your list only, never pushed.' },
+  { key: 'fypCoins', label: 'Coin launched or found for an FYP post', hint: 'In your list only, never pushed.' },
+  { key: 'proven', label: 'Proven coin', hint: 'A coin whose own links carry an FYP post. In your list only.' },
+  { key: 'narratives', label: 'New narratives on the board', hint: 'When a narrative reaches the board or is matched to a coin. In your list only.' },
+  { key: 'coins', label: 'More coins for narratives you star', hint: 'Each coin matched after the first. In your list only.' },
+  { key: 'storyCoins', label: 'Coin for this story', hint: 'A new FYP post on a story whose coin you confirmed.' },
 ];
 
 const PERMISSION_WORDS: Readonly<Record<Permission, string>> = {

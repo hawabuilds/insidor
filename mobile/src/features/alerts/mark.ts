@@ -29,6 +29,8 @@ export function markOf(a: { readonly kind: string; readonly rank: string | null;
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
   if (a.kind === 'comment_useful') return { kind: 'useful', label: 'Found useful' };
   if (a.kind === 'rising_post') return picture === null ? { kind: 'rising', label: 'Rising post' } : { kind: 'rising', label: 'Rising post', picture };
+  /* A post blowing up, or a big account's post in a narrative you star: the poster's face, else the up arrow. */
+  if (a.kind === 'blowing_up' || a.kind === 'starred_big_account') return picture === null ? { kind: 'rising', label: 'Rising fast' } : { kind: 'rising', label: 'Rising fast', picture };
   const person = personOf(a);
   if (person !== null) return picture === null ? { kind: 'person', name: person } : { kind: 'person', name: person, picture };
   if (a.symbol !== null && a.symbol !== '') {
