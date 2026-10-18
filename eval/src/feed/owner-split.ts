@@ -19,12 +19,14 @@ import { readFileSync } from 'node:fs';
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 interface Entry { readonly id: string; readonly post: string }
-interface SplitFile { readonly teach: readonly Entry[]; readonly test: readonly Entry[]; readonly untaughtMisses: readonly string[] }
+interface SplitFile { readonly teach: readonly Entry[]; readonly test: readonly Entry[]; readonly untaughtMisses: readonly string[]; readonly dropped?: readonly Entry[] }
 
 export interface OwnerSplit {
   readonly teach: readonly string[];
   readonly test: readonly string[];
   readonly untaughtMisses: readonly string[];
+  /** Never taught from any source (the owner, 2026-10-18: once taught, they made the candidate worse twice). */
+  readonly dropped: readonly string[];
 }
 
 /** The split, checked: no id in both lists, every untaught miss in `test`, no id twice. */
@@ -38,7 +40,10 @@ export function checkSplit(f: SplitFile): OwnerSplit {
   for (const [name, ids] of [['teach', teach], ['test', test]] as const) {
     if (new Set(ids).size !== ids.length) throw new Error(`owner-split.json: an id is twice in ${name}`);
   }
-  return { teach, test, untaughtMisses: [...f.untaughtMisses] };
+  const dropped = (f.dropped ?? []).map((e) => e.id);
+  const taughtDrop = dropped.filter((id) => teach.includes(id) || test.includes(id));
+  if (taughtDrop.length > 0) throw new Error(`owner-split.json: ${taughtDrop.join(', ')} is dropped and also taught or tested`);
+  return { teach, test, untaughtMisses: [...f.untaughtMisses], dropped };
 }
 
 export const OWNER_SPLIT: OwnerSplit = checkSplit(JSON.parse(readFileSync(new URL('./owner-split.json', import.meta.url), 'utf8')) as SplitFile);
@@ -48,4 +53,4 @@ export const OWNER_SPLIT: OwnerSplit = checkSplit(JSON.parse(readFileSync(new UR
  * tests (the test wins, as `isExample` has it).
  */
 export const alwaysTeachIds = (p: Policy, split: OwnerSplit = OWNER_SPLIT): readonly string[] =>
-  [...new Set([...p.learning.alwaysTeach, ...split.teach])].filter((id) => !split.test.includes(id));
+  [...new Set([...p.learning.alwaysTeach, ...split.teach])].filter((id) => !split.test.includes(id) && !split.dropped.includes(id));

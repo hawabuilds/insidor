@@ -347,9 +347,11 @@ test("this run's hold-outs (neverTeach) are tested, not taught, and nothing else
   for (const id of held) assert.ok(b.testNegatives.some((c) => c.itemId === id));
 });
 
-test("the owner's split file: no id both taught and tested, every untaught miss tested, six and six of the misses", () => {
+test("the owner's split file: no id both taught and tested, every untaught miss tested, the six once taught now dropped", () => {
   assert.equal(OWNER_SPLIT.untaughtMisses.length, 6);
-  assert.equal(OWNER_SPLIT.teach.length, 6);
+  assert.equal(OWNER_SPLIT.teach.length, 0);
+  assert.equal(OWNER_SPLIT.dropped.length, 6);
+  assert.ok(alwaysTeachIds(DEFAULT_POLICY).every((id) => !OWNER_SPLIT.dropped.includes(id)), 'a dropped post is never always-taught');
   assert.ok(OWNER_SPLIT.teach.every((id) => !OWNER_SPLIT.test.includes(id)));
   assert.ok(OWNER_SPLIT.untaughtMisses.every((id) => OWNER_SPLIT.test.includes(id)));
   const teach = alwaysTeachIds(DEFAULT_POLICY);
@@ -357,6 +359,7 @@ test("the owner's split file: no id both taught and tested, every untaught miss 
   assert.ok(teach.every((id) => !OWNER_SPLIT.test.includes(id)));
   assert.throws(() => checkSplit({ teach: [{ id: 'x:1', post: '' }], test: [{ id: 'x:1', post: '' }], untaughtMisses: [] }), /both taught and tested/);
   assert.throws(() => checkSplit({ teach: [], test: [{ id: 'x:1', post: '' }], untaughtMisses: ['x:2'] }), /not in test/);
+  assert.throws(() => checkSplit({ teach: [{ id: 'x:3', post: '' }], test: [], untaughtMisses: [], dropped: [{ id: 'x:3', post: '' }] }), /dropped and also taught/);
 });
 
 const r = (passed: number, tested: number) => ({ passed, tested });

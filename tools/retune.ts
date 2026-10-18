@@ -6,8 +6,8 @@
  * gate holds (Policy.learning). The live runner reads the latest APPLIED block within minutes
  * (services/runner/src/learned-examples.ts).
  *
- *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 00:00 or
- *                        12:00 London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
+ *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 00:00
+ *                        London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
  *                        it. `--detach` starts that run and returns at once (see below).
  *   run [--dry] [--force] [--baseline] [--slot=<iso>] [--floor=<gold>,<junk>,<missed>]
  *                        one run now (by hand: the slot is this minute). `--dry` tests and records
@@ -475,7 +475,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const recentNots = currentCalls(calls).filter((c) => c.label === 'not' && shownKind.has(c.itemId));
       const newsKinds = new Set(OG.newsKinds.map((k) => k.toUpperCase()));
       const newsOrText = new Set(recentNots.filter((c) => c.imageUri === null || newsKinds.has((shownKind.get(c.itemId) ?? '').toUpperCase())).map((c) => c.itemId));
-      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test, neverTeach: [...newsOrText], coinedYes: coinedTaught, keptYes: keptTaught, keptBeforeCoined: !K.afterCoined });
+      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test, neverTeach: [...newsOrText, ...OWNER_SPLIT.dropped], coinedYes: coinedTaught, keptYes: keptTaught, keptBeforeCoined: !K.afterCoined });
       /* ★ THE OWNER'S RULEBOOK (tools/lib/rulebook.ts): written from the block's own lines, the
          standing decisions and counts over every input, then put in the block, so the test below
          tests both. Not written for `compose` (free) or `--rules-only` (no block); a rulebook that
@@ -873,7 +873,7 @@ if (command === 'status') {
     process.exit(1);
   }
   const slotArg = arg('slot');
-  /* `due` claims a slot `startAheadMs` before it, so the run is finished by 00:00 and 12:00, not started then. */
+  /* `due` claims a slot `startAheadMs` before it, so the run is finished by 00:00, not started then. */
   const slot = command === 'due' ? new Date(latestSlot(Date.now() + L.startAheadMs, L.retuneAt, L.timeZone)) : new Date(slotArg ?? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString());
   if (command === 'due') {
     /* ★ EVERY TEN MINUTES, FREE: new coined TikToks into the training set, so the learned list, the
