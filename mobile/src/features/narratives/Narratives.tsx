@@ -1,9 +1,13 @@
 /**
  * NARRATIVES — viral posts grouped by the story they are about, as the owner drew the tab
  * (2026-10-17): the header; the chips Trending (the default), Most viewed and New, and beside them
- * the window, 1h 6h 24h, on Trending and Most viewed (narrative-order.ts says what each means and in
- * what order; the choice is remembered on the phone); one card per real narrative. A card opens the
- * narrative's page.
+ * the window, 1h 6h 24h on Trending and 1h 6h 24h All time on Most viewed (narrative-order.ts says
+ * what each means and in what order; the choice is remembered on the phone); one card per real
+ * narrative. A card opens the narrative's page.
+ *
+ * ★ ALL TIME (the owner, 2026-10-18): Most viewed on All time and New read the server's whole list
+ * of narratives — every one ever made, dead ones too — 20 at a time, the next 20 loaded as the end
+ * of the list comes into view (or on "Show 20 more"). Trending and the short windows read the board.
  *
  * Each card: its place in the list, picture, title; "3 new posts   28m old" (posts found in the
  * window, the story's age since we found it; on New, its post count); on the right the views it
@@ -23,9 +27,9 @@
  * a total; a total always climbs and would make every narrative look like it is rising.
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { BOARD_VIEW, fetchNarratives, type NarrativesList, type Story } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchAllNarratives, fetchNarratives, type NarrativesList, type Story } from '../../shared/api/index.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -41,7 +45,7 @@ import { LiveCard } from '../feed/LiveCard.tsx';
 import { useLiveFeed } from '../feed/useLiveFeed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { ORDERS, ORDER_LABEL, WINDOWS, WINDOW_LABEL, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, windowOf, type Choice, type WindowHours } from './narrative-order.ts';
+import { ALL_TIME, ORDERS, ORDER_LABEL, WINDOW_LABEL, allTimeOf, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, windowOf, windowsOf, type Choice, type Window } from './narrative-order.ts';
 import styles from './narratives.module.css';
 
 /** The rows a read holds: real ones only, in the server's order (the chip sorts them). */
@@ -70,7 +74,10 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
   const now = useNow();
-  const base = live.rows ?? (list.state === 'ready' ? rowsOf(list.value) : null);
+  const whole = allTimeOf(choice);
+  const all = useAllTime(whole);
+  const boardRows = live.rows ?? (list.state === 'ready' ? rowsOf(list.value) : null);
+  const base = whole === null ? boardRows : all.rows;
   const rows = base === null ? null : ordered(base, choice);
   const hours = windowOf(choice);
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
@@ -93,7 +100,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         </div>
         {hours !== null && choice.order !== 'new' ? (
           <div className={styles['windows']} role="group" aria-label="Window">
-            {WINDOWS.map((w) => (
+            {windowsOf(choice.order).map((w) => (
               <button key={w} type="button" className={`${styles['win']} ${w === hours ? styles['winOn'] : ''}`} aria-pressed={w === hours} onClick={() => setChoice({ ...choice, windows: { ...choice.windows, [choice.order]: w } })}>
                 {WINDOW_LABEL[w]}
               </button>
@@ -104,8 +111,8 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
 
       <Notice notice={list.state === 'ready' ? boardNotice(list.value.provenance) : null} />
 
-      {list.state === 'loading' && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
-      {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
+      {(whole === null ? list.state === 'loading' : all.state === 'loading') && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
+      {(whole === null ? list.state === 'failed' : all.state === 'failed') && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
       {rows !== null && rows.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
       <div className={styles['cards']}>
         {rows?.map((s, i) => (
@@ -116,9 +123,73 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
           </div>
         ))}
       </div>
+      {whole !== null && all.next !== null ? <More onMore={all.more} busy={all.state === 'loading'} failed={all.state === 'failed'} /> : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
       <SheetToast note={note} onDone={() => setNote(null)} />
     </section>
+  );
+}
+
+/**
+ * The server's whole list for `sort` (Most viewed on All time, New), 20 at a time: the first page when
+ * the choice turns to it, then each next page on `more`. A page already asked for is not asked twice,
+ * and a story already listed is not listed again if the list moved between two pages.
+ */
+function useAllTime(sort: 'viewed' | 'new' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
+  const [got, setGot] = useState<{ sort: string; rows: readonly Story[]; next: number | null } | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const asking = useRef<string | null>(null);
+  const load = (s: 'viewed' | 'new', offset: number, prev: readonly Story[]) => {
+    const key = `${s}:${offset}`;
+    if (asking.current === key) return;
+    asking.current = key;
+    setState('loading');
+    fetchAllNarratives(BOARD_VIEW, s, offset).then(
+      (page) => {
+        asking.current = null;
+        const seen = new Set(prev.map((x) => x.id));
+        setGot({ sort: s, rows: [...prev, ...realNarratives(page.stories).filter((x) => !seen.has(x.id))], next: page.next });
+        setState('ready');
+      },
+      () => {
+        asking.current = null;
+        setState('failed');
+      },
+    );
+  };
+  useEffect(() => {
+    if (sort === null) return;
+    setGot(null);
+    load(sort, 0, []);
+    // `load` is a fresh closure every render; the sort is what decides a fresh list.
+  }, [sort]);
+  const mine = got !== null && got.sort === sort ? got : null;
+  return {
+    rows: mine?.rows ?? null,
+    next: mine?.next ?? null,
+    state,
+    more: () => {
+      if (sort !== null && mine !== null && mine.next !== null) load(sort, mine.next, mine.rows);
+    },
+  };
+}
+
+/** The next 20: loaded when this comes into view, or on a tap where the phone cannot watch the scroll. */
+function More({ onMore, busy, failed }: { onMore: () => void; busy: boolean; failed: boolean }) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null || typeof IntersectionObserver === 'undefined' || failed) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) onMore();
+    }, { rootMargin: '400px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
+  return (
+    <button ref={ref} type="button" className={styles['more']} onClick={onMore} aria-busy={busy}>
+      {busy ? 'Loading.' : failed ? "Couldn't load more. Try again" : 'Show 20 more'}
+    </button>
   );
 }
 
@@ -150,10 +221,10 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
  * One narrative card. Home's Watchlist draws the same card (features/feed/Feed.tsx) with no place
  * and its own line under the title (`line`: posts and views, narrative-order.ts watchLine).
  */
-export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; hours: WindowHours | null; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; hours: Window | null; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
   const coin = storyCoinState(story);
-  /* On New, the last hour's gain: the tab's default window. */
-  const h: WindowHours = hours ?? 1;
+  /* On New, the last hour's gain: the tab's default window. On All time, its views. */
+  const h: Window = hours ?? 1;
   const gain = gainText(story, h);
   return (
     <article className={styles['card']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
@@ -170,7 +241,7 @@ export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }
         </div>
         <div className={styles['gain']}>
           {gain !== null ? <b className={gain.startsWith('-') ? styles['down'] : gain === '+0' ? styles['dash'] : styles['up']}>{gain}</b> : <b className={styles['dash']}>—</b>}
-          <span>views {WINDOW_LABEL[h]}</span>
+          <span>{h === ALL_TIME ? 'views' : `views ${WINDOW_LABEL[h]}`}</span>
         </div>
       </div>
       <div className={styles['coin']}>

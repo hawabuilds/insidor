@@ -29,9 +29,10 @@
   letter-spacing: -0.03em;
 }
 
-/* The chips on the left, the window on the right, one row. */
+/* The chips on the left, the window on the right; Most viewed's four windows wrap under the chips on a phone. */
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -88,6 +89,20 @@
 .empty {
   padding: 24px var(--gutter);
   color: #8b8794;
+}
+
+/* The All time list's next 20: loaded as it comes into view, or on a tap. */
+.more {
+  display: block;
+  margin: 12px auto 0;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid #1f1e26;
+  border-radius: 999px;
+  background: #111116;
+  color: #e4d6ff;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .cards {
