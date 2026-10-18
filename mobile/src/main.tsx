@@ -27,6 +27,7 @@ import { createRoot } from 'react-dom/client';
 import { embeddedWallet } from '@insidor/wallet-embedded/store.ts';
 import { hasEntered } from './features/landing/entered.ts';
 import { afterFirstScreen } from './shared/preload.ts';
+import { listenForNewVersion } from './shared/new-version.ts';
 
 import { App } from './App.tsx';
 import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
@@ -47,6 +48,8 @@ trackHistory();
 listenForOpens();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  /* A newer build seen while the kept one stood in: taken at the next return to the app. */
+  listenForNewVersion();
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
       console.warn('service worker registration failed', error);
