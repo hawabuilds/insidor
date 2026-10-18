@@ -67,6 +67,8 @@ export interface NarrativePostRow {
   readonly ownerCall: 'meme' | 'not' | null;
   /** The author's own replies named a coin (0064 `_own`); false when not read. */
   readonly ownTalk: boolean;
+  /** Who posted it (public.item.author_key): a narrative needs `narrative.minAccounts` of them. Absent from an older reader. */
+  readonly authorKey?: string | null;
 }
 
 interface PostRow {
@@ -84,9 +86,11 @@ interface PostRow {
   kind_label: string | null;
   owner_call: 'meme' | 'not' | null;
   own_talk: boolean | null;
+  author_key?: string | null;
 }
 
 const STANDING_COLUMNS = `
+            i.author_key,
             j.coinable, j.confidence, j.looked_at, j.proposed_name, j.alternate_names, j.judge_id,
             k.kind_label, oc.verdict as owner_call,
             coalesce((select coalesce(ca.cashtags->'_own'->'cashtags', '{}'::jsonb) <> '{}'::jsonb
@@ -124,6 +128,7 @@ const namesOf = (v: unknown): readonly string[] =>
 
 const toPost = (r: PostRow): NarrativePostRow => ({
   itemId: r.item_id,
+  authorKey: r.author_key ?? null,
   source: r.source,
   body: r.body,
   media: r.media,
