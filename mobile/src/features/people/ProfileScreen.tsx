@@ -47,7 +47,7 @@ export function RankCard({ p }: { p: ProfileCard }) {
 }
 
 export function ProfileScreen({ profileKey }: { profileKey: string }) {
-  const [loaded, reload] = useLoad(`profile:${profileKey}`, () => fetchProfile(profileKey));
+  const [loaded, reload] = useLoad(`profile:${profileKey}`, () => fetchProfile(profileKey), 'memory');
   return (
     <section className={styles['screen']}>
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>

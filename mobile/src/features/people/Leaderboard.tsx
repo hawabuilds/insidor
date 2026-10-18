@@ -16,7 +16,7 @@ import { goBack } from '../../shared/nav.ts';
 const endsOn = (ms: number) => new Date(ms - 1).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
 export function Leaderboard() {
-  const [loaded] = useLoad('leaderboard', () => fetchLeaderboard());
+  const [loaded] = useLoad('leaderboard', () => fetchLeaderboard(), 'memory');
   return (
     <section className={styles['screen']}>
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>

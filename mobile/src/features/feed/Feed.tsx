@@ -159,8 +159,8 @@ export function Feed({
     window.addEventListener('hashchange', take);
     return () => window.removeEventListener('hashchange', take);
   }, []);
-  const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
-  const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
+  const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal), 'phone');
+  const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal), 'phone');
   /* The sort chip and each sort's window, as this phone last left them (feed-sort.ts). */
   const [choice, setChoice] = useState<SortChoice>(loadChoice);
   const choose = (c: SortChoice) => {
@@ -171,6 +171,7 @@ export function Feed({
   const sortedOn = tab === 'fyp' && choice.sort !== 'new';
   const [sorted, reloadSorted] = useLoad<RisingSorted | null>(sortedOn ? `rising:fyp:${choice.sort}:${win ?? ''}` : 'rising:fyp:new', (signal) =>
     sortedOn && win !== null ? fetchRisingSorted(choice.sort, win, null, signal) : Promise.resolve(null),
+    'phone',
   );
   /* The pages under the first, as the person scrolls (useSortedPages.ts). */
   const sortedPages = useSortedPages(`${choice.sort}:${win ?? ''}`, sortedOn && sorted.state === 'ready' ? sorted.value : null);
@@ -195,6 +196,7 @@ export function Feed({
   const narrativesOn = tab === 'watchlist' && starred.length > 0;
   const [narratives, reloadNarratives] = useLoad(narrativesOn ? `narratives:starred:${starred.join(' ')}` : 'narratives:off', (signal) =>
     narrativesOn ? starredByIds(starred, signal) : Promise.resolve(null),
+    'memory',
   );
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);

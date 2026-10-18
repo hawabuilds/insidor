@@ -28,7 +28,7 @@ import styles from './token.module.css';
 
 /** `back`: where Back goes when nothing of ours is under this page; Search, unless the caller knows better. */
 export function SearchedToken({ coinId, note = null, back = { screen: 'search' } }: { coinId: string; note?: string | null; back?: Route }) {
-  const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal));
+  const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal), 'phone');
   return (
     <section className={styles['page']}>
       {coin.state !== 'ready' ? (

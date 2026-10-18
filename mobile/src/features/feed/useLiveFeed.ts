@@ -140,6 +140,9 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
     }
     listRef.current = next;
     setList(next);
+    /* A list kept from the last visit (shared/kept-reads.ts) is only a stand-in: the fresh read
+       after it rebuilds in the server's order, removals included, as a first read does. */
+    if (load.stale === true) rebuild.current = true;
   }, [on, load]);
 
   /* After the new list is laid out: put the card that was on screen back where it was. */

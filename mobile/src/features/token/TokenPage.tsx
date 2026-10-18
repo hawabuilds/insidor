@@ -43,7 +43,7 @@ import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
 export function TokenPage({ storyId, coinId }: { storyId: string; coinId: string }) {
-  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
+  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal), 'phone');
   const opening = coinOpening(story, coinId);
   if (opening.kind === 'own') return <SearchedToken coinId={coinId} back={{ screen: 'story', storyId }} />;
   return (

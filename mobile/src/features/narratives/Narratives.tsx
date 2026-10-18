@@ -32,6 +32,7 @@ import type { Measured } from '../../shared/format/measure.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useNow } from '../../shared/hooks.ts';
+import { fresh, kept } from '../../shared/kept-reads.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -136,19 +137,31 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
  * showing it is read again every minute, so the list stays current; once more are loaded it holds
  * still, so a scrolled list does not move under the thumb.
  */
+type Got = { key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] };
+
+/** The first page this phone last read for a list (shared/kept-reads.ts), to show while it is read again. */
+export const firstPageKey = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null): string => `narratives:${BOARD_VIEW}:${sort}:${on ?? 'all'}`;
+export const readFirstPage = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null) => (signal: AbortSignal) => fetchAllNarratives(BOARD_VIEW, sort, 0, on, signal);
+function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | null): Got | null {
+  const k = kept<NarrativesPage>(firstPageKey(sort, on));
+  return k === undefined ? null : { key, rows: realNarratives(k.value.stories), next: k.value.next, pages: 1, provenance: k.value.provenance };
+}
+
 function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
   const key = `${sort}:${on ?? 'all'}`;
-  const [got, setGot] = useState<{ key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] } | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  /* The list as this phone last read it, at once; the first page is read again under it. */
+  const [got, setGot] = useState<Got | null>(() => keptFirst(key, sort, on));
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>(() => (got === null ? 'loading' : 'ready'));
   const asking = useRef<string | null>(null);
   const current = useRef(key);
   current.current = key;
-  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false) => {
+  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false, standIn = false) => {
     const ask = `${key}:${offset}:${pages}`;
     if (asking.current === ask) return;
     asking.current = ask;
     if (!quiet) setState('loading');
-    fetchAllNarratives(BOARD_VIEW, sort, offset, on).then(
+    /* The first page goes through the kept reads, so a read ahead (shared/prefetch.ts) is shared, and the answer is kept for next time. */
+    (offset === 0 ? fresh(firstPageKey(sort, on), readFirstPage(sort, on), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on)).then(
       (page) => {
         asking.current = null;
         if (current.current !== key) return;
@@ -158,14 +171,23 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly
       },
       () => {
         asking.current = null;
-        if (current.current !== key || quiet) return;
+        if (current.current !== key) return;
+        /* Over a kept list, a failed first read is still a failure: the old list is not left standing as if current. */
+        if (standIn) {
+          setGot(null);
+          setState('failed');
+          return;
+        }
+        if (quiet) return;
         setState('failed');
       },
     );
   };
   useEffect(() => {
-    setGot(null);
-    load(0, [], 0);
+    const was = keptFirst(key, sort, on);
+    setGot(was);
+    if (was !== null) setState('ready');
+    load(0, [], 0, was !== null, was !== null);
     // `load` is a fresh closure every render; the sort and site are what decide a fresh list.
   }, [key]);
   const mine = got !== null && got.key === key ? got : null;
