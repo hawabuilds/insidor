@@ -1,68 +1,57 @@
 /**
  * The Narratives tab's rules, apart from the screen so `node --test` holds them: which narratives
- * are listed, the three orders behind its chips, the window beside them, the words on each card,
- * and the choice the phone remembers.
+ * are listed, the sorts and pills the tab offers, the words on each card, and the choice the phone
+ * remembers.
+ *
+ * ★ FOR YOU'S SORTS (the owner, 2026-10-18: "the Narratives tab works exactly like For You's
+ * sorts"). The same chips in the same order (features/feed feed-sort.ts SORTS): New, Trending, Most
+ * viewed; Most viewed's Today / Week / All at the right end of the All / X / TikTok row. The ORDER is
+ * the server's (services/read narrative-sorts.ts, which says exactly how each is ranked), read 20 at
+ * a time; this file only decides which list is showing and words the facts a card carries:
  *
  *   Listed       only real narratives: the server says the story was observed (`provenance`), never
  *                a seeded or hand-written one, and it lists at least one post
- *   Trending     the default (the owner, 2026-10-17): the server's trending place for the window
- *                (services/project narrative-trend.ts) — how fast the story is picking up, not how
- *                big it is. Only the place reaches the phone; the number behind it never does.
- *                ★ A dead narrative (no new post in 48 hours, the owner 2026-10-18) is never here
- *   Most viewed  views gained IN the window ("Most viewed 24h" is the last 24 hours, not lifetime);
- *                on All time, every narrative ever made, dead ones too, by its views, from the
- *                server 20 at a time (GET /narratives/:view/all?sort=viewed)
- *   New          first found (`foundAt`, the earliest save of any post it lists), newest first: every
- *                narrative ever made, dead ones too, from the server 20 at a time (sort=new)
- *   Window       1h 6h 24h on Trending; 1h 6h 24h All time on Most viewed: 1h for Trending, 24h for
- *                Most viewed until the user picks another. New has none
+ *   New          newest first by when we found its first post, dead ones too, marked Dead
+ *   Trending     right now, no window: "394 views a minute, up 1.4x in the last hour" (For You's
+ *                own words, feed-sort.ts speedLine), from the narrative's posts' speeds added up
+ *   Most viewed  Today and Week: its views and "+8.1M today" / "+X this week" under them; All: views
+ *   All X TikTok the narratives with a post on that site, on every sort
  *
- * ★ AN UNKNOWN NEVER SORTS AS ZERO. A narrative whose number the server did not send, or could not
- * say, goes after every one that has it, in the board's order among themselves, so a missing number
- * can neither promote a card nor bury it as the slowest.
+ * ★ AN UNKNOWN IS NEVER 0. Views no post reported are a dash, a gain the server could not say is
+ * left out of the line, never "+0".
  *
- * ★ THE CHOICE IS REMEMBERED on this phone (localStorage), the chip and each chip's window; a phone
- * that cannot keep it (a private window) gets the defaults, never an error.
+ * ★ THE CHOICE IS REMEMBERED on this phone (localStorage), under the key the tab always used, so a
+ * choice stored before this design keeps its sort (Trending, Most viewed, New) and Most viewed's
+ * All time stays All; any other old window falls back to Today. A phone that cannot keep it (a
+ * private window) gets the defaults, never an error.
  */
 
-import type { Story } from '../../shared/api/index.ts';
+import type { NarrativeListSort, PostSpeeds, Story } from '../../shared/api/index.ts';
 import { formatDuration } from '../../shared/format/duration.ts';
 import { compact } from '../../shared/format/number.ts';
+import { DEFAULT_CHOICE as FOR_YOU_DEFAULT, type PostSort, type ViewedSpan } from '../feed/feed-sort.ts';
 
-export const ORDERS = ['trending', 'viewed', 'new'] as const;
-export type Order = (typeof ORDERS)[number];
-export const ORDER_LABEL: Readonly<Record<Order, string>> = { trending: 'Trending', viewed: 'Most viewed', new: 'New' };
+export type Site = 'all' | 'x' | 'tiktok';
+/** The site pills, plain words (the owner, 2026-10-18). */
+export const SITES: readonly { readonly key: Site; readonly label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'x', label: 'X' },
+  { key: 'tiktok', label: 'TikTok' },
+];
 
-export const WINDOWS = [1, 6, 24] as const;
-export type WindowHours = (typeof WINDOWS)[number];
-/** Every narrative ever made: Most viewed's last window. */
-export const ALL_TIME = 'all' as const;
-export type Window = WindowHours | typeof ALL_TIME;
-/** The windows each chip offers: Trending is what is picking up now, so it has no All time. */
-export const VIEWED_WINDOWS: readonly Window[] = [...WINDOWS, ALL_TIME];
-export const WINDOW_LABEL: Readonly<Record<Window, string>> = { 1: '1h', 6: '6h', 24: '24h', all: 'All time' };
-
-/** The chip and each windowed chip's window, as the user last left them. */
 export interface Choice {
-  readonly order: Order;
-  readonly windows: { readonly trending: WindowHours; readonly viewed: Window };
+  readonly sort: PostSort;
+  /** Most viewed's span; the other sorts have none. */
+  readonly span: ViewedSpan;
+  readonly site: Site;
 }
-export const DEFAULT_CHOICE: Choice = { order: 'trending', windows: { trending: 1, viewed: 24 } };
+export const DEFAULT_CHOICE: Choice = { sort: FOR_YOU_DEFAULT.sort, span: FOR_YOU_DEFAULT.span, site: 'all' };
 
-/** The window the chosen chip uses; New has none. */
-export const windowOf = (c: Choice): Window | null => (c.order === 'new' ? null : c.windows[c.order]);
-
-/** The windows the chosen chip offers; New has none. */
-export const windowsOf = (o: Order): readonly Window[] => (o === 'trending' ? WINDOWS : o === 'viewed' ? VIEWED_WINDOWS : []);
-
-/**
- * Which of the server's whole lists the choice reads, 20 at a time: Most viewed on All time by views,
- * New by when we found it. Null: the board (Trending, and Most viewed over 1h, 6h or 24h).
- */
-export function allTimeOf(c: Choice): 'viewed' | 'new' | null {
-  if (c.order === 'new') return 'new';
-  if (c.order === 'viewed' && c.windows.viewed === ALL_TIME) return 'viewed';
-  return null;
+/** The server's list for the choice (GET /narratives/:view/all?sort=…). */
+export function listOf(c: Choice): NarrativeListSort {
+  if (c.sort === 'new') return 'new';
+  if (c.sort === 'trending') return 'trending';
+  return c.span === 'today' ? 'today' : c.span === 'week' ? 'week' : 'viewed';
 }
 
 /** Only narratives the server says happened, with a post to show. */
@@ -70,59 +59,38 @@ export function realNarratives(list: readonly Story[]): readonly Story[] {
   return list.filter((s) => s.provenance.kind === 'observed' && s.evidence.length > 0);
 }
 
-const placeOf = (s: Story, h: WindowHours): number | null => s.inWindow?.get(h)?.trendingPlace ?? null;
-/** Views gained in the window, or null when the server did not send it or could not say. */
-export const gainedIn = (s: Story, h: WindowHours): number | null => {
-  const g = s.inWindow?.get(h)?.viewsGained;
-  if (g !== undefined) return g.known ? g.amount : null;
-  /* A server from before the windows: its last hour is the same number for 1h. */
-  return h === 1 && s.viewsGained1h !== null && s.viewsGained1h.known ? s.viewsGained1h.amount : null;
-};
 const foundOf = (s: Story): number | null => (s.foundAt !== null && s.foundAt.known ? s.foundAt.at : s.firstSeenAt.known ? s.firstSeenAt.at : null);
-
-/** Known first by `key` (`dir` 1: highest first, -1: lowest first); unknowns after, in the order they came. */
-function by(list: readonly Story[], key: (s: Story) => number | null, dir: 1 | -1): readonly Story[] {
-  const known = list.filter((s) => key(s) !== null);
-  const unknown = list.filter((s) => key(s) === null);
-  return [...known].sort((a, b) => dir * ((key(b) ?? 0) - (key(a) ?? 0))).concat(unknown);
-}
-
 /** Its views, all its posts' newest counts added up; null when the server could not say. */
 const viewsOf = (s: Story): number | null => (s.viewsTotal !== null && s.viewsTotal.known ? s.viewsTotal.amount : null);
 
-export function ordered(list: readonly Story[], choice: Choice): readonly Story[] {
-  const h = windowOf(choice);
-  if (choice.order === 'new' || h === null) return by(list, foundOf, 1);
-  if (h === ALL_TIME) return by(list, viewsOf, 1);
-  if (choice.order === 'viewed') return by(list, (s) => gainedIn(s, h), 1);
-  /* ★ Trending is the stories still picking up: a dead one is never in it. */
-  const live = list.filter((s) => !s.dead);
-  /* A server from before the trending places: its board order is the last hour's gain. */
-  if (!live.some((s) => placeOf(s, h) !== null)) return by(live, (s) => gainedIn(s, h), 1);
-  return by(live, (s) => placeOf(s, h), -1);
+/** "3.4M", its views; null when no post reported any. */
+export function viewsText(s: Story): string | null {
+  const v = viewsOf(s);
+  return v === null ? null : compact(v);
 }
 
-/** "+12K" gained in the window, or on All time its views, "3.4M"; null when the server did not say. */
-export function gainText(s: Story, h: Window): string | null {
-  if (h === ALL_TIME) {
-    const v = viewsOf(s);
-    return v === null ? null : compact(v);
-  }
-  const g = gainedIn(s, h);
-  return g === null ? null : `${g >= 0 ? '+' : ''}${compact(g)}`;
+/** Views gained in Most viewed's span, Today or Week; null on All or when the server could not say. */
+export function gainedIn(s: Story, span: ViewedSpan): number | null {
+  const g = span === 'today' ? s.viewsGainedDay : span === 'week' ? s.viewsGainedWeek : null;
+  return g !== null && g.known ? g.amount : null;
 }
 
-/**
- * The card's line under the title: on a windowed chip "3 new posts" in the window (or "No new
- * posts"), on New the post count; then the story's age since we found it, "28m old". Facts only.
- */
-export function cardLine(s: Story, h: Window | null, now: number): readonly string[] {
+/** Trending's two speeds, as For You's card takes them. */
+export const speedsOf = (s: Story): PostSpeeds | null => s.viewsPerMinute;
+
+/** The last hour's gain, "+12K": Home's Watchlist card. Null when the server did not say. */
+export function hourGainText(s: Story): string | null {
+  const g = s.inWindow?.get(1)?.viewsGained;
+  const amount = g !== undefined ? (g.known ? g.amount : null) : s.viewsGained1h !== null && s.viewsGained1h.known ? s.viewsGained1h.amount : null;
+  return amount === null ? null : `${amount >= 0 ? '+' : ''}${compact(amount)}`;
+}
+
+/** The card's line under the title: its post count, its age since we found it, "28m old", and Dead. Facts only. */
+export function cardLine(s: Story, now: number): readonly string[] {
   const n = s.postCount ?? s.evidence.length;
-  const fresh = h === null || h === ALL_TIME ? null : (s.inWindow?.get(h)?.newPosts ?? null);
-  const posts = fresh === null ? (n === 1 ? '1 post' : `${n} posts`) : fresh === 0 ? 'No new posts' : fresh === 1 ? '1 new post' : `${fresh} new posts`;
   const found = foundOf(s);
   /* ★ Dead is said: no new post in 48 hours. */
-  return [posts, ...(found !== null && now >= found ? [`${formatDuration(now - found)} old`] : []), ...(s.dead ? ['Dead'] : [])];
+  return [n === 1 ? '1 post' : `${n} posts`, ...(found !== null && now >= found ? [`${formatDuration(now - found)} old`] : []), ...(s.dead ? ['Dead'] : [])];
 }
 
 /**
@@ -138,8 +106,7 @@ export function watchLine(s: Story): readonly string[] {
 
 /**
  * The narratives starred on this phone, in the order they were starred, from the real ones the list
- * holds. An id the list does not hold is left out, never drawn as an empty card: a story id starred
- * before the narrative rebuild (the old ids, not `n-…`) or a narrative no longer listed.
+ * holds. An id the list does not hold is left out, never drawn as an empty card.
  */
 export function starredNarratives(list: readonly Story[], starred: readonly string[]): readonly Story[] {
   const byId = new Map(realNarratives(list).map((s) => [s.id, s]));
@@ -150,19 +117,28 @@ export function starredNarratives(list: readonly Story[], starred: readonly stri
 }
 
 const KEY = 'insidor.narratives.order';
-const isWindow = (v: unknown): v is WindowHours => v === 1 || v === 6 || v === 24;
-const isViewedWindow = (v: unknown): v is Window => isWindow(v) || v === ALL_TIME;
+const isSort = (v: unknown): v is PostSort => v === 'new' || v === 'trending' || v === 'most_viewed';
+const isSpan = (v: unknown): v is ViewedSpan => v === 'today' || v === 'week' || v === 'all';
+const isSite = (v: unknown): v is Site => v === 'all' || v === 'x' || v === 'tiktok';
+/** The sort a choice stored before this design meant. */
+const OLD_ORDER: Readonly<Record<string, PostSort>> = { trending: 'trending', viewed: 'most_viewed', new: 'new' };
 
-/** The remembered choice, or the defaults when there is none or it cannot be read. */
+/** The remembered choice, or the defaults part by part when there is none or it cannot be read. */
 export function loadChoice(store: Pick<Storage, 'getItem'> | null): Choice {
   try {
     const raw = store?.getItem(KEY);
     if (raw === null || raw === undefined) return DEFAULT_CHOICE;
-    const o = JSON.parse(raw) as { order?: unknown; windows?: { trending?: unknown; viewed?: unknown } };
-    const order = ORDERS.find((x) => x === o.order) ?? DEFAULT_CHOICE.order;
-    const t = o.windows?.trending;
-    const v = o.windows?.viewed;
-    return { order, windows: { trending: isWindow(t) ? t : DEFAULT_CHOICE.windows.trending, viewed: isViewedWindow(v) ? v : DEFAULT_CHOICE.windows.viewed } };
+    const o: unknown = JSON.parse(raw);
+    if (typeof o !== 'object' || o === null) return DEFAULT_CHOICE;
+    const r = o as Record<string, unknown>;
+    if ('order' in r) {
+      /* Stored before this design: { order, windows: { trending, viewed } }. */
+      const order = typeof r['order'] === 'string' ? OLD_ORDER[r['order']] : undefined;
+      const w = r['windows'];
+      const viewed = typeof w === 'object' && w !== null ? (w as Record<string, unknown>)['viewed'] : undefined;
+      return { sort: order ?? DEFAULT_CHOICE.sort, span: viewed === 'all' ? 'all' : 'today', site: 'all' };
+    }
+    return { sort: isSort(r['sort']) ? r['sort'] : DEFAULT_CHOICE.sort, span: isSpan(r['span']) ? r['span'] : DEFAULT_CHOICE.span, site: isSite(r['site']) ? r['site'] : DEFAULT_CHOICE.site };
   } catch {
     return DEFAULT_CHOICE;
   }
