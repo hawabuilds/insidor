@@ -19,6 +19,10 @@
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
+ * ★ A PRIVATE PORTFOLIO HIDES THE WALLET (Trador's rule). A profile carries its wallet only to its
+ * owner, or to everyone once "Show my trades to followers" is on; `portfolio` says which, so the
+ * phone can say "@handle keeps their portfolio private" rather than show an empty one.
+ *
  * ★ ONLY A HOLDER CAN LIKE, CHECKED ON THE CHAIN AT THE TIME OF THE LIKE (Trador's rule). The
  * voter's wallets come from their signed sign-in token, never from the request; a chain that
  * cannot be read refuses the like rather than letting it through.
@@ -165,6 +169,17 @@ async function profileBy(db: Db, key: string): Promise<ProfileRow | null> {
   return rows[0] ?? null;
 }
 
+/**
+ * Whether a profile shows its portfolio: `shown` (theirs, or switched on), `private` (switched
+ * off, so the wallet is withheld), or `no_wallet` (none on the profile yet). The one switch is
+ * "Show my trades to followers", which governs both the Feed and this, as Trador's
+ * `portfolio_public` governs both. Saying `private` tells no more than the missing wallet does.
+ */
+export function portfolioOf(p: { userId: string; wallet: string | null; tradesPublic: boolean }, viewer: string | null): 'shown' | 'private' | 'no_wallet' {
+  if (p.wallet === null) return 'no_wallet';
+  return viewer === p.userId || p.tradesPublic ? 'shown' : 'private';
+}
+
 async function card(deps: SocialDeps, p: ProfileRow, viewer: string | null) {
   const season = seasonNow(deps.now(), deps.policy);
   const { map } = await seasonStandings(deps, season.id);
@@ -182,7 +197,10 @@ async function card(deps: SocialDeps, p: ProfileRow, viewer: string | null) {
     name: p.name,
     pictureUrl: p.pictureUrl,
     bio: p.bio,
-    wallet: p.wallet,
+    /* Trador's visibleWallet: a private portfolio hides the wallet too, since the address is the
+       whole portfolio to anyone with an explorer. Its owner always sees their own. */
+    wallet: viewer === p.userId || p.tradesPublic ? p.wallet : null,
+    portfolio: portfolioOf(p, viewer),
     rank: rankFor(standing, deps.policy),
     rep: Math.round(standing.rep),
     next: nextRank(standing.rep, deps.policy),
