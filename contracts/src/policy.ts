@@ -3775,6 +3775,59 @@ export interface CoinVectorPolicy {
   };
 }
 
+/**
+ * The database host's disk and bill, as the owner's alerts model them (services/runner
+ * disk-alarm.ts). Neither the provisioned disk nor the bill is readable from SQL, so both are
+ * modelled from the database's hourly size (internal.disk_sample, 0105) and the host's published
+ * rule and prices. Every price here is the host's, in dollars; a price that changes upstream is
+ * changed here, or the projection is a projection of an old price list.
+ */
+export interface StorePolicy {
+  readonly disk: {
+    /** Off: no sample is taken and nothing is said. */
+    readonly on: boolean;
+    /** How often the size is sampled and the alerts checked. One row an hour whatever this is. */
+    readonly everyMs: number;
+    /** The provisioned disk at the first sample, in GB of 1024³ bytes; the replay grows it from here. */
+    readonly provisionedGb: number;
+    /** The host grows the disk when usage reaches this share of it… */
+    readonly growAt: number;
+    /** …to this multiple of its size… */
+    readonly growBy: number;
+    /** …at most once in this long… */
+    readonly growGapMs: number;
+    /** …and at most this many times in 24 hours. */
+    readonly growsPerDay: number;
+    /** The owner is told when usage passes this share of the provisioned disk, once a crossing. */
+    readonly alertAt: number;
+    /** A crossing is over once usage falls back under this share; the next pass of `alertAt` is a new one. */
+    readonly rearmBelow: number;
+    /** A crossing or a grow older than this is not pushed: a deploy never pushes history. */
+    readonly announceWithinMs: number;
+    /** Growth per day is read over this many days of samples (the 20:00 table, the bill's projection). */
+    readonly growthDays: number;
+  };
+  readonly bill: {
+    readonly on: boolean;
+    /** The plan, a month. */
+    readonly planUsd: number;
+    /**
+     * The compute size's monthly price less the plan's compute credit. NOT READ FROM THE HOST: the
+     * owner must confirm it; `computeConfirmed` false says so in every alert and in the 20:00 table.
+     */
+    readonly computeNetUsd: number;
+    readonly computeConfirmed: boolean;
+    /** Provisioned disk the plan includes, in GB; each GB-month over it is billed at `diskUsdPerGbMonth`. */
+    readonly diskIncludedGb: number;
+    readonly diskUsdPerGbMonth: number;
+    /** File storage the plan includes, in GB; each GB-month over it at `storageUsdPerGbMonth`. */
+    readonly storageIncludedGb: number;
+    readonly storageUsdPerGbMonth: number;
+    /** The owner is told once a month when the month's projected bill first passes this. */
+    readonly alertOverUsd: number;
+  };
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -3823,6 +3876,8 @@ export interface Policy {
   readonly slim: SlimPolicy;
   /** Coin picture vectors: 30 days in the database, the rest in the bucket; an untraded coin's deleted. */
   readonly coinVectors: CoinVectorPolicy;
+  /** The database host's disk and bill: the owner's alerts when the disk fills or the bill heads over his line. */
+  readonly store: StorePolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -5723,6 +5778,39 @@ const POLICY_V1: Policy = {
       /* ~500 pictured coins an hour at the busiest, a market pass every five minutes: ~42 a pass. */
       readsPerPass: 100,
       readWithinMs: 21_600_000, // six hours after the hour
+    },
+  },
+
+  /* The owner, 2026-10-18: let the disk grow past 8 GB, tell me at 80% and when the bill heads over
+     $40. The grow rule and prices are the host's published ones on that day: at 90% full the disk
+     grows by half, at most once in 4 hours and 4 times a day; disk over 8 GB is $0.125 a GB-month of
+     PROVISIONED size; files over 100 GB $0.0213 a GB-month. Egress is not modelled: no SQL reads it. */
+  store: {
+    disk: {
+      on: true,
+      everyMs: 3_600_000, // hourly
+      provisionedGb: 8,
+      growAt: 0.9,
+      growBy: 1.5,
+      growGapMs: 14_400_000, // 4 hours
+      growsPerDay: 4,
+      alertAt: 0.8,
+      rearmBelow: 0.75,
+      announceWithinMs: 10_800_000, // 3 hours
+      growthDays: 7,
+    },
+    bill: {
+      on: true,
+      planUsd: 25,
+      /* TO CONFIRM BY THE OWNER: the audit inferred the Medium compute size ($60 a month) less the
+         plan's $10 compute credit. Not read from the host; computeConfirmed stays false until he says. */
+      computeNetUsd: 50,
+      computeConfirmed: false,
+      diskIncludedGb: 8,
+      diskUsdPerGbMonth: 0.125,
+      storageIncludedGb: 100,
+      storageUsdPerGbMonth: 0.0213,
+      alertOverUsd: 40,
     },
   },
 

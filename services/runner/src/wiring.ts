@@ -56,6 +56,7 @@ import { jobVendorLines, learningDailyCapUsd, supplierRoles, vendorLines } from 
 import { supplierWarnings } from './supplier-warnings.ts';
 import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
 import { languageAlarm } from './language-alarm.ts';
+import { diskAlarm } from './disk-alarm.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
@@ -106,6 +107,7 @@ import {
   PgMissedPostRepo,
   PgObservationRepo,
   PgLanguageFindsRepo,
+  PgDiskSampleRepo,
   PgOwnerAlertRepo,
   PgSourceHealthRepo,
   PgSpendRepo,
@@ -816,6 +818,21 @@ export async function withRuntime<T>(
       });
       void languages.check();
       setInterval(() => void languages.check(), policy.notify.languageDrop.everyMs).unref();
+      /* ★ THE OWNER'S DISK AND BILL ALERTS (disk-alarm.ts): the database's size sampled hourly into
+         internal.disk_sample, the host's disk replayed from it, and the owner told at 80% of the disk,
+         when it has grown, and when the month's projected bill first passes Policy.store.bill. */
+      const diskSamples = new PgDiskSampleRepo(db);
+      const disk = diskAlarm({
+        policy: policy.store,
+        sample: () => diskSamples.sample(),
+        samples: () => diskSamples.since(0),
+        ownerWallets: cfg.ownerWallets,
+        owner,
+        log: log.child({ step: 'disk-bill' }),
+        now: () => Date.now(),
+      });
+      void disk.check();
+      setInterval(() => void disk.check(), policy.store.disk.everyMs).unref();
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',
