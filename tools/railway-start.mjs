@@ -11,7 +11,7 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` and the post slimming hourly; the
+ * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label`, the post slimming and the coin vector archive hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
  * minutes; and, when a judge's answer has landed, the quick For You frame) in three lanes — the full
  * frame, the quick frame, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
@@ -81,6 +81,10 @@ if (service in MAIN) {
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
     { name: 'archive', everyMs: 3_600_000, args: ['tools/archive-decisions.ts'] },
+    /* Coin picture vectors: an untraded coin's deleted once nothing can read it, and days older than
+       30 to the private vector-archive bucket, read back and counted before they are deleted
+       (tools/archive-coin-vectors.ts, Policy.coinVectors). Hourly; seconds when nothing is due. */
+    { name: 'coin-vectors', everyMs: 3_600_000, args: ['tools/archive-coin-vectors.ts', 'run'] },
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
     { name: 'recall', everyMs: 86_400_000, args: ['tools/recall-check.ts', 'daily', '--yes', '--detach'] },
