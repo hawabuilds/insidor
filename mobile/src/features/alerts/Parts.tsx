@@ -33,7 +33,7 @@ const RANKS: readonly string[] = ['intern', 'analyst', 'quant', 'wolf', 'goat'];
 export function Mark({ a }: { a: Alert }) {
   const m = markOf(a, RANKS);
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
-  if (m.kind === 'coin') return <CoinLogo address={m.address ?? null} ticker={m.letter} size={40} />;
+  if (m.kind === 'coin') return <CoinLogo small address={m.address ?? null} ticker={m.letter} size={40} />;
   if (m.kind === 'person') return <Avatar name={m.name} seed={m.name} src={m.picture ?? null} size={40} />;
   if (m.kind === 'rising') {
     const arrow = <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;

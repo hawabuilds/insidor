@@ -29,7 +29,7 @@ export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: 
     <div className={styles['coinRow']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
       if (e.key === 'Enter') onOpen();
     }}>
-      <CoinLogo address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />
+      <CoinLogo small address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />
       <span className={styles['coinText']}>
         <b className={styles['ticker']}>{tickerText(coin.ticker ?? coin.name ?? coin.address.slice(0, 4))}</b>
         <span className={styles['coinSub']}>

@@ -364,7 +364,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
               <button type="button" className={styles['dark']} onClick={onAll}>
                 <span className={styles['stack']}>
                   {data.coins.slice(0, 3).map((c) => (
-                    <span key={c.address} className={styles['stackItem']}><CoinLogo address={c.address} ticker={c.ticker ?? c.name} imageUrl={c.imageUrl} size={26} /></span>
+                    <span key={c.address} className={styles['stackItem']}><CoinLogo small address={c.address} ticker={c.ticker ?? c.name} imageUrl={c.imageUrl} size={26} /></span>
                   ))}
                 </span>
                 {data.coins.length === 1 ? 'All 1 coin' : `All ${data.coins.length} coins`}

@@ -6,7 +6,10 @@
  * In order, each tried only when the one before fails to load, or is still loading on screen after
  * SLOW_MS (a stalled gateway hands over to the next instead of leaving a blank disc):
  *   1. our storage's copy, at `VITE_COIN_LOGO_BASE/<address>` (services/project/src/logos-main.ts
- *      copies the coin's metadata picture there, else the launchpad's copy, else the market's);
+ *      copies the coin's metadata picture there, else the launchpad's copy, else the market's), at
+ *      most 256 pixels; a list or card passes `small` and asks for `<base>/64/<address>` first,
+ *      a 64-pixel copy about a seventh the size, falling to the 256 one where it is missing. The
+ *      token page passes nothing and loads the path it always has;
  *   2. the launchpad's own resized copy from its image service, for the launchpad's coins only
  *      (an address it does not know gets a placeholder picture, which would hide the letter);
  *   3. the coin's own picture as the reply carried it, through a chain of IPFS gateways when it is
@@ -37,15 +40,17 @@ const BASE = ((import.meta.env?.['VITE_COIN_LOGO_BASE'] as string | undefined) ?
 /** A picture still loading in view after this long hands over to the next source. */
 const SLOW_MS = 3_000;
 
-export function CoinLogo({ address, ticker, imageUrl = null, size }: {
+export function CoinLogo({ address, ticker, imageUrl = null, size, small = false }: {
   /** The coin's on-chain address; null when the surface knows only its ticker. */
   address: string | null;
   /** For the letter: the ticker, or the name when there is no ticker. */
   ticker: string | null;
   imageUrl?: string | null;
   size: number;
+  /** A list or card: our 64-pixel copy first. Left out, the 256-pixel copy, as the token page loads. */
+  small?: boolean;
 }) {
-  const sources = logoSources(address, imageUrl, BASE);
+  const sources = logoSources(address, imageUrl, BASE, small);
   const [failed, setFailed] = useState<readonly string[]>([]);
   const shown = sources.find((s) => !failed.includes(s)) ?? null;
   const last = shown !== null && sources.indexOf(shown) === sources.length - 1;
