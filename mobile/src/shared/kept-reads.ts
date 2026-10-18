@@ -109,66 +109,98 @@ export function kept<T>(key: string): { readonly value: T; readonly at: number }
   }
 }
 
-/* Writes to the phone wait for a quiet moment, so keeping a read never costs a frame. */
+/*
+ * Writes to the phone wait for a quiet moment, one read per moment, so keeping a read never costs
+ * a frame while the person scrolls. What is on the phone and how big it is lives in a small index
+ * row (INDEX), so making room never reads every kept answer back to measure it.
+ */
 const toWrite = new Map<string, Kept>();
 let writeAsked = false;
+const INDEX = `${PREFIX}__index`;
+/** key -> [characters, when read]. Loaded on the first write of a visit. */
+let index: Map<string, [number, number]> | null = null;
+
 const whenIdle = (f: () => void): void => {
   const w = globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
-  if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(f, { timeout: 2_000 });
+  if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(f, { timeout: 5_000 });
   else setTimeout(f, 200);
 };
 
-function writeNow(): void {
+function loadIndex(s: Storage): Map<string, [number, number]> {
+  if (index !== null) return index;
+  const out = new Map<string, [number, number]>();
+  try {
+    const raw = s.getItem(INDEX);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      for (const row of parsed) if (Array.isArray(row) && typeof row[0] === 'string' && typeof row[1] === 'number' && typeof row[2] === 'number') out.set(row[0], [row[1], row[2]]);
+    } else {
+      /* No index yet (a first visit, or an older build's rows): rows not ours to count are dropped. */
+      const stray: string[] = [];
+      for (let i = 0; i < s.length; i += 1) {
+        const key = s.key(i);
+        if (key !== null && key.startsWith('insidor.kept.') && key !== INDEX) stray.push(key);
+      }
+      for (const key of stray) s.removeItem(key);
+    }
+  } catch {
+    /* An unreadable index starts empty. */
+  }
+  index = out;
+  return out;
+}
+
+function saveIndex(s: Storage, ix: Map<string, [number, number]>): void {
+  try {
+    s.setItem(INDEX, JSON.stringify([...ix].map(([k, [c, at]]) => [k, c, at])));
+  } catch {
+    /* The rows are still there; the next visit rebuilds from what it can read. */
+  }
+}
+
+function writeOne(): void {
   writeAsked = false;
   const s = store();
   if (s === null) {
     toWrite.clear();
     return;
   }
-  for (const [key, k] of toWrite) {
-    toWrite.delete(key);
-    let text: string;
-    try {
-      text = JSON.stringify(k, replacer);
-    } catch {
-      continue;
-    }
-    if (text.length > ONE_READ_CHARS) continue;
-    makeRoom(s, text.length, PREFIX + key);
-    try {
-      s.setItem(PREFIX + key, text);
-    } catch {
-      /* Full even after making room: this one stays in memory only. */
-    }
+  const next = toWrite.entries().next().value;
+  if (next === undefined) return;
+  const [key, k] = next;
+  toWrite.delete(key);
+  if (toWrite.size > 0) {
+    writeAsked = true;
+    whenIdle(writeOne);
   }
-}
-
-/** Drops the oldest kept reads until `need` more characters fit under KEEP_CHARS. */
-function makeRoom(s: Storage, need: number, replacing: string): void {
-  const rows: { key: string; chars: number; at: number }[] = [];
+  let text: string;
   try {
-    for (let i = 0; i < s.length; i += 1) {
-      const key = s.key(i);
-      if (key === null || !key.startsWith('insidor.kept.') || key === replacing) continue;
-      const raw = s.getItem(key) ?? '';
-      /* An old version's rows are dropped outright. */
-      if (!key.startsWith(PREFIX)) {
-        rows.push({ key, chars: raw.length, at: 0 });
-        continue;
-      }
-      const at = Number(/"at":(\d+)/.exec(raw.slice(-40))?.[1] ?? 0);
-      rows.push({ key, chars: raw.length, at });
-    }
-    let used = rows.reduce((a, r) => a + r.chars, 0);
-    rows.sort((a, b) => a.at - b.at);
-    for (const r of rows) {
-      if (used + need <= KEEP_CHARS && r.at !== 0) break;
-      s.removeItem(r.key);
-      used -= r.chars;
-    }
+    text = JSON.stringify(k, replacer);
   } catch {
-    /* Nothing to free: the write below may fail, and is caught there. */
+    return;
   }
+  if (text.length > ONE_READ_CHARS) return;
+  const ix = loadIndex(s);
+  ix.delete(PREFIX + key);
+  /* The oldest kept reads go until this one fits. */
+  let used = [...ix.values()].reduce((a, [c]) => a + c, 0);
+  for (const [old, [c]] of [...ix].sort((a, b) => a[1][1] - b[1][1])) {
+    if (used + text.length <= KEEP_CHARS) break;
+    try {
+      s.removeItem(old);
+    } catch {
+      /* gone already */
+    }
+    ix.delete(old);
+    used -= c;
+  }
+  try {
+    s.setItem(PREFIX + key, text);
+    ix.set(PREFIX + key, [text.length, k.at]);
+  } catch {
+    /* Full even after making room: this one stays in memory only. */
+  }
+  saveIndex(s, ix);
 }
 
 /** Keep `value` as `key`'s latest answer: in memory, and on the phone when `phone`. */
@@ -179,7 +211,7 @@ export function keep(key: string, value: unknown, phone: boolean): void {
   toWrite.set(key, k);
   if (!writeAsked) {
     writeAsked = true;
-    whenIdle(writeNow);
+    whenIdle(writeOne);
   }
 }
 
