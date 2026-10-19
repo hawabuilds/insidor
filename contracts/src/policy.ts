@@ -4508,7 +4508,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v122',
+  version: 'policy.v123',
 
   admit: {
     maxAgeMin: 240,
@@ -5996,7 +5996,9 @@ const POLICY_V1: Policy = {
        learning + jobs is $50.00. Discovery is never cut to pay for learning (the owner, 2026-10-13).
        $43.50 from 2026-10-16 18:20 UTC for the view readings (feed.readings, its own $3.75 cap), the
        owner's option 1: about $49 measured for the whole day; the books' caps sum to $53 as headroom. */
-    dailyUsd: 43.5,
+    /* $48.50 for 2026-10-19 only, the owner's yes: X ran over and the day was spent by 20:00 London; the owner
+       wants X and judging running the rest of the night. Back to 43.5 on the 20th, after DAILY_BUDGET_USD is. */
+    dailyUsd: 48.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
