@@ -251,7 +251,7 @@ test('★ the shipped budget is the owner\'s cap, and the lines inside it are wh
   /* pictures $4.50 from 2026-10-14: the owner's +$2.50, over the $2.94 they spent the day before. */
   /* secondVideo $2.50 from 2026-10-16: the short-video source's second vendor (re-reads, creator pages, the feed). */
   /* posts $14 and video $4.50 from 2026-10-16: the middle lane and the learned-tag lane, as warnings. */
-  assert.deepEqual(B.supplierLines, { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 });
+  assert.deepEqual(B.supplierLines, { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 });
   for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
   assert.ok(!('paceAheadMs' in B), 'the live runner is not paced: the lines are brakes');
 });

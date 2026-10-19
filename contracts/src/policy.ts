@@ -4359,7 +4359,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v117',
+  version: 'policy.v118',
 
   admit: {
     maxAgeMin: 240,
@@ -5805,7 +5805,8 @@ const POLICY_V1: Policy = {
        the text source's live search, re-reads and replies were $9.24 in the 24 hours to 08:30 UTC and
        the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
        adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
-    supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
+    /* embeddings $6 for 2026-10-19 only, the owner's call (judging caught up after an outage); back to 4.5 on the 20th. */
+    supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
