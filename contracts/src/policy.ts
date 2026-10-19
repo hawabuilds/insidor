@@ -4354,7 +4354,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v115',
+  version: 'policy.v116',
 
   admit: {
     maxAgeMin: 240,
@@ -4979,7 +4979,7 @@ const POLICY_V1: Policy = {
     middle: {
       on: true,
       minAgeMin: 15,
-      maxAgeMin: 60,
+      maxAgeMin: 45, // the owner, 2026-10-19: 15-45, the saving to the newest bands
       minApproval: 2_000,
       everyMs: 900_000, // a quarter-hour
       maxPages: 40,
@@ -5048,7 +5048,7 @@ const POLICY_V1: Policy = {
     langSplit: {
       on: true,
       shares: { en: 0.795, zxx: 0.063, fr: 0.054, ja: 0.027, es: 0.024, pt: 0.019, qme: 0.01, ko: 0.008 },
-      bandsDailyUsd: 3.2,
+      bandsDailyUsd: 4.1,
       minPostsPerAsk: 2,
       maxEveryMs: 3_600_000, // an hour
     },
