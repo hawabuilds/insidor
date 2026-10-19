@@ -185,6 +185,12 @@ export type { SharedDetail, StoryAnchor, StoryCoin, StoryCoinBars, StoryPost } f
 /* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
 export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';
+/* One post, one coin: the launch-time matcher and the pick by who is buying (match/one-coin.ts),
+   and the same rule replayed over stored trade minutes for the replay tool and the weekly refit. */
+export { biggestOfName, hashGap, launchMatches, oneCoinBars, pickOneCoin } from './match/one-coin.ts';
+export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
+export { coinAt, replayMerit, replayTimeline, scoreReplay, tradesAt } from './match/one-coin-replay.ts';
+export type { ReplayCase, ReplayCoin, ReplayScore, Timeline, TradeMinute } from './match/one-coin-replay.ts';
 export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
 export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints } from './social/rank.ts';
