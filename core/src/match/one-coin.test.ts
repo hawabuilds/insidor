@@ -15,7 +15,7 @@ import { replayTimeline, scoreReplay, type ReplayCoin } from './one-coin-replay.
 const P = DEFAULT_POLICY.oneCoin;
 const BARS = oneCoinBars(P);
 const MIN = 60_000;
-const MATCH = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: DEFAULT_POLICY.postCoin.minVariantLength };
+const MATCH = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, linkMaxAgeMs: P.linkMaxAgeMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: DEFAULT_POLICY.postCoin.minVariantLength };
 
 const post = (o: Partial<MatchPost> = {}): MatchPost => ({ itemId: 'x:1', postedAtMs: 1_000 * MIN, judgeNames: ['Pancake'], guessNames: [], hash: null, ...o });
 const coin = (o: Partial<LaunchSide> = {}): LaunchSide => ({ address: 'C1', launchedAtMs: 1_005 * MIN, name: 'Other', ticker: 'OTH', linksPosts: new Set(), hash: null, similarity: new Map(), ...o });
@@ -106,6 +106,11 @@ test('★ matcher: a link ties past the window — and through the coin\'s own q
   /* A name alone past the window is chance; a link still never reaches back before the post. */
   assert.equal(launchMatches(coin({ launchedAtMs: late, name: 'Pancake' }), [post()], MATCH).length, 0);
   assert.equal(launchMatches(coin({ launchedAtMs: 980 * MIN, linksThrough: new Map([['x:1', 'x:quote']]) }), [post()], MATCH).length, 0);
+  /* Past the link's own age bound (48 h at the launch), neither a direct link nor a quote ties. */
+  const stale = 1_000 * MIN + P.linkMaxAgeMs + MIN;
+  assert.equal(launchMatches(coin({ launchedAtMs: stale, linksPosts: new Set(['x:1']) }), [post()], MATCH).length, 0);
+  assert.equal(launchMatches(coin({ launchedAtMs: stale, linksPosts: new Set(['x:quote']), linksThrough: new Map([['x:1', 'x:quote']]) }), [post()], MATCH).length, 0);
+  assert.deepEqual(launchMatches(coin({ launchedAtMs: 1_000 * MIN + P.linkMaxAgeMs, linksPosts: new Set(['x:1']) }), [post()], MATCH)[0]?.evidence, ['link']);
 });
 
 const trades = (o: Partial<TradeFacts>): TradeFacts => ({ uniqueBuyers: 40, netBuy: 30, capUsd: 40_000, cap: 200, peakCap: 220, creatorSold: false, ...o });

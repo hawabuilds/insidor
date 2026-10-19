@@ -2133,6 +2133,11 @@ export interface OneCoinPolicy {
   readonly everyMs: number;
   /** A new launch is matched against the posts of this long before it. */
   readonly postWindowMs: number;
+  /**
+   * A coin's link (to the post, or one hop through a quote or re-share of it) ties it to a post at
+   * most this old at the coin's launch; `postWindowMs` binds only names and pictures.
+   */
+  readonly linkMaxAgeMs: number;
   /** A launch this long before the post still counts as the post's (the post's own clock is loose). */
   readonly launchLeadMs: number;
   /** Launches are matched again for this long after they arrive: metadata and hashes come late. */
@@ -5762,6 +5767,9 @@ const POLICY_V1: Policy = {
     mode: 'live',
     everyMs: 5_000,
     postWindowMs: 21_600_000, // six hours
+    /* Two days, the owner's word (20 Oct): unbounded, links reopened 16-18 Oct posts a day or two on
+       with copycats of the viral post and moved their pick. HI's quote link was 24 h. */
+    linkMaxAgeMs: 172_800_000,
     launchLeadMs: 600_000, // ten minutes
     rematchMs: 180_000, // three minutes
     watchMs: 3_600_000, // an hour
