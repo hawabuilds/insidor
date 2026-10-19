@@ -53,6 +53,14 @@ export function searchDayAllowanceUsd(now: number, p: Policy): number {
   return d.dailyUsd * Math.min(1, (sinceStart + Math.max(0, d.aheadMs)) / MS_PER_DAY);
 }
 
+/** What the day's X re-reads may have spent by `now`: `rereadDailyUsd` on the search day's pace and start. */
+export function rereadAllowanceUsd(now: number, p: Policy): number {
+  const d = p.feed.searchDay;
+  if (!d.on) return Number.POSITIVE_INFINITY;
+  const sinceStart = now - searchDayStart(now, p);
+  return d.rereadDailyUsd * Math.min(1, (sinceStart + Math.max(0, d.aheadMs)) / MS_PER_DAY);
+}
+
 /** True when an ask quoted at `askUsd` keeps the day's X search at or under its allowance now. */
 export function searchDayMayAsk(spentUsd: number, askUsd: number, now: number, p: Policy): boolean {
   if (!p.feed.searchDay.on) return true;

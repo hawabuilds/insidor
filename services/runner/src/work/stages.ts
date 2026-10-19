@@ -69,6 +69,8 @@ import {
   presentationFor,
   nameKey,
   rankByVelocity,
+  rereadAllowanceUsd,
+  searchDayStart,
   seedStory,
   withNameCarriers,
   type PictureInputs,
@@ -476,6 +478,8 @@ export interface TrackingDeps {
   readonly log: Logger;
   /** The clock for the call's deadline. The reading's own time comes from the adapter. */
   readonly now: () => Millis;
+  /** What a supplier's endpoint has spent since a moment, for `feed.searchDay.rereadDailyUsd`. Absent: no re-read day. */
+  readonly spentSince?: (vendor: string, endpoint: string, sinceMs: Millis) => Promise<number>;
 }
 
 function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): StageWork<TrackInput> {
@@ -668,6 +672,17 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           );
         }
         const estimate = adapter.estimate({ kind: 'observe', sourceItemIds: ids });
+
+        /* ★ THE RE-READ DAY: a source billed per post re-reads within its paced share of the X day, so
+           re-reads never take what the searches that find new posts need. An unreadable bill waits. */
+        if (tracking.spentSince !== undefined && adapter.capabilities.billing !== 'per-run' && estimate.usd > 0) {
+          const now = tracking.now();
+          const spent = await tracking.spentSince(estimate.vendor, estimate.endpoint, searchDayStart(now, policy) as Millis).catch(() => null);
+          if (spent === null || spent + estimate.usd > rereadAllowanceUsd(now, policy)) {
+            tracking.log.warn('re-reads paused for the day; the call was not made', { source, reads: ids.length, wouldSpendUsd: estimate.usd, spentUsd: spent });
+            continue;
+          }
+        }
 
         if (!tracking.meter.mayspend(estimate.vendor, estimate.usd)) {
           const line = tracking.meter.line(estimate.vendor);

@@ -171,6 +171,8 @@ import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
+/** The posts supplier's endpoints on the X day's bill (`feed.searchDay`), as its adapter records them. */
+const X_DAY_ENDPOINTS = ['search', 'lookup', 'responses'] as const;
 import { advisoryLockKey, policyHash } from './hash.ts';
 import { errorText, type Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -1199,7 +1201,14 @@ export async function withRuntime<T>(
           policy,
           log: log.child({ step: 'judge' }),
         },
-        { platforms, meter, mode: cfg.spend.kind, log: log.child({ step: 'track' }), now: () => Date.now() as Millis },
+        {
+          platforms,
+          meter,
+          mode: cfg.spend.kind,
+          log: log.child({ step: 'track' }),
+          now: () => Date.now() as Millis,
+          spentSince: (vendor, endpoint, sinceMs) => new PgSpendRepo(db).usdSince(vendor, endpoint, sinceMs),
+        },
         /* GROUP's picture evidence: stored image vectors, the judge's names, and the
            same-subject question for borderline pictures (asked with QUALIFY's judge). */
         {
@@ -1294,7 +1303,15 @@ export async function withRuntime<T>(
           store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
           /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
-          searchDay: { spent: (vendor, now) => new PgSpendRepo(db).usdSince(vendor, 'search', searchDayStart(now, policy) as Millis) },
+          /* The whole X day: search, re-reads and replies on one bill, as the owner's $7 means. */
+          searchDay: {
+            spent: async (vendor, now) => {
+              const spend = new PgSpendRepo(db);
+              const from = searchDayStart(now, policy) as Millis;
+              const parts = await Promise.all(X_DAY_ENDPOINTS.map((e) => spend.usdSince(vendor, e, from)));
+              return parts.reduce((a, b) => a + b, 0);
+            },
+          },
           middleLane: {
             ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'middle-lane' })),
             uncredited: (ids) => repos.items.uncredited(ids),

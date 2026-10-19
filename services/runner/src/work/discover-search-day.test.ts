@@ -72,7 +72,7 @@ const policy = (dailyUsd: number, on = true): Policy => ({
     ...DEFAULT_POLICY.feed,
     langs: ['en'],
     middle: { ...DEFAULT_POLICY.feed.middle, on: true, fullPaging: true, maxPages: 40, cap: { ...DEFAULT_POLICY.feed.middle.cap, dailyUsd: 100 } },
-    searchDay: { on, dailyUsd, aheadMs: 0, countFromMs: null },
+    searchDay: { on, dailyUsd, aheadMs: 0, countFromMs: null, rereadDailyUsd: 2 },
   },
 });
 
