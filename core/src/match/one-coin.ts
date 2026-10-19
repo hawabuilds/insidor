@@ -52,6 +52,20 @@
  * until its watch ended. A watched coin with no trade yet is a measured zero: the feed would have
  * told us. On readings, a coin with no reading is simply not judged yet, as in the replay.
  *
+ * ★ AN OLDER COIN OF THE POST'S NAME IS THE INCUMBENT. When the second path found a coin that was
+ * already trading on the post's subject, a coin launched after it that only shares a name is out
+ * (`after_older_coin`) unless it clears the bars and its strength is `handOverRatio` times the
+ * leading older coin's — on the same basis, and never while that older coin is unmeasured: nobody
+ * can say a newcomer out-traded a coin whose trading we could not read. A link or a picture still
+ * competes on the plain rule: those are the creators making the post's own coin. 19 Oct: "Kim"
+ * (5pwu…ZAV6), launched three hours after the post, was picked over "Rip Kim Jong-Un", 17 hours old
+ * and the coin the owner called right, on a namer ticker alone.
+ *
+ * ★ A QUOTE WITH NO POOL IS NOT A PRICE. On readings, a coin whose newest reading's pool is under
+ * `minLiquidityUsd` climbs nothing and clears nothing: that same "Kim" read $381,537 for three hours
+ * on a $0.01 pool, and on the readings rule that frozen quote out-climbed every coin people bought.
+ * A reading with no liquidity figure (a coin on its curve) is unknown, and judged on its cap.
+ *
  * ★ NOTHING HERE REACHES A SCREEN. The standings (net buying, buyers, why a coin is out) are kept
  * with the pick for the owner's tools and the refit; the card says only "Coin for this post: $X".
  *
@@ -252,6 +266,7 @@ export interface OneCoinBars {
   readonly handOverRatio: number;
   readonly rugShareOfPeak: number;
   readonly openingCapUsd: number;
+  readonly minLiquidityUsd: number;
 }
 
 /** A candidate's trading over its life so far (internal.coin_trade_minute and _state). */
@@ -270,6 +285,8 @@ export interface TradeFacts {
 export interface MarketFacts {
   readonly capUsd: number;
   readonly peakCapUsd: number;
+  /** The newest reading's pool; absent or null when it gave none (a coin on its curve): unknown. */
+  readonly liquidityUsd?: number | null;
 }
 
 export interface Contender {
@@ -284,7 +301,7 @@ export interface Contender {
 }
 
 export type Basis = 'trades' | 'market_readings';
-export type OutReason = 'creator_sold' | 'fell_from_peak';
+export type OutReason = 'creator_sold' | 'fell_from_peak' | 'after_older_coin';
 
 /** How one candidate stood at this judgement. Kept with the pick; never shown. */
 export interface Standing {
@@ -331,7 +348,31 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
   const m = c.market;
   if (m === null) return { address: c.address, evidence: c.evidence, visible, measured: false, strength: null, uniqueBuyers: null, capUsd: null, out: null, clears: false };
   const out: OutReason | null = m.peakCapUsd > 0 && m.capUsd < bars.rugShareOfPeak * m.peakCapUsd ? 'fell_from_peak' : null;
-  return { address: c.address, evidence: c.evidence, visible, measured: true, strength: Math.max(0, m.capUsd - bars.openingCapUsd), uniqueBuyers: null, capUsd: m.capUsd, out, clears: out === null && m.capUsd >= bars.minCapUsd };
+  const noPool = m.liquidityUsd !== undefined && m.liquidityUsd !== null && m.liquidityUsd < bars.minLiquidityUsd;
+  return { address: c.address, evidence: c.evidence, visible, measured: true, strength: noPool ? 0 : Math.max(0, m.capUsd - bars.openingCapUsd), uniqueBuyers: null, capUsd: m.capUsd, out, clears: !noPool && out === null && m.capUsd >= bars.minCapUsd };
+}
+
+/** A coin the second path found already trading when the post came. */
+const isOlder = (c: Contender): boolean => c.existingSinceMs !== undefined && c.existingSinceMs !== null;
+/** Ties that are the creators making the post's own coin, not a shared name. */
+const madeForPost = (c: Contender): boolean => c.evidence.includes('link') || c.evidence.includes('picture');
+
+/**
+ * Out, when an older coin of the post's name stands: each later name-only coin that does not beat
+ * the leading older coin by `handOverRatio`, measured on this basis. The older coins themselves are
+ * judged as usual.
+ */
+function behindOlder(contenders: readonly Contender[], standings: readonly Standing[], floor: number, bars: OneCoinBars): readonly Standing[] {
+  const older = new Set(contenders.filter(isOlder).map((c) => c.address));
+  const standing = standings.filter((s) => older.has(s.address) && s.visible && s.out === null);
+  if (standing.length === 0) return standings;
+  const lead = standing.filter((s) => s.measured).sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))[0];
+  const later = new Set(contenders.filter((c) => !isOlder(c) && !madeForPost(c)).map((c) => c.address));
+  return standings.map((s) => {
+    if (!later.has(s.address) || s.out !== null) return s;
+    const beats = lead !== undefined && s.clears && (s.strength ?? 0) >= bars.handOverRatio * Math.max(lead.strength ?? 0, floor);
+    return beats ? s : { ...s, out: 'after_older_coin', clears: false };
+  });
 }
 
 /**
@@ -341,15 +382,15 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
 export function pickOneCoin(contenders: readonly Contender[], holder: Holder | null, nowMs: number, tradesRunning: boolean, bars: OneCoinBars): OneCoinOutcome {
   if (contenders.length === 0) return { kind: 'none' };
   const basis: Basis = tradesRunning ? 'trades' : 'market_readings';
-  const standings = contenders.map((c) => standingOf(c, basis, nowMs, bars));
+  /* On readings the rival floor is one dollar of climb, as the replay's; on trades it is zero net buying. */
+  const floor = basis === 'trades' ? 0 : 1;
+  const standings = behindOlder(contenders, contenders.map((c) => standingOf(c, basis, nowMs, bars)), floor, bars);
   const live = standings.filter((s) => s.visible && s.out === null);
   /* On readings an unread coin is not judged yet (the replay's rule); on trades it holds every pick back. */
   const judged = basis === 'trades' ? live : live.filter((s) => s.measured);
   const strength = (s: Standing): number => s.strength ?? 0;
   const ranked = judged.filter((s) => s.measured).sort((a, b) => strength(b) - strength(a) || a.address.localeCompare(b.address));
   const unmeasured = judged.some((s) => !s.measured);
-  /* On readings the rival floor is one dollar of climb, as the replay's; on trades it is zero net buying. */
-  const floor = basis === 'trades' ? 0 : 1;
   const contender = (a: string) => contenders.find((c) => c.address === a);
   const picked = (address: string, sinceMs: number, from: string | null): OneCoinOutcome => {
     const c = contender(address);
@@ -384,7 +425,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly openingCapUsd: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -396,5 +437,6 @@ export function oneCoinBars(
     handOverRatio: fit?.handOverRatio ?? p.handOverRatio,
     rugShareOfPeak: p.rugShareOfPeak,
     openingCapUsd: p.openingCapUsd,
+    minLiquidityUsd: p.minLiquidityUsd,
   };
 }

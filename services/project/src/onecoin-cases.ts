@@ -113,7 +113,7 @@ export async function loadCases(db: Db, fromMs: number, toMs: number, bars: Case
         existingSinceMs: r.path === 'existing' ? new Date(r.found_at).getTime() : null,
         evidence: r.path === 'existing' ? [...ties, 'existing'] : ties,
         minutes: minutes.filter((m) => m.address === r.address),
-        readings: readings.filter((x) => x.address === r.address).map((x) => ({ atMs: x.atMs, capUsd: x.capUsd })),
+        readings: readings.filter((x) => x.address === r.address).map((x) => ({ atMs: x.atMs, capUsd: x.capUsd, liquidityUsd: x.liquidityUsd })),
       };
     });
     const call = calls.get(itemId);

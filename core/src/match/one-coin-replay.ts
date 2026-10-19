@@ -16,7 +16,7 @@
  */
 
 import { MS_PER_MINUTE } from '../math.ts';
-import { pickOneCoin, type Contender, type Holder, type MatchEvidence, type OneCoinBars, type TradeFacts } from './one-coin.ts';
+import { pickOneCoin, type Contender, type Holder, type MarketFacts, type MatchEvidence, type OneCoinBars, type TradeFacts } from './one-coin.ts';
 
 /** One closed minute of a coin's trading (internal.coin_trade_minute). */
 export interface TradeMinute {
@@ -34,7 +34,8 @@ export interface ReplayCoin {
   readonly existingSinceMs?: number | null;
   readonly evidence: readonly MatchEvidence[];
   readonly minutes: readonly TradeMinute[];
-  readonly readings: readonly { readonly atMs: number; readonly capUsd: number }[];
+  /** Each reading's cap, and its pool when the reading gave one (absent or null: unknown). */
+  readonly readings: readonly { readonly atMs: number; readonly capUsd: number; readonly liquidityUsd?: number | null }[];
 }
 
 /** The card's coin from each moment on: null is no pick (Create). */
@@ -64,15 +65,17 @@ export function tradesAt(c: ReplayCoin, t: number): TradeFacts | 'quiet' {
   return any ? { uniqueBuyers, netBuy, cap, capUsd, peakCap, creatorSold } : 'quiet';
 }
 
-function marketAt(c: ReplayCoin, t: number): { readonly capUsd: number; readonly peakCapUsd: number } | null {
+function marketAt(c: ReplayCoin, t: number): MarketFacts | null {
   let last: number | null = null;
+  let liquidityUsd: number | null = null;
   let peak = 0;
   for (const r of c.readings) {
     if (r.atMs > t) continue;
     last = r.capUsd;
+    liquidityUsd = r.liquidityUsd ?? null;
     peak = Math.max(peak, r.capUsd);
   }
-  return last === null ? null : { capUsd: last, peakCapUsd: peak };
+  return last === null ? null : { capUsd: last, peakCapUsd: peak, liquidityUsd };
 }
 
 /**

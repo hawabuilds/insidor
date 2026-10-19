@@ -472,34 +472,38 @@ export class PgOneCoinRepo {
     }
   }
 
-  /** Each coin's newest market cap and its highest since `sinceMs` (public.market_reading), measured readings only. */
-  async marketFacts(addresses: readonly string[], sinceMs: number): Promise<ReadonlyMap<string, { readonly capUsd: number; readonly peakCapUsd: number; readonly readAtMs: number }>> {
+  /**
+   * Each coin's newest market cap, that reading's pool liquidity (null: the reading gave none), and
+   * its highest cap since `sinceMs` (public.market_reading), measured readings only.
+   */
+  async marketFacts(addresses: readonly string[], sinceMs: number): Promise<ReadonlyMap<string, { readonly capUsd: number; readonly peakCapUsd: number; readonly readAtMs: number; readonly liquidityUsd: number | null }>> {
     if (addresses.length === 0) return new Map();
-    const rows = await this.#db.query<{ address: string; cap: number; peak: number; at: string }>(
-      `select a.address, r.cap, r.peak, r.at
+    const rows = await this.#db.query<{ address: string; cap: number; liq: number | null; peak: number; at: string }>(
+      `select a.address, r.cap, r.liq, r.peak, r.at
          from public.asset a
          join lateral (
-           select (array_agg(market_cap_usd order by taken_at desc))[1] as cap, max(market_cap_usd) as peak, max(taken_at) as at
+           select (array_agg(market_cap_usd order by taken_at desc))[1] as cap, (array_agg(liquidity_usd order by taken_at desc))[1] as liq,
+                  max(market_cap_usd) as peak, max(taken_at) as at
              from public.market_reading m
             where m.asset_key = a.asset_key and m.taken_at >= $2 and m.market_cap_usd is not null
          ) r on r.cap is not null
         where a.address = any($1::text[])`,
       [[...addresses], new Date(sinceMs).toISOString()],
     );
-    return new Map(rows.map((r) => [r.address, { capUsd: Number(r.cap), peakCapUsd: Number(r.peak), readAtMs: new Date(r.at).getTime() }] as const));
+    return new Map(rows.map((r) => [r.address, { capUsd: Number(r.cap), peakCapUsd: Number(r.peak), readAtMs: new Date(r.at).getTime(), liquidityUsd: num(r.liq) }] as const));
   }
 
-  /** Each coin's market readings since `sinceMs`, oldest first (the replay's fallback). */
-  async readings(addresses: readonly string[], sinceMs: number): Promise<readonly { readonly address: string; readonly atMs: number; readonly capUsd: number }[]> {
+  /** Each coin's market readings since `sinceMs`, oldest first, with each reading's pool (the replay's fallback). */
+  async readings(addresses: readonly string[], sinceMs: number): Promise<readonly { readonly address: string; readonly atMs: number; readonly capUsd: number; readonly liquidityUsd: number | null }[]> {
     if (addresses.length === 0) return [];
-    const rows = await this.#db.query<{ address: string; at: string; cap: number }>(
-      `select a.address, m.taken_at as at, m.market_cap_usd as cap
+    const rows = await this.#db.query<{ address: string; at: string; cap: number; liq: number | null }>(
+      `select a.address, m.taken_at as at, m.market_cap_usd as cap, m.liquidity_usd as liq
          from public.asset a join public.market_reading m on m.asset_key = a.asset_key
         where a.address = any($1::text[]) and m.taken_at >= $2 and m.market_cap_usd is not null
         order by a.address, m.taken_at`,
       [[...addresses], new Date(sinceMs).toISOString()],
     );
-    return rows.map((r) => ({ address: r.address, atMs: new Date(r.at).getTime(), capUsd: Number(r.cap) }));
+    return rows.map((r) => ({ address: r.address, atMs: new Date(r.at).getTime(), capUsd: Number(r.cap), liquidityUsd: num(r.liq) }));
   }
 
   /**

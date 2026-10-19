@@ -139,6 +139,38 @@ test('★ hand-over only at three times the holder\'s net buying', () => {
   assert.equal(handed.kind === 'picked' && handed.handedOverFrom, 'A');
 });
 
+test('★ an older coin of the post\'s name is the incumbent: a later name-only coin must out-trade it three times', () => {
+  /* 19 Oct: "Rip Kim Jong-Un" found by the second path, "Kim" launched later and tied by a namer ticker. */
+  const older = (m: Contender['market'], t: Contender['trades'] = null) => c('ESAB', 0, t, { existingSinceMs: 1_001 * MIN, evidence: ['name_guess', 'existing'], market: m });
+  const kim = (m: Contender['market'], t: Contender['trades'] = null, o: Partial<Contender> = {}) => c('KIM', 1_003, t, { evidence: ['name_guess'], market: m, ...o });
+  const read = (capUsd: number, liquidityUsd: number | null = null) => ({ capUsd, peakCapUsd: capUsd, liquidityUsd });
+  /* The older coin not read yet: nobody can say the newcomer out-traded it, so nothing is picked. */
+  const unread = pickOneCoin([older(null), kim(read(90_000))], null, NOW, false, BARS);
+  assert.equal(unread.kind, 'waiting');
+  assert.equal(unread.kind === 'waiting' && unread.standings.find((s) => s.address === 'KIM')?.out, 'after_older_coin');
+  /* Read: the older coin leads, the newcomer under three times it is out. */
+  const read1 = pickOneCoin([older(read(578_000)), kim(read(400_000))], null, NOW, false, BARS);
+  assert.equal(read1.kind === 'picked' && read1.address, 'ESAB');
+  /* Three times the older coin's climb: the newcomer takes it, on trades as on readings. */
+  assert.equal((pickOneCoin([older(read(20_000)), kim(read(90_000))], null, NOW, false, BARS) as { address?: string }).address, 'KIM');
+  assert.equal((pickOneCoin([older(null, trades({ netBuy: 10 })), kim(null, trades({ netBuy: 31 }))], null, NOW, true, BARS) as { address?: string }).address, 'KIM');
+  /* A held newcomer that does not beat the older coin is dropped. */
+  const dropped = pickOneCoin([older(null), kim(read(90_000))], { address: 'KIM', sinceMs: 1_010 * MIN }, NOW, false, BARS);
+  assert.equal(dropped.kind === 'waiting' && dropped.droppedHolder, 'KIM');
+  /* A coin whose metadata links the post is the creators' own: it competes on the plain rule. */
+  const linked = pickOneCoin([older(read(10_000)), kim(read(90_000), null, { evidence: ['link'] })], null, NOW, false, BARS);
+  assert.equal(linked.kind === 'picked' && linked.address, 'KIM');
+});
+
+test('★ on readings a quote with no pool climbs nothing: a frozen cap is not trading', () => {
+  const read = (capUsd: number, liquidityUsd: number | null) => ({ capUsd, peakCapUsd: capUsd, liquidityUsd });
+  const o = pickOneCoin([c('FROZEN', 1_005, null, { market: read(381_537, 0.01) }), c('B', 1_006, null, { market: read(40_000, null) })], null, NOW, false, BARS);
+  assert.equal(o.kind === 'picked' && o.address, 'B');
+  assert.equal(o.kind === 'picked' && o.standings.find((s) => s.address === 'FROZEN')?.strength, 0);
+  /* Alone it clears nothing either. */
+  assert.equal(pickOneCoin([c('FROZEN', 1_005, null, { market: read(381_537, 0.01) })], null, NOW, false, BARS).kind, 'waiting');
+});
+
 test('waiting: too early, under the bars, no clear lead, a rival we could not measure', () => {
   assert.equal((pickOneCoin([c('A', 1_018, trades({}))], null, NOW, true, BARS) as { reason?: string }).reason, 'too_early');
   assert.equal((pickOneCoin([c('A', 1_005, trades({ uniqueBuyers: 3 }))], null, NOW, true, BARS) as { reason?: string }).reason, 'under_bars');
