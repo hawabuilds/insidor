@@ -95,6 +95,10 @@ if (service in MAIN) {
     /* The namer's first day, watched (tools/name-watch.ts): coins it adds to feed cards, the owner's
        Wrong coin / No coin calls on them, and its veto if wrong coins go up. Free; database only. */
     { name: 'name-watch', everyMs: 600_000, args: ['tools/name-watch.ts', 'run'] },
+    /* One post, one coin: the weekly refit of its bars from the owner's coin calls and the +1h truth
+       (tools/onecoin-refit.ts, Policy.oneCoin.refit), asked every ten minutes whether a week has passed;
+       a proposal is applied only when it beats the bars in force on the same replay. Free; database only. */
+    { name: 'onecoin-refit', everyMs: 600_000, args: ['tools/onecoin-refit.ts', 'due'] },
     /* Posts that never made For You, slimmed a week after we found them (tools/post-slim.ts,
        Policy.slim): a minute or so a run, one short transaction per 500 posts. Says "off" and exits
        while Policy.slim.on is false. */

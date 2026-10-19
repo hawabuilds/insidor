@@ -24,11 +24,17 @@
  * unremembered and are the next pass's; nothing is dropped. The person's switch, mute, quiet hours
  * and hourly limit are the deliverer's (deliver.ts), as for every alert.
  *
+ * ★ ONE NARRATIVE, ONE COIN (Policy.oneCoin.mode 'live', `onPick`): the page's coin is then the
+ * runner's pick, so a later, different coin is the pick handed over: pushed once to each starrer as
+ * `starred_first_coin` with `handover` ("Pancake the cat's coin is now $PANCAKE"). Each coin a
+ * narrative has had is remembered as `story|address`; the first live look remembers every coin
+ * already shown and sends nothing, so switching to live is not itself news.
+ *
  * What breaks if changed carelessly: remembering only the starred narratives' coins. Then a person
  * starring a narrative that got its coin a week ago would be told it "has its first coin" now.
  */
 
-import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { queue, type Db } from './deliver.ts';
@@ -73,11 +79,30 @@ export function firstCoins(rows: readonly NarrativeCoin[], seen: ReadonlySet<str
   return { due, keys };
 }
 
+/** Marks that the first look on the pick has remembered every narrative's coin already shown. */
+const PICK_SEEDED = '#seeded-pick';
+
+/**
+ * The pure step for the pick's hand-overs: starred narratives that had a first coin and now show a
+ * coin they never showed, at most `max`.
+ */
+export function handedOver(rows: readonly NarrativeCoin[], seen: ReadonlySet<string>, starred: ReadonlySet<string>, max: number): readonly NarrativeCoin[] {
+  const out: NarrativeCoin[] = [];
+  for (const r of rows) {
+    if (out.length >= max) break;
+    if (r.coin === null || !starred.has(r.storyId) || !seen.has(r.storyId) || seen.has(`${r.storyId}|${r.coin.address}`)) continue;
+    out.push(r);
+  }
+  return out;
+}
+
 const COINS_SQL = `select story_id as "storyId", coalesce(payload ->> 'title', '') as title, payload -> 'coins' as coins
   from public.story_view where payload #>> '{provenance,kind}' = 'observed' order by story_id`;
 
 export interface FirstCoinPorts {
   readonly policy: NotifyPolicy;
+  /** Push a hand-over of the one-coin pick too (Policy.oneCoin.mode 'live'); absent: read from the policy in force. */
+  readonly onPick?: boolean;
   readonly quotes?: Quotes;
 }
 
@@ -95,6 +120,9 @@ export async function checkFirstCoins(db: Db, ports: FirstCoinPorts): Promise<{ 
   const byStory = new Map<string, string[]>();
   for (const w of watches) byStory.set(w.storyId, [...(byStory.get(w.storyId) ?? []), w.userId]);
   const { due, keys } = firstCoins(rows, seen, new Set(byStory.keys()), ports.policy.firstCoinPerPass);
+  const onPick = ports.onPick ?? DEFAULT_POLICY.oneCoin.mode === 'live';
+  const pickSeeded = seen.delete(PICK_SEEDED);
+  const handovers = onPick && seeded && pickSeeded ? handedOver(rows, seen, new Set(byStory.keys()), ports.policy.firstCoinPerPass - due.length) : [];
 
   let queued = 0;
   const told = new Map<string, Set<string>>();
@@ -117,6 +145,37 @@ export async function checkFirstCoins(db: Db, ports: FirstCoinPorts): Promise<{ 
       }
     }
   }
+  if (handovers.length > 0) {
+    const facts = await coinFacts(db, ports.quotes, handovers.flatMap((d) => (d.coin === null ? [] : [d.coin.address])));
+    for (const d of handovers) {
+      if (d.coin === null) continue;
+      const f = facts.get(d.coin.address);
+      for (const userId of byStory.get(d.storyId) ?? []) {
+        await queue(db, {
+          userId,
+          kind: 'starred_first_coin',
+          subject: `${d.storyId}|${d.coin.address}`,
+          rung: 0,
+          facts: { title: d.title, symbol: d.coin.ticker !== '' ? d.coin.ticker : (f?.symbol ?? ''), address: d.coin.address, mcUsd: f?.mcUsd ?? null, logo: f?.logo ?? null, handover: true },
+          href: storyHref(d.storyId),
+        });
+        queued += 1;
+        told.set(d.storyId, (told.get(d.storyId) ?? new Set<string>()).add(userId));
+      }
+    }
+  }
+  /* Each coin a narrative has shown, as `story|address`: on the pick, a coin not among them is a hand-over. */
+  const sent = new Set(handovers.flatMap((h) => (h.coin === null ? [] : [`${h.storyId}|${h.coin.address}`])));
+  /* A starred narrative's hand-over held back by the cap stays unremembered: it is the next pass's. */
+  const waitsForCap = (r: NarrativeCoin, key: string): boolean => pickSeeded && seeded && byStory.has(r.storyId) && seen.has(r.storyId) && !sent.has(key);
+  const coinKeys = !onPick ? [] : [
+    ...(pickSeeded ? [] : [PICK_SEEDED]),
+    ...rows.flatMap((r) => {
+      const key = r.coin === null ? null : `${r.storyId}|${r.coin.address}`;
+      return key === null || seen.has(key) || waitsForCap(r, key) ? [] : [key];
+    }),
+  ];
+  if (coinKeys.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [FIRST_COIN_STREAM, coinKeys]);
   const remember = seeded ? keys : [SEEDED, ...rows.flatMap((r) => (r.coin === null ? [] : [r.storyId]))];
   if (remember.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [FIRST_COIN_STREAM, [...remember]]);
   return { queued, told };

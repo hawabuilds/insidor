@@ -66,7 +66,8 @@ import { CoinLine } from './CoinLine.tsx';
 import { PostMedia } from './PostMedia.tsx';
 import { tiktokVideoId } from './tiktok-player.ts';
 import { OpenIcon } from './sheet-icons.tsx';
-import { followersText, provenWhy } from './sheet-view.ts';
+import { followersText, listIsOwners, provenWhy } from './sheet-view.ts';
+import { useIsOwner } from '../owner/hooks.ts';
 import { GainChart, type ChartMarker } from './GainChart.tsx';
 import { firstWords, hm, lastGain, launchTime, plus, postSlots } from './gain-chart.ts';
 import { pctText } from './mc-change.ts';
@@ -252,7 +253,10 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const age = formatAge(post.postedAt, now);
 
   const proven = data.coins.find((c) => c.proven) ?? null;
-  const main = proven ?? data.coins[0] ?? null;
+  /* ★ One post, one coin: the coins that only share the name are the owner's list (listIsOwners). */
+  const owner = useIsOwner();
+  const listShown = owner || !listIsOwners(post.coins);
+  const main = proven ?? (listShown ? (data.coins[0] ?? null) : null);
   const matched = post.coins.kind === 'matched';
   const why = proven !== null ? provenWhy(post.coins, evidenceFacts) : null;
   /* Who was first, against the post's own proven coin only: an unproven coin is not "the" coin. */
@@ -365,11 +369,11 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
               } />
             </>
           ) : (
-            <div className={styles['coinHead']}><span>No coin with this name yet</span></div>
+            <div className={styles['coinHead']}><span>{listShown ? 'No coin with this name yet' : 'No coin for this post yet'}</span></div>
           )}
           <div className={styles['pair']}>
             <button type="button" className={styles['dark']} onClick={onCreate}>Create</button>
-            {data.coins.length > 0 ? (
+            {listShown && data.coins.length > 0 ? (
               <button type="button" className={styles['dark']} onClick={onAll}>
                 <span className={styles['stack']}>
                   {data.coins.slice(0, 3).map((c) => (
