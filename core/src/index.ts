@@ -158,7 +158,7 @@ export type { NarrativePostReadings, NarrativeSpeeds, TrendingNarrative } from '
 export { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleLaneDue, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLaneDue, slowLangs, startFloors } from './sources/feed-floor.ts';
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 /** A search lane's own daily cap (Policy LaneCapPolicy): whether an ask fits, and its judging. */
-export { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk } from './sources/lane-cap.ts';
+export { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './sources/lane-cap.ts';
 export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from './sources/recall.ts';
 export type { DiscoverySettings, LaneSetting, PostFacts as RecallPostFacts, Verdict } from './sources/recall.ts';
 export { MISSED_DIAGNOSES, MISSED_FAILURES, crossedBarAt, diagnoseMissed, missedSuggestion } from './learning/missed.ts';

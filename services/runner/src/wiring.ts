@@ -128,7 +128,7 @@ import { storeArrivals } from './work/arrivals.ts';
 import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { earlyJudge, type EarlyResult } from './work/early-judge.ts';
-import { precedentsWanted } from '@insidor/core';
+import { precedentsWanted, searchDayStart } from '@insidor/core';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
@@ -1290,7 +1290,7 @@ export async function withRuntime<T>(
           store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
           /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
-          searchDay: { spent: (vendor, now) => new PgSpendRepo(db).usdSince(vendor, 'search', (now - (now % MS_PER_DAY)) as Millis) },
+          searchDay: { spent: (vendor, now) => new PgSpendRepo(db).usdSince(vendor, 'search', searchDayStart(now, policy) as Millis) },
           middleLane: {
             ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'middle-lane' })),
             uncredited: (ids) => repos.items.uncredited(ids),
