@@ -57,7 +57,13 @@ export const KNOWN_MODELS: readonly HostModel[] = [
      Gemma 3's (gold yeses: median 0.88): held to a block cutoff of 0.90 chosen on Gemma's answers
      it passes about half the hand gold it passes at its own bar. */
   { id: 'nvidia/NVIDIA-Nemotron-3.5-Super-VL', vision: true, usdPerInputToken: 0.15e-6, usdPerOutputToken: 0.5e-6, contextLength: 262_144 },
+  /* The same Nemotron on the router (its model list, read 2026-10-19): $0.10 in and $0.40 out a
+     million tokens. The owner moved the post judge here when the second host ran out of credit. */
+  { id: 'nvidia/nemotron-3.5-super-vl', vision: true, usdPerInputToken: 0.1e-6, usdPerOutputToken: 0.4e-6, contextLength: null },
 ];
+
+/** Nemotron 3.5 Super VL as the router names it: the same model as PRIMARY_POST_MODEL on the second host. */
+export const ROUTER_PRIMARY_MODEL = 'nvidia/nemotron-3.5-super-vl';
 
 export type OpenJudgeSetup =
   | { readonly state: 'dormant' }
@@ -170,6 +176,8 @@ export function judgeModelKey(judgeId: string | null | undefined): string | null
  */
 const PLACE_OF_MODEL: Readonly<Record<string, 'primary' | 'fallback'>> = {
   [`judge:${BACKUP_VENDOR}/${PRIMARY_POST_MODEL}`]: 'primary',
+  /* The same model on the router keeps the primary's cutoff: it was measured on Nemotron's answers. */
+  [`judge:${DEFAULT_VENDOR}/${ROUTER_PRIMARY_MODEL}`]: 'primary',
   [`judge:${DEFAULT_VENDOR}/${DEFAULT_OPEN_MODEL}`]: 'fallback',
 };
 

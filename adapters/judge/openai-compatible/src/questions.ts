@@ -109,7 +109,7 @@ export function chatBodyFromMessages(body: Record<string, unknown>, to: { readon
     temperature: 0,
     messages: [...(system === '' ? [] : [{ role: 'system', content: system }]), ...messages],
     ...(schema?.['schema'] === undefined ? {} : { response_format: { type: 'json_schema', json_schema: { name: to.schemaName, strict: true, schema: schema['schema'] } } }),
-    ...routerFields(to.router, to.providers),
+    ...routerFields(to.router, to.providers, to.model),
   };
 }
 
