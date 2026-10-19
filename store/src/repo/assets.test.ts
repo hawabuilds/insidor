@@ -280,3 +280,31 @@ test('★ the chain list is the chains we have OBSERVED, because the rail reads 
   /* Still ordered, so a caller looping over it does the same work in the same order twice. */
   assert.match(sql, /order by chain/);
 });
+
+test("the creator's opening buy is written once, and a missing field stays missing", async () => {
+  let sql = '';
+  let params: unknown[] = [];
+  const db: Db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      sql = s.replace(/\s+/g, ' ');
+      params = [...(p ?? [])];
+      return [];
+    },
+  };
+  const repo = new PgAssetRepo(db);
+  const ref = (address: string) => ({ chain: chainId('solana'), address }) as Parameters<PgAssetRepo['recordOpenings']>[0][number]['ref'];
+  await repo.recordOpenings([
+    { ref: ref('A'), creatorBuyTokens: 0, creatorBuySol: 0, launchMcapSol: 28 },
+    { ref: ref('B'), creatorBuyTokens: null, creatorBuySol: null, launchMcapSol: null },
+  ]);
+  // First write wins: a stored buy is never moved by a later frame.
+  assert.match(sql, /creator_buy_tokens = coalesce\(a\.creator_buy_tokens, r\.tokens\)/);
+  assert.match(sql, /launch_mcap_sol = coalesce\(a\.launch_mcap_sol, r\.mcap\)/);
+  // A zero buy is sent as 0 and a missing one as null, never folded together.
+  assert.deepEqual(params[2], [0, null]);
+  assert.deepEqual(params[4], [28, null]);
+
+  sql = '';
+  await repo.recordOpenings([]);
+  assert.equal(sql, '', 'an empty page writes nothing');
+});

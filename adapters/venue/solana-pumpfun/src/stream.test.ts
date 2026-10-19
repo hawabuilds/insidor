@@ -243,6 +243,42 @@ test("★ another launchpad's coin is dropped rather than filed under this venue
   assert.equal(toStreamMintEvent(JSON.parse(frame({ pool: 'bonk' })), CTX, T0), null);
 });
 
+test("the creator's opening buy is kept from the launch frame", () => {
+  const event = toStreamMintEvent(JSON.parse(frame()), CTX, T0);
+  assert.ok(event !== null);
+  assert.deepEqual(event.opening, {
+    creatorBuyTokens: 3_520_918.746_848,
+    creatorBuySol: 0.098_765_431,
+    launchMcapSol: 28.143_388_644_621_31,
+  });
+});
+
+test('a launch with no opening buy says 0, and a frame without the fields says null', () => {
+  // Both shapes seen on the socket on 2026-10-19: a creator who bought nothing, and the
+  // current frame, which also carries the curve's reserves and a mode flag we do not use.
+  const none = toStreamMintEvent(
+    JSON.parse(frame({ initialBuy: 0, solAmount: 0, is_mayhem_mode: false, vSolInBondingCurve: 30 })),
+    CTX,
+    T0,
+  );
+  assert.deepEqual(none?.opening, { creatorBuyTokens: 0, creatorBuySol: 0, launchMcapSol: 28.143_388_644_621_31 });
+
+  const bare = toStreamMintEvent(
+    JSON.parse(frame({ initialBuy: undefined, solAmount: 'lots', marketCapSol: -1 })),
+    CTX,
+    T0,
+  );
+  assert.deepEqual(bare?.opening, { creatorBuyTokens: null, creatorBuySol: null, launchMcapSol: null });
+});
+
+test('a launch frame with no name or metadata link is still a launch', () => {
+  // Seen on the socket on 2026-10-19: a create frame carrying no name, symbol or uri.
+  const event = toStreamMintEvent(JSON.parse(frame({ name: undefined, symbol: undefined, uri: undefined })), CTX, T0);
+  assert.ok(event !== null);
+  assert.equal(event.asset.name, null);
+  assert.deepEqual(event.asset.declaredSocial, {});
+});
+
 test('hostile strings are bounded, stripped and never dropped whole', () => {
   const event = toStreamMintEvent(
     JSON.parse(

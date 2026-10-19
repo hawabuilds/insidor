@@ -197,6 +197,43 @@ export class PgAssetRepo implements AssetRepo {
     return assets.length;
   }
 
+  /**
+   * The creator's opening buy on each coin, as the launch frame stated it (0112). One statement
+   * per page, after `upsert` has made the rows exist.
+   *
+   * ★ FIRST WRITE WINS. A launch is delivered once, but a redelivered frame or a later reader
+   * must not move a recorded buy: what the creator bought at launch is fixed the moment it
+   * happened. And a NULL in the incoming row stays NULL, so a frame that lacked a field never
+   * turns "not recorded" into a number.
+   */
+  async recordOpenings(
+    rows: readonly {
+      readonly ref: AssetRef;
+      readonly creatorBuyTokens: number | null;
+      readonly creatorBuySol: number | null;
+      readonly launchMcapSol: number | null;
+    }[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    await this.#db.query(
+      `update public.asset a set
+         creator_buy_tokens = coalesce(a.creator_buy_tokens, r.tokens),
+         creator_buy_sol    = coalesce(a.creator_buy_sol, r.sol),
+         launch_mcap_sol    = coalesce(a.launch_mcap_sol, r.mcap)
+       from unnest($1::text[], $2::text[], $3::numeric[], $4::numeric[], $5::numeric[])
+         as r(chain, address, tokens, sol, mcap)
+       where a.chain = r.chain and a.address = r.address
+         and (a.creator_buy_tokens is null or a.creator_buy_sol is null or a.launch_mcap_sol is null)`,
+      [
+        rows.map((r) => r.ref.chain),
+        rows.map((r) => r.ref.address),
+        rows.map((r) => r.creatorBuyTokens),
+        rows.map((r) => r.creatorBuySol),
+        rows.map((r) => r.launchMcapSol),
+      ],
+    );
+  }
+
   /** The retrieval the port declares: one storable key, one asset. */
   async byKey(key: AssetKey): Promise<Asset | null> {
     const ref = parseAssetKey(key);

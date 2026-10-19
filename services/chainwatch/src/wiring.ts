@@ -216,6 +216,11 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
       // backwards into a row that already had a better one.
       recordMints: async (mints) => {
         await assets.upsert(mints.map((mint) => mint.asset));
+        // The creator's opening buy, where the transport stated one (0112). After the upsert,
+        // because it updates the row the upsert just made; a frame without it adds nothing.
+        await assets.recordOpenings(
+          mints.flatMap((mint) => (mint.opening === undefined ? [] : [{ ref: mint.asset.ref, ...mint.opening }])),
+        );
       },
 
       // A gap is a coverage row that says so, never a missing row. `gap.kind` is

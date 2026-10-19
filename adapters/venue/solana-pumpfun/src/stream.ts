@@ -72,7 +72,7 @@ import type { Asset } from '@insidor/contracts/asset.ts';
 import { assetKey } from '@insidor/contracts/ids.ts';
 import type { AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
 import type { MintEvent } from '@insidor/contracts/ports/venue.ts';
-import { rec, str } from '@insidor/vendor-kit';
+import { num, rec, str } from '@insidor/vendor-kit';
 
 import { boundedText, httpsUri, mintAddress } from './hostile.ts';
 import { mintTime } from './mint-time.ts';
@@ -118,6 +118,11 @@ const ADDRESS_MAX = 64;
  * control. Refusing early costs one length check.
  */
 const MAX_FRAME_BYTES = 64 * 1024;
+
+/** No launch on this launchpad mints more tokens than this; a buy past it is a malformed field. */
+const MAX_TOKENS = 1_000_000_000_000;
+/** All the SOL there is, roughly: a buy or a cap past it is a malformed field, not a whale. */
+const MAX_SOL = 1_000_000_000;
 
 /**
  * ★ How many separate outages may wait for a drain before they are merged into
@@ -178,8 +183,30 @@ export interface StreamOutage {
   readonly detail: string;
 }
 
+/**
+ * What the creator bought in the launch transaction itself, as the launch frame states it.
+ *
+ * ★ EACH FIELD IS NULL WHEN THE FRAME DID NOT CARRY A USABLE NUMBER, and that is a different
+ * fact from 0. A zero opening buy is a real launch shape (the creator bought nothing, and so
+ * has nothing to sell); a missing one is a frame we cannot read that part of. Turning the
+ * second into the first would invent a creator with nothing to sell.
+ */
+export interface LaunchOpening {
+  /** Whole tokens the creator received. */
+  readonly creatorBuyTokens: number | null;
+  /** SOL the creator paid. */
+  readonly creatorBuySol: number | null;
+  /** The coin's market cap in SOL right after that buy. Strictly positive or null. */
+  readonly launchMcapSol: number | null;
+}
+
+/** A launch as the socket delivered it: the shared vocabulary, plus the opening buy. */
+export interface StreamMintEvent extends MintEvent {
+  readonly opening: LaunchOpening;
+}
+
 export interface StreamDrain {
-  readonly events: readonly MintEvent[];
+  readonly events: readonly StreamMintEvent[];
   /**
    * The drain handed over exactly as many as it was asked for, so this page
    * cannot prove it carries everything that arrived in its window. More are
@@ -303,7 +330,7 @@ export function toStreamMintEvent(
   raw: unknown,
   ctx: StreamDecodeContext,
   seenAt: Millis,
-): MintEvent | null {
+): StreamMintEvent | null {
   const r = rec(raw);
 
   if (str(r.txType) !== TX_TYPE_CREATE) return null;
@@ -384,7 +411,25 @@ export function toStreamMintEvent(
     firstSeenAt: seenAt,
   };
 
-  return { asset, venue: ctx.venue, mintedAt, seenAt };
+  return { asset, venue: ctx.venue, mintedAt, seenAt, opening: openingOf(r) };
+}
+
+/**
+ * The opening buy, from the same frame. Bounded the way every number from this socket must be:
+ * a value that is not finite, is negative, or is past any coin's whole supply is not a buy we
+ * can stand behind, so it is null rather than clamped.
+ */
+function openingOf(r: Record<string, unknown>): LaunchOpening {
+  const amount = (v: unknown, max: number): number | null => {
+    const n = num(v);
+    return n === null || n < 0 || n > max ? null : n;
+  };
+  const cap = amount(r.marketCapSol, MAX_SOL);
+  return {
+    creatorBuyTokens: amount(r.initialBuy, MAX_TOKENS),
+    creatorBuySol: amount(r.solAmount, MAX_SOL),
+    launchMcapSol: cap === null || cap === 0 ? null : cap,
+  };
 }
 
 /* ── the stream ─────────────────────────────────────────────────────────── */
@@ -397,7 +442,7 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
     mintTimeOptions: opts.mintTimeOptions,
   };
 
-  const buffer: MintEvent[] = [];
+  const buffer: StreamMintEvent[] = [];
   let socket: StreamSocket | null = null;
   let stopped = false;
 
@@ -562,7 +607,7 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
     opts.note({ msg: 'mint stream live', fields: { atMs, recoveredFromMs: from } });
   };
 
-  const accept = (event: MintEvent): void => {
+  const accept = (event: StreamMintEvent): void => {
     if (buffer.length < opts.bufferLimit) {
       buffer.push(event);
       return;

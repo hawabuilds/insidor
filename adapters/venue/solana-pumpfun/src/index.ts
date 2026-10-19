@@ -298,12 +298,14 @@ export { launchpadClient, chainClient, describeSimulationFailure, readImageUris,
 export type { ChainClient, LaunchpadClient, Simulation, SolanaVenueClientConfig } from './client.ts';
 export { createMintStream, openWebSocket, toStreamMintEvent } from './stream.ts';
 export type {
+  LaunchOpening,
   MintStream,
   MintStreamOptions,
   OpenSocket,
   StreamDecodeContext,
   StreamDrain,
   StreamHandlers,
+  StreamMintEvent,
   StreamNote,
   StreamOutage,
   StreamSocket,
