@@ -9,7 +9,7 @@ import test from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, type Contender, type LaunchSide, type MatchPost, type TradeFacts } from './one-coin.ts';
+import { biggestOfName, launchMatches, namedInText, oneCoinBars, pickOneCoin, type Contender, type LaunchSide, type MatchPost, type TradeFacts } from './one-coin.ts';
 import { replayTimeline, scoreReplay, type ReplayCoin } from './one-coin-replay.ts';
 
 const P = DEFAULT_POLICY.oneCoin;
@@ -49,6 +49,28 @@ test('matcher: timing — up to ten minutes before the post counts, more does no
   assert.equal(launchMatches(coin({ ...named, launchedAtMs: 991 * MIN }), [post()], MATCH).length, 1);
   assert.equal(launchMatches(coin({ ...named, launchedAtMs: 989 * MIN }), [post()], MATCH).length, 0);
   assert.equal(launchMatches(coin({ ...named, launchedAtMs: 1_000 * MIN + P.postWindowMs + MIN }), [post()], MATCH).length, 0);
+});
+
+test('★ matcher: a short ticker ties through the post\'s own words — with the name, never alone', () => {
+  /* 19 Oct: "Rip Kim Jong-Un" ($Kim) against the posts the judge named KIMJONG / KIMJONGUN. */
+  const kim = post({ judgeNames: ['KIMJONG', 'KIMJONGUN'], text: '🚨#BREAKING: Unconfirmed reports claim Kim Jong Un may have "secretly died" in China.' });
+  const esab = coin({ name: 'Rip Kim Jong-Un', ticker: 'Kim' });
+  assert.deepEqual(launchMatches(esab, [kim], MATCH)[0]?.evidence, ['name_text']);
+  /* The same three letters with no name, or a name that is not the post's subject: no tie. */
+  assert.equal(launchMatches(coin({ name: null, ticker: 'Kim' }), [kim], MATCH).length, 0);
+  assert.equal(launchMatches(coin({ name: 'Kimchi Bowl', ticker: 'KIM' }), [kim], MATCH).length, 0);
+  /* The gorilla called Kim is not Kim Jong Un. */
+  const gorilla = post({ judgeNames: ['KIM', 'KIMTHEGORILLA', 'GORILLARUNNER'], text: 'This is Kim The Gorilla and its going GIGA' });
+  assert.equal(namedInText(gorilla, esab, MATCH), false);
+  /* The full name as a phrase ties when the name is the post's subject; a phrase alone does not. */
+  const rip = post({ judgeNames: ['KIMDOGE', 'RIPKIM'], text: 'Rip Kim Jong-un. Perfect time to send this meme' });
+  assert.equal(namedInText(rip, coin({ name: 'Rip Kim Jong-Un', ticker: 'NK' }), MATCH), true);
+  assert.equal(namedInText(post({ judgeNames: ['FRANCE'], text: 'Manon Meunier said on social media' }), coin({ name: 'Social Media', ticker: 'SOCIAL' }), MATCH), false);
+  assert.equal(namedInText(post({ judgeNames: ['NEWS'], text: 'BREAKING: something happened' }), coin({ name: 'Breaking', ticker: 'BRK' }), MATCH), false);
+  assert.equal(namedInText(post({ judgeNames: ['PUPPY'], text: 'look at the dog' }), coin({ name: 'The Dog', ticker: 'DOG' }), MATCH), false);
+  /* An exact name is still the stronger tie, and an unread text is no tie. */
+  assert.deepEqual(launchMatches(esab, [post({ guessNames: ['KIM'], text: kim.text ?? null })], MATCH)[0]?.evidence, ['name_guess']);
+  assert.equal(namedInText(post({ judgeNames: ['KIMJONGUN'] }), esab, MATCH), false);
 });
 
 test('★ matcher: a link ties past the window — and through the coin\'s own quote of the post, one hop', () => {

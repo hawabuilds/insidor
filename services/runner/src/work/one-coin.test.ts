@@ -69,7 +69,7 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
 }
 
 const world = (o: Partial<World> = {}): World => ({ launches: [], posts: [], older: [], named: [], trades: null, feedAt: null, market: new Map(), candidates: [], watched: [], picks: new Map(), writes: [], embedded: [], ...o });
-const post: RecentPost = { itemId: 'x:2111', postedAtMs: NOW - 20 * MIN, judgeNames: ['Pancake'], guessNames: ['PANCAT'], hash: 'ffffffffffffffff' };
+const post: RecentPost = { itemId: 'x:2111', postedAtMs: NOW - 20 * MIN, judgeNames: ['Pancake'], guessNames: ['PANCAT'], hash: 'ffffffffffffffff', text: null };
 const launch = (o: Partial<RecentLaunch>): RecentLaunch => ({ address: 'A1', assetKey: 'k:A1', launchedAtMs: NOW - 12 * MIN, name: 'Other', ticker: 'OTH', imageUri: 'https://img/a1', hash: null, linksPosts: [], linksThrough: [], ...o });
 
 const deps = (w: World, now = NOW): OneCoinDeps => ({
@@ -101,7 +101,7 @@ test('★ a launch tied by link, name or picture is a candidate, watched for an 
 });
 
 test('★ a launch linking its own quote of an older post is that post\'s candidate, the post read by id', async () => {
-  const old: RecentPost = { itemId: 'x:baby', postedAtMs: NOW - 26 * 60 * MIN, judgeNames: ['BABY'], guessNames: [], hash: null };
+  const old: RecentPost = { itemId: 'x:baby', postedAtMs: NOW - 26 * 60 * MIN, judgeNames: ['BABY'], guessNames: [], hash: null, text: 'such a precious moment' };
   const w = world({
     posts: [post],
     older: [old],

@@ -47,6 +47,8 @@ export interface RecentPost {
   readonly judgeNames: readonly string[];
   readonly guessNames: readonly string[];
   readonly hash: string | null;
+  /** The post's own words (public.item body): a short ticker ties only alongside them. */
+  readonly text: string | null;
 }
 
 export interface CandidateRow {
@@ -115,6 +117,7 @@ interface PostRow {
   alternate_names: unknown;
   guesses: unknown;
   bits: string | null;
+  body: string | null;
 }
 
 /** A post's namer guesses and picture hash, read beside its judgement; `hashParam` holds the hash version. */
@@ -130,6 +133,7 @@ const postOf = (r: PostRow): RecentPost => ({
   judgeNames: [...(r.proposed_name === null || r.proposed_name.trim() === '' ? [] : [r.proposed_name]), ...strings(r.alternate_names)],
   guessNames: strings(r.guesses),
   hash: hex(r.bits),
+  text: r.body,
 });
 
 export type PickKind = 'post' | 'narrative';
@@ -195,7 +199,7 @@ export class PgOneCoinRepo {
    */
   async recentPosts(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentPost[]> {
     const rows = await this.#db.query<PostRow>(
-      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, ${postExtras('$3')}
+      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, i.body, ${postExtras('$3')}
          from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
                  from internal.post_judgement where judged_at >= $1 order by item_id, judged_at desc) j
          join public.item i on i.item_id = j.item_id
@@ -214,7 +218,7 @@ export class PgOneCoinRepo {
   async postsByIds(itemIds: readonly string[], hashVersion: string): Promise<readonly RecentPost[]> {
     if (itemIds.length === 0) return [];
     const rows = await this.#db.query<PostRow>(
-      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, ${postExtras('$2')}
+      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, i.body, ${postExtras('$2')}
          from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
                  from internal.post_judgement where item_id = any($1::text[]) order by item_id, judged_at desc) j
          join public.item i on i.item_id = j.item_id

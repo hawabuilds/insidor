@@ -12,6 +12,15 @@
  *                    tied (the caller pays for that, `wantsPicture` says when). A coin launched
  *                    more than `launchLeadMs` before the post is never a candidate by this path.
  *
+ * ★ A SHORT TICKER NEEDS THE POST'S OWN WORDS. An exact name or ticker ties a launch; a looser
+ * spelling does not, and a ticker under `minVariantLength` letters never counts as one. So "Rip Kim
+ * Jong-Un" ($KIM) met none of 19 Oct's "KIMJONGUN" posts. `namedInText` ties it when the coin's
+ * name meets the post's names at least as a variant AND the post's own words carry the ticker as a
+ * whole word or the full name as a phrase of two words or more. Never the ticker alone: "Kim" is a
+ * word in every post about any Kim, and a three-letter ticker is a word in thousands. Never the
+ * phrase alone either: on 17-19 Oct it tied "Social Media" to a protest post that said "on social
+ * media" and "its over" to a post on Kim Jong Un.
+ *
  * ★ A LINK IS NOT BOUND BY THE WINDOW, AND IT REACHES ONE HOP. `postWindowMs` keeps a name or a
  * picture — facts any coin can share by chance — from tying a launch to a post of yesterday. A link
  * is the creators pointing at the post, which no chance produces, so it ties at any age. And a coin
@@ -53,7 +62,8 @@
  */
 
 import { hexHamming, isHexHash, BITS_PER_HEX_DIGIT } from '../bits.ts';
-import { nameMatch } from './post-coin.ts';
+import { nameKey } from '../group/picture.ts';
+import { compactName, nameMatch } from './post-coin.ts';
 
 /* ── the matcher ───────────────────────────────────────────────────── */
 
@@ -93,9 +103,11 @@ export interface MatchPost {
   /** The namer's guesses, names and tickers. */
   readonly guessNames: readonly string[];
   readonly hash: string | null;
+  /** The post's own words; absent or null when not read. */
+  readonly text?: string | null;
 }
 
-export type MatchEvidence = 'link' | 'name_judge' | 'name_guess' | 'picture' | 'existing';
+export type MatchEvidence = 'link' | 'name_judge' | 'name_guess' | 'name_text' | 'picture' | 'existing';
 
 export interface LaunchMatch {
   readonly itemId: string;
@@ -118,6 +130,32 @@ export function hashGap(a: string | null, b: string | null): number | null {
   return isHexHash(a, bits) && isHexHash(b, bits) ? hexHamming(a, b) : null;
 }
 
+/** A post's words, normalised and space-padded so a phrase is found only as whole words. Kept per post. */
+const wordsOf = new WeakMap<MatchPost, string>();
+function postWords(p: MatchPost): string | null {
+  if (p.text === undefined || p.text === null) return null;
+  const known = wordsOf.get(p);
+  if (known !== undefined) return known;
+  const w = ` ${nameKey(p.text)} `;
+  wordsOf.set(p, w);
+  return w;
+}
+
+/**
+ * The coin is named in the post's own words: its name meets the post's names at least as a variant,
+ * and the words carry its ticker as a whole word or its full name as a phrase of two or more words
+ * (a leading "the" not counted).
+ */
+export function namedInText(p: MatchPost, coin: { readonly name: string | null; readonly ticker: string | null }, bars: Pick<LaunchMatchBars, 'minVariantLength'>): boolean {
+  const words = postWords(p);
+  const names = [...p.judgeNames, ...p.guessNames];
+  if (words === null || coin.name === null || names.length === 0) return false;
+  const ticker = coin.ticker === null ? '' : nameKey(coin.ticker);
+  const phrase = nameKey(coin.name).replace(/^the /, '');
+  const said = (ticker !== '' && words.includes(` ${ticker} `)) || (phrase.includes(' ') && compactName(phrase).length >= bars.minVariantLength && words.includes(` ${phrase} `));
+  return said && nameMatch(names, { name: coin.name, ticker: null }, bars) !== 'none';
+}
+
 /** The posts a launch could be the coin of, with what ties it to each. A launch tied to none is absent. */
 export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bars: LaunchMatchBars): readonly LaunchMatch[] {
   const out: LaunchMatch[] = [];
@@ -133,6 +171,7 @@ export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bar
     const side = { name: coin.name, ticker: coin.ticker };
     if (p.judgeNames.length > 0 && nameMatch(p.judgeNames, side, bars) === 'exact') evidence.push('name_judge');
     if (p.guessNames.length > 0 && nameMatch(p.guessNames, side, bars) === 'exact') evidence.push('name_guess');
+    if (!evidence.includes('name_judge') && !evidence.includes('name_guess') && namedInText(p, side, bars)) evidence.push('name_text');
     const gap = hashGap(coin.hash, p.hash);
     const similarity = coin.similarity.get(p.itemId) ?? null;
     if ((gap !== null && gap <= bars.maxHashDistance) || (similarity !== null && similarity >= bars.minSimilarity)) evidence.push('picture');

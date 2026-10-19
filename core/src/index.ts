@@ -187,7 +187,7 @@ export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';
 /* One post, one coin: the launch-time matcher and the pick by who is buying (match/one-coin.ts),
    and the same rule replayed over stored trade minutes for the replay tool and the weekly refit. */
-export { biggestOfName, hashGap, launchMatches, oneCoinBars, pickOneCoin } from './match/one-coin.ts';
+export { biggestOfName, hashGap, launchMatches, namedInText, oneCoinBars, pickOneCoin } from './match/one-coin.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
 export { coinAt, replayMerit, replayTimeline, scoreReplay, tradesAt } from './match/one-coin-replay.ts';
 export type { ReplayCase, ReplayCoin, ReplayScore, Timeline, TradeMinute } from './match/one-coin-replay.ts';
