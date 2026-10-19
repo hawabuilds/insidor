@@ -4,7 +4,8 @@
  * he made one (internal.owner_feedback coin_match: right with its coin, or "No coin is from this"),
  * else the biggest candidate an hour after its launch when that is at least the truth's floor.
  *
- * Shared by tools/onecoin-replay.ts (prints), tools/onecoin-refit.ts (proposes bars) and
+ * In the project package so the tools and the e2e test import one copy: tools/onecoin-replay.ts
+ * (prints), tools/onecoin-refit.ts (proposes bars) and
  * tools/onecoin-shadow.ts (the truth beside each shadow pick), so "the real coin" is one thing in
  * all three. Read-only.
  *
@@ -15,9 +16,8 @@
  * +1 h truth, even when it was the biggest: otherwise the refit learns to pick the coins he rejects.
  */
 
-import type { ReplayCase, ReplayCoin } from '../../core/src/index.ts';
-import type { MatchEvidence } from '../../core/src/match/one-coin.ts';
-import { PgOneCoinRepo, type Db } from '../../store/src/index.ts';
+import type { MatchEvidence, ReplayCase, ReplayCoin } from '@insidor/core';
+import { PgOneCoinRepo, type Db } from '@insidor/store';
 
 const HALF_HOUR_MS = 1_800_000;
 

@@ -6,7 +6,7 @@
  * its basis (trades, or market readings while the trade feed was not running) and how many minutes
  * after the picked coin's launch it was decided; what the card showed meanwhile (the live frame or
  * the scroll, tools/lib/feed-cards.ts); and what ran — the owner's call, else the biggest candidate
- * an hour after its launch (tools/lib/onecoin-cases.ts). Then the totals: how often each was right,
+ * an hour after its launch (services/project/src/onecoin-cases.ts). Then the totals: how often each was right,
  * wrong or showed nothing, against the same truths. Prints the posts whose pick and card disagree,
  * or every post with `--all`.
  *
@@ -22,7 +22,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE, missingTable } from '../store/src/index.ts';
 import { coinLineOf } from './lib/feed-cards.ts';
-import { loadCases, type Truth } from './lib/onecoin-cases.ts';
+import { loadCases, type Truth } from '../services/project/src/onecoin-cases.ts';
 
 const P = DEFAULT_POLICY.oneCoin;
 const HOUR = 3_600_000;
