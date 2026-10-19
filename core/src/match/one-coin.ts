@@ -12,22 +12,6 @@
  *                    tied (the caller pays for that, `wantsPicture` says when). A coin launched
  *                    more than `launchLeadMs` before the post is never a candidate by this path.
  *
- * ★ A SHORT TICKER NEEDS THE POST'S OWN WORDS. An exact name or ticker ties a launch; a looser
- * spelling does not, and a ticker under `minVariantLength` letters never counts as one. So "Rip Kim
- * Jong-Un" ($KIM) met none of 19 Oct's "KIMJONGUN" posts. `namedInText` ties it when the coin's
- * name meets the post's names at least as a variant AND the post's own words carry the ticker as a
- * whole word or the full name as a phrase of two words or more. Never the ticker alone: "Kim" is a
- * word in every post about any Kim, and a three-letter ticker is a word in thousands. Never the
- * phrase alone either: on 17-19 Oct it tied "Social Media" to a protest post that said "on social
- * media" and "its over" to a post on Kim Jong Un.
- *
- * ★ A LINK IS NOT BOUND BY THE WINDOW, AND IT REACHES ONE HOP. `postWindowMs` keeps a name or a
- * picture — facts any coin can share by chance — from tying a launch to a post of yesterday. A link
- * is the creators pointing at the post, which no chance produces, so it ties at any age. And a coin
- * often links its own account's quote or re-share of the viral post rather than the post itself
- * (HI, 19 Oct: launched 24 h after the baby post, linking its account's quote of it): the caller
- * passes those originals in `linksThrough`, and they tie as a link. One hop only — a quote of a
- * quote is somebody else's post, and following chains would tie a coin to whatever went viral first.
  *   `pickOneCoin`    the candidates' trading so far, judged from `judgeFromMs` after each launch
  *                    and again on every update:
  *                      out     the creator's wallet sold, or the cap fell under `rugShareOfPeak` of
@@ -38,6 +22,26 @@
  *                              its net buying; a held coin that goes out is dropped and the rest
  *                              judged afresh
  *                    otherwise no pick: `waiting` while there are candidates, `none` without.
+ *
+ * ★ A SHORT TICKER NEEDS THE POST'S OWN WORDS. An exact name or ticker ties a launch; a looser
+ * spelling does not, and a ticker under `minVariantLength` letters never counts as one. So "Rip Kim
+ * Jong-Un" ($KIM) met none of 19 Oct's "KIMJONGUN" posts. `namedInText` ties it when the coin's
+ * name meets the post's names at least as a variant AND the post's own words carry the ticker as a
+ * whole word or the full name as a phrase of two words or more. Never the ticker alone: "Kim" is a
+ * word in every post about any Kim, and a three-letter ticker is a word in thousands. Never the
+ * phrase alone either: on 17-19 Oct it tied "Social Media" to a protest post that said "on social
+ * media" and "its over" to a post on Kim Jong Un.
+ *
+ * ★ A LINK IS BOUND BY ITS OWN AGE, NOT THE WINDOW, AND IT REACHES ONE HOP. `postWindowMs` keeps a
+ * name or a picture — facts any coin can share by chance — from tying a launch to a post of
+ * yesterday. A link is the creators pointing at the post, which no chance produces, so it ties up to
+ * `linkMaxAgeMs` (the owner's 48 h): the post at most that old at the coin's launch. Past it, the
+ * links are copycats of an old viral post, and with no bound they reopened posts days old and
+ * changed their pick. And a coin often links its own account's quote or re-share of the viral post
+ * rather than the post itself (HI, 19 Oct: launched 24 h after the baby post, linking its account's
+ * quote of it): the caller passes those originals in `linksThrough`, and they tie as a link, under
+ * the same age bound on the original. One hop only — a quote of a quote is somebody else's post,
+ * and following chains would tie a coin to whatever went viral first.
  *
  * ★ WITHOUT TRADE DATA THE RULE SAYS SO. When the trade feed is not running (no internal
  * coin_trade_minute, or nothing written lately) the pick falls back to the replay's rule on market
@@ -84,6 +88,8 @@ import { compactName, nameMatch } from './post-coin.ts';
 export interface LaunchMatchBars {
   readonly launchLeadMs: number;
   readonly postWindowMs: number;
+  /** A link ties a launch to a post at most this old at the launch (the window binds only names and pictures). */
+  readonly linkMaxAgeMs: number;
   readonly maxHashDistance: number;
   readonly minSimilarity: number;
   readonly minVariantLength: number;
@@ -176,8 +182,8 @@ export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bar
   for (const p of posts) {
     const after = coin.launchedAtMs - p.postedAtMs;
     if (after < -bars.launchLeadMs) continue;
-    const through = coin.linksPosts.has(p.itemId) ? null : coin.linksThrough?.get(p.itemId) ?? null;
-    const linked = coin.linksPosts.has(p.itemId) || through !== null;
+    const through = coin.linksPosts.has(p.itemId) || after > bars.linkMaxAgeMs ? null : coin.linksThrough?.get(p.itemId) ?? null;
+    const linked = (coin.linksPosts.has(p.itemId) || through !== null) && after <= bars.linkMaxAgeMs;
     /* Past the window only a link ties: a name or a picture shared with yesterday's post is chance. */
     if (after > bars.postWindowMs && !linked) continue;
     const evidence: MatchEvidence[] = [];

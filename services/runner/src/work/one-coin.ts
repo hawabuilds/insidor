@@ -149,7 +149,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     state.postsReadAt = now;
   }
   const posts = state.posts;
-  const bars = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: deps.policy.postCoin.minVariantLength };
+  const bars = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, linkMaxAgeMs: P.linkMaxAgeMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: deps.policy.postCoin.minVariantLength };
 
   /* ── match: new launches to recent posts ─────────────────────────── */
   const launches = await repo.recentLaunches(now - P.rematchMs, P.perPass.launches, HASH_VERSION);
