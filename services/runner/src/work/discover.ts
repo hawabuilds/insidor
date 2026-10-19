@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, laneJudgeUsd, laneMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -643,6 +643,12 @@ export interface DiscoverDeps {
    * every such search keeps the old rule, so no search spends past a day nobody can count.
    */
   readonly ledger?: LaneLedger;
+  /**
+   * ★ THE X SEARCH DAY (`feed.searchDay`): what a supplier's search has been billed since 00:00 UTC,
+   * as metered (internal.spend). Read once a pass per vendor, then kept current from each page's bill.
+   * Null: the bill cannot be read, and no catch-all search is asked. Absent: no day is kept (a test).
+   */
+  readonly searchDay?: { spent(vendor: string, now: Millis): Promise<number | null> };
 }
 
 /**
@@ -662,7 +668,7 @@ interface PageRule {
 }
 
 /** Why one language's search stopped, for the log: the source's end, or which of our limits. */
-type Stop = 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'deadline' | 'empty' | 'aborted' | 'failed';
+type Stop = 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'day' | 'deadline' | 'empty' | 'aborted' | 'failed';
 
 /** One language's search inside an ask (work/languages.ts): its own cursor, pages, empty run and end. */
 interface Thread {
@@ -968,6 +974,25 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   /* What each catch-all lane returned this pass, per source — the input to its next floor. */
   const laneReturned = new Map<string, Partial<Record<FeedLane, number>>>();
 
+  /* ★ THE X SEARCH DAY (`feed.searchDay`): the metered bill read once a pass per vendor, and what this
+     pass's own pages added since. Null when it could not be read. */
+  const dayRead = new Map<string, number | null>();
+  const dayAdded = new Map<string, number>();
+  const dayBill = async (vendor: string): Promise<number | null> => {
+    if (!dayRead.has(vendor)) {
+      let spent: number | null = null;
+      try {
+        spent = (await deps.searchDay?.spent(vendor, now)) ?? null;
+      } catch (e) {
+        deps.log.warn("could not read the day's search bill; no catch-all search is asked", { vendor, err: errorText(e) });
+      }
+      dayRead.set(vendor, spent !== null && Number.isFinite(spent) ? spent : null);
+    }
+    const base = dayRead.get(vendor) ?? null;
+    return base === null ? null : base + (dayAdded.get(vendor) ?? 0);
+  };
+  const dayAdd = (vendor: string, usd: number): void => void dayAdded.set(vendor, (dayAdded.get(vendor) ?? 0) + usd);
+
   /* ★ ONE ASK, RUN. A function so the spaced asks — a source with no catch-all, whose paid scraper
      runs take minutes — run beside the catch-all lanes rather than ahead of them: a four-minute
      short-video run used to hold the text search, the feed's main input, for as long. */
@@ -977,6 +1002,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     const tag: { lane?: PassLane } = middle ? { lane: 'middle' } : lane === null ? {} : { lane };
     const coverKey = middle ? 'feed:middle' : lane === null ? query.term : `feed:${lane}`;
     const cap = deps.policy.feed.middle.cap;
+    /* Every catch-all search and the middle lane are held to the X search day; a term or watch ask is not. */
+    const dayGated = deps.policy.feed.searchDay.on && deps.searchDay !== undefined && (middle || lane !== null);
 
     /**
      * ★ DO NOT PAY FOR WHAT A FREE SOURCE ALREADY ANSWERED.
@@ -1041,6 +1068,23 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         return;
       } else {
         rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: listed.dailyUsd, spentUsd: spent } };
+      }
+    }
+
+    /* ★ THE X SEARCH DAY, before the meter's line: the day's metered search bill plus this page must fit
+       the pace (`feed.searchDay`). An unreadable bill asks nothing. */
+    if (dayGated) {
+      const spent = await dayBill(estimate.vendor);
+      if (spent === null) {
+        outcomes.push({ kind: 'unasked', source, reason: "the day's search bill cannot be read, so no catch-all search is asked" });
+        return;
+      }
+      const at = deps.now();
+      if (!searchDayMayAsk(spent, estimate.usd, at, deps.policy)) {
+        const allowance = searchDayAllowanceUsd(at, deps.policy);
+        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: Math.max(0, allowance - spent), spentUsd: spent, capUsd: allowance });
+        deps.log.info("the X search day's pace is spent; not asked", { source, lane: middle ? 'middle' : lane, band, late, spentUsd: round(spent), allowedNowUsd: round(allowance), dailyUsd: deps.policy.feed.searchDay.dailyUsd });
+        return;
       }
     }
 
@@ -1128,8 +1172,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     /* ★ EACH PAGE AFTER THE ASK'S FIRST IS CHECKED BEFORE IT IS ASKED FOR: against the meter's paced
        line, the lane's own day (the middle lane's cap, or the search's `dailyUsd`), a shutdown and
        the deadline. The first was checked above, where a refusal is recorded as `paused`. */
-    const sharedStop = (): Stop | null => {
+    const sharedStop = async (): Promise<Stop | null> => {
       if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) return 'meter';
+      if (dayGated && !searchDayMayAsk((await dayBill(estimate.vendor)) ?? Number.NaN, estimate.usd, deps.now(), deps.policy)) return 'day';
       if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) return 'cap';
       if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > rule.ledger.dailyUsd) return 'cap';
       if (deps.signal.aborted) return 'aborted';
@@ -1157,13 +1202,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           if (rule.full && t.emptyRun >= deps.policy.feed.paging.maxEmptyRun) { t.open = false; t.stop = 'empty'; continue; }
         }
         if (calls > 0) {
-          shared = sharedStop();
+          shared = await sharedStop();
           if (shared !== null) break rounds;
         }
         calls += 1;
         try {
           const page = await adapter.discover(t.cursor === null ? t.query : { ...t.query, cursor: t.cursor }, budget);
           laneUsd += page.spend.usd;
+          if (dayGated) dayAdd(estimate.vendor, page.spend.usd);
           estimatedUsd += estimate.usd;
           t.pages = round;
           t.items.push(...page.value.items);
@@ -1191,6 +1237,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
              to parse the answer, so the pass's total and the lane's day say so. One language
              failing ends that language only: the others are asked as if it had answered. */
           laneUsd += estimate.usd;
+          if (dayGated) dayAdd(estimate.vendor, estimate.usd);
           estimatedUsd += estimate.usd;
           t.open = false;
           t.stop = 'failed';
