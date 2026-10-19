@@ -4522,7 +4522,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v124',
+  version: 'policy.v125',
 
   admit: {
     maxAgeMin: 240,
@@ -6021,9 +6021,8 @@ const POLICY_V1: Policy = {
        learning + jobs is $50.00. Discovery is never cut to pay for learning (the owner, 2026-10-13).
        $43.50 from 2026-10-16 18:20 UTC for the view readings (feed.readings, its own $3.75 cap), the
        owner's option 1: about $49 measured for the whole day; the books' caps sum to $53 as headroom. */
-    /* $48.50 for 2026-10-19 only, the owner's yes: X ran over and the day was spent by 20:00 London; the owner
-       wants X and judging running the rest of the night. Back to 43.5 on the 20th, after DAILY_BUDGET_USD is. */
-    dailyUsd: 48.5,
+    /* $48.50 on 2026-10-19 only (X ran over and the owner wanted the night running); back to 43.5 on the 20th. */
+    dailyUsd: 43.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -6049,10 +6048,8 @@ const POLICY_V1: Policy = {
        the text source's live search, re-reads and replies were $9.24 in the 24 hours to 08:30 UTC and
        the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
        adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
-    /* embeddings $6 for 2026-10-19 only, the owner's call (judging caught up after an outage); back to 4.5 on the 20th. */
-    /* posts $24 for 2026-10-19 only: uncapped re-reads had spent $20.78 of X by 19:43 UTC and the owner
-       wants X running the rest of the night inside the $7 day restarted at 19:00 UTC; back to 17 on the 20th. */
-    supplierLines: { posts: 24, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 },
+    /* embeddings was $6 and posts $24 on 2026-10-19 only (an outage catch-up, then X re-reads over the line); back on the 20th. */
+    supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
