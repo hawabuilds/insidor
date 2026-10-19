@@ -112,7 +112,9 @@ export type CoinLink =
    * "at least" and is said as "10+". The coins themselves are listed by `fetchPostCoins`, which
    * a person opens on purpose, never carried here.
    */
-  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true }
+  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true; readonly ownerList?: true }
+  /* `ownerList`: no coin was picked for this post (one post, one coin), so the card is Create; the
+     count and its list are the owner's alone (coin-status.ts `forViewer`). */
   | { readonly kind: 'one'; readonly coin: Coin }
   /** At least two, ordered by the server. The tuple type makes "several" mean several. */
   | { readonly kind: 'several'; readonly coins: readonly [Coin, Coin, ...Coin[]] };
@@ -152,4 +154,6 @@ export interface CoinEvidence {
   /** The poster's own profile names this coin's address: "The poster's bio names this coin".
       Only a literal true from the server; absent when not, or not read. */
   readonly posterBio?: true;
+  /** The coin picked for this post by who is buying it: "Coin for this post". Only a literal true. */
+  readonly picked?: true;
 }

@@ -287,6 +287,7 @@ export function Feed({
       key={p.id}
       post={p}
       now={now}
+      owner={owner}
       cardRef={aheadRef(`post:${p.id}`, () => readPostAhead(p.id), owner && tab === 'fyp' ? seen(p.id) : undefined)}
       extra={
         <>

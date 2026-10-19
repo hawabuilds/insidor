@@ -116,6 +116,7 @@ import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
 import { withPlausibleLists } from './coin-list.ts';
+import { liveCoinLine, loadPostPicks, type CardPick } from './one-coin-cards.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -759,6 +760,25 @@ export async function buildRising(
     if (listed !== undefined) lookups.set(id, listed);
   }
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
+  /* ★ ONE POST, ONE COIN (one-coin-cards.ts): only in live mode is the runner's pick read, and then
+     it is the card's coin, or Create; in shadow nothing here is read and every card is as before. */
+  const live = policy.oneCoin.mode === 'live';
+  const picks: ReadonlyMap<string, CardPick> = live ? await loadPostPicks(db, rowIds) : new Map();
+  const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address] : [])))]) : new Map();
+  const pickOptions = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
+  const withPick = (row: RisingRow, post: WireRisingPost, lookup: PostLookup | null): WireRisingPost => {
+    if (!live) return post;
+    const check = checks.get(row.item_id);
+    const owners = lookup !== null && 'coins' in lookup && lookup.match?.kind === 'matched' && (lookup.match.owner === true || lookup.match.story === true);
+    if (check?.none === true || owners) return post;
+    const pick = picks.get(row.item_id);
+    const f = pick?.address === null || pick?.address === undefined ? undefined : pickedFacts.get(pick.address);
+    const listed = lookup !== null && 'coins' in lookup ? { count: lookup.coins.length, more: lookup.more } : { count: 0, more: false };
+    const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set());
+    const out: WireRisingPost = { ...post, coins, storyId: coins === post.coins ? post.storyId : null };
+    assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);
+    return out;
+  };
   /* The order model: the latest applied fit, and crypto attention only when the fit weighs it. */
   const scores = new PgScoreModelRepo(db);
   const applied = await scores.latestApplied();
@@ -787,7 +807,7 @@ export async function buildRising(
       passes: passing.has(row.item_id),
       score,
       underBar,
-      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
+      post: withPick(row, projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
         views: views.map((v) => ({ atMs: v.atMs, value: v.reach })),
         counts: readings.map((x) => ({ atMs: x.atMs, value: x.rate.kind === 'measured' ? x.rate.level : firstCount(x) })),
         perMinute: (() => {
@@ -795,7 +815,7 @@ export async function buildRising(
           return g === null ? null : Math.round(g);
         })(),
         tickersInReplies: crypto.get(row.item_id)?.othersTickers ?? null,
-      }, checks.get(row.item_id) ?? null),
+      }, checks.get(row.item_id) ?? null), lookup),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: !underBar && (clearsReachBar('fyp', barViews, postedAt, policy, scale) || coinVouchesFor(vouch.get(row.item_id), policy)),

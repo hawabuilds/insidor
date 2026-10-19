@@ -33,6 +33,11 @@
  *
  * The narrative screens keep `coinStatus`: a narrative's unsure line has no button there.
  *
+ * ★ ONE POST, ONE COIN (the owner, 2026-10-19, when the server runs it live): the card shows the
+ * coin picked for the post — "Coin for this post: $TICKER, $42K market cap" + Buy — or Create.
+ * The list of coins that only share the name is the owner's: an `unsure` marked `ownerList` is
+ * "No coin yet" + Create for everyone else (`forViewer`), never "See N coins".
+ *
  * ★ A COIN THE SERVER CANNOT QUOTE GETS NO BUTTON EITHER. `tradable` is the server's call,
  * made by asking for a quote, and this only obeys it.
  */
@@ -85,6 +90,14 @@ export function coinStatus(coins: PostCoinLink): CoinStatus {
   }
 }
 
+/**
+ * The coin line as this viewer may see it: an owner-only list (`ownerList`) is "No coin yet" and
+ * Create for anyone but the owner. Every other state is the same for everyone.
+ */
+export function forViewer(coins: PostCoinLink, owner: boolean): PostCoinLink {
+  return coins.kind === 'unsure' && coins.ownerList === true && !owner ? { kind: 'none' } : coins;
+}
+
 /** "3 coins use this name…", or "10+ coins…" when the search found more than it kept. */
 function unsureLine(count: number, more: boolean): string {
   if (count === 1 && !more) return "A coin uses this name. We can't tell if it came from here.";
@@ -101,7 +114,8 @@ export function seeCoinsLabel(count: number, more: boolean): string {
  * on a post offers the list of same-named coins and Create, and for `one`, whose line is the
  * ticker and market cap (`oneCoinLine`).
  */
-export function postCoinStatus(coins: PostCoinLink): PostCoinStatus {
+export function postCoinStatus(shown: PostCoinLink, owner = false): PostCoinStatus {
+  const coins = forViewer(shown, owner);
   if (coins.kind === 'unsure') {
     const more = coins.more === true;
     return {
@@ -113,7 +127,7 @@ export function postCoinStatus(coins: PostCoinLink): PostCoinStatus {
   const status = coinStatus(coins);
   const one = coins.kind === 'one' || coins.kind === 'matched';
   return {
-    line: one ? oneCoinLine(coins.coin) : status.line,
+    line: one ? `${coins.kind === 'matched' && coins.evidence.picked === true ? 'Coin for this post: ' : ''}${oneCoinLine(coins.coin)}` : status.line,
     actions: status.action === null ? [] : [status.action],
     ...(coins.kind === 'matched' ? { facts: evidenceFacts(coins.evidence) } : {}),
   };
