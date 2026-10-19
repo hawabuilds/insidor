@@ -435,6 +435,9 @@ importers:
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@insidor/market-geckoterminal':
+        specifier: workspace:*
+        version: link:../../adapters/market/geckoterminal
       '@insidor/store':
         specifier: workspace:*
         version: link:../../store

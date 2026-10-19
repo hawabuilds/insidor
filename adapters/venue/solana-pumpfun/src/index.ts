@@ -323,5 +323,8 @@ export type { LogoFetchConfig } from './logo-picture.ts';
 /* A curve read straight from its account: reserves, and progress as the launchpad measures it. */
 export { INITIAL_REAL_TOKEN_UNITS, PROGRAM_ID, curveProgressOf, readCurveAccount } from './curve-account.ts';
 export type { CurveAccount } from './curve-account.ts';
+/* A launch's name, ticker and metadata link from its token account, many coins a call. */
+export { ACCOUNTS_PER_CALL, readTokenMetadata, tokenMetadata, TOKEN_2022_PROGRAM } from './token-metadata.ts';
+export type { TokenMetadata, TokenMetadataConfig } from './token-metadata.ts';
 /* A coin found by searching, as a row for the coin universe — a candidate, `origin: 'backfill'`. */
 export { assetFromSearch } from './search-asset.ts';

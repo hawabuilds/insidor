@@ -43,6 +43,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
 import type { Millis } from '@insidor/contracts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { backoffDelayMs, type BackoffOptions } from './backoff.ts';
 import { ConfigError, loadChainwatchConfig, type ChainwatchConfig } from './config.ts';
@@ -50,6 +51,7 @@ import { createCoverage, observedSegments, type Gap } from './coverage.ts';
 import type { MintCursor } from './cursor.ts';
 import { createHeartbeat } from './heartbeat.ts';
 import { createWatchState, startHealthServer } from './health.ts';
+import type { Listing } from './listing.ts';
 import { createLogger, errorText } from './log.ts';
 import type { RunOutcome } from './run-record.ts';
 import { withRuntime, type Runtime } from './wiring.ts';
@@ -151,6 +153,10 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   log.info('resumed', { position: cursor.position, readAt: cursor.readAt });
 
   let consecutiveFailures = 0;
+
+  // The launch listing runs beside the socket's cycle on its own clock (listing.ts), and ends
+  // with it: the same abort, awaited before the server closes and the lock is released.
+  const listingDone = runtime.listing === null ? Promise.resolve() : runListing(runtime.listing, ac.signal);
 
   /*
    * ★ EVERY HOLE DECLARED SINCE THE LAST WINDOW WE CLOSED, so that the next
@@ -354,10 +360,52 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
     await sleep(Math.max(MIN_SLEEP_MS, wait - elapsed), ac.signal);
   }
 
+  await listingDone;
   server.close();
   // The pool and the singleton lock are closed by `withRuntime` on the way out of
   // this function, in a `finally`, including when it leaves by throwing.
   log.info('stopped');
+}
+
+/**
+ * The launch listing's loop. A failed pass waits longer each time (doubling, up to
+ * `LISTING_MAX_WAIT_MS`) and never retries faster than the policy's cadence: the listing is a
+ * shared free API, and a refusal is answered by asking less. Logged as a summary every
+ * `LISTING_SUMMARY_PASSES` passes and on every failure streak's first and tenth failure, so a
+ * pass twice a minute does not become a log line twice a minute.
+ */
+const LISTING_MAX_WAIT_MS = 300_000;
+const LISTING_SUMMARY_PASSES = 40;
+
+async function runListing(listing: Listing, signal: AbortSignal): Promise<void> {
+  const everyMs = DEFAULT_POLICY.assets.launchListing.everyMs;
+  let failures = 0;
+  let passes = 0;
+  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0 };
+  while (!signal.aborted) {
+    const started = Date.now();
+    try {
+      const r = await listing.pass();
+      failures = 0;
+      passes += 1;
+      totals.listed += r.listed;
+      totals.added += r.added;
+      totals.withoutDetails += r.withoutDetails;
+      totals.behind += r.behind ? 1 : 0;
+      if (passes % LISTING_SUMMARY_PASSES === 0) {
+        log.info('launch listing', { passes: LISTING_SUMMARY_PASSES, ...totals });
+        totals.listed = 0;
+        totals.added = 0;
+        totals.withoutDetails = 0;
+        totals.behind = 0;
+      }
+    } catch (e) {
+      failures += 1;
+      if (failures === 1 || failures % 10 === 0) log.warn('launch listing pass failed', { err: errorText(e), failures });
+    }
+    const wait = Math.min(LISTING_MAX_WAIT_MS, everyMs * 2 ** Math.min(failures, 5));
+    await sleep(Math.max(MIN_SLEEP_MS, wait - (Date.now() - started)), signal);
+  }
 }
 
 process.on('uncaughtException', (e) => {

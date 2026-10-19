@@ -25,9 +25,11 @@ import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-se
 
 import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles, type Candle, type Pool, type Trade, type VolumeCandle } from './read.ts';
 import { readSearch, SEARCH_PAGE } from './search.ts';
+import { readNewLaunches } from './new-pools.ts';
 
 export { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 export { readSearch, SEARCH_PAGE } from './search.ts';
+export { NEW_POOLS_PAGE, readNewLaunches } from './new-pools.ts';
 export type { Candle, Pool, Trade, VolumeCandle } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
@@ -98,6 +100,12 @@ export interface MarketData extends CoinSearch {
    * bound on the coins trading there, never the count of them.
    */
   launchpadPools(venue: 'curve' | 'pool', page: number): Promise<readonly CoinSearchHit[]>;
+  /**
+   * One page of the chain's newest pools, kept to launches on the launchpad's curve, newest
+   * first, each named from its token. Not kept: a listing read for what is new must be new.
+   * Pages run 1..`LISTING_PAGES`; past that the vendor has nothing older to give.
+   */
+  newLaunches(page: number): Promise<readonly CoinSearchHit[]>;
   /**
    * The coin's candles in its primary pool, with their dollar volume, ending before `untilMs`:
    * at most `limit` buckets of `bucketMinutes`. What the runner measures an older coin's trading
@@ -178,6 +186,11 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     async launchpadPools(venue, page) {
       if (!Number.isInteger(page) || page < 1 || page > LISTING_PAGES) throw new RangeError(`page must be 1..${LISTING_PAGES}`);
       return readSearch(await get(`/networks/solana/dexes/${LISTING_DEX[venue]}/pools?page=${page}&sort=h24_volume_usd_desc`));
+    },
+
+    async newLaunches(page) {
+      if (!Number.isInteger(page) || page < 1 || page > LISTING_PAGES) throw new RangeError(`page must be 1..${LISTING_PAGES}`);
+      return readNewLaunches(await get(`/networks/solana/new_pools?page=${page}&include=base_token`));
     },
 
     async history(mint, untilMs, bucketMinutes, limit) {
