@@ -39,11 +39,18 @@ export function laneJudgeUsd(newPosts: number, cap: LaneCapPolicy): number {
  * the day by breakfast, which is how 19 Oct 2026 spent $8.50 by 08:00 UTC; a pace with no `aheadMs`
  * refuses the first ask of every day.
  */
+/** When today's X search bill starts: 00:00 UTC, or `countFrom` when it falls later on the same UTC day. */
+export function searchDayStart(now: number, p: Policy): number {
+  const dayStart = now - (((now % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY);
+  const from = p.feed.searchDay.countFromMs ?? Number.NaN;
+  return Number.isFinite(from) && from > dayStart && from < dayStart + MS_PER_DAY && from <= now ? from : dayStart;
+}
+
 export function searchDayAllowanceUsd(now: number, p: Policy): number {
   const d = p.feed.searchDay;
   if (!d.on) return Number.POSITIVE_INFINITY;
-  const intoDay = ((now % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY;
-  return d.dailyUsd * Math.min(1, (intoDay + Math.max(0, d.aheadMs)) / MS_PER_DAY);
+  const sinceStart = now - searchDayStart(now, p);
+  return d.dailyUsd * Math.min(1, (sinceStart + Math.max(0, d.aheadMs)) / MS_PER_DAY);
 }
 
 /** True when an ask quoted at `askUsd` keeps the day's X search at or under its allowance now. */

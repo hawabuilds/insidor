@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk } from './lane-cap.ts';
+import { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
 
 const CAP = { dailyUsd: 6, judgeUsdPerPost: 0.002, judgedShare: 0.5 };
 
@@ -28,7 +28,7 @@ test('new posts are charged their judging: count times price times the share the
   assert.equal(laneJudgeUsd(-3, CAP), 0);
 });
 
-const DAY = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, searchDay: { on: true, dailyUsd: 7.2, aheadMs: 3_600_000 } } };
+const DAY = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, searchDay: { on: true, dailyUsd: 7.2, aheadMs: 3_600_000, countFromMs: null } } };
 const MIDNIGHT = Date.parse('2026-10-19T00:00:00Z');
 
 test('★ the X search day is paced over the UTC day, an hour ahead, and never more than the day', () => {
@@ -43,4 +43,13 @@ test('★ the X search day is paced over the UTC day, an hour ahead, and never m
 test('the X search day off allows every ask', () => {
   const off = { ...DAY, feed: { ...DAY.feed, searchDay: { ...DAY.feed.searchDay, on: false } } };
   assert.equal(searchDayMayAsk(1_000, 1, MIDNIGHT, off), true);
+});
+
+test("the day's bill starts at countFrom on its own UTC day, at the normal pace from there, and at 00:00 on any other day", () => {
+  const from = Date.UTC(2026, 9, 19, 12, 30);
+  const P = { ...DAY, feed: { ...DAY.feed, searchDay: { ...DAY.feed.searchDay, aheadMs: 0, countFromMs: from } } };
+  assert.equal(searchDayStart(from + 3_600_000, P), from);
+  assert.equal(searchDayAllowanceUsd(from + 3_600_000, P), 7.2 / 24);
+  assert.equal(searchDayStart(Date.UTC(2026, 9, 20, 6), P), Date.UTC(2026, 9, 20));
+  assert.equal(searchDayStart(Date.UTC(2026, 9, 19, 9), P), Date.UTC(2026, 9, 19));
 });

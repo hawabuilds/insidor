@@ -1615,7 +1615,12 @@ export interface FeedPolicy {
    * (`fresh.maxWindowMin`, `langSplit.maxEveryMs`) and loses what is older than that.
    * Unreadable bill: no catch-all search is asked (the middle lane's rule).
    */
-  readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number };
+  /**
+   * `countFromMs` (a time in ms, or null): on the UTC day it falls in, the day's bill and its pace start there
+   * instead of at 00:00 (the owner, 2026-10-19: the cap went live mid-day after a night's overspend had
+   * used the day, and X search was restarted "from now" at the normal pace). Other days ignore it.
+   */
+  readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number; readonly countFromMs: number | null };
   /**
    * ★ EACH LANGUAGE ITS OWN FLOOR AND ITS OWN SHARE OF THE NEWEST-POSTS MONEY (the owner, 2026-10-19:
    * "make the languages proportionate"). With `on` (and `fresh.enabled`), each language of `langs` is
@@ -4354,7 +4359,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v116',
+  version: 'policy.v117',
 
   admit: {
     maxAgeMin: 240,
@@ -5033,7 +5038,7 @@ const POLICY_V1: Policy = {
        was $13.81 in the 24 hours to 08:08 UTC on 2026-10-19 ($8.50 of it since midnight): $1.22 to
        $1.69 an hour from 00:00 to 04:00 UTC, against $0.15 to $0.63 an hour on 2026-10-18. $7, the
        owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
-    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000 },
+    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000, countFromMs: 1_792_413_000_000 }, // 2026-10-19 12:30 UTC
     /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
        tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
        that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'
