@@ -270,7 +270,9 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const who = s(f['author'], '');
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post you saved' : `${possessive(who)} post`;
       const mc = cap(f);
-      return { title: `${ticker(f)} is the first coin for a post you saved`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
+      /* The one-coin pick handed over (live mode): "$FALCON is now the coin for a post you saved". */
+      const what = f['handover'] === true ? 'is now the coin' : 'is the first coin';
+      return { title: `${ticker(f)} ${what} for a post you saved`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
     }
     case 'blowing_up': {
       /* A narrative: "New narrative taking off: Pancake the cat" / "6 new posts, +2.1M views in the last hour". */
@@ -308,6 +310,8 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     case 'starred_first_coin': {
       /* "Pancake the cat has its first coin: $PANCAKE" / "$12K MC. A narrative you starred." */
       const mc = cap(f);
+      /* The one-coin pick handed over (live mode): "Pancake the cat's coin is now $PANCAKE". */
+      if (f['handover'] === true) return { title: `${s(f['title'], 'A narrative you starred')}'s coin is now ${ticker(f)}`, body: `${mc === null ? '' : `${mc}. `}A narrative you starred.` };
       return { title: `${s(f['title'], 'A narrative you starred')} has its first coin: ${ticker(f)}`, body: `${mc === null ? '' : `${mc}. `}A narrative you starred.` };
     }
     case 'coin_matched':
