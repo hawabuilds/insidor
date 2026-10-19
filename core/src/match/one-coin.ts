@@ -29,8 +29,10 @@
  * made on trades.
  *
  * ★ AN UNKNOWN IS NOT A ZERO. A candidate whose trading we could not read while the feed runs is
- * `unmeasured`: it is never picked and, as a rival, it holds every pick back (we cannot say anyone
- * leads it three times). A watched coin with no trade yet is a measured zero: the feed would have
+ * `unmeasured`: we cannot say anyone leads it three times on trades, so that post is judged on market
+ * readings instead and `basis` says so (the owner's call, 2026-10-19). Holding every pick back
+ * instead stalled each post with a graduated, capped or restart-hit rival, often the real winner,
+ * until its watch ended. A watched coin with no trade yet is a measured zero: the feed would have
  * told us. On readings, a coin with no reading is simply not judged yet, as in the replay.
  *
  * ★ NOTHING HERE REACHES A SCREEN. The standings (net buying, buyers, why a coin is out) are kept
@@ -275,7 +277,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const wait = (reason: WaitingReason): OneCoinOutcome => ({ kind: 'waiting', reason, droppedHolder: dropped, basis, standings });
   if (standings.every((s) => !s.visible)) return wait('too_early');
   if (live.length === 0) return wait('all_out');
-  if (basis === 'trades' && unmeasured) return wait('rival_unmeasured');
+  if (basis === 'trades' && unmeasured) return pickOneCoin(contenders, holder, nowMs, false, bars);
   const top = ranked[0];
   if (top === undefined) return wait('too_early');
   if (!top.clears) return wait('under_bars');
