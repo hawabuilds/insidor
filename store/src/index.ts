@@ -39,7 +39,7 @@ export type { DuePicture, PictureNeighbour } from './repo/image-hash.ts';
 export { PgOneCoinRepo } from './repo/one-coin.ts';
 export { PgTradeFeedRepo } from './repo/trade-feed.ts';
 export type { CoverWrite, FeedDay, OpeningWrite, TradeFeedWrite, TradeMinuteWrite, TradeStateWrite, UnmeasuredReason, WatchedCoin } from './repo/trade-feed.ts';
-export type { CandidateRow, ExistingCoinRow, MinuteRow, PickKind, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from './repo/one-coin.ts';
+export type { CandidateRow, ExistingCoinRow, MinuteRow, PickKind, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from './repo/one-coin.ts';
 export type { DueOlderCoin, FoundOlderCoin, OlderCoinReading } from './repo/older-coin.ts';
 export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
 export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';

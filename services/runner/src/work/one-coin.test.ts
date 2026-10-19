@@ -10,7 +10,7 @@ import test from 'node:test';
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import type { CandidateRow, ExistingCoinRow, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
+import type { CandidateRow, ExistingCoinRow, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
 import { newOneCoinState, oneCoinPass, type OneCoinDeps } from './one-coin.ts';
@@ -25,6 +25,8 @@ interface World {
   /** Posts older than the window, read only by id. */
   older: RecentPost[];
   named: ExistingCoinRow[];
+  /** Every coin the lookback could read, filtered by launch here as the store does. */
+  prior: PriorCoinRow[];
   trades: Map<string, TradeRollup> | null;
   feedAt: number | null;
   market: Map<string, { capUsd: number; peakCapUsd: number; readAtMs: number }>;
@@ -58,6 +60,7 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
     tradeFacts: async () => w.trades,
     marketFacts: async () => w.market,
     coinsNamed: async () => w.named,
+    coinsLaunchedBetween: async (_names, _words, fromMs, toMs) => w.prior.filter((c) => c.launchedAtMs !== null && c.launchedAtMs >= fromMs && c.launchedAtMs < toMs),
     picks: async (_kind, ids) => new Map([...w.picks].filter(([id]) => ids.includes(id))),
     writePicks: async (_kind, picks, previous) => {
       w.writes.push(...picks);
@@ -68,7 +71,7 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
   };
 }
 
-const world = (o: Partial<World> = {}): World => ({ launches: [], posts: [], older: [], named: [], trades: null, feedAt: null, market: new Map(), candidates: [], watched: [], picks: new Map(), writes: [], embedded: [], ...o });
+const world = (o: Partial<World> = {}): World => ({ launches: [], posts: [], older: [], named: [], prior: [], trades: null, feedAt: null, market: new Map(), candidates: [], watched: [], picks: new Map(), writes: [], embedded: [], ...o });
 const post: RecentPost = { itemId: 'x:2111', postedAtMs: NOW - 20 * MIN, judgeNames: ['Pancake'], guessNames: ['PANCAT'], hash: 'ffffffffffffffff', text: null };
 const launch = (o: Partial<RecentLaunch>): RecentLaunch => ({ address: 'A1', assetKey: 'k:A1', launchedAtMs: NOW - 12 * MIN, name: 'Other', ticker: 'OTH', imageUri: 'https://img/a1', hash: null, linksPosts: [], linksThrough: [], ...o });
 
@@ -140,6 +143,23 @@ test('★ with the trade feed running, net buying decides — a coin nobody buys
   await oneCoinPass(deps(w), newOneCoinState());
   assert.equal(w.picks.get('x:2111')?.address, 'B');
   assert.equal(w.picks.get('x:2111')?.evidence['basis'], 'trades');
+});
+
+test('★ lookback: an older coin the post names, read hours ago under the bar, is a candidate judged from now', async () => {
+  const H = 60 * MIN;
+  const kim: RecentPost = { itemId: 'x:kim', postedAtMs: NOW - 10 * MIN, judgeNames: ['KIMJONG', 'KIMJONGUN'], guessNames: [], hash: null, text: 'Unconfirmed reports claim Kim Jong Un may have secretly died' };
+  const w = world({
+    posts: [kim],
+    prior: [
+      { address: 'ESAB', name: 'Rip Kim Jong-Un', ticker: 'Kim', launchedAtMs: kim.postedAtMs - 17 * H, capUsd: 14_100, liquidityUsd: 8_726, readAtMs: kim.postedAtMs - 16 * H },
+      { address: 'BARE', name: null, ticker: 'Kim', launchedAtMs: kim.postedAtMs - 5 * H, capUsd: 381_537, liquidityUsd: 0.01, readAtMs: NOW },
+      { address: 'OLD', name: 'Rip Kim Jong-Un', ticker: 'Kim', launchedAtMs: kim.postedAtMs - 50 * H, capUsd: 30_000, liquidityUsd: 9_000, readAtMs: NOW },
+    ],
+  });
+  await oneCoinPass(deps(w), newOneCoinState());
+  assert.deepEqual(w.candidates.map((c) => [c.itemId, c.address, c.path]), [['x:kim', 'ESAB', 'existing']]);
+  assert.deepEqual(w.candidates[0]?.evidence['ties'], ['name_text', 'existing']);
+  assert.ok(w.watched.some((x) => x.address === 'ESAB' && x.untilMs === NOW + DEFAULT_POLICY.oneCoin.watchMs));
 });
 
 test('second path: a post whose coin launched long before it gets the biggest coin of its name, judged from now', async () => {

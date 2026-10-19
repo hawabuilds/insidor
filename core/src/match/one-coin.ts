@@ -206,6 +206,41 @@ export function biggestOfName<C extends ExistingCoin>(
   return live.sort((a, b) => (b.capUsd ?? 0) - (a.capUsd ?? 0) || a.address.localeCompare(b.address))[0] ?? null;
 }
 
+/**
+ * The second path's lookback: coins launched up to `lookbackMs` before the post (and more than
+ * `launchLeadMs`, where the launch path takes over) that its names tie exactly or its own words tie
+ * (`namedInText`), the `lookbackCoins` most traded first. No reading bar: a coin read sixteen hours
+ * ago under the cap bar is still the coin the post is about, and the rule judges its trading from
+ * now on. Traded is the newest reading's cap; a reading on a pool under `minLiquidityUsd` is a
+ * frozen quote and counts as none; a coin never read ranks after every read one, never as zero.
+ */
+export interface PriorCoin extends ExistingCoin {
+  readonly launchedAtMs: number | null;
+  readonly liquidityUsd: number | null;
+}
+
+export interface PriorBars {
+  readonly minVariantLength: number;
+  readonly launchLeadMs: number;
+  readonly lookbackMs: number;
+  readonly lookbackCoins: number;
+  readonly minLiquidityUsd: number;
+}
+
+export function priorCoins<C extends PriorCoin>(post: MatchPost, coins: readonly C[], bars: PriorBars): readonly { readonly coin: C; readonly ties: readonly MatchEvidence[] }[] {
+  const tied = coins.flatMap((c) => {
+    if (c.launchedAtMs === null || c.launchedAtMs < post.postedAtMs - bars.lookbackMs || c.launchedAtMs >= post.postedAtMs - bars.launchLeadMs) return [];
+    const ties: MatchEvidence[] = [];
+    if (post.judgeNames.length > 0 && nameMatch(post.judgeNames, c, bars) === 'exact') ties.push('name_judge');
+    if (post.guessNames.length > 0 && nameMatch(post.guessNames, c, bars) === 'exact') ties.push('name_guess');
+    if (ties.length === 0 && namedInText(post, c, bars)) ties.push('name_text');
+    return ties.length === 0 ? [] : [{ coin: c, ties }];
+  });
+  const traded = (c: PriorCoin): number | null => (c.capUsd === null ? null : c.liquidityUsd !== null && c.liquidityUsd < bars.minLiquidityUsd ? 0 : c.capUsd);
+  const rank = (x: { coin: C }): number => traded(x.coin) ?? Number.NEGATIVE_INFINITY;
+  return tied.sort((a, b) => rank(b) - rank(a) || (a.coin.launchedAtMs ?? 0) - (b.coin.launchedAtMs ?? 0) || a.coin.address.localeCompare(b.coin.address)).slice(0, bars.lookbackCoins);
+}
+
 /* ── the rule ──────────────────────────────────────────────────────── */
 
 export interface OneCoinBars {

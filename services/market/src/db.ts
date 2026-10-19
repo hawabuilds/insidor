@@ -89,19 +89,56 @@ export async function assetsToRead(
   chain: string,
   limit: number,
   hour: PictureHour | null = null,
+  weighing: OlderCandidates | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
+  const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
   const rest = await onScreenThenNewest(db, chain, limit);
-  /* The hour's coins go first among the newest, never ahead of the coins on screen: those are what
-     a card shows. They are at most `hour.limit`, so the bound still holds. */
+  /* The older coins a pick is weighing, then the hour's coins, go first among the newest, never
+     ahead of the coins on screen: those are what a card shows. Each list has its own limit, and the
+     pass its bound. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...rest.filter((r) => r.tier === 0), ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...rest.filter((r) => r.tier === 0), ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
   }
   return out;
+}
+
+/** The older coins the one-coin pick is weighing (Policy.oneCoin.existing): found since `nowMs - withinMs`, at most `limit`. */
+export interface OlderCandidates {
+  readonly nowMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+}
+
+/**
+ * ★ AN OLDER COIN A PICK IS WEIGHING IS READ WHILE IT IS WEIGHED. The one-coin pick (services/runner
+ * work/one-coin.ts) adds, for each new post, the older coins its names tie, and judges them on market
+ * readings when the trade feed cannot measure them (a coin off its curve). But the newest-first bound
+ * reads a coin only in its first minutes, and an older coin is not on a card until it is picked: on
+ * 19 Oct "Rip Kim Jong-Un" had no reading for 22 hours, so the rule could never see it trade. This
+ * reads the second path's candidates found in the last `withinMs` (the pick's watch), newest found
+ * first, at most `limit` a pass. A failed read here is an empty list: the pass reads its usual coins.
+ */
+async function olderCandidates(db: Db, chain: string, w: OlderCandidates): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 3 as tier
+         from (select address, max(found_at) as found from internal.one_coin_candidate
+                where path = 'existing' and found_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+                group by address) c
+         join public.asset a on a.chain = $1 and a.address = c.address
+        where a.origin = any($5::text[])
+        order by c.found desc, a.asset_key asc
+        limit $4`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Which pictured coins to read once after their first hour (Policy.coinVectors.untraded). */

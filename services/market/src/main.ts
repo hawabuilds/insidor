@@ -168,6 +168,8 @@ async function main(): Promise<void> {
       DEFAULT_POLICY.coinVectors.untraded.on
         ? { nowMs: now(), afterLaunchMs: DEFAULT_POLICY.coinVectors.untraded.afterLaunchMs, withinMs: DEFAULT_POLICY.coinVectors.untraded.readWithinMs, limit: DEFAULT_POLICY.coinVectors.untraded.readsPerPass }
         : null,
+      /* The older coins a one-coin pick is weighing, read while it weighs them (db.ts). */
+      { nowMs: now(), withinMs: DEFAULT_POLICY.oneCoin.watchMs, limit: DEFAULT_POLICY.oneCoin.existing.readsPerPass },
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,
