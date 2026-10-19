@@ -295,7 +295,9 @@ export function decodeCoinLink(raw: unknown, path = '$.coins'): CoinLink {
     case 'unsure': {
       const claimCount = int(o['claimCount'], `${path}.claimCount`);
       /* Only a literal true is "at least": anything else is the whole count. */
-      return o['more'] === true ? { kind: 'unsure', claimCount, more: true } : { kind: 'unsure', claimCount };
+      /* `ownerList` only as a literal true: anything else is a list everyone may open. */
+      const owner = o['ownerList'] === true ? { ownerList: true as const } : {};
+      return o['more'] === true ? { kind: 'unsure', claimCount, more: true, ...owner } : { kind: 'unsure', claimCount, ...owner };
     }
     case 'one':
       return { kind: 'one', coin: decodeCoin(o['coin'], `${path}.coin`) };
@@ -886,6 +888,8 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
     ...(o['storyCoin'] === true ? { storyCoin: true as const } : {}),
     /* The server's `posterBioNamesCoin`; only a literal true is said. */
     ...(o['posterBioNamesCoin'] === true ? { posterBio: true as const } : {}),
+    /* The coin picked for the post (one post, one coin); only a literal true. */
+    ...(o['picked'] === true ? { picked: true as const } : {}),
   };
 }
 

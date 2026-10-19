@@ -157,7 +157,10 @@ export type WireCoinLink =
      `more`, only ever true and only on a feed post's own search: the search found more coins
      of the name than it kept, so the count is "at least". The coins themselves are never here;
      they are listed by GET /post/:id/coins (public.same_name_coin), opened by a person's tap. */
-  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true }
+  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true; readonly ownerList?: true }
+  /* `ownerList` (one post, one coin, Policy.oneCoin.mode 'live'): no coin was picked for this post,
+     so the card offers Create; the count and the list behind it are for the owner's screens only,
+     and every other viewer is shown "No coin yet" (the phone's `forViewer`). Absent in shadow. */
   | { readonly kind: 'one'; readonly coin: WireCoin }
   | { readonly kind: 'several'; readonly coins: readonly [WireCoin, WireCoin, ...WireCoin[]] };
 
@@ -203,6 +206,9 @@ export interface WireCoinEvidence {
       itself: the card says "Coin for this story", never "Links this post" (services/project
       story-coins.ts). Absent on every coin this post's own evidence or the owner's call on it settled. */
   readonly storyCoin?: true;
+  /** One post, one coin (Policy.oneCoin.mode 'live'): this is the coin picked for the post by who is
+      buying it — the card says "Coin for this post". The facts above still say only what holds. */
+  readonly picked?: true;
 }
 
 export interface WireBoardRow {

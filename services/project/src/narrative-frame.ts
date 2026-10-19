@@ -70,6 +70,7 @@ import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative }
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { loadCoinCalls } from './owner-calls.ts';
+import { loadNarrativePicks } from './one-coin-cards.ts';
 import { loadPostLookups } from './rising.ts';
 import { checkedCoinOf, loadTrendCoins, trendWindows, type TrendSubject } from './narrative-trend.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -315,10 +316,22 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const cards = await cardCoins(db, ids, options.nowMs);
   const calls = foldNarrativeCalls(await new PgNarrativeRepo(db).calls());
 
+  /* ★ ONE NARRATIVE, ONE COIN (one-coin-cards.ts), only in live mode: the owner's coin stays first;
+     otherwise the runner's pick for the narrative, or no coin (Create) — never its posts' lists. */
+  const live = policy.oneCoin.mode === 'live';
+  const narrativePicks = live ? await loadNarrativePicks(db, shown.map((n) => n.id)) : new Map<string, string | null>();
   const coinOf = new Map<string, NarrativeCoin>();
   for (const n of shown) {
     const members = n.members.map((m) => cards.get(m) ?? { itemId: m, confirmed: null, proven: null, listed: null });
-    coinOf.set(n.id, narrativeCoin(members, coinCallFor(n.id, new Set(n.members), calls), policy.postCoin.list.maxCoins));
+    const call = coinCallFor(n.id, new Set(n.members), calls);
+    const decided = narrativeCoin(members, call, policy.postCoin.list.maxCoins);
+    if (!live || decided.kind === 'confirmed') {
+      coinOf.set(n.id, decided);
+      continue;
+    }
+    const picked = narrativePicks.get(n.id);
+    if (picked === undefined) coinOf.set(n.id, decided.kind === 'pending' ? decided : { kind: 'none' });
+    else coinOf.set(n.id, picked === null || call?.wrong.has(picked) === true ? { kind: 'none' } : { kind: 'proven', addresses: [picked] });
   }
   const addresses = [...new Set([...coinOf.values()].flatMap((c) => (c.kind === 'confirmed' ? [c.address] : c.kind === 'proven' || c.kind === 'fitting' ? c.addresses : [])))];
   const coinFacts = await loadCoinFactsByAddress(db, addresses);
