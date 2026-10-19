@@ -7,11 +7,11 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { bandFloor, bandWindow, effectiveFloor, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './feed-floor.ts';
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
    The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
-const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
+const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, slow: { ...DEFAULT_POLICY.feed.slow, dailyUsd: null, langs: null }, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
 
 const at = (all: number, slow = all): { all: number; media: number; slow: number } => ({ all, media: all, slow });
 
@@ -38,6 +38,12 @@ test('★ the targets spend the catch-all share of the day: a fifth on the slow 
   assert.ok(Math.abs(t.media / main - P.feed.mediaShare) < 1e-9);
   assert.ok(Math.abs(t.slow * 96 - posts * P.feed.slow.share) < 1e-9);
   assert.ok(Math.abs(((t.all + t.media) * 720 + t.slow * 96) * 0.00015 - P.feed.budgetShare) < 1e-9, 'a day at target is the share, exactly');
+});
+
+test('★ the slow lane steers toward its own money a day when it has one', () => {
+  const own = { ...P, feed: { ...P.feed, slow: { ...P.feed.slow, dailyUsd: 0.5 } } };
+  const t = laneTargets(17, 0.00015, 720, own);
+  assert.ok(Math.abs(t.slow * 96 * 0.00015 - 0.5) < 1e-9, 'a day of slow passes at target is its $0.50, whatever the line');
 });
 
 test('the slow lane is due on the first pass, then every fifteen minutes', () => {
@@ -136,4 +142,37 @@ test('the slow slice holding a late band\'s age is covered, its neighbours are n
   assert.equal(sliceCoveredByLateBand(225, 15, LATE), false);
   assert.equal(sliceCoveredByLateBand(300, 15, LATE), false, 'ages 300 to 315: the band asked at 300, the slice\'s youngest edge');
   assert.equal(sliceCoveredByLateBand(285, 15, FRESH), false, 'late off: nothing covered');
+});
+
+/* ── each language its own floor and share (feed.langSplit) ── */
+
+const SPLIT = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en', 'ja', 'ko'], fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: true, bandAgesMin: [6, 50], maxWindowMin: 15 }, langSplit: { on: true, shares: { en: 0.8, ja: 0.15, ko: 0.04, de: 0.5 }, bandsDailyUsd: 3, minPostsPerAsk: 2, maxEveryMs: 3_600_000 } } };
+
+test('★ a share is over the searched languages only, and a language not listed has none', () => {
+  assert.ok(Math.abs(langShare('en', SPLIT) - 0.8 / 0.99) < 1e-12, 'normalised over en, ja and ko; de is listed but not searched and counts for nothing');
+  assert.equal(langShare('fr', SPLIT), 0);
+  assert.equal(langSplitOn(SPLIT), true);
+  assert.equal(langSplitOn({ ...SPLIT, feed: { ...SPLIT.feed, fresh: { ...SPLIT.feed.fresh, enabled: false } } }), false, 'no fresh bands, no split');
+});
+
+test('★ a language is spaced so each ask buys minPostsPerAsk posts a band, never slower than maxEveryMs', () => {
+  const ko = langPostsPerDay('ko', 0.00015, SPLIT);
+  assert.equal(Math.round(ko), 808, '$3 a day x 4/99 at $0.00015 a post');
+  assert.equal(langEveryMs('ko', 0.00015, SPLIT), Math.ceil((86_400_000 * 2 * 2) / ko));
+  assert.ok(langEveryMs('en', 0.00015, SPLIT) < 60_000, 'English is asked every pass');
+  assert.equal(langEveryMs('fr', 0.00015, SPLIT), 3_600_000, 'no share: the slowest spacing, not never');
+  assert.equal(langEveryMs('ko', 0, SPLIT), 3_600_000, 'unpriced: the slowest spacing');
+});
+
+test('★ a language window goes once it spans the spacing, and reaches back that far beyond the cap', () => {
+  const now = 1_000 * MIN;
+  assert.deepEqual(langBandWindow(6, null, now, 30 * MIN, SPLIT), { since: now - 21 * MIN, until: now - 6 * MIN }, 'a first ask goes at once, back the band cap');
+  assert.equal(langBandWindow(6, now - 30 * MIN, now, 30 * MIN, SPLIT), null, '24 minutes of posting time: not yet');
+  assert.deepEqual(langBandWindow(6, now - 40 * MIN, now, 30 * MIN, SPLIT), { since: now - 40 * MIN, until: now - 6 * MIN });
+  assert.deepEqual(langBandWindow(6, now - 120 * MIN, now, 30 * MIN, SPLIT), { since: now - 51 * MIN, until: now - 6 * MIN }, 'after a gap, the spacing plus the cap and no more');
+});
+
+test('a language target is its posts a day over the posting minutes its asks covered, each band tiling the day once', () => {
+  assert.equal(langTarget(2_880, 30, SPLIT), 30);
+  assert.equal(langTarget(2_880, 0, SPLIT), 0);
 });

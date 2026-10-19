@@ -143,10 +143,12 @@ test('a failed count of new posts charges the lane for every post it returned', 
 });
 
 test('★ the slow lane drops the slices wholly inside the window when its floor is no lower than the middle floor', () => {
+  /* The window as it was (15 minutes to 3 hours), which held whole slices; the shipped hour holds only one the bands cover. */
+  const wide = (p: Policy): Policy => ({ ...p, feed: { ...p.feed, middle: { ...p.feed.middle, maxAgeMin: 180 } } });
   const ages = (p: Policy, slowFloor: number) =>
-    slowSliceQueries({ all: 100, media: 100, slow: slowFloor }, NOW, p).map((q) => (NOW - (q.untilMs ?? NOW)) / MIN);
+    slowSliceQueries({ all: 100, media: 100, slow: slowFloor }, NOW, wide(p)).map((q) => (NOW - (q.untilMs ?? NOW)) / MIN);
   const high = ages(ON, ON.feed.middle.minApproval * 3);
-  const inside = (age: number) => age >= ON.feed.middle.minAgeMin && age + ON.feed.slow.everyMs / MIN <= ON.feed.middle.maxAgeMin;
+  const inside = (age: number) => age >= ON.feed.middle.minAgeMin && age + ON.feed.slow.everyMs / MIN <= 180;
   assert.ok(high.every((age) => !inside(age)), 'no slice inside the middle window is asked');
   assert.ok(ages(OFF, ON.feed.middle.minApproval * 3).some(inside), 'switched off, those slices are asked as before');
   /* A slow floor under the middle one would lose the posts between the two floors: kept. */

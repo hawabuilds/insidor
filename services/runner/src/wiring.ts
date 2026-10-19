@@ -160,6 +160,7 @@ import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 import { addOwnerCoins } from './work/owner-coins.ts';
 import { checkOlderCoins } from './work/older-coins.ts';
+import type { DiscoverDeps } from './work/discover.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
@@ -196,6 +197,8 @@ export interface Runtime {
   readonly meter: DurableMeter;
   /** The catch-all search's lane floors, kept between passes. */
   readonly feedFloors: PgFeedFloorRepo;
+  /** The X search day (`feed.searchDay`): a supplier's metered search bill since 00:00 UTC. */
+  readonly searchDay: NonNullable<DiscoverDeps['searchDay']>;
   /** The middle lane's ledger (0088) and how many of its posts no lane holds yet (`feed.middle`). */
   readonly middleLane: { readonly ledger: LaneLedger; readonly uncredited: (itemIds: readonly string[]) => Promise<number> };
   /** Score the catch-all posts the judge has not seen, alone and once each. */
@@ -1286,6 +1289,8 @@ export async function withRuntime<T>(
           meter,
           store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
+          /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
+          searchDay: { spent: (vendor, now) => new PgSpendRepo(db).usdSince(vendor, 'search', (now - (now % MS_PER_DAY)) as Millis) },
           middleLane: {
             ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'middle-lane' })),
             uncredited: (ids) => repos.items.uncredited(ids),
