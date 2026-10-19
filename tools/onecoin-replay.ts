@@ -5,7 +5,7 @@
  * in the last `--days`, its candidates' trade minutes (internal.coin_trade_minute, 0112) — or their
  * market readings, said in the header, when no minute was stored — run through the live rule step by
  * step (core match/one-coin-replay.ts), against the real coin: the owner's call, else the biggest
- * candidate an hour after its launch (tools/lib/onecoin-cases.ts).
+ * candidate an hour after its launch (services/project/src/onecoin-cases.ts).
  *
  * Prints, for the bars in force (the policy, or the newest applied refit): right, wrong and no pick at
  * the real coin's launch + `--at` minutes (default 10, and 5 beside it), and false picks where nothing
@@ -21,7 +21,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { oneCoinBars, replayMerit, scoreReplay, type ReplayScore } from '../core/src/index.ts';
 import { asDb, createPool, DB_ROLE, missingTable, PgOneCoinRepo } from '../store/src/index.ts';
-import { loadCases } from './lib/onecoin-cases.ts';
+import { loadCases } from '../services/project/src/onecoin-cases.ts';
 
 const P = DEFAULT_POLICY.oneCoin;
 const MIN = 60_000;

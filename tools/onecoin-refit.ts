@@ -3,7 +3,7 @@
  *
  * THE WEEKLY REFIT OF THE ONE-COIN BARS (Policy.oneCoin.refit). Asked every ten minutes by the
  * projector's schedule (tools/railway-start.mjs) with `due`, it runs once a week: the last two weeks
- * of posts with candidates replayed (tools/lib/onecoin-cases.ts) against their real coins — the
+ * of posts with candidates replayed (services/project/src/onecoin-cases.ts) against their real coins — the
  * owner's coin calls and pasted addresses, else the biggest candidate an hour after its launch —
  * over a grid of cap floors, lead/hand-over ratios and buyer bars. The best bars by merit (right less
  * wrong less false picks, core `replayMerit`) are written to internal.one_coin_fit (0113) beside the
@@ -26,7 +26,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { oneCoinBars, replayMerit, scoreReplay, type OneCoinBars, type ReplayScore } from '../core/src/index.ts';
 import { asDb, createPool, DB_ROLE, missingTable, PgOneCoinRepo, type Db } from '../store/src/index.ts';
-import { loadCases } from './lib/onecoin-cases.ts';
+import { loadCases } from '../services/project/src/onecoin-cases.ts';
 
 const P = DEFAULT_POLICY.oneCoin;
 const MIN = 60_000;
