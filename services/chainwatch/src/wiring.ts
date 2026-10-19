@@ -42,6 +42,11 @@
  * 4. THE LAUNCH LISTING WRITES COINS AND NOTHING ELSE (`buildListing`). It shares this
  *    process's one connection and its lock, adds rows only where none exist, and never
  *    touches the coverage log, which stays the socket's own record.
+ *
+ * 5. THE TRADE FEED (`buildTrades`) shares the connection and the lock too: the lock is what
+ *    makes it the only writer of the trade tables, which it writes whole rather than by
+ *    increment. Its key is HELIUS_API_KEY, put into the socket and RPC addresses here and
+ *    nowhere else; no log line, error or note carries either address.
  */
 
 import { createHash } from 'node:crypto';
@@ -50,6 +55,7 @@ import {
   DB_ROLE,
   PgAssetRepo,
   PgStageRunRepo,
+  PgTradeFeedRepo,
   createPool,
   withAdvisoryLock,
   type Db,
@@ -57,6 +63,9 @@ import {
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { BASE_URLS, geckoterminal } from '@insidor/market-geckoterminal';
+import { curveAddress, curvePlaces, launchOpening, transactionLogs } from '@insidor/venue-solana-pumpfun/curve-rpc.ts';
+import { curveEvents } from '@insidor/venue-solana-pumpfun/events.ts';
+import { createTradeSocket } from '@insidor/venue-solana-pumpfun/trade-socket.ts';
 import {
   CHAIN,
   TOKEN_DECIMALS,
@@ -76,6 +85,7 @@ import type { Logger } from './log.ts';
 import { NotImplemented } from './not-implemented.ts';
 import type { StageRunRecorder } from './run-record.ts';
 import { createStreamFeed } from './stream-feed.ts';
+import { createTradeWatch, type ChainPort, type TradeWatch } from './trade-watch.ts';
 
 export interface Runtime {
   readonly feed: MintFeed;
@@ -84,6 +94,8 @@ export interface Runtime {
   readonly sink: MintSink;
   readonly cursors: CursorStore;
   readonly stageRuns: StageRunRecorder;
+  /** The trade feed (trade-watch.ts) and how to stop its socket. Null when off or keyless. */
+  readonly trades: { readonly watch: TradeWatch; readonly stop: () => void } | null;
 }
 
 /**
@@ -236,6 +248,67 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
   );
 }
 
+/** The chain socket and RPC behind the trade feed, keyed. */
+const TRADE_SOCKET_URL = 'wss://mainnet.helius-rpc.com/?api-key=';
+const TRADE_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=';
+
+/**
+ * The trade feed, and the third place this service names a vendor. Off when the policy says so
+ * or no key is set: every watched coin then stays unmeasured, and the rule judges on readings.
+ */
+function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trades'] {
+  const tf = DEFAULT_POLICY.oneCoin.tradeFeed;
+  const tradeLog = log.child({ part: 'trade-feed' });
+  if (!tf.on || cfg.tradeFeedKey === null) {
+    tradeLog.warn('trade feed off: watched coins stay unmeasured', { policyOn: tf.on, keySet: cfg.tradeFeedKey !== null });
+    return null;
+  }
+  const socket = createTradeSocket({
+    url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
+    accountOf: curveAddress,
+    staleAfterMs: tf.staleAfterMs,
+    probeEveryMs: tf.probeEveryMs,
+    // The same answer to "how long must a connection last" as the launch stream's.
+    healthyAfterMs: cfg.backoffMaxMs,
+    now: () => Date.now() as Millis,
+    reconnectDelayMs: (attempt) => backoffDelayMs(attempt, { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs }, Math.random()),
+    open: openWebSocket,
+    schedule: (fn, ms) => {
+      const timer = setTimeout(fn, ms);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    note: (msg, fields) => tradeLog.warn(msg, fields),
+  });
+  const rpc = { rpcUrl: TRADE_RPC_URL + cfg.tradeFeedKey, fetch: globalThis.fetch, timeoutMs: tf.callTimeoutMs };
+  const chain: ChainPort = {
+    places: (coins) => curvePlaces(rpc, coins),
+    transactionTrades: async (signature, coin) => {
+      const logs = await transactionLogs(rpc, signature);
+      if (logs === null) return null;
+      const ev = curveEvents(logs);
+      const own = ev.trades.filter((t) => t.mint === coin);
+      // Still cut, or a trade not in SOL: not readable whole here.
+      if (ev.truncated || own.some((t) => !t.solQuoted)) return null;
+      return own.map((t) => ({ coin, user: t.user, creator: t.creator, isBuy: t.isBuy, timestampS: t.timestampS, sol: t.sol, mcapSol: t.mcapSol }));
+    },
+    opening: async (coin) => {
+      const r = await launchOpening(rpc, coin);
+      return { opening: r.opening, historyCalls: r.calls };
+    },
+  };
+  const watch = createTradeWatch({
+    socket,
+    chain,
+    store: new PgTradeFeedRepo(db, cfg.chain),
+    policy: DEFAULT_POLICY.oneCoin,
+    now: () => Date.now(),
+    note: (level, msg, fields) => tradeLog[level](msg, fields),
+  });
+  socket.start();
+  return { watch, stop: () => socket.stop() };
+}
+
 function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   const assets = new PgAssetRepo(db);
 
@@ -259,6 +332,7 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   return {
     feed: createFeed(cfg, log),
     listing: buildListing(cfg, assets, log),
+    trades: buildTrades(cfg, db, log),
 
     sink: {
       // A MintEvent already carries a whole Asset — the feed's job is to have

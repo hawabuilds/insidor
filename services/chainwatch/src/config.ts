@@ -94,6 +94,14 @@ export interface ChainwatchConfig {
    * required would stop an already-deployed watcher from booting until someone set it.
    */
   readonly listingRpcUrl: string | null;
+  /**
+   * The key for the chain socket and RPC the trade feed uses (trade-watch.ts). OPTIONAL, like
+   * `listingRpcUrl`: null turns the trade feed off and every watched coin stays unmeasured, which
+   * the one-coin rule reads as "judge on market readings". Named HELIUS_API_KEY rather than for what
+   * it is, unlike every other variable here, because it is the same key the owner's tools already
+   * read under that name; wiring.ts is the one place that knows whose it is. Never logged.
+   */
+  readonly tradeFeedKey: string | null;
 
   readonly heartbeat: HeartbeatConfig;
 }
@@ -179,6 +187,8 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
   const backoffBaseMs = r.int('BACKOFF_BASE_MS', 100, 60_000);
   const backoffMaxMs = r.int('BACKOFF_MAX_MS', 1_000, 3_600_000);
   const listingRpcUrl = (env['LISTING_RPC_URL'] ?? '').trim() || null;
+  const tradeFeedKey = (env['HELIUS_API_KEY'] ?? '').trim() || null;
+  if (tradeFeedKey !== null && !/^[A-Za-z0-9-]+$/.test(tradeFeedKey)) problems.push('HELIUS_API_KEY must be a bare key (letters, digits, dashes)');
   if (listingRpcUrl !== null && !/^https:\/\//.test(listingRpcUrl)) problems.push('LISTING_RPC_URL must be an https URL');
 
   const mode = r.choice('HEARTBEAT', ['off', 'on'] as const);
@@ -246,6 +256,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     backoffBaseMs,
     backoffMaxMs,
     listingRpcUrl,
+    tradeFeedKey,
     heartbeat,
   };
 }
