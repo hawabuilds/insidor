@@ -107,7 +107,7 @@ export function openTitler(deps: OpenTitlerDeps): TitlePort {
           temperature: 0,
           messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: text }],
           response_format: { type: 'json_schema', json_schema: { name: 'narrative_title', strict: true, schema: SCHEMA } },
-          ...routerFields(deps.router, deps.providers),
+          ...routerFields(deps.router, deps.providers, deps.model.id),
         };
         const book = { [`${deps.vendor}:${OPEN_TITLE_ENDPOINT}`]: { vendor: deps.vendor, endpoint: OPEN_TITLE_ENDPOINT, unit: 'per-call' as const, usdPerUnit: estimate, unitName: 'narrative title call', measuredAt: 'estimated per call from the host model list prices' } };
         try {

@@ -149,7 +149,7 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     /* Only hosts that honour the schema and the temperature (and, when named, only those, in that
        order: a provider that is down is an error, which the runner's failover answers, rather than
        a hand-off to one that loops); and the cost of the call in the reply. */
-    ...routerFields(config.router, providers),
+    ...routerFields(config.router, providers, config.model),
   };
 }
 
@@ -180,13 +180,21 @@ export function rotated(providers: readonly string[], n: number): readonly strin
  * answers. Together accepts the field for a model that does not think (MiniMax M3 answered the same
  * with it).
  */
-export function routerFields(router: boolean | undefined, providers: readonly string[]): Record<string, unknown> {
+export function routerFields(router: boolean | undefined, providers: readonly string[], model?: string): Record<string, unknown> {
   if (router === false) return { reasoning: { enabled: false } };
   return {
     provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
     usage: { include: true },
+    /* A thinking model on the router is told not to think, as on a host of its own (above): measured
+       2026-10-19, Nemotron there spent its whole answer budget reasoning and returned nothing; with
+       `reasoning: { enabled: false }` it answered at once. Only for models that think, because the
+       router's require_parameters would drop a provider that does not know the field. */
+    ...(model !== undefined && THINKING_MODEL.test(model) ? { reasoning: { enabled: false } } : {}),
   };
 }
+
+/** Models that reason before answering unless told not to (measured 2026-10-16 and 2026-10-19). */
+const THINKING_MODEL = /nemotron|qwen3/i;
 
 /* ── the reply, as a pure function ────────────────────────────────────── */
 
