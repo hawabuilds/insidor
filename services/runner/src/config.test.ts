@@ -244,16 +244,14 @@ test('★ the shipped budget is the owner\'s cap, and the lines inside it are wh
   const B = DEFAULT_POLICY.budget;
   assert.equal(cfg.spend.dailyBudgetUsd, B.dailyUsd, 'shipped at the owner\'s cap');
   /* $43.50 from 2026-10-16 18:20 UTC: the two new search lanes and the view readings (the owner's option 1). */
-  /* $48.50 for 2026-10-19 only (the owner's +$5 for tonight); 43.5 again on the 20th. */
-  assert.equal(B.dailyUsd, 48.5);
+  assert.equal(B.dailyUsd, 43.5);
   /* The books' caps sum to $54.50 on 2026-10-16: the readings' $3 as headroom over the measured ~$49 day, and the owner's +$1.50 for the evening re-tune. */
-  assert.equal(B.dailyUsd + B.learningLines.dailyUsd + B.jobLines.dailyUsd, 59.5, "the books' caps");
+  assert.equal(B.dailyUsd + B.learningLines.dailyUsd + B.jobLines.dailyUsd, 54.5, "the books' caps");
   /* actors $2 from 2026-10-14: the owner's +$1 a day for searches every 15 minutes and young re-reads. */
   /* pictures $4.50 from 2026-10-14: the owner's +$2.50, over the $2.94 they spent the day before. */
   /* secondVideo $2.50 from 2026-10-16: the short-video source's second vendor (re-reads, creator pages, the feed). */
   /* posts $14 and video $4.50 from 2026-10-16: the middle lane and the learned-tag lane, as warnings. */
-  /* posts $24 for 2026-10-19 only: X running the rest of the night after re-reads overran the line; 17 on the 20th. */
-  assert.deepEqual(B.supplierLines, { posts: 24, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 });
+  assert.deepEqual(B.supplierLines, { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 });
   for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
   assert.ok(!('paceAheadMs' in B), 'the live runner is not paced: the lines are brakes');
 });
