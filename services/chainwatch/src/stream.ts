@@ -35,7 +35,9 @@
  * able to say so.
  */
 
-import type { Millis, MintEvent } from '@insidor/contracts';
+import type { Millis } from '@insidor/contracts';
+
+import type { LaunchEvent } from './feed.ts';
 
 /** A window during which the source was not delivering. A fact, not a decision. */
 export interface StreamOutage {
@@ -47,7 +49,7 @@ export interface StreamOutage {
 }
 
 export interface StreamDrain {
-  readonly events: readonly MintEvent[];
+  readonly events: readonly LaunchEvent[];
   /** Handed over as many as asked for: more are waiting, none were lost. */
   readonly limited: boolean;
   /** Events destroyed because the buffer was full. Lost, not delayed. */

@@ -37,12 +37,26 @@ import type { MintCursor } from './cursor.ts';
  * facts about this process, not about a venue.
  */
 
+/**
+ * ★ THE ONE ADDITION TO THE VOCABULARY'S SHAPE, and why it is optional. A push transport can
+ * also say what the creator bought in the launch transaction; a poll over a listing cannot.
+ * Absent means the transport did not say, and it is stored as NULL — never as a zero buy, which
+ * would claim a creator who held nothing and so could never have sold (0112).
+ */
+export interface LaunchOpening {
+  readonly creatorBuyTokens: number | null;
+  readonly creatorBuySol: number | null;
+  readonly launchMcapSol: number | null;
+}
+
+export type LaunchEvent = MintEvent & { readonly opening?: LaunchOpening };
+
 export interface MintFeedPage {
   /** When we started the read. */
   readonly from: Millis;
   /** When the read completed. Coverage extends to here and never further. */
   readonly to: Millis;
-  readonly mints: readonly MintEvent[];
+  readonly mints: readonly LaunchEvent[];
   /** The source returned `limit` rows: there may be more we did not see. */
   readonly pageFull: boolean;
   /**
@@ -85,7 +99,7 @@ export interface MintFeed {
 /** Where the mints and the gaps go. Implemented in wiring.ts against store. */
 export interface MintSink {
   /** Must be durable before the cursor advances past these rows. */
-  recordMints(mints: readonly MintEvent[]): Promise<void>;
+  recordMints(mints: readonly LaunchEvent[]): Promise<void>;
   /**
    * A gap row. Separate from `recordMints` because a gap is not an absence of
    * mints — it is a statement that the question cannot be answered for that
