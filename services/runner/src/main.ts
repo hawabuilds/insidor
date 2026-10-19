@@ -180,6 +180,8 @@ async function main(): Promise<void> {
         floors: runtime.feedFloors,
         /* The same ledger as the middle lane's: a search reading past short pages keeps its day there. */
         ledger: runtime.middleLane.ledger,
+        /* The X search day (`feed.searchDay`): one bill for every catch-all search and the middle lane. */
+        searchDay: runtime.searchDay,
         afterPass: [
           ['score-posts', runtime.scorePosts],
           ['name-guesses', runtime.guessNames],
@@ -211,6 +213,7 @@ async function main(): Promise<void> {
           runtime.loopDeps.policy.budget.supplierLines.posts,
         ),
         middle: runtime.middleLane,
+        searchDay: runtime.searchDay,
       }),
       /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
          never holds up the search. */

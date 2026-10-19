@@ -155,10 +155,10 @@ export type { NarrativePostReadings, NarrativeSpeeds, TrendingNarrative } from '
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass
  * moves it. Not a stage; a budget lever with policy thresholds, so it lives here.
  */
-export { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleLaneDue, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLaneDue, startFloors } from './sources/feed-floor.ts';
+export { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleLaneDue, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLaneDue, slowLangs, startFloors } from './sources/feed-floor.ts';
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 /** A search lane's own daily cap (Policy LaneCapPolicy): whether an ask fits, and its judging. */
-export { laneJudgeUsd, laneMayAsk } from './sources/lane-cap.ts';
+export { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk } from './sources/lane-cap.ts';
 export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from './sources/recall.ts';
 export type { DiscoverySettings, LaneSetting, PostFacts as RecallPostFacts, Verdict } from './sources/recall.ts';
 export { MISSED_DIAGNOSES, MISSED_FAILURES, crossedBarAt, diagnoseMissed, missedSuggestion } from './learning/missed.ts';

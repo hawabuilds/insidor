@@ -41,6 +41,8 @@ export interface MiddleLoopDeps {
   readonly dailyCapUsd: number;
   /** Its ledger and new-post count (0088). Absent: the lane is never asked. */
   readonly middle: DiscoverDeps['middle'];
+  /** The X search day's bill (`feed.searchDay`), the same one the discover pass reads. Absent: no day is kept. */
+  readonly searchDay?: DiscoverDeps['searchDay'];
 }
 
 export function middleLoop(deps: MiddleLoopDeps): Loop {
@@ -73,6 +75,7 @@ export function middleLoop(deps: MiddleLoopDeps): Loop {
         dailyCapUsd: deps.dailyCapUsd,
         middle,
         only: 'middle',
+        ...(deps.searchDay === undefined ? {} : { searchDay: deps.searchDay }),
       });
       log.info('middle pass', {
         mode: deps.mode,
