@@ -15,6 +15,10 @@
  * that basis. ★ Before 0113 every read answers nothing and every write is skipped, by Postgres's
  * own code for a missing table (`missingTable`).
  *
+ * ★ MEASURED IS 0114's WORD, NOT "WATCHED". A coin counts as a measured nothing ('quiet') only once
+ * chainwatch confirmed its subscription and while no cap, outage or restart ended it; a coin it
+ * stopped measuring has no trade facts at all, so the rule reads it as unknown.
+ *
  * What breaks if changed carelessly: the trade roll-up. Net buying is the sum of the minutes, and
  * buyers the state's distinct count (else the minutes' new buyers summed); reading `buyers` per
  * minute and adding them counts a wallet that bought in two minutes twice, and the buyer bar with it.
@@ -304,22 +308,53 @@ export class PgOneCoinRepo {
     }
   }
 
-  /** When the trade feed last wrote (0112's state rows); null: not applied, or never written. */
+  /**
+   * When the trade feed last vouched for its coins: the newest heartbeat on the watch list (0114's
+   * measured_to, moved on every flush while its socket is live, trades or not) or the newest state
+   * row. Null: not applied, or never written.
+   */
   async tradeFeedAt(): Promise<number | null> {
     try {
       const [r] = await this.#db.query<{ at: string | null }>(`select max(updated_at) as at from internal.coin_trade_state`);
-      return ms(r?.at ?? null);
+      let heartbeat: number | null = null;
+      try {
+        const [h] = await this.#db.query<{ at: string | null }>(`select max(measured_to) as at from internal.coin_watch`);
+        heartbeat = ms(h?.at ?? null);
+      } catch (e) {
+        if (!missingTable(e)) throw e;
+      }
+      const at = [ms(r?.at ?? null), heartbeat].filter((x): x is number => x !== null);
+      return at.length === 0 ? null : Math.max(...at);
     } catch (e) {
       if (missingTable(e)) return null;
       throw e;
     }
   }
 
-  /** Which of these coins are on the watch list now (0112); empty before it. */
+  /**
+   * Which of these coins the trade feed is MEASURING now (0114): watched, its subscription
+   * confirmed, and not past a cap, an outage or any other end of measurement. Such a coin with no
+   * trade is a measured nothing; every other coin is unknown. Empty before 0114.
+   */
   async watched(addresses: readonly string[], nowMs: number): Promise<ReadonlySet<string>> {
     if (addresses.length === 0) return new Set();
     try {
-      const rows = await this.#db.query<{ address: string }>(`select address from internal.coin_watch where address = any($1::text[]) and since <= $2`, [[...addresses], new Date(nowMs).toISOString()]);
+      const rows = await this.#db.query<{ address: string }>(
+        `select address from internal.coin_watch where address = any($1::text[]) and since <= $2 and measured_from is not null and measured_from <= $2 and unmeasured_from is null`,
+        [[...addresses], new Date(nowMs).toISOString()],
+      );
+      return new Set(rows.map((r) => r.address));
+    } catch (e) {
+      if (missingTable(e)) return new Set();
+      throw e;
+    }
+  }
+
+  /** Of these coins, those the trade feed stopped measuring (0114: a cap, an outage, …). Empty before 0114. */
+  async unmeasured(addresses: readonly string[]): Promise<ReadonlySet<string>> {
+    if (addresses.length === 0) return new Set();
+    try {
+      const rows = await this.#db.query<{ address: string }>(`select address from internal.coin_watch where address = any($1::text[]) and unmeasured_from is not null`, [[...addresses]]);
       return new Set(rows.map((r) => r.address));
     } catch (e) {
       if (missingTable(e)) return new Set();
@@ -329,8 +364,9 @@ export class PgOneCoinRepo {
 
   /**
    * Each coin's trading over its life (0112): net buying summed over its minutes, the newest caps,
-   * the state's distinct buyers and peak. A coin with no minute and no state is absent. Null: 0112
-   * is not applied.
+   * the state's distinct buyers and peak. A coin with no minute and no state is absent, and so is a
+   * coin the feed stopped measuring (0114): its totals stop where its measurement did, and summed as
+   * if whole they would be an undercount read as a fact. Null: 0112 or 0114 is not applied.
    */
   async tradeFacts(addresses: readonly string[]): Promise<ReadonlyMap<string, TradeRollup> | null> {
     if (addresses.length === 0) return new Map();
@@ -348,7 +384,8 @@ export class PgOneCoinRepo {
                     count(*) as n
                from internal.coin_trade_minute m where m.address = a.address) mm on true
            left join internal.coin_trade_state s on s.address = a.address
-          where mm.n > 0 or s.address is not null`,
+          where (mm.n > 0 or s.address is not null)
+            and not exists (select 1 from internal.coin_watch w where w.address = a.address and w.unmeasured_from is not null)`,
         [[...addresses]],
       );
       const truthy = (v: string | null): boolean => v !== null && (v === 'true' || v === 't' || (/^[0-9.eE+-]+$/.test(v) && Number(v) > 0));

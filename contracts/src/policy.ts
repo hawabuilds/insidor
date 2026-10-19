@@ -2175,6 +2175,41 @@ export interface OneCoinPolicy {
     readonly truthAtMs: number;
     readonly truthMinCapUsd: number;
   };
+  /**
+   * The live trade feed that fills 0112's trade tables (services/chainwatch): one log subscription
+   * per watched coin on a key billed by the byte delivered. Every cap here ends in the same place:
+   * the coin, or every coin, is recorded as NOT MEASURED from that instant (0114), never as quiet.
+   */
+  readonly tradeFeed: {
+    /** Off: no subscription is made and every watched coin stays unmeasured. */
+    readonly on: boolean;
+    /** The most bytes one coin may cost over its whole watch; past it, it is unsubscribed. */
+    readonly coinCapBytes: number;
+    /** The most credits the feed may cost in a UTC day, socket and chain calls together. */
+    readonly dayCapCredits: number;
+    /** The key's billing for socket data: `creditsPerBilledBytes` credits per `billedBytes` delivered. */
+    readonly billedBytes: number;
+    readonly creditsPerBilledBytes: number;
+    /** Credits per plain chain call (account reads), and per history call (a transaction, an address's signatures). */
+    readonly creditsPerCall: number;
+    readonly creditsPerHistoryCall: number;
+    /** A day's most launch-transaction reads for a watched coin's missing opening buy (two history calls each). */
+    readonly openingLookupsPerDay: number;
+    /** A day's most whole-transaction reads for a cut log; past it, a cut log makes its coin unmeasured. */
+    readonly truncatedLookupsPerDay: number;
+    /** The most coins subscribed at once (the socket's own limit per connection). */
+    readonly maxCoins: number;
+    /** How often trades are written and the watch list re-read. */
+    readonly flushMs: number;
+    readonly rereadMs: number;
+    /** A probe this often keeps a quiet socket provably alive; no frame for `staleAfterMs` is an outage. */
+    readonly probeEveryMs: number;
+    readonly staleAfterMs: number;
+    /** How often the day's counted cost is logged. */
+    readonly reportEveryMs: number;
+    /** A chain call's timeout. */
+    readonly callTimeoutMs: number;
+  };
 }
 
 /**
@@ -4467,7 +4502,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v120',
+  version: 'policy.v121',
 
   admit: {
     maxAgeMin: 240,
@@ -5737,6 +5772,29 @@ const POLICY_V1: Policy = {
       minBuyers: [5, 10, 15, 25],
       truthAtMs: 3_600_000,
       truthMinCapUsd: 10_000,
+    },
+    /* The trade feed on the free plan (1M credits a month, about 33k a day; socket data billed
+       2 credits per 0.1 MB, plan page read 2026-10-19). 20k a day is the owner's budget for it.
+       20 MB a coin is 400 credits: a hot coin's hour on the curve at about 0.3 MB a minute, while
+       the 19 Oct candidates' quiet curves cost a few kB each. History calls are counted at 10
+       credits, an assumption on the safe side until the dashboard confirms the real rate. */
+    tradeFeed: {
+      on: true,
+      coinCapBytes: 20_000_000,
+      dayCapCredits: 20_000,
+      billedBytes: 100_000,
+      creditsPerBilledBytes: 2,
+      creditsPerCall: 1,
+      creditsPerHistoryCall: 10,
+      openingLookupsPerDay: 300,
+      truncatedLookupsPerDay: 300,
+      maxCoins: 1_000,
+      flushMs: 5_000,
+      rereadMs: 10_000,
+      probeEveryMs: 30_000,
+      staleAfterMs: 75_000,
+      reportEveryMs: 600_000, // ten minutes
+      callTimeoutMs: 10_000,
     },
   },
 
