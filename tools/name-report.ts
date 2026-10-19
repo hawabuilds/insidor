@@ -32,6 +32,10 @@
  *  11. Database disk and bill (the owner, 2026-10-18): the database's size, the disk inferred from
  *      the host's grow rule, the share used, growth a day, and the month's projected bill with its
  *      parts (tools/lib/disk-bill.ts, the runner's disk-alarm model on its hourly samples).
+ *  12. Coin picks (the owner, 2026-10-20): over the last 24 hours, how many posts and narratives got
+ *      a coin, waited for a clear leader, or showed Create; each judged post he made a coin call on,
+ *      right / wrong / no pick while his coin was weighed / his coin never weighed; each split by
+ *      trades or market readings (tools/lib/coin-picks.ts).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -51,6 +55,7 @@ import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerCoinCallRepo } from '
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { funnelLines, funnelRows } from './lib/funnel.ts';
 import { languageLines } from './lib/language-finds.ts';
+import { coinPickSection } from './lib/coin-picks.ts';
 import { diskBillLines } from './lib/disk-bill.ts';
 import { narrativeTimeLines, narrativeTimeRows } from './lib/narrative-times.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
@@ -224,6 +229,11 @@ try {
   say();
   say('## Database disk and bill');
   for (const line of await diskBillLines(db, Date.now(), P.store)) say(line);
+
+  /* 12. Coin picks, the one-coin rule against the owner's calls (the owner, 2026-10-20; tools/lib/coin-picks.ts). */
+  say();
+  say('## Coin picks (last 24h)');
+  for (const line of await coinPickSection(db, until.getTime())) say(line);
 
   const out = arg('--out');
   if (out !== null) writeFileSync(out, lines.join('\n') + '\n');
