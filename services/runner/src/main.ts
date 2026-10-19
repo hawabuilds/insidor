@@ -40,6 +40,7 @@ import { coinModelLoop } from './loops/coin-model.ts';
 import { narrativesLoop } from './loops/narratives.ts';
 import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
+import { oneCoinLoop } from './loops/one-coin.ts';
 import { middleLoop } from './loops/middle.ts';
 import { readingsLoop } from './loops/readings.ts';
 import { nameSearchLoop } from './loops/name-search.ts';
@@ -250,6 +251,9 @@ async function main(): Promise<void> {
         ...runtime.finders,
         log,
       }),
+      /* One post, one coin (Policy.oneCoin): new launches matched to posts and each post's single coin
+         judged on who is buying it, every five seconds, in shadow until the owner says live (loops/one-coin.ts). */
+      oneCoinLoop(runtime.loopDeps.policy.oneCoin.everyMs, runtime.oneCoin),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

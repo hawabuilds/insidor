@@ -92,6 +92,7 @@ import {
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
   PgImageEmbeddingRepo,
+  PgOneCoinRepo,
   PgImagePairRepo,
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
@@ -164,7 +165,8 @@ import type { DiscoverDeps } from './work/discover.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
-import { pictureCoinMatches } from './work/coin-match.ts';
+import { embedCoinPictures, pictureCoinMatches } from './work/coin-match.ts';
+import { newOneCoinState, oneCoinPass, type OneCoinResult } from './work/one-coin.ts';
 import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
@@ -233,6 +235,8 @@ export interface Runtime {
   readonly narratives: () => Promise<NarrativeResult>;
   /** Each post the judge said no to, scored once by our own coin model (the safety net). See work/coin-model.ts. */
   readonly coinModel: () => Promise<CoinModelResult>;
+  /** One post, one coin: launches matched to posts, their trades watched, each post's coin judged. See work/one-coin.ts. */
+  readonly oneCoin: () => Promise<OneCoinResult>;
   /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
   readonly finders: {
     readonly coinLinks: () => Promise<CoinLinkResult>;
@@ -1493,6 +1497,29 @@ export async function withRuntime<T>(
               log: log.child({ step: 'missed-posts' }),
               now: () => Date.now() as Millis,
             }),
+          oneCoin: (() => {
+            const state = newOneCoinState();
+            const embed =
+              cfg.embeddings.state === 'configured'
+                ? voyageEmbed({
+                    client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                    meter,
+                    now: () => Date.now() as Millis,
+                  })
+                : null;
+            const pictures = { embed, meter, mode: cfg.spend.kind, images: new PgImageEmbeddingRepo(db), log: log.child({ step: 'one-coin' }), now: () => Date.now() as Millis };
+            return () =>
+              oneCoinPass(
+                {
+                  repo: new PgOneCoinRepo(db),
+                  ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
+                  policy,
+                  log: log.child({ step: 'one-coin' }),
+                  now: () => Date.now() as Millis,
+                },
+                state,
+              );
+          })(),
           finders: {
             coinLinks: () =>
               coinLinksPass({
