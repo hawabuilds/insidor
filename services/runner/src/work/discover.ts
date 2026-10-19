@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -532,17 +532,22 @@ export interface BandLanguageAsk extends LanguageAsk {
  * What breaks if changed carelessly: a band window computed without the clock overlaps the last
  * one and buys the same posts again, which is the waste this replaces.
  */
-export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] {
+export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined, split?: LanguageSplit): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] {
   const base = feedQueryFor('all', floors, now, policy);
   const ask = (age: number, keyOf: (lang: string | null) => string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] => {
     const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval } };
     /* ★ EACH LANGUAGE ITS OWN WINDOW (work/languages.ts): from where that language's last answered
-       ask ended, so one that failed is asked again and the others are not re-bought. */
+       ask ended, so one that failed is asked again and the others are not re-bought. With the split
+       (`feed.langSplit`) a fresh band's language also has its own floor, and is asked only once its
+       window spans its own spacing. */
     const languages = languageAsks(banded).flatMap((l): BandLanguageAsk[] => {
       const clockKey = keyOf(l.lang);
-      const window = bandWindow(age, clock?.lastUntil(clockKey) ?? null, now, policy);
+      const own = split !== undefined && !late && l.lang !== null;
+      const lastUntil = clock?.lastUntil(clockKey) ?? null;
+      const window = own ? langBandWindow(age, lastUntil, now, split.everyMsOf(l.lang!), policy) : bandWindow(age, lastUntil, now, policy);
       if (window === null) return [];
-      return [{ ...l, clockKey, query: { ...l.query, sinceMs: Math.round(window.since) as Millis, untilMs: Math.round(window.until) as Millis } }];
+      const filter = own ? { ...l.query.filter!, minApproval: bandFloor(age, { ...floors, all: split.floorOf(l.lang!) }, policy) } : l.query.filter;
+      return [{ ...l, clockKey, query: { ...l.query, ...(filter === undefined ? {} : { filter }), sinceMs: Math.round(window.since) as Millis, untilMs: Math.round(window.until) as Millis } }];
     });
     const first = languages[0];
     if (first === undefined) return [];
@@ -557,6 +562,16 @@ export function freshBandQueries(source: string, floors: LaneFloors, now: Millis
     /* ★ LATE BANDS (`feed.fresh.late`): the same tiling at an age in hours, at a fixed floor. Empty while off. */
     ...lateBands(policy).flatMap((b) => ask(b.ageMin, (lang) => lateBandKey(source, b.ageMin, one ? null : lang), lateBandFloor(b.minApproval, floors, policy), true)),
   ];
+}
+
+/**
+ * ★ EACH LANGUAGE'S FLOOR AND SPACING on the fresh bands (`feed.langSplit`), for `freshBandQueries`:
+ * the floor its own adaptation left (internal.feed_lang_floor, 0111), and how often its share lets it
+ * be asked (core `langEveryMs`).
+ */
+export interface LanguageSplit {
+  floorOf(lang: string): number;
+  everyMsOf(lang: string): number;
 }
 
 /* ── the pass ─────────────────────────────────────────────────────────────── */
@@ -604,6 +619,9 @@ export interface DiscoverDeps {
   readonly floors: {
     floors(): Promise<Readonly<Record<string, number>>>;
     set(lane: string, floor: number, at: Millis): Promise<void>;
+    /** Each language's fresh-band floor (0111, `feed.langSplit`). Absent: every language starts at the 'all' floor each pass. */
+    langFloors?(): Promise<Readonly<Record<string, number>>>;
+    setLang?(lang: string, floor: number, at: Millis): Promise<void>;
   };
   /** The day's hard cap — the lower of the environment's and policy's. Sets each lane's target. */
   readonly dailyCapUsd: number;
@@ -799,6 +817,21 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (held !== undefined && Number.isFinite(held) && held > 0) floors[lane] = held;
   }
 
+  /* ★ EACH LANGUAGE'S FLOOR (`feed.langSplit`), as last adapted; a language never adapted starts at
+     the shared 'all' floor. Unreadable: every language starts there this pass, and nothing is lost
+     but this pass's adaptation, which then starts from it. */
+  const splitOn = langSplitOn(deps.policy);
+  const langFloors: Record<string, number> = {};
+  if (splitOn) {
+    try {
+      const held = (await deps.floors.langFloors?.()) ?? {};
+      for (const [lang, floor] of Object.entries(held)) if (Number.isFinite(floor) && floor > 0) langFloors[lang] = floor;
+    } catch (e) {
+      deps.log.warn("could not read the languages' floors; each starts at the shared floor this pass", { err: errorText(e) });
+    }
+  }
+  const langFloor = (lang: string): number => langFloors[lang] ?? floors.all;
+
   /* ── prepare: resolve and price every source before asking any of them ──── */
 
   const plans: SourcePlan[] = [];
@@ -817,7 +850,21 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         /* Fresh bands replace both main lanes: the media lane's posts clear the bands' floor too. */
         else if (fresh && lane === 'media') continue;
         /* A late band's posts are the slow lane's kind (found hours in), so they are stored as its finds. */
-        else if (fresh && lane === 'all') for (const { query, age, late, languages } of freshBandQueries(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane: late ? 'slow' : lane, band: age, late, languages });
+        else if (fresh && lane === 'all') {
+          /* The split's spacing is in posts, so it needs the source's price of one (`feed.langSplit`). */
+          let split: LanguageSplit | undefined;
+          if (splitOn) {
+            let usdPerPost = 0;
+            try {
+              const probe = adapter.estimate({ kind: 'discover', query: feedQueryFor('all', floors, now, deps.policy) });
+              usdPerPost = probe.estUnits > 0 ? probe.usd / probe.estUnits : 0;
+            } catch {
+              /* Unpriced: every language gets the slowest spacing, and the pricing step below says why. */
+            }
+            split = { floorOf: langFloor, everyMsOf: (lang) => langEveryMs(lang, usdPerPost, deps.policy) };
+          }
+          for (const { query, age, late, languages } of freshBandQueries(source, floors, now, deps.policy, deps.fresh, split)) asks.push({ query, lane: late ? 'slow' : lane, band: age, late, languages });
+        }
         else asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
       }
     }
@@ -973,6 +1020,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   const covered = new Map<string, string>();
   /* What each catch-all lane returned this pass, per source — the input to its next floor. */
   const laneReturned = new Map<string, Partial<Record<FeedLane, number>>>();
+  /* ★ WHAT EACH LANGUAGE'S FRESH BANDS RETURNED, and over how many minutes of posting time (`feed.langSplit`). */
+  const langReturned = new Map<string, Map<string, { returned: number; windowMin: number }>>();
 
   /* ★ THE X SEARCH DAY (`feed.searchDay`): the metered bill read once a pass per vendor, and what this
      pass's own pages added since. Null when it could not be read. */
@@ -1298,8 +1347,19 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (estimate.usd === 0 && items.length > 0 && !covered.has(coverKey)) {
       covered.set(coverKey, source);
     }
+    /* With the split, a fresh band's languages move their own floors, each on what it returned. */
+    if (splitOn && band !== null && !late) {
+      const byLang = langReturned.get(source) ?? new Map<string, { returned: number; windowMin: number }>();
+      for (const t of answeredThreads) {
+        if (t.lang === null) continue;
+        const had = byLang.get(t.lang) ?? { returned: 0, windowMin: 0 };
+        const windowMin = t.query.untilMs === null || t.query.sinceMs === null ? 0 : (t.query.untilMs - t.query.sinceMs) / MS_PER_MINUTE;
+        byLang.set(t.lang, { returned: had.returned + t.items.length, windowMin: had.windowMin + windowMin });
+      }
+      langReturned.set(source, byLang);
+    }
     /* A slow lane's slices add up, and so do the fresh bands: the lane's floor moves on what all of them returned. */
-    if (lane !== null && !late) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice || band !== null ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
+    else if (lane !== null && !late) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice || band !== null ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
     /* Each language's band window that answered: its next ask starts where this one ended. A language
        that failed, or was never reached, keeps its window open. */
     if (band !== null) {
@@ -1371,6 +1431,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       for (const lane of FEED_LANES) {
         const got = returned[lane];
         if (got === undefined) continue;
+        /* With the split the fresh bands move each language's floor (below), not the shared one. */
+        if (splitOn && lane === 'all') continue;
         const other = returned[lane === 'all' ? 'media' : 'all'];
         const next = nextFloor(floors[lane], got, day.targets[lane], other === 0, deps.policy);
         if (next.floor !== floors[lane]) {
@@ -1389,6 +1451,29 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           move: next.move,
           floor: next.floor,
         });
+      }
+    }
+  }
+
+  /* ★ EACH LANGUAGE'S FLOOR toward its own target (`feed.langSplit`): its share of the bands' money,
+     over the posting time its asks covered this pass. Live only, and only languages that answered. */
+  if (deps.mode === 'live' && splitOn) {
+    for (const [source, byLang] of langReturned) {
+      const sample = plans.find((p) => p.source === source && p.band !== null && !p.late);
+      const usdPerPost = sample !== undefined && sample.estimate.estUnits > 0 ? sample.estimate.usd / sample.estimate.estUnits : 0;
+      for (const [lang, got] of byLang) {
+        const before = langFloor(lang);
+        const target = langTarget(langPostsPerDay(lang, usdPerPost, deps.policy), got.windowMin, deps.policy);
+        const next = nextFloor(before, got.returned, target, false, deps.policy);
+        if (next.floor !== before || langFloors[lang] === undefined) {
+          try {
+            await deps.floors.setLang?.(lang, next.floor, now);
+            langFloors[lang] = next.floor;
+          } catch (e) {
+            deps.log.error("could not store a language's floor; it starts the next pass where it was", { lang, err: errorText(e) });
+          }
+        }
+        deps.log.info('catch-all language floor', { source, lang, returned: got.returned, windowMin: round(got.windowMin), target: round(target), move: next.move, floor: next.floor, everyMin: round(langEveryMs(lang, usdPerPost, deps.policy) / MS_PER_MINUTE) });
       }
     }
   }

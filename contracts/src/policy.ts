@@ -1606,6 +1606,39 @@ export interface FeedPolicy {
    */
   readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number };
   /**
+   * ★ EACH LANGUAGE ITS OWN FLOOR AND ITS OWN SHARE OF THE NEWEST-POSTS MONEY (the owner, 2026-10-19:
+   * "make the languages proportionate"). With `on` (and `fresh.enabled`), each language of `langs` is
+   * asked by the fresh bands at its OWN adaptive floor (internal.feed_lang_floor, 0111), moved after
+   * every pass toward its own target: its share of `bandsDailyUsd` a day, as posts, over the minutes
+   * of posting time its asks covered (core `langTarget`). So a busy language cannot raise another's
+   * floor, and money follows `shares` — the share of coined viral posts in each language
+   * (tools/lang-shares.ts prints them; normalised over `langs`, a language missing here has none).
+   *
+   * Why per minute of posting time and not per pass: the bands tile posting time, so what a day of
+   * them returns is fixed by the floor whatever the number of passes; a per-pass target (the shared
+   * floor's) spends more the faster passes run, which is part of how 19 Oct 2026 overspent once the
+   * database came nearer (discover passes from 3 to 6 an hour to 12 to 23).
+   *
+   * ★ A SMALL SHARE ASKS LESS OFTEN, NEVER NOT AT ALL. Every ask of a band costs at least one billed
+   * post, even empty. A language is asked on a band only once its window holds the posting time its
+   * share pays `minPostsPerAsk` posts for — every `MS_PER_DAY × bands × minPostsPerAsk ÷ its posts a
+   * day`, never slower than `maxEveryMs` (core `langEveryMs`) — and its window then reaches back that
+   * far, so nothing between asks is skipped; it is found up to that much later instead. A language
+   * whose share pays for a page every pass is asked every pass.
+   *
+   * What breaks if changed carelessly: shares that do not cover `langs` give the missing languages
+   * only `maxEveryMs` and the floor's minimum; a `bandsDailyUsd` larger than what `searchDay`
+   * leaves after the other searches turns the day's pace into the limit, which refuses whole passes instead of raising floors.
+   * Off: the languages share the 'all' floor and the per-pass target, exactly as before.
+   */
+  readonly langSplit: {
+    readonly on: boolean;
+    readonly shares: Readonly<Record<string, number>>;
+    readonly bandsDailyUsd: number;
+    readonly minPostsPerAsk: number;
+    readonly maxEveryMs: number;
+  };
+  /**
    * ★ VIEW READINGS OFTEN ENOUGH FOR THE SHEET'S CHART: every post on For You is read again on a
    * cadence set by its age, and a post whose sheet was just opened is read again when its newest
    * reading is over `openReadMinGapMs` old (services/runner/src/work/readings.ts, its own loop).
@@ -4958,6 +4991,23 @@ const POLICY_V1: Policy = {
        $1.69 an hour from 00:00 to 04:00 UTC, against $0.15 to $0.63 an hour on 2026-10-18. $7, the
        owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
     searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000 },
+    /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
+       tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
+       that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'
+       part of the X search day (feed.searchDay), the rest of which is the middle lane's 15 to 60
+       minutes (~$1.90), the slow and late searches in English (~$0.85), the last short page of every
+       ask (~$0.55) and the narrative-name and quote searches (~$0.30); replayed on the stored posts of
+       18-19 Oct (the report of 2026-10-19), $3.20 sets English's floor near 390 likes (39 at 6
+       minutes, 325 at 50) and Portuguese's, the busiest for its share, near 16,000. 2 posts an ask:
+       the last short page is at most half a small language's money; it asks Korean every ~34
+       minutes, French every ~6 and English every pass. */
+    langSplit: {
+      on: true,
+      shares: { en: 0.795, zxx: 0.063, fr: 0.054, ja: 0.027, es: 0.024, pt: 0.019, qme: 0.01, ko: 0.008 },
+      bandsDailyUsd: 3.2,
+      minPostsPerAsk: 2,
+      maxEveryMs: 3_600_000, // an hour
+    },
     /* OFF until the owner approves the cost (asked 2026-10-16: "show me the extra cost per day
        before switching on; keep the day within ~$50").
        Measured over the 48 hours to 2026-10-16 17:37 UTC from public.feed_post and public.item: For
