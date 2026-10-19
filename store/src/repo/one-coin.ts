@@ -37,6 +37,8 @@ export interface RecentLaunch {
   readonly hash: string | null;
   /** Item ids of the posts its metadata names (internal.coin_post_link). */
   readonly linksPosts: readonly string[];
+  /** The posts those linked posts quote or re-share (one hop), each with the linked post that does. */
+  readonly linksThrough: readonly { readonly itemId: string; readonly via: string }[];
 }
 
 export interface RecentPost {
@@ -106,6 +108,30 @@ const num = (v: unknown): number | null => (v === null || v === undefined ? null
 const hex = (v: unknown): string | null => (v === null || v === undefined ? null : fromBits(v as string));
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []);
 
+interface PostRow {
+  item_id: string;
+  posted_at: string;
+  proposed_name: string | null;
+  alternate_names: unknown;
+  guesses: unknown;
+  bits: string | null;
+}
+
+/** A post's namer guesses and picture hash, read beside its judgement; `hashParam` holds the hash version. */
+const postExtras = (hashParam: string): string => `(select coalesce(jsonb_agg(x) filter (where x is not null), '[]'::jsonb)
+                 from internal.name_guess g, lateral (values (g.name), (g.ticker)) as v(x) where g.item_id = i.item_id) as guesses,
+              (select h.bits::text from internal.image_embedding e
+                 join internal.image_hash h on h.uri = e.uri and h.version = ${hashParam} and h.bits is not null
+                where e.subject_kind = 'item' and e.subject_id = i.item_id limit 1) as bits`;
+
+const postOf = (r: PostRow): RecentPost => ({
+  itemId: r.item_id,
+  postedAtMs: new Date(r.posted_at).getTime(),
+  judgeNames: [...(r.proposed_name === null || r.proposed_name.trim() === '' ? [] : [r.proposed_name]), ...strings(r.alternate_names)],
+  guessNames: strings(r.guesses),
+  hash: hex(r.bits),
+});
+
 export type PickKind = 'post' | 'narrative';
 const PICK_TABLE: Readonly<Record<PickKind, { readonly table: string; readonly key: string }>> = {
   post: { table: 'internal.post_coin_pick', key: 'item_id' },
@@ -121,17 +147,22 @@ export class PgOneCoinRepo {
 
   /**
    * Launches that arrived since `sinceMs` (the live stream's and the backfill's), newest first, with
-   * their metadata's name, ticker and picture, the picture's hash when hashed, and the posts their
-   * metadata names. The launch time is the coin's own, else when we first saw it.
+   * their metadata's name, ticker and picture, the picture's hash when hashed, the posts their
+   * metadata names, and the posts those quote or re-share (one hop: a coin's own account quoting
+   * the viral post is the usual link). The launch time is the coin's own, else when we first saw it.
    */
   async recentLaunches(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
-    const rows = await this.#db.query<{ address: string; asset_key: string; launched_at: string; name: string | null; ticker: string | null; image_uri: string | null; bits: string | null; links: string[] | null }>(
+    const rows = await this.#db.query<{ address: string; asset_key: string; launched_at: string; name: string | null; ticker: string | null; image_uri: string | null; bits: string | null; links: string[] | null; through: string[] | null }>(
       `select a.address, a.asset_key, coalesce(a.minted_at, a.first_seen_at) as launched_at,
               coalesce(m.name, a.name) as name, coalesce(m.ticker, a.symbol) as ticker,
               coalesce(m.image_uri, a.image_uri) as image_uri, h.bits::text as bits,
               (select array_agg(distinct i.item_id) from internal.coin_post_link l
                  join public.item i on i.source = l.source and i.source_item_id = l.source_item_id
-                where l.asset_key = a.asset_key) as links
+                where l.asset_key = a.asset_key) as links,
+              (select array_agg(distinct o.target || ' ' || i.item_id) from internal.coin_post_link l
+                 join public.item i on i.source = l.source and i.source_item_id = l.source_item_id
+                 cross join lateral (values (i.reproduction_of), (i.rebroadcast_of)) as o(target)
+                where l.asset_key = a.asset_key and o.target is not null and o.target <> i.item_id) as through
          from public.asset a
          left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
          left join internal.image_hash h on h.uri = coalesce(m.image_uri, a.image_uri) and h.version = $3 and h.bits is not null
@@ -149,6 +180,10 @@ export class PgOneCoinRepo {
       imageUri: r.image_uri,
       hash: hex(r.bits),
       linksPosts: r.links ?? [],
+      linksThrough: (r.through ?? []).flatMap((t) => {
+        const [itemId, via] = t.split(' ');
+        return itemId === undefined || via === undefined ? [] : [{ itemId, via }];
+      }),
     }));
   }
 
@@ -159,13 +194,8 @@ export class PgOneCoinRepo {
    * post's embedded picture.
    */
   async recentPosts(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentPost[]> {
-    const rows = await this.#db.query<{ item_id: string; posted_at: string; proposed_name: string | null; alternate_names: unknown; guesses: unknown; bits: string | null }>(
-      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names,
-              (select coalesce(jsonb_agg(x) filter (where x is not null), '[]'::jsonb)
-                 from internal.name_guess g, lateral (values (g.name), (g.ticker)) as v(x) where g.item_id = i.item_id) as guesses,
-              (select h.bits::text from internal.image_embedding e
-                 join internal.image_hash h on h.uri = e.uri and h.version = $3 and h.bits is not null
-                where e.subject_kind = 'item' and e.subject_id = i.item_id limit 1) as bits
+    const rows = await this.#db.query<PostRow>(
+      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, ${postExtras('$3')}
          from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
                  from internal.post_judgement where judged_at >= $1 order by item_id, judged_at desc) j
          join public.item i on i.item_id = j.item_id
@@ -174,13 +204,24 @@ export class PgOneCoinRepo {
         limit $2`,
       [new Date(sinceMs).toISOString(), limit, hashVersion],
     );
-    return rows.map((r) => ({
-      itemId: r.item_id,
-      postedAtMs: new Date(r.posted_at).getTime(),
-      judgeNames: [...(r.proposed_name === null || r.proposed_name.trim() === '' ? [] : [r.proposed_name]), ...strings(r.alternate_names)],
-      guessNames: strings(r.guesses),
-      hash: hex(r.bits),
-    }));
+    return rows.map(postOf);
+  }
+
+  /**
+   * These posts by id, whatever their age, on the same terms as `recentPosts` (observed, the newest
+   * judgement coinable): the posts a launch's link names that are older than the window.
+   */
+  async postsByIds(itemIds: readonly string[], hashVersion: string): Promise<readonly RecentPost[]> {
+    if (itemIds.length === 0) return [];
+    const rows = await this.#db.query<PostRow>(
+      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, ${postExtras('$2')}
+         from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
+                 from internal.post_judgement where item_id = any($1::text[]) order by item_id, judged_at desc) j
+         join public.item i on i.item_id = j.item_id
+        where i.origin = 'observed' and j.coinable is true`,
+      [[...new Set(itemIds)], hashVersion],
+    );
+    return rows.map(postOf);
   }
 
   /** Picture similarity between coins (by asset key) and posts, where both are embedded in `space`. */

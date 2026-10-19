@@ -11,6 +11,14 @@
  *                    perceptual hash first, the embedding only on a coin a name or link already
  *                    tied (the caller pays for that, `wantsPicture` says when). A coin launched
  *                    more than `launchLeadMs` before the post is never a candidate by this path.
+ *
+ * ★ A LINK IS NOT BOUND BY THE WINDOW, AND IT REACHES ONE HOP. `postWindowMs` keeps a name or a
+ * picture — facts any coin can share by chance — from tying a launch to a post of yesterday. A link
+ * is the creators pointing at the post, which no chance produces, so it ties at any age. And a coin
+ * often links its own account's quote or re-share of the viral post rather than the post itself
+ * (HI, 19 Oct: launched 24 h after the baby post, linking its account's quote of it): the caller
+ * passes those originals in `linksThrough`, and they tie as a link. One hop only — a quote of a
+ * quote is somebody else's post, and following chains would tie a coin to whatever went viral first.
  *   `pickOneCoin`    the candidates' trading so far, judged from `judgeFromMs` after each launch
  *                    and again on every update:
  *                      out     the creator's wallet sold, or the cap fell under `rugShareOfPeak` of
@@ -65,6 +73,11 @@ export interface LaunchSide {
   readonly ticker: string | null;
   /** The posts its metadata names (internal.coin_post_link), by item id. */
   readonly linksPosts: ReadonlySet<string>;
+  /**
+   * The posts its linked posts quote or re-share (public.item reproduction_of / rebroadcast_of),
+   * each with the linked post that points at it. One hop. Absent: none known.
+   */
+  readonly linksThrough?: ReadonlyMap<string, string>;
   /** Its picture's perceptual hash, hex; null when not hashed yet. */
   readonly hash: string | null;
   /** Its picture's embedding similarity to each post's, where both were embedded. */
@@ -92,6 +105,8 @@ export interface LaunchMatch {
   readonly similarity: number | null;
   /** Launch minus post, ms: negative when the coin came first (inside `launchLeadMs`). */
   readonly launchedAfterMs: number;
+  /** The coin's linked post that quotes or re-shares this one, when the link reached it that way. */
+  readonly linkedThrough: string | null;
   /** A name or link tied it and its picture was not compared by embedding yet: worth paying for. */
   readonly wantsPicture: boolean;
 }
@@ -108,9 +123,13 @@ export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bar
   const out: LaunchMatch[] = [];
   for (const p of posts) {
     const after = coin.launchedAtMs - p.postedAtMs;
-    if (after < -bars.launchLeadMs || after > bars.postWindowMs) continue;
+    if (after < -bars.launchLeadMs) continue;
+    const through = coin.linksPosts.has(p.itemId) ? null : coin.linksThrough?.get(p.itemId) ?? null;
+    const linked = coin.linksPosts.has(p.itemId) || through !== null;
+    /* Past the window only a link ties: a name or a picture shared with yesterday's post is chance. */
+    if (after > bars.postWindowMs && !linked) continue;
     const evidence: MatchEvidence[] = [];
-    if (coin.linksPosts.has(p.itemId)) evidence.push('link');
+    if (linked) evidence.push('link');
     const side = { name: coin.name, ticker: coin.ticker };
     if (p.judgeNames.length > 0 && nameMatch(p.judgeNames, side, bars) === 'exact') evidence.push('name_judge');
     if (p.guessNames.length > 0 && nameMatch(p.guessNames, side, bars) === 'exact') evidence.push('name_guess');
@@ -119,7 +138,7 @@ export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bar
     if ((gap !== null && gap <= bars.maxHashDistance) || (similarity !== null && similarity >= bars.minSimilarity)) evidence.push('picture');
     if (evidence.length === 0) continue;
     const tied = evidence.some((e) => e !== 'picture');
-    out.push({ itemId: p.itemId, address: coin.address, evidence, hashDistance: gap, similarity, launchedAfterMs: after, wantsPicture: tied && similarity === null });
+    out.push({ itemId: p.itemId, address: coin.address, evidence, hashDistance: gap, similarity, launchedAfterMs: after, linkedThrough: through, wantsPicture: tied && similarity === null });
   }
   return out;
 }

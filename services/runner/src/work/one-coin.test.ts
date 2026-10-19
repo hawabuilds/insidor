@@ -22,6 +22,8 @@ const NOW = 10_000 * MIN;
 interface World {
   launches: RecentLaunch[];
   posts: RecentPost[];
+  /** Posts older than the window, read only by id. */
+  older: RecentPost[];
   named: ExistingCoinRow[];
   trades: Map<string, TradeRollup> | null;
   feedAt: number | null;
@@ -37,6 +39,7 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
   return {
     recentLaunches: async () => w.launches,
     recentPosts: async () => w.posts,
+    postsByIds: async (ids) => w.older.filter((p) => ids.includes(p.itemId)),
     similarities: async () => new Map(),
     unembedded: async (keys) => new Set(keys),
     upsertCandidates: async (rows) => {
@@ -65,9 +68,9 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
   };
 }
 
-const world = (o: Partial<World> = {}): World => ({ launches: [], posts: [], named: [], trades: null, feedAt: null, market: new Map(), candidates: [], watched: [], picks: new Map(), writes: [], embedded: [], ...o });
+const world = (o: Partial<World> = {}): World => ({ launches: [], posts: [], older: [], named: [], trades: null, feedAt: null, market: new Map(), candidates: [], watched: [], picks: new Map(), writes: [], embedded: [], ...o });
 const post: RecentPost = { itemId: 'x:2111', postedAtMs: NOW - 20 * MIN, judgeNames: ['Pancake'], guessNames: ['PANCAT'], hash: 'ffffffffffffffff' };
-const launch = (o: Partial<RecentLaunch>): RecentLaunch => ({ address: 'A1', assetKey: 'k:A1', launchedAtMs: NOW - 12 * MIN, name: 'Other', ticker: 'OTH', imageUri: 'https://img/a1', hash: null, linksPosts: [], ...o });
+const launch = (o: Partial<RecentLaunch>): RecentLaunch => ({ address: 'A1', assetKey: 'k:A1', launchedAtMs: NOW - 12 * MIN, name: 'Other', ticker: 'OTH', imageUri: 'https://img/a1', hash: null, linksPosts: [], linksThrough: [], ...o });
 
 const deps = (w: World, now = NOW): OneCoinDeps => ({
   repo: fakeRepo(w),
@@ -95,6 +98,19 @@ test('★ a launch tied by link, name or picture is a candidate, watched for an 
   /* Only the coins a name or link tied are embedded; the picture-only one was compared by hash. */
   assert.deepEqual(w.embedded.sort(), ['k:LINK', 'k:NAME']);
   assert.equal(r.candidates, 3);
+});
+
+test('★ a launch linking its own quote of an older post is that post\'s candidate, the post read by id', async () => {
+  const old: RecentPost = { itemId: 'x:baby', postedAtMs: NOW - 26 * 60 * MIN, judgeNames: ['BABY'], guessNames: [], hash: null };
+  const w = world({
+    posts: [post],
+    older: [old],
+    launches: [launch({ address: 'HI', assetKey: 'k:HI', name: 'Human Intelligence', ticker: 'HI', linksPosts: ['x:quote'], linksThrough: [{ itemId: 'x:baby', via: 'x:quote' }] })],
+  });
+  await oneCoinPass(deps(w), newOneCoinState());
+  assert.deepEqual(w.candidates.map((c) => [c.itemId, c.address]), [['x:baby', 'HI']]);
+  assert.deepEqual(w.candidates[0]?.evidence['ties'], ['link']);
+  assert.equal(w.candidates[0]?.evidence['linkedThrough'], 'x:quote');
 });
 
 test('★ without trade data the pick is judged on readings, and the evidence says so', async () => {
