@@ -107,3 +107,25 @@ test("a coin the poster's own profile names says so, as a fact beside the others
   assert.deepEqual(evidenceFacts(e), ["The poster's bio names this coin", 'Launched 1h after']);
   assert.equal(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, posterBioNamesCoin: false }).posterBio, undefined, 'only a literal true is said');
 });
+
+/* ── one post, one coin: the card's two states, as the server sends them in live mode ── */
+
+test('★ one post, one coin: the picked coin is "Coin for this post" with Buy, and its facts beneath', async () => {
+  const { decodeCoinEvidence } = await import('./api/decode.ts');
+  const evidence = decodeCoinEvidence({ linksPost: true, samePicture: null, launchedAfterMs: 180_000, picked: true });
+  assert.equal(evidence.picked, true);
+  const s = postCoinStatus({ kind: 'matched', coin: coin({ marketCapUsd: { v: 42_000 } }), evidence });
+  assert.match(s.line, /^Coin for this post: \$FERRY/);
+  assert.deepEqual(s.actions.map((a) => a.kind), ['buy']);
+  assert.deepEqual(s.facts, ['Links this post', 'Launched 3m after']);
+});
+
+test('★ one post, one coin: no pick is Create for everyone, and the same-name list is the owner\'s alone', () => {
+  const link = decodeCoinLink({ kind: 'unsure', claimCount: 5, ownerList: true });
+  const viewer = postCoinStatus(link);
+  assert.equal(viewer.line, 'No coin yet');
+  assert.deepEqual(viewer.actions, [{ kind: 'create' }]);
+  assert.deepEqual(postCoinStatus(link, true).actions.map((a) => a.kind), ['see', 'create']);
+  /* Without the mark (shadow, as today) the list is everyone's. */
+  assert.deepEqual(postCoinStatus(decodeCoinLink({ kind: 'unsure', claimCount: 5 })).actions.map((a) => a.kind), ['see', 'create']);
+});

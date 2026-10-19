@@ -2110,6 +2110,74 @@ export interface PostCoinWeights {
 }
 
 /**
+ * ONE POST, ONE COIN (the owner, 2026-10-19; core/src/match/one-coin.ts): a post's — and a
+ * narrative's — single coin, chosen by who is actually buying it within minutes of its launch, or
+ * none, when the card offers Create. The thresholds are the replay's best trade-off on 15-19 Oct
+ * (wrong 16%, false pick 11% on the fair set, scratch replay.md); the buyer bar had no data to fit
+ * and is provisional. A weekly refit may propose others (internal.one_coin_fit, 0113); a proposal
+ * the replay shows is better replaces these numbers at run time, these stay the fallback.
+ */
+export interface OneCoinPolicy {
+  /**
+   * 'shadow': the rule runs and writes internal.post_coin_pick, and the cards and pushes stay as
+   * they were. 'live': the card shows the pick (or Create), and a watched post's push fires on it.
+   */
+  readonly mode: 'shadow' | 'live';
+  /** How often the matcher and the rule run (the runner's one-coin loop). */
+  readonly everyMs: number;
+  /** A new launch is matched against the posts of this long before it. */
+  readonly postWindowMs: number;
+  /** A launch this long before the post still counts as the post's (the post's own clock is loose). */
+  readonly launchLeadMs: number;
+  /** Launches are matched again for this long after they arrive: metadata and hashes come late. */
+  readonly rematchMs: number;
+  /** A candidate's trades are watched, and its post's pick re-judged, for this long after its launch. */
+  readonly watchMs: number;
+  /** A candidate is judged from this long after its launch… */
+  readonly judgeFromMs: number;
+  /** …and a pick still standing this long after the picked coin's launch is confirmed. */
+  readonly confirmByMs: number;
+  /** A coin is picked only at this market cap or more. */
+  readonly minCapUsd: number;
+  /** …and when its net buying is at least this many times every rival's. */
+  readonly leadRatio: number;
+  /** …and when this many distinct wallets bought it. */
+  readonly minUniqueBuyers: number;
+  /** A held coin is handed over only to a rival with this many times its net buying. */
+  readonly handOverRatio: number;
+  /** A coin whose cap fell under this share of its peak is out (the rugs of the replay). */
+  readonly rugShareOfPeak: number;
+  /** Without trade data: the cap a coin opens at, so its climb is the cap over it (the replay's rule). */
+  readonly openingCapUsd: number;
+  /** The trade feed counts as running when any watched coin's trades were updated this recently. */
+  readonly tradeFeedFreshMs: number;
+  /** Picture evidence: hashes this close are the same picture; an embedding this similar is too. */
+  readonly picture: { readonly maxHashDistance: number; readonly minSimilarity: number };
+  /**
+   * The second path: a post that arrives after its coin exists. The biggest coin of its exact name
+   * at the post's time, if its newest reading is this recent and its cap at least `minCapUsd`.
+   */
+  readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number };
+  /** Per pass at most: launches matched, posts looked at by the second path, pictures embedded, subjects judged. */
+  readonly perPass: { readonly launches: number; readonly posts: number; readonly embeds: number; readonly subjects: number };
+  /**
+   * The weekly refit (tools/onecoin-refit.ts): its cadence, the history it reads, the grid it
+   * tries, and how many owner or +1h truths it needs before any proposal may replace the current.
+   */
+  readonly refit: {
+    readonly everyMs: number;
+    readonly lookbackMs: number;
+    readonly minCases: number;
+    readonly minCapsUsd: readonly number[];
+    readonly ratios: readonly number[];
+    readonly minBuyers: readonly number[];
+    /** The +1h truth: the biggest candidate at launch + this long is the real coin, when at least `truthMinCapUsd`. */
+    readonly truthAtMs: number;
+    readonly truthMinCapUsd: number;
+  };
+}
+
+/**
  * Buying and selling (services/trade). Everything here is behind the TRADING switch, which is off
  * unless the deploy turns it on, and the allowlist of wallets, which is empty unless it names one.
  */
@@ -4154,6 +4222,8 @@ export interface Policy {
   readonly origin: OriginPolicy;
   readonly universe: UniversePolicy;
   readonly postCoin: PostCoinPolicy;
+  /** One post, one coin: the coin chosen by who is buying it, or none (core match/one-coin.ts). */
+  readonly oneCoin: OneCoinPolicy;
   readonly search: SearchPolicy;
   readonly trade: TradePolicy;
   readonly wallet: WalletPolicy;
@@ -5631,6 +5701,42 @@ const POLICY_V1: Policy = {
     tradesRead: 1_000,
     /* Ten minutes: fine enough to see a real move, coarse enough that a day is 144 points. */
     snapshotGapMs: 600_000,
+  },
+
+  /* ONE POST, ONE COIN (the owner approved 2026-10-19). SHADOW until he has seen a day of picks
+     against what ran (tools/onecoin-shadow.ts). The numbers are the replay's: $15k, 3x, re-judged on
+     every update, the rug floor at 30% of the peak; 15 buyers is provisional, no buyer data existed. */
+  oneCoin: {
+    mode: 'shadow',
+    everyMs: 5_000,
+    postWindowMs: 21_600_000, // six hours
+    launchLeadMs: 600_000, // ten minutes
+    rematchMs: 180_000, // three minutes
+    watchMs: 3_600_000, // an hour
+    judgeFromMs: 300_000, // five minutes
+    confirmByMs: 600_000, // ten minutes
+    minCapUsd: 15_000,
+    leadRatio: 3,
+    minUniqueBuyers: 15,
+    handOverRatio: 3,
+    rugShareOfPeak: 0.3,
+    /* pump's opening cap in 15-19 Oct's first readings, the median. */
+    openingCapUsd: 2_900,
+    tradeFeedFreshMs: 120_000,
+    /* 10 bits is postCoin's same picture; 0.82 is the replay's "likely" picture. */
+    picture: { maxHashDistance: 10, minSimilarity: 0.82 },
+    existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000 },
+    perPass: { launches: 2_000, posts: 200, embeds: 20, subjects: 500 },
+    refit: {
+      everyMs: 604_800_000, // a week
+      lookbackMs: 1_209_600_000, // two weeks
+      minCases: 30,
+      minCapsUsd: [5_000, 8_000, 15_000, 25_000],
+      ratios: [2, 3, 5],
+      minBuyers: [5, 10, 15, 25],
+      truthAtMs: 3_600_000,
+      truthMinCapUsd: 10_000,
+    },
   },
 
   search: {

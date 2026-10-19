@@ -67,6 +67,44 @@ export interface CoinMatchResult {
 /* The port's id is `embed:<vendor>/<model>`; the meter's line is the vendor's. */
 const embedVendor = (embed: EmbedPort): string => embed.id.replace(/^embed:/, '').split('/')[0] ?? embed.id;
 
+/**
+ * Coins' pictures embedded on the embeddings line and recorded under their asset key: the one paid
+ * path for a coin's picture, shared with the one-coin matcher (work/one-coin.ts), which asks it only
+ * for coins a name or a link already tied to a post. A dry run, a refused line or a failed call
+ * embeds nothing and says so; the coins stay uncompared, never "different". Returns how many were.
+ */
+export async function embedCoinPictures(
+  deps: Pick<CoinMatchDeps, 'embed' | 'meter' | 'mode' | 'images' | 'log' | 'now'>,
+  coins: readonly { readonly assetKey: string; readonly uri: string }[],
+  purpose: string,
+): Promise<number> {
+  const embed = deps.embed;
+  if (coins.length === 0 || embed?.embedMedia === undefined) return 0;
+  if (deps.mode === 'dry') {
+    deps.log.info(`DRY RUN — coin pictures for ${purpose}, not sent`, { pictures: coins.length });
+    return 0;
+  }
+  let embedded = 0;
+  try {
+    const line = deps.meter.line(embedVendor(embed));
+    const result = await embed.embedMedia(
+      coins.map((r) => ({ kind: 'image' as const, uri: r.uri, width: null, height: null, durationMs: null })),
+      { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + EMBED_DEADLINE_MS) as Millis },
+    );
+    for (const [i, vector] of result.value.entries()) {
+      const r = coins[i];
+      if (r === undefined || vector === null) continue;
+      await deps.images.record('asset', r.assetKey, r.uri, vector.space, vector.values, deps.now());
+      embedded += 1;
+    }
+    deps.log.info(`coin pictures embedded for ${purpose}`, { pictures: coins.length, embedded, usd: result.spend.usd });
+  } catch (e) {
+    if (e instanceof BudgetRefused) deps.log.warn(`coin pictures for ${purpose} paused for budget; those coins go uncompared`, { pictures: coins.length });
+    else deps.log.error(`coin pictures for ${purpose} failed; those coins go uncompared`, { pictures: coins.length, err: errorText(e) });
+  }
+  return embedded;
+}
+
 export async function pictureCoinMatches(deps: CoinMatchDeps, windowMs: number): Promise<CoinMatchResult> {
   const bars = deps.policy.group.image;
   const rows = await deps.coins.postCoinPictures(bars.space, deps.policy.origin.launchAllowanceMs, windowMs, MATCH_ROWS_PER_PASS);
@@ -83,30 +121,7 @@ export async function pictureCoinMatches(deps: CoinMatchDeps, windowMs: number):
     else unembedded.push(r);
   }
   if (reused > 0) deps.log.info('coin pictures copied from the same picture already held', { pictures: reused });
-  const embed = deps.embed;
-  if (unembedded.length > 0 && embed?.embedMedia !== undefined) {
-    if (deps.mode === 'dry') {
-      deps.log.info('DRY RUN — coin pictures for post matching, not sent', { pictures: unembedded.length });
-    } else {
-      try {
-        const line = deps.meter.line(embedVendor(embed));
-        const result = await embed.embedMedia(
-          unembedded.map((r) => ({ kind: 'image' as const, uri: r.coinUri, width: null, height: null, durationMs: null })),
-          { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + EMBED_DEADLINE_MS) as Millis },
-        );
-        for (const [i, vector] of result.value.entries()) {
-          const r = unembedded[i];
-          if (r === undefined || vector === null) continue;
-          await deps.images.record('asset', r.assetKey, r.coinUri, vector.space, vector.values, deps.now());
-          embedded += 1;
-        }
-        deps.log.info('coin pictures embedded for post matching', { pictures: unembedded.length, embedded, usd: result.spend.usd });
-      } catch (e) {
-        if (e instanceof BudgetRefused) deps.log.warn('coin pictures for post matching paused for budget; those coins go uncompared', { pictures: unembedded.length });
-        else deps.log.error('coin pictures for post matching failed; those coins go uncompared', { pictures: unembedded.length, err: errorText(e) });
-      }
-    }
-  }
+  if (unembedded.length > 0) embedded = await embedCoinPictures(deps, unembedded.map((r) => ({ assetKey: r.assetKey, uri: r.coinUri })), 'post matching');
 
   /* ── the judge on borderline pairs (compared on an earlier pass) ─────── */
   let asked = 0;

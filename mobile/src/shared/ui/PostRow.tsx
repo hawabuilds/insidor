@@ -86,14 +86,15 @@ const NO_COIN = { known: false, pending: 'not_minted' } as const;
  * `extra`: a strip under the coin line that the card does not decide (the owner's controls).
  * `watch`: the Watch star, last on the coin line's row, drawn by the caller (shared/ui/WatchStar.tsx).
  * `cardRef`: the card's element, for a caller that times what is on screen (the owner's, features/owner/useSeen.ts).
+ * `owner`: the owner is looking, so a list kept for the owner (`ownerList`) is offered; false for everyone else.
  */
-export function PostRow({ post, now, handlers, extra = null, watch = null, sortLine = null, cardRef }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; sortLine?: { readonly text: string; readonly up: boolean } | null; cardRef?: ((el: Element | null) => void) | undefined }) {
+export function PostRow({ post, now, handlers, extra = null, watch = null, sortLine = null, cardRef, owner = false }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; sortLine?: { readonly text: string; readonly up: boolean } | null; cardRef?: ((el: Element | null) => void) | undefined; owner?: boolean }) {
   /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
      so the card says what the sheet and token page say. The card itself never polls. */
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
   const cap = useCoinCap(own?.address ?? '', own?.marketCapUsd ?? NO_COIN, false, own?.priceUsd ?? null);
   const coins = own !== null && (post.coins.kind === 'one' || post.coins.kind === 'matched') ? { ...post.coins, coin: { ...own, marketCapUsd: cap } } : post.coins;
-  const status = postCoinStatus(coins);
+  const status = postCoinStatus(coins, owner);
   /* The English when the post was written in another language, with its line (Translated.tsx). */
   const words = useShownWords(post);
 

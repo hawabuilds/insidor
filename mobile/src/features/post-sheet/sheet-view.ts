@@ -114,6 +114,15 @@ export type CardFoot =
   /** No button: still checking, or the check failed. */
   | { readonly kind: 'line'; readonly line: string };
 
+/**
+ * One post, one coin (the server's live mode): the post's coin line is the pick or Create, and the
+ * list of coins that only share the name is the owner's. True when this line came from that rule,
+ * so the sheet offers no top coin and no "All N coins" to anyone but the owner.
+ */
+export function listIsOwners(coins: PostCoinLink): boolean {
+  return (coins.kind === 'unsure' && coins.ownerList === true) || (coins.kind === 'matched' && coins.evidence.picked === true);
+}
+
 /** Why a post's own coin is its own, in the card's words: the facts, or that its narrative names it. */
 export function provenWhy(coins: PostCoinLink, facts: (e: CoinEvidence) => readonly string[]): string {
   if (coins.kind === 'matched') return facts(coins.evidence).join(', ') || 'Proven from this post';
