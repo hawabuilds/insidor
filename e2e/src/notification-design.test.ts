@@ -19,8 +19,11 @@ import { checkStarred } from '@insidor/notify/starred.ts';
 import { checkWatched } from '@insidor/notify/watch.ts';
 
 import { migratedDb } from './db.ts';
+/* These cases were written for the matcher in shadow; the live cards and pushes have their own cases. */
+const SHADOW_POLICY = { ...DEFAULT_POLICY, oneCoin: { ...DEFAULT_POLICY.oneCoin, mode: 'shadow' as const } };
 
-const P = DEFAULT_POLICY.notify;
+
+const P = SHADOW_POLICY.notify;
 const NOW = Date.now();
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -68,29 +71,29 @@ test('★ every new For You post and every coin found for one is listed, never p
 test('★ blowing up: the first look pushes nothing; then the coinless riser goes first, one push a pass, three a day three hours apart, the rest listed', async () => {
   const { db, sent, deliver } = await people(2);
   await card(db, 'old', { before: 1_000, now: 6_000, coins: { kind: 'none' } });
-  assert.equal(await checkBlowingUp(db, DEFAULT_POLICY, NOW), 0, 'the first look remembers what is already blowing up');
+  assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 0, 'the first look remembers what is already blowing up');
 
   await card(db, 'coined', { before: 1_000, now: 9_000, coins: { kind: 'one', coin: { address: 'Coin111', ticker: 'CN', marketCapUsd: { v: 12_000 } } } });
   await card(db, 'fresh', { before: 1_000, now: 5_000, coins: { kind: 'none' } });
   await card(db, 'slow', { before: 1_000, now: 1_200, coins: { kind: 'none' } });
-  assert.equal(await checkBlowingUp(db, DEFAULT_POLICY, NOW), 4, 'two picks to two people; the slow post and the already-seen one are not picks');
+  assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 4, 'two picks to two people; the slow post and the already-seen one are not picks');
   const order = await db.query<{ subject: string }>(`select subject from people.alert_queue where user_id = 'u1' order by queue_id`);
   assert.deepEqual(order.map((r) => r.subject), ['x:fresh', 'x:coined'], 'no coin yet goes first, though the coined post is faster');
 
   assert.deepEqual(await deliver(), ['push', 'push', 'daily-limit', 'daily-limit'], 'the coinless pick to each person; the coined one the same pass is listed');
   assert.equal(sent[0]?.title, 'Rising fast, no coin yet');
   assert.match(sent[0]?.body ?? '', /^@fresh: Post fresh words .*views, \+150K in 30m$/);
-  assert.equal(await checkBlowingUp(db, DEFAULT_POLICY, NOW), 0, 'each post is a pick once, ever');
+  assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 0, 'each post is a pick once, ever');
 
   /* Three hours later the allowance has room again; after three pushes in a day it does not. */
   await db.query(`update people.alert set at = now() - interval '3 hours 1 minute' where delivery = 'push'`);
   await card(db, 'next', { before: 1_000, now: 7_000, coins: { kind: 'none' } });
-  await checkBlowingUp(db, DEFAULT_POLICY, NOW);
+  await checkBlowingUp(db, SHADOW_POLICY, NOW);
   assert.deepEqual(await deliver(), ['push', 'push']);
   await db.query(`update people.alert set at = at - interval '3 hours 1 minute' where delivery = 'push'`);
   await db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery, at) values ('u1', 'blowing_up', 'x:third', 0, 't', 'b', '/#/', '{}', 'push', now() - interval '3 hours 30 minutes')`);
   await card(db, 'fourth', { before: 1_000, now: 7_000, coins: { kind: 'none' } });
-  await checkBlowingUp(db, DEFAULT_POLICY, NOW);
+  await checkBlowingUp(db, SHADOW_POLICY, NOW);
   assert.deepEqual(await deliver(), ['daily-limit', 'push'], 'u1 had three in the day; u2 two');
 });
 
@@ -101,12 +104,12 @@ test('★ a brand-new narrative taking off is a blowing-up pick, after coinless 
       `insert into public.story_view (story_id, payload, found_at, views_total, dead) values ($1, $2, now(), 1, false) on conflict (story_id) do update set payload = excluded.payload`,
       [id, JSON.stringify({ title: `Narrative ${id}`, provenance: { kind: 'observed' }, firstSeenAt: { at: NOW - ageMs }, inWindow: [{ hours: 1, newPosts: posts, viewsGained: { v: views } }] })],
     );
-  await checkBlowingUp(db, DEFAULT_POLICY, NOW);
+  await checkBlowingUp(db, SHADOW_POLICY, NOW);
   await page('n-new', 2 * HOUR, 6, 2_100_000);
   await page('n-old', 30 * HOUR, 40, 9_000_000);
   await page('n-small', HOUR, 2, 2_000_000);
   await db.query(`insert into people.watch (user_id, story_id) values ('u2', 'n-new')`);
-  assert.equal(await checkBlowingUp(db, DEFAULT_POLICY, NOW), 1, 'only the new one over both bars, and not to its starrer');
+  assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 1, 'only the new one over both bars, and not to its starrer');
   assert.deepEqual(await deliver(), ['push']);
   assert.deepEqual(sent.map((s) => [s.title, s.body]), [['New narrative taking off: Narrative n-new', '6 new posts, +2.1M views in the last hour']]);
 });
@@ -154,17 +157,17 @@ test('★ a saved post\'s first settled coin is pushed at once; a post that show
   await line('x:2', { kind: 'one', coin: { address: 'Had111', ticker: 'HAD' }, evidence: { linksPost: true } });
   await db.query(`insert into people.post_watch (user_id, item_id) values ('u1', 'x:1'), ('u2', 'x:2')`);
   const state = { cursor: new Date(NOW).toISOString() };
-  assert.equal(await checkWatched(db, { policy: P, now: () => NOW }, state), 1, 'the first look: u2\'s post already had its coin, which is listed as before, never a first');
+  assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 1, 'the first look: u2\'s post already had its coin, which is listed as before, never a first');
   assert.deepEqual(await deliver(), ['list-only']);
 
   await line('x:1', { kind: 'unsure', claimCount: 3 });
-  assert.equal(await checkWatched(db, { policy: P, now: () => NOW }, state), 0, 'unsure is not a coin');
+  assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 0, 'unsure is not a coin');
   await line('x:1', { kind: 'one', coin: { address: 'Fal111', ticker: 'FALCON', marketCapUsd: { v: 3_000 } }, evidence: { linksPost: true } });
-  assert.equal(await checkWatched(db, { policy: P, now: () => NOW }, state), 1);
+  assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 1);
   assert.deepEqual(await deliver(), ['push']);
   assert.deepEqual(sent.map((s) => [s.title, s.body]), [['$FALCON is the first coin for a post you saved', '"Falcon 9 lands again" (@SpaceX). $3K MC.']]);
   await line('x:1', { kind: 'one', coin: { address: 'Two111', ticker: 'TWO' }, evidence: { linksPost: true } });
-  await checkWatched(db, { policy: P, now: () => NOW }, state);
+  await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state);
   assert.deepEqual(await deliver(), ['list-only'], 'a later coin is listed, not pushed');
 });
 

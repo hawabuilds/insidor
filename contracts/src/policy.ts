@@ -4467,7 +4467,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v119',
+  version: 'policy.v120',
 
   admit: {
     maxAgeMin: 240,
@@ -5703,11 +5703,12 @@ const POLICY_V1: Policy = {
     snapshotGapMs: 600_000,
   },
 
-  /* ONE POST, ONE COIN (the owner approved 2026-10-19). SHADOW until he has seen a day of picks
-     against what ran (tools/onecoin-shadow.ts). The numbers are the replay's: $15k, 3x, re-judged on
+  /* ONE POST, ONE COIN (the owner approved 2026-10-19). LIVE from 2026-10-19 18:40 London at the
+     owner's word ("I want it live"), after half an hour of shadow; tools/onecoin-shadow.ts still
+     prints picks against what ran. The numbers are the replay's: $15k, 3x, re-judged on
      every update, the rug floor at 30% of the peak; 15 buyers is provisional, no buyer data existed. */
   oneCoin: {
-    mode: 'shadow',
+    mode: 'live',
     everyMs: 5_000,
     postWindowMs: 21_600_000, // six hours
     launchLeadMs: 600_000, // ten minutes
