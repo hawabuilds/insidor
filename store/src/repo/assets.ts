@@ -234,6 +234,61 @@ export class PgAssetRepo implements AssetRepo {
     );
   }
 
+  /**
+   * Add coins a LISTING found, and leave every coin we already have exactly as it is.
+   *
+   * ★ NOT `upsert`, because upsert's update branch takes the incoming name, symbol, picture and
+   * metadata link. A listing row knows less than the stream's row for the same coin (no creator,
+   * no picture, often no link), so letting it update would erase what the socket told us. A
+   * coin the stream delivered first keeps its row; a coin only the listing saw gets one.
+   *
+   * @returns the addresses that were new.
+   */
+  async addListed(assets: readonly Asset[]): Promise<readonly string[]> {
+    const added: string[] = [];
+    for (const asset of assets) {
+      const rows = await this.#db.query<{ address: string }>(
+        `insert into public.asset (
+           chain, address, asset_key, venue_id, origin,
+           minted_at, minted_at_source, minted_at_conf, minted_at_bound_s,
+           symbol, name, image_uri, decimals, creator, declared_social, first_seen_at
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
+         on conflict (chain, address) do nothing
+         returning address`,
+        [
+          asset.ref.chain,
+          asset.ref.address,
+          asset.key,
+          asset.venue,
+          asset.origin,
+          toTimestamp(asset.mintedAt.at),
+          asset.mintedAt.source,
+          asset.mintedAt.confidence,
+          asset.mintedAt.boundS,
+          asset.symbol,
+          asset.name,
+          asset.imageUri,
+          asset.decimals,
+          asset.creator,
+          JSON.stringify(asset.declaredSocial),
+          toTimestamp(asset.firstSeenAt),
+        ],
+      );
+      if (rows.length > 0) added.push(asset.ref.address);
+    }
+    return added;
+  }
+
+  /** Which of these addresses on this chain we already hold a row for. */
+  async knownAddresses(chain: ChainId, addresses: readonly string[]): Promise<ReadonlySet<string>> {
+    if (addresses.length === 0) return new Set();
+    const rows = await this.#db.query<{ address: string }>(
+      'select address from public.asset where chain = $1 and address = any($2::text[])',
+      [chain, [...addresses]],
+    );
+    return new Set(rows.map((r) => r.address));
+  }
+
   /** The retrieval the port declares: one storable key, one asset. */
   async byKey(key: AssetKey): Promise<Asset | null> {
     const ref = parseAssetKey(key);

@@ -86,6 +86,14 @@ export interface ChainwatchConfig {
 
   readonly backoffBaseMs: number;
   readonly backoffMaxMs: number;
+  /**
+   * The chain RPC the launch listing asks for a listed coin's own name, ticker and metadata link
+   * (one read per pass). OPTIONAL, unlike everything above: null means the chain's public
+   * endpoint, chosen in wiring.ts. It is a free, keyless read that changes no number this service
+   * claims — when it fails, a listed coin is still added, only without its link — and making it
+   * required would stop an already-deployed watcher from booting until someone set it.
+   */
+  readonly listingRpcUrl: string | null;
 
   readonly heartbeat: HeartbeatConfig;
 }
@@ -100,6 +108,7 @@ export class ConfigError extends Error {
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
+
 
 function reader(env: Env, problems: string[]) {
   return {
@@ -169,6 +178,8 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
 
   const backoffBaseMs = r.int('BACKOFF_BASE_MS', 100, 60_000);
   const backoffMaxMs = r.int('BACKOFF_MAX_MS', 1_000, 3_600_000);
+  const listingRpcUrl = (env['LISTING_RPC_URL'] ?? '').trim() || null;
+  if (listingRpcUrl !== null && !/^https:\/\//.test(listingRpcUrl)) problems.push('LISTING_RPC_URL must be an https URL');
 
   const mode = r.choice('HEARTBEAT', ['off', 'on'] as const);
   let heartbeat: HeartbeatConfig = { kind: 'off' };
@@ -234,6 +245,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     observationLagS,
     backoffBaseMs,
     backoffMaxMs,
+    listingRpcUrl,
     heartbeat,
   };
 }

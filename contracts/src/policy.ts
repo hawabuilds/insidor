@@ -1230,6 +1230,44 @@ export interface AssetPolicy {
    * is that we cannot tell: an unwatched hour is not an hour in which nobody launched.
    */
   readonly tickerMinCoverage: number;
+  /** The second way launches arrive: a listing read beside the socket. See `LaunchListingPolicy`. */
+  readonly launchListing: LaunchListingPolicy;
+}
+
+/**
+ * ★ THE LAUNCH LISTING, read by the launch watcher beside its socket (2026-10-19).
+ *
+ * The relay's socket does not send launches made in version-1 transactions: on 19 Oct it
+ * delivered 66 of 155 launches a listing named over six minutes, and every traced miss but one
+ * was version 1. A free listing of the chain's newest pools names them a few minutes after launch
+ * (it indexes about three minutes behind and caches each page up to a minute); without it they
+ * arrived only when a post's name search happened to find them, a median of about an hour later.
+ *
+ * It is a SECOND source, never a coverage claim. The coverage log stays the socket's, because a
+ * listing minutes behind with a few pages of horizon cannot vouch that a window is complete.
+ *
+ * - `on`: false stops the reads; the socket is unaffected.
+ * - `everyMs`: how often a pass runs. Every 30 s, because the source's pages change at most once
+ *   a minute; asking more often buys the same answer.
+ * - `pagesPerPass`: how far back a pass may read. A page holds 20 pools (about 30 s of launches
+ *   at a busy hour) and a pass reads until it meets the previous one, plus one page for the
+ *   cache's skew: two to four pages in ordinary traffic. Each page is one request on a free API
+ *   that allows about 30 a minute per address, shared with whatever else runs there.
+ * - `maxAgeMs`: a listed launch older than this is not added. The listing is for launches the
+ *   socket missed now, not a backfill of history.
+ * - `timeoutMs`: one request's limit, listing or chain read alike.
+ *
+ * What breaks if changed carelessly: `everyMs` far below 30 s spends the shared free limit on
+ * cached answers and gets refused (the pass then skips; nothing is lost but time); `pagesPerPass`
+ * too low for a busy minute and the pass notes that it fell behind, and launches between its last
+ * page and the previous pass are not listed.
+ */
+export interface LaunchListingPolicy {
+  readonly on: boolean;
+  readonly everyMs: number;
+  readonly pagesPerPass: number;
+  readonly maxAgeMs: number;
+  readonly timeoutMs: number;
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -4803,6 +4841,13 @@ const POLICY_V1: Policy = {
     feedFreshnessMs: 900_000,
     tickerLookbackMs: 604_800_000, // seven days
     tickerMinCoverage: 0.95,
+    launchListing: {
+      on: true,
+      everyMs: 30_000,
+      pagesPerPass: 5,
+      maxAgeMs: 1_800_000, // thirty minutes
+      timeoutMs: 10_000,
+    },
   },
 
   ingest: {

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@insidor/contracts": "workspace:*",
+    "@insidor/market-geckoterminal": "workspace:*",
     "@insidor/store": "workspace:*",
     "@insidor/venue-solana-pumpfun": "workspace:*"
   }

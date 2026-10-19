@@ -38,6 +38,10 @@
  *    starts cold — which is a different thing from a process that restarted and
  *    lost its place, because that one finds a watermark and the silence since it
  *    becomes a recorded gap.
+ *
+ * 4. THE LAUNCH LISTING WRITES COINS AND NOTHING ELSE (`buildListing`). It shares this
+ *    process's one connection and its lock, adds rows only where none exist, and never
+ *    touches the coverage log, which stays the socket's own record.
  */
 
 import { createHash } from 'node:crypto';
@@ -50,18 +54,24 @@ import {
   withAdvisoryLock,
   type Db,
 } from '@insidor/store';
+import type { Millis } from '@insidor/contracts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { BASE_URLS, geckoterminal } from '@insidor/market-geckoterminal';
 import {
   CHAIN,
   TOKEN_DECIMALS,
   VENUE_ID,
+  assetFromSearch,
   createMintStream,
   openWebSocket,
+  tokenMetadata,
 } from '@insidor/venue-solana-pumpfun';
 
 import { backoffDelayMs } from './backoff.ts';
 import type { ChainwatchConfig } from './config.ts';
 import { coldCursor, type CursorStore } from './cursor.ts';
 import type { MintFeed, MintSink } from './feed.ts';
+import { createListing, type Listing } from './listing.ts';
 import type { Logger } from './log.ts';
 import { NotImplemented } from './not-implemented.ts';
 import type { StageRunRecorder } from './run-record.ts';
@@ -69,6 +79,8 @@ import { createStreamFeed } from './stream-feed.ts';
 
 export interface Runtime {
   readonly feed: MintFeed;
+  /** The second way launches arrive (listing.ts). Null when the policy turns it off. */
+  readonly listing: Listing | null;
   readonly sink: MintSink;
   readonly cursors: CursorStore;
   readonly stageRuns: StageRunRecorder;
@@ -179,6 +191,51 @@ function lockKey(name: string): number {
   return createHash('sha256').update(name).digest().readUInt32BE(0);
 }
 
+/** The chain's own public RPC: free, keyless, rate-limited per address. */
+const PUBLIC_RPC_URL = 'https://api.mainnet-beta.solana.com';
+
+/**
+ * The launch listing, and the second place this service names a vendor.
+ *
+ * ★ WHY THESE TWO SOURCES. The newest-pools listing is the market data source the runner already
+ * reads free and keyless, and it lists launches on the curve about a minute after they happen,
+ * whichever transaction version made them — which is exactly what the socket misses. It is asked
+ * on the FREE plan always, never with a key: a key here would put a per-call bill on a loop that
+ * runs twice a minute for ever. The chain read is one `getMultipleAccounts` a pass for the
+ * coins the listing found that we do not hold, on the chain's public endpoint unless
+ * LISTING_RPC_URL names another.
+ *
+ * A listed coin is a `backfill` row (search-asset.ts): we learned of it after the fact, from a
+ * listing, and its mint time is the listing's pool creation, ('vendor_field', 'bounded'). It is
+ * added only when no row exists, so a coin the socket delivered first is never touched.
+ */
+function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): Listing | null {
+  const lp = DEFAULT_POLICY.assets.launchListing;
+  if (!lp.on) return null;
+  const market = geckoterminal({ plan: 'free', baseUrl: BASE_URLS.free, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs, now: () => Date.now() });
+  const listingLog = log.child({ part: 'launch-listing' });
+  return createListing(
+    {
+      page: (n) => market.newLaunches(n),
+      known: (addresses) => assets.knownAddresses(CHAIN, addresses),
+      details: (addresses) => tokenMetadata({ rpcUrl: cfg.listingRpcUrl ?? PUBLIC_RPC_URL, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, addresses),
+      add: (launches, seenAt) =>
+        assets.addListed(
+          launches.flatMap(({ hit, details }) => {
+            const asset = assetFromSearch(
+              { ...hit, name: details?.name ?? hit.name, ticker: details?.symbol ?? hit.ticker },
+              { firstSeenAt: seenAt, metadataUri: details?.uri ?? null, chainCreatedAt: null },
+            );
+            return asset === null ? [] : [asset];
+          }),
+        ),
+      now: () => Date.now() as Millis,
+      note: (msg, fields) => listingLog.warn(msg, fields),
+    },
+    { pagesPerPass: lp.pagesPerPass, maxAgeMs: lp.maxAgeMs },
+  );
+}
+
 function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   const assets = new PgAssetRepo(db);
 
@@ -201,6 +258,7 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
 
   return {
     feed: createFeed(cfg, log),
+    listing: buildListing(cfg, assets, log),
 
     sink: {
       // A MintEvent already carries a whole Asset — the feed's job is to have
