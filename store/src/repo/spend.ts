@@ -102,9 +102,9 @@ export class PgSpendRepo implements SpendLedger {
 
   /**
    * ★ ONE ENDPOINT'S BILL on or after `sinceMs`: the X search day (`Policy.feed.searchDay`) reads the
-   * posts supplier's `search` since 00:00 UTC before each pass. Every live and job row alike, because
-   * the vendor bills them on one account; a job's search is rare and small, and counting it can only
-   * close the day early, never late.
+   * posts supplier's `search` since 00:00 UTC before each pass. The live book's rows only: a one-off
+   * job's or the learning work's search is written under its own prefixed endpoint (`job:`, `learn:`)
+   * and has its own line, so it never spends the live day.
    */
   async usdSince(vendor: string, endpoint: string, sinceMs: Millis): Promise<number> {
     const rows = await this.#db.query<{ usd: string | null }>(
