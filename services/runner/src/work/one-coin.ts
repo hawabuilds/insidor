@@ -42,7 +42,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type LaunchMatch, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -112,7 +112,7 @@ function tiesOf(c: CandidateRow): MatchEvidence[] {
 }
 
 /** Contenders from candidate rows (a narrative's may name a coin twice: the ties are merged, the earliest find kept). */
-export function contendersOf(rows: readonly CandidateRow[], trades: ReadonlyMap<string, TradeRollup> | null, watched: ReadonlySet<string>, market: ReadonlyMap<string, { readonly capUsd: number; readonly peakCapUsd: number }>): Contender[] {
+export function contendersOf(rows: readonly CandidateRow[], trades: ReadonlyMap<string, TradeRollup> | null, watched: ReadonlySet<string>, market: ReadonlyMap<string, MarketFacts>): Contender[] {
   const by = new Map<string, { rows: CandidateRow[] }>();
   for (const r of rows) by.set(r.address, { rows: [...(by.get(r.address)?.rows ?? []), r] });
   return [...by].map(([address, { rows: rs }]) => {

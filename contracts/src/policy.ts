@@ -2157,7 +2157,7 @@ export interface OneCoinPolicy {
   readonly openingCapUsd: number;
   /**
    * A reading whose pool holds less than this is a frozen quote, not a market: its cap is no sign of
-   * trading. Such a coin ranks as untraded among the older coins.
+   * trading. Such a coin ranks as untraded among the older coins, and on readings it climbs nothing.
    * A reading with no liquidity figure (a coin still on its curve) is unknown and passes.
    */
   readonly minLiquidityUsd: number;

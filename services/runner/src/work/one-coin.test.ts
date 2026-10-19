@@ -29,7 +29,7 @@ interface World {
   prior: PriorCoinRow[];
   trades: Map<string, TradeRollup> | null;
   feedAt: number | null;
-  market: Map<string, { capUsd: number; peakCapUsd: number; readAtMs: number }>;
+  market: Map<string, { capUsd: number; peakCapUsd: number; readAtMs: number; liquidityUsd?: number | null }>;
   candidates: CandidateRow[];
   watched: { address: string; untilMs: number }[];
   picks: Map<string, StoredPick>;
@@ -58,7 +58,7 @@ function fakeRepo(w: World): OneCoinDeps['repo'] {
     tradeFeedAt: async () => w.feedAt,
     watched: async (addresses) => new Set(addresses.filter((a) => w.watched.some((x) => x.address === a))),
     tradeFacts: async () => w.trades,
-    marketFacts: async () => w.market,
+    marketFacts: async () => new Map([...w.market].map(([a, m]) => [a, { ...m, liquidityUsd: m.liquidityUsd ?? null }] as const)),
     coinsNamed: async () => w.named,
     coinsLaunchedBetween: async (_names, _words, fromMs, toMs) => w.prior.filter((c) => c.launchedAtMs !== null && c.launchedAtMs >= fromMs && c.launchedAtMs < toMs),
     picks: async (_kind, ids) => new Map([...w.picks].filter(([id]) => ids.includes(id))),
@@ -160,6 +160,25 @@ test('★ lookback: an older coin the post names, read hours ago under the bar, 
   assert.deepEqual(w.candidates.map((c) => [c.itemId, c.address, c.path]), [['x:kim', 'ESAB', 'existing']]);
   assert.deepEqual(w.candidates[0]?.evidence['ties'], ['name_text', 'existing']);
   assert.ok(w.watched.some((x) => x.address === 'ESAB' && x.untilMs === NOW + DEFAULT_POLICY.oneCoin.watchMs));
+});
+
+test('★ a later coin that only shares the name does not take the post from the older coin it was about', async () => {
+  const H = 60 * MIN;
+  /* 19 Oct: the post at 17:53, "Rip Kim Jong-Un" 17 h old, "Kim" launched 3 h after the post on a namer ticker. */
+  const kim: RecentPost = { itemId: 'x:kim', postedAtMs: NOW - 3 * H - 10 * MIN, judgeNames: ['KIMJONG', 'KIMJONGUN'], guessNames: ['Rip Kim Jong-Un', 'KIM'], hash: null, text: 'Unconfirmed reports claim Kim Jong Un may have secretly died' };
+  const w = world({
+    posts: [kim],
+    prior: [{ address: 'ESAB', name: 'Rip Kim Jong-Un', ticker: 'Kim', launchedAtMs: kim.postedAtMs - 17 * H, capUsd: 14_100, liquidityUsd: 8_726, readAtMs: kim.postedAtMs - 16 * H }],
+    launches: [launch({ address: 'LATE', assetKey: 'k:LATE', name: null, ticker: 'Kim', launchedAtMs: NOW - 8 * MIN })],
+    market: new Map([['LATE', { capUsd: 381_537, peakCapUsd: 381_537, readAtMs: NOW, liquidityUsd: 0.01 }]]),
+  });
+  await oneCoinPass(deps(w), newOneCoinState());
+  assert.deepEqual(w.candidates.map((c) => [c.address, c.path]).sort(), [['ESAB', 'existing'], ['LATE', 'launch']]);
+  assert.equal(w.picks.get('x:kim')?.outcome, 'waiting', 'the older coin is not read yet: no pick, never the later one');
+  /* Once read, the older coin is the post's. */
+  w.market.set('ESAB', { capUsd: 578_000, peakCapUsd: 578_000, readAtMs: NOW, liquidityUsd: 72_000 });
+  await oneCoinPass(deps(w, NOW + MIN), newOneCoinState());
+  assert.equal(w.picks.get('x:kim')?.address, 'ESAB');
 });
 
 test('second path: a post whose coin launched long before it gets the biggest coin of its name, judged from now', async () => {
