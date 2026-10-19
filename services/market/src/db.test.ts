@@ -131,6 +131,25 @@ test('a pictured coin past its first hour is read after the coins on screen, bef
   assert.equal(hour.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
 });
 
+test('★ the older coins a one-coin pick is weighing are read after the coins on screen, before the hour and the newest', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes('internal.one_coin_candidate')) return [{ chain: 'solana', address: 'older1', tier: 3 }, { chain: 'solana', address: 'screen1', tier: 3 }] as R[];
+      if (s.includes('internal.image_embedding')) return [{ chain: 'solana', address: 'hour1', tier: 2 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  const rows = await assetsToRead(db, 'solana', 4, { nowMs: Date.UTC(2026, 9, 18), afterLaunchMs: 3_600_000, withinMs: 21_600_000, limit: 100 }, { nowMs: Date.UTC(2026, 9, 18), withinMs: 3_600_000, limit: 50 });
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'older1', 'hour1', 'new1']);
+  const older = statements.find((s) => s.sql.includes('internal.one_coin_candidate'));
+  assert.ok(older !== undefined);
+  assert.match(older.sql, /where path = 'existing'/);
+  assert.match(older.sql, /a\.origin = any\(\$\d+::text\[\]\)/);
+  assert.equal(older.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+});
+
 test('without the hour, the pass reads exactly what it read before', async () => {
   let calls = 0;
   const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;

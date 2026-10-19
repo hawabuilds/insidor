@@ -9,7 +9,7 @@ import test from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { biggestOfName, launchMatches, namedInText, oneCoinBars, pickOneCoin, type Contender, type LaunchSide, type MatchPost, type TradeFacts } from './one-coin.ts';
+import { biggestOfName, launchMatches, namedInText, oneCoinBars, pickOneCoin, priorCoins, type Contender, type LaunchSide, type MatchPost, type TradeFacts } from './one-coin.ts';
 import { replayTimeline, scoreReplay, type ReplayCoin } from './one-coin-replay.ts';
 
 const P = DEFAULT_POLICY.oneCoin;
@@ -71,6 +71,27 @@ test('★ matcher: a short ticker ties through the post\'s own words — with th
   /* An exact name is still the stronger tie, and an unread text is no tie. */
   assert.deepEqual(launchMatches(esab, [post({ guessNames: ['KIM'], text: kim.text ?? null })], MATCH)[0]?.evidence, ['name_guess']);
   assert.equal(namedInText(post({ judgeNames: ['KIMJONGUN'] }), esab, MATCH), false);
+});
+
+test('★ lookback: older coins the post names, launched within two days, the most traded first, unread last', () => {
+  const H = 60 * MIN;
+  const kim = post({ postedAtMs: 2_000 * H, judgeNames: ['KIMJONG', 'KIMJONGUN'], guessNames: ['Rip Kim Jong-Un', 'KIM'], text: 'Unconfirmed reports claim Kim Jong Un may have secretly died' });
+  const bars = { minVariantLength: MATCH.minVariantLength, launchLeadMs: P.launchLeadMs, lookbackMs: P.existing.lookbackMs, lookbackCoins: 2, minLiquidityUsd: P.minLiquidityUsd };
+  const at = (address: string, hoursBefore: number, o: { name?: string | null; ticker?: string | null; capUsd?: number | null; liquidityUsd?: number | null }) =>
+    ({ address, name: 'Rip Kim Jong-Un', ticker: 'Kim', launchedAtMs: 2_000 * H - hoursBefore * H, capUsd: null, liquidityUsd: null, readAtMs: null, ...o });
+  const picked = priorCoins(kim, [
+    at('ESAB', 17, { capUsd: 14_100, liquidityUsd: 8_726 }), // read 16 h ago, under the cap bar: still in
+    at('FROZEN', 20, { capUsd: 381_537, liquidityUsd: 0.01 }), // a quote with no pool: no trading
+    at('UNREAD', 30, {}),
+    at('ANCIENT', 49, { capUsd: 900_000, liquidityUsd: 50_000 }), // past the lookback
+    at('JUSTNOW', 0.1, { capUsd: 50_000, liquidityUsd: 9_000 }), // inside the lead: the launch path's
+    at('OTHER', 5, { name: 'Kimchi Bowl', ticker: 'KIMCHI', capUsd: 70_000, liquidityUsd: 9_000 }), // not tied
+  ], bars);
+  assert.deepEqual(picked.map((x) => x.coin.address), ['ESAB', 'FROZEN']);
+  assert.deepEqual(picked[0]?.ties, ['name_guess']);
+  assert.deepEqual(priorCoins(kim, [at('UNREAD', 30, {}), at('ESAB', 17, { capUsd: 14_100 })], { ...bars, lookbackCoins: 5 }).map((x) => x.coin.address), ['ESAB', 'UNREAD']);
+  /* No name tie and no ticker in the words: nothing. */
+  assert.equal(priorCoins(post({ postedAtMs: 2_000 * H, text: 'Kim Jong Un' }), [at('NONAME', 3, { name: null, capUsd: 30_000 })], bars).length, 0);
 });
 
 test('★ matcher: a link ties past the window — and through the coin\'s own quote of the post, one hop', () => {

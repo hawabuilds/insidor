@@ -105,6 +105,11 @@ export interface ExistingCoinRow {
   readonly readAtMs: number | null;
 }
 
+export interface PriorCoinRow extends ExistingCoinRow {
+  /** The newest reading's pool liquidity; null when the reading had none (a coin on its curve) or there is no reading. */
+  readonly liquidityUsd: number | null;
+}
+
 const ms = (v: unknown): number | null => (v === null || v === undefined ? null : new Date(v as string).getTime());
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const hex = (v: unknown): string | null => (v === null || v === undefined ? null : fromBits(v as string));
@@ -517,6 +522,30 @@ export class PgOneCoinRepo {
       [lower, compact, limit],
     );
     return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), readAtMs: ms(r.at) }));
+  }
+
+  /**
+   * Coins launched in [`fromMs`, `toMs`) named exactly one of these names, or whose ticker is one of
+   * these words (a post's own words: core decides whether the name goes with it), each with its
+   * newest market reading and that reading's pool liquidity: the second path's lookback pool.
+   */
+  async coinsLaunchedBetween(names: readonly string[], words: readonly string[], fromMs: number, toMs: number, limit: number): Promise<readonly PriorCoinRow[]> {
+    const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
+    const upper = [...new Set([...names, ...words].map((n) => n.replace(/[^\p{L}\p{N}]+/gu, '').toUpperCase()).filter((n) => n !== ''))];
+    if (lower.length === 0 && upper.length === 0) return [];
+    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; liq: number | null; at: string | null }>(
+      `select n.address, n.name, n.ticker, n.launched_at, r.cap, r.liq, r.at
+         from public.coin_name n
+         join public.asset a on a.address = n.address
+         left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
+                             where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
+        where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
+          and n.launched_at >= $3 and n.launched_at < $4
+        order by r.cap desc nulls last
+        limit $5`,
+      [lower, upper, new Date(fromMs).toISOString(), new Date(toMs).toISOString(), limit],
+    );
+    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), liquidityUsd: num(r.liq), readAtMs: ms(r.at) }));
   }
 
   /** The stored picks of these subjects. */

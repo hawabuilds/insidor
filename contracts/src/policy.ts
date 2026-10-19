@@ -2155,6 +2155,12 @@ export interface OneCoinPolicy {
   readonly rugShareOfPeak: number;
   /** Without trade data: the cap a coin opens at, so its climb is the cap over it (the replay's rule). */
   readonly openingCapUsd: number;
+  /**
+   * A reading whose pool holds less than this is a frozen quote, not a market: its cap is no sign of
+   * trading. Such a coin ranks as untraded among the older coins.
+   * A reading with no liquidity figure (a coin still on its curve) is unknown and passes.
+   */
+  readonly minLiquidityUsd: number;
   /** The trade feed counts as running when any watched coin's trades were updated this recently. */
   readonly tradeFeedFreshMs: number;
   /** Picture evidence: hashes this close are the same picture; an embedding this similar is too. */
@@ -2162,8 +2168,11 @@ export interface OneCoinPolicy {
   /**
    * The second path: a post that arrives after its coin exists. The biggest coin of its exact name
    * at the post's time, if its newest reading is this recent and its cap at least `minCapUsd`.
+   * Beside it, the coins launched up to `lookbackMs` before the post that its names or words tie
+   * (core `priorCoins`), with no reading bar: the `lookbackCoins` most traded of them, unread last.
+   * The market service reads at most `readsPerPass` of these coins each pass while they are weighed.
    */
-  readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number };
+  readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number; readonly lookbackMs: number; readonly lookbackCoins: number; readonly readsPerPass: number };
   /** Per pass at most: launches matched, posts looked at by the second path, pictures embedded, subjects judged. */
   readonly perPass: { readonly launches: number; readonly posts: number; readonly embeds: number; readonly subjects: number };
   /**
@@ -4508,7 +4517,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v123',
+  version: 'policy.v124',
 
   admit: {
     maxAgeMin: 240,
@@ -5765,10 +5774,18 @@ const POLICY_V1: Policy = {
     rugShareOfPeak: 0.3,
     /* pump's opening cap in 15-19 Oct's first readings, the median. */
     openingCapUsd: 2_900,
+    /* 17-19 Oct, readings at $15k or more: 469 readings of 213 coins had a pool under $1 (the most
+       $0.27; "Kim" 5pwu…ZAV6 held $381,537 on $0.01 for three hours), and the next lowest was $473. */
+    minLiquidityUsd: 100,
     tradeFeedFreshMs: 120_000,
     /* 10 bits is postCoin's same picture; 0.82 is the replay's "likely" picture. */
     picture: { maxHashDistance: 10, minSimilarity: 0.82 },
-    existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000 },
+    /* The lookback: two days, the owner's word (19 Oct: "Rip Kim Jong-Un" was 17 h old when the
+       posts he marked it right for came, its last reading 16 h stale and under the cap bar). Five
+       coins a post at most: each is watched by the trade feed for an hour from the post; replayed
+       on the 40 coinable posts the owner called on 16-19 Oct, the lookback added 4.6 a post. 50 of
+       the market pass's 300 reads go to them, so the newest coins keep most of the bound. */
+    existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000, lookbackMs: 172_800_000, lookbackCoins: 5, readsPerPass: 50 },
     perPass: { launches: 2_000, posts: 200, embeds: 20, subjects: 500 },
     refit: {
       everyMs: 604_800_000, // a week

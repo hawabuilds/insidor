@@ -22,7 +22,9 @@
  *            by the window).
  *   existing a post new to this process whose coin already exists (it was launched more than
  *            `launchLeadMs` before the post): the biggest coin of its exact name with a recent
- *            reading over the bar, as a candidate judged from now (core `biggestOfName`).
+ *            reading over the bar (core `biggestOfName`), and beside it the most traded coins
+ *            launched within `existing.lookbackMs` before the post that its names or its own words
+ *            tie, with no reading bar (core `priorCoins`) — each a candidate judged from now.
  *   decide   every post with a candidate found or launched within `watchMs`, and every open
  *            narrative one of them belongs to (over all its posts' candidates): the rule on the
  *            trade feed's minutes when it is running, else on market readings — the pick's
@@ -40,7 +42,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, type Contender, type LaunchMatch, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type LaunchMatch, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -52,9 +54,20 @@ const POSTS_REFRESH_MS = 30_000;
 const POSTS_READ = 5_000;
 /** How many coins of a name the second path reads before core picks the biggest. */
 const NAMED_COINS_READ = 50;
+/**
+ * How many coins of the lookback a post reads before core keeps the tied ones: a post's words are
+ * looked up as tickers, and a common word is the ticker of dozens of coins in two days.
+ */
+const PRIOR_COINS_READ = 500;
+/** A post's words looked up as tickers, at most: a long post's tail adds lookups, not subjects. */
+const WORDS_READ = 64;
+
+/** A post's distinct words of two letters or more, as the ticker lookup reads them. */
+const wordsOf = (text: string | null): string[] =>
+  text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'picks' | 'writePicks' | 'appliedFit'>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -171,14 +184,21 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const fresh = posts.filter((p) => !state.existingDone.has(p.itemId)).slice(0, P.perPass.posts);
   for (const p of fresh) {
     state.existingDone.add(p.itemId);
-    const coins = await repo.coinsNamed([...p.judgeNames, ...p.guessNames], NAMED_COINS_READ);
+    const names = [...p.judgeNames, ...p.guessNames];
+    const coins = await repo.coinsNamed(names, NAMED_COINS_READ);
     /* Only a coin the launch path cannot reach: launched more than the lead before the post. */
     const older = coins.filter((c) => c.launchedAtMs !== null && c.launchedAtMs < p.postedAtMs - P.launchLeadMs);
     const best = biggestOfName(p, older, { minVariantLength: bars.minVariantLength, readingWithinMs: P.existing.readingWithinMs, minCapUsd: P.existing.minCapUsd }, now);
-    if (best === null) continue;
-    existing += 1;
-    rows.push({ itemId: p.itemId, address: best.address, path: 'existing', evidence: { ties: ['existing'], capUsd: best.capUsd, launchedAfterMs: best.launchedAtMs === null ? null : best.launchedAtMs - p.postedAtMs }, launchedAtMs: best.launchedAtMs ?? null, foundAtMs: now });
-    watch.push({ address: best.address, untilMs: now + P.watchMs });
+    const pool = await repo.coinsLaunchedBetween(names, wordsOf(p.text), p.postedAtMs - P.existing.lookbackMs, p.postedAtMs - P.launchLeadMs, PRIOR_COINS_READ);
+    const prior = priorCoins(p, pool, { minVariantLength: bars.minVariantLength, launchLeadMs: P.launchLeadMs, lookbackMs: P.existing.lookbackMs, lookbackCoins: P.existing.lookbackCoins, minLiquidityUsd: P.minLiquidityUsd });
+    const chosen = new Map<string, { launchedAtMs: number | null; capUsd: number | null; ties: MatchEvidence[] }>();
+    if (best !== null) chosen.set(best.address, { launchedAtMs: best.launchedAtMs, capUsd: best.capUsd, ties: ['existing'] });
+    for (const { coin, ties } of prior) chosen.set(coin.address, { launchedAtMs: coin.launchedAtMs, capUsd: coin.capUsd, ties: [...ties, 'existing'] });
+    for (const [address, c] of chosen) {
+      existing += 1;
+      rows.push({ itemId: p.itemId, address, path: 'existing', evidence: { ties: c.ties, capUsd: c.capUsd, launchedAfterMs: c.launchedAtMs === null ? null : c.launchedAtMs - p.postedAtMs }, launchedAtMs: c.launchedAtMs, foundAtMs: now });
+      watch.push({ address, untilMs: now + P.watchMs });
+    }
   }
   /* A post that left the window is forgotten, so the set stays the window's size. */
   const inWindow = new Set(posts.map((p) => p.itemId));
