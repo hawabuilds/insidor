@@ -1658,7 +1658,13 @@ export interface FeedPolicy {
    * instead of at 00:00 (the owner, 2026-10-19: the cap went live mid-day after a night's overspend had
    * used the day, and X search was restarted "from now" at the normal pace). Other days ignore it.
    */
-  readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number; readonly countFromMs: number | null };
+  /**
+   * `rereadDailyUsd`: the part of the X day re-reads may take, paced the same way (core
+   * `rereadAllowanceUsd`). From 2026-10-19 20:00 London the day's bill counts re-reads and replies too,
+   * not search alone: the owner's $7 is the whole X day. Re-reads left out of it spent $8.75 on
+   * 2026-10-19, ran into the $17 posts line and stopped every search from 19:43.
+   */
+  readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number; readonly countFromMs: number | null; readonly rereadDailyUsd: number };
   /**
    * ★ EACH LANGUAGE ITS OWN FLOOR AND ITS OWN SHARE OF THE NEWEST-POSTS MONEY (the owner, 2026-10-19:
    * "make the languages proportionate"). With `on` (and `fresh.enabled`), each language of `langs` is
@@ -4502,7 +4508,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v121',
+  version: 'policy.v122',
 
   admit: {
     maxAgeMin: 240,
@@ -5188,7 +5194,8 @@ const POLICY_V1: Policy = {
        was $13.81 in the 24 hours to 08:08 UTC on 2026-10-19 ($8.50 of it since midnight): $1.22 to
        $1.69 an hour from 00:00 to 04:00 UTC, against $0.15 to $0.63 an hour on 2026-10-18. $7, the
        owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
-    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000, countFromMs: 1_792_413_000_000 }, // 2026-10-19 12:30 UTC
+    /* Counted from 2026-10-19 19:00 UTC, the owner's "running rest of night": the X day restarts then at the normal pace. */
+    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 2 },
     /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
        tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
        that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'
@@ -6016,7 +6023,9 @@ const POLICY_V1: Policy = {
        the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
        adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
     /* embeddings $6 for 2026-10-19 only, the owner's call (judging caught up after an outage); back to 4.5 on the 20th. */
-    supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 },
+    /* posts $24 for 2026-10-19 only: uncapped re-reads had spent $20.78 of X by 19:43 UTC and the owner
+       wants X running the rest of the night inside the $7 day restarted at 19:00 UTC; back to 17 on the 20th. */
+    supplierLines: { posts: 24, judge: 10.5, video: 4.5, actors: 2, embeddings: 6, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured

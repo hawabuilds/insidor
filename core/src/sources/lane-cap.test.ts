@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
+import { laneJudgeUsd, laneMayAsk, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
 
 const CAP = { dailyUsd: 6, judgeUsdPerPost: 0.002, judgedShare: 0.5 };
 
@@ -28,7 +28,7 @@ test('new posts are charged their judging: count times price times the share the
   assert.equal(laneJudgeUsd(-3, CAP), 0);
 });
 
-const DAY = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, searchDay: { on: true, dailyUsd: 7.2, aheadMs: 3_600_000, countFromMs: null } } };
+const DAY = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, searchDay: { on: true, dailyUsd: 7.2, aheadMs: 3_600_000, countFromMs: null, rereadDailyUsd: 2.4 } } };
 const MIDNIGHT = Date.parse('2026-10-19T00:00:00Z');
 
 test('★ the X search day is paced over the UTC day, an hour ahead, and never more than the day', () => {
@@ -38,6 +38,11 @@ test('★ the X search day is paced over the UTC day, an hour ahead, and never m
   assert.equal(searchDayMayAsk(3.5, 0.1, MIDNIGHT + 11 * 3_600_000, DAY), true);
   assert.equal(searchDayMayAsk(3.55, 0.1, MIDNIGHT + 11 * 3_600_000, DAY), false, 'spent plus the quote, against the pace');
   assert.equal(searchDayMayAsk(Number.NaN, 0.1, MIDNIGHT, DAY), false, 'an unreadable day asks nothing');
+});
+
+test("re-reads take their own share of the X day, on the same pace", () => {
+  assert.ok(Math.abs(rereadAllowanceUsd(MIDNIGHT, DAY) - 0.1) < 1e-9, 'an hour of the re-read day at midnight');
+  assert.equal(rereadAllowanceUsd(MIDNIGHT + 23.5 * 3_600_000, DAY), 2.4, 'never more than the day');
 });
 
 test('the X search day off allows every ask', () => {
