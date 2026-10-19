@@ -157,6 +157,8 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   // The launch listing runs beside the socket's cycle on its own clock (listing.ts), and ends
   // with it: the same abort, awaited before the server closes and the lock is released.
   const listingDone = runtime.listing === null ? Promise.resolve() : runListing(runtime.listing, ac.signal);
+  // The trade feed likewise: its own clock, the same abort, its socket closed on the way out.
+  const tradesDone = runtime.trades === null ? Promise.resolve() : runTrades(runtime.trades, ac.signal);
 
   /*
    * ★ EVERY HOLE DECLARED SINCE THE LAST WINDOW WE CLOSED, so that the next
@@ -361,6 +363,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   }
 
   await listingDone;
+  await tradesDone;
   server.close();
   // The pool and the singleton lock are closed by `withRuntime` on the way out of
   // this function, in a `finally`, including when it leaves by throwing.
@@ -405,6 +408,68 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
     }
     const wait = Math.min(LISTING_MAX_WAIT_MS, everyMs * 2 ** Math.min(failures, 5));
     await sleep(Math.max(MIN_SLEEP_MS, wait - (Date.now() - started)), signal);
+  }
+}
+
+/**
+ * The trade feed's loop (trade-watch.ts): a pass every `flushMs`; a failed pass waits longer each
+ * time, as the listing's does. Every `reportEveryMs` the day's counted cost is logged with the day's
+ * projection at the pace since the last report, so the owner can read the bill off the log.
+ */
+const TRADES_MAX_WAIT_MS = 120_000;
+
+async function runTrades(trades: NonNullable<Runtime['trades']>, signal: AbortSignal): Promise<void> {
+  const tf = DEFAULT_POLICY.oneCoin.tradeFeed;
+  const tradeLog = log.child({ part: 'trade-feed' });
+  try {
+    for (;;) {
+      if (signal.aborted) return;
+      try {
+        await trades.watch.boot();
+        break;
+      } catch (e) {
+        tradeLog.warn('trade feed boot failed; trying again', { err: errorText(e) });
+        await sleep(TRADES_MAX_WAIT_MS, signal);
+      }
+    }
+    let failures = 0;
+    let reportAt = Date.now();
+    let reportCredits = trades.watch.status().credits;
+    const sums = { trades: 0, truncated: 0, failedDropped: 0, undecodable: 0, openings: 0, ended: {} as Record<string, number> };
+    while (!signal.aborted) {
+      const started = Date.now();
+      try {
+        const t = await trades.watch.pass();
+        failures = 0;
+        sums.trades += t.trades;
+        sums.truncated += t.truncated;
+        sums.failedDropped += t.failedDropped;
+        sums.undecodable += t.undecodable;
+        sums.openings += t.openings;
+        for (const [k, v] of Object.entries(t.ended)) sums.ended[k] = (sums.ended[k] ?? 0) + (v ?? 0);
+      } catch (e) {
+        failures += 1;
+        if (failures === 1 || failures % 10 === 0) tradeLog.warn('trade feed pass failed', { err: errorText(e), failures });
+      }
+      const now = Date.now();
+      if (now - reportAt >= tf.reportEveryMs) {
+        const s = trades.watch.status();
+        const pace = s.credits >= reportCredits ? Math.round(((s.credits - reportCredits) * 86_400_000) / (now - reportAt)) : null;
+        tradeLog.info('trade feed: the day so far', { dayMB: Math.round(s.bytes / 1e4) / 100, calls: s.calls, dayCredits: Math.round(s.credits), projectedCreditsPerDay: pace, capCredits: tf.dayCapCredits, measuring: s.measuring, dayCapped: s.dayCapped, ...sums });
+        reportAt = now;
+        reportCredits = s.credits;
+        sums.trades = 0;
+        sums.truncated = 0;
+        sums.failedDropped = 0;
+        sums.undecodable = 0;
+        sums.openings = 0;
+        sums.ended = {};
+      }
+      const wait = Math.min(TRADES_MAX_WAIT_MS, tf.flushMs * 2 ** Math.min(failures, 5));
+      await sleep(Math.max(MIN_SLEEP_MS, wait - (Date.now() - started)), signal);
+    }
+  } finally {
+    trades.stop();
   }
 }
 
