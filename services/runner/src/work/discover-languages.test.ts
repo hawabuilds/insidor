@@ -25,7 +25,7 @@ import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import type { Logger } from '../log.ts';
-import { bandKey, discoverPass, memoryFreshClock, type FreshClock } from './discover.ts';
+import { bandKey, discoverPass, memoryFreshClock, slowSliceQueries, type FreshClock } from './discover.ts';
 import { memoryLaneLedger, type LaneLedger } from './lane-ledger.ts';
 import { laneSearch } from './lane-search.ts';
 import { languageAsks, roundOrder } from './languages.ts';
@@ -133,19 +133,23 @@ test('languageAsks splits a filter of several languages into one search each; on
   assert.deepEqual(roundOrder(['a', 'b', 'c'], 5), ['c', 'a', 'b']);
 });
 
-test('★ the discover pass as shipped asks every catch-all band once per language, never an OR, and stores them all', async () => {
+test('★ the discover pass as shipped asks every fresh band once per language, the late band in its own languages, never an OR', async () => {
   const seen: Seen[] = [];
   const { result, stored } = pass(source(seen, (lang) => ({ n: lang === 'en' ? 7 : 2, more: false })), P5, { fresh: memoryFreshClock() });
   const r = await result;
   assert.equal(r.failed, 0);
-  /* The fresh bands (6, 50 minutes) and the late band (five hours): three asks, five languages each. */
-  const asks = 2 + P5.feed.fresh.late.bands.length;
-  assert.equal(seen.length, asks * LANGS.length);
-  for (const window of new Set(seen.map((s) => s.q.untilMs))) {
-    assert.deepEqual(seen.filter((s) => s.q.untilMs === window).map((s) => s.lang), [...LANGS], 'each band asks every language, in policy order');
+  /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in the slow lane's (`slow.langs`, English). */
+  const lateLangs = P5.feed.slow.langs ?? LANGS;
+  assert.deepEqual(lateLangs, ['en']);
+  assert.equal(seen.length, 2 * LANGS.length + lateLangs.length);
+  const windows = [...new Set(seen.map((s) => s.q.untilMs))];
+  assert.equal(windows.length, 3);
+  for (const window of windows) {
+    const langs = seen.filter((s) => s.q.untilMs === window).map((s) => s.lang);
+    assert.ok(JSON.stringify(langs) === JSON.stringify([...LANGS]) || JSON.stringify(langs) === JSON.stringify(lateLangs), `each band asks its languages in policy order: ${langs.join(',')}`);
   }
-  assert.equal(r.itemsSeen, asks * (7 + 2 * (LANGS.length - 1)));
-  for (const s of stored) assert.deepEqual([...new Set(s.langs)].sort(), [...LANGS].sort(), 'one store per ask, holding every language');
+  assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + 7);
+  assert.equal(stored.filter((s) => [...new Set(s.langs)].sort().join() === [...LANGS].sort().join()).length, 2, 'one store per fresh band, holding every language');
 });
 
 test('★ round-robin: every language gets its first page before any gets a second, and the order turns each round', async () => {
@@ -332,4 +336,12 @@ test('a quiet window is one billed page a language and the end', async () => {
   assert.deepEqual(seen.map((s) => s.lang), [...LANGS]);
   assert.equal(r.answered, 1);
   assert.ok(seen.every((s) => isMiddle(s.q)));
+});
+
+test('★ the slow lane asks its own languages, so its slices do not multiply with the searched ones', () => {
+  const slices = slowSliceQueries({ all: 500, media: 500, slow: 10_000 }, NOW, P5);
+  assert.ok(slices.length > 0);
+  for (const q of slices) assert.deepEqual(languageAsks(q).map((a) => a.lang), ['en'], 'one search a slice, English');
+  const every = { ...P5, feed: { ...P5.feed, slow: { ...P5.feed.slow, langs: null } } };
+  for (const q of slowSliceQueries({ all: 500, media: 500, slow: 10_000 }, NOW, every)) assert.equal(languageAsks(q).length, LANGS.length, 'unset: every searched language');
 });

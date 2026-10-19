@@ -38,10 +38,12 @@ const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () 
 const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], ...feed } });
 const ON = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true } });
 const OLD_MIDDLE = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true, fullPaging: false } });
+/* Every listed search on the old rule, as before the re-split of 2026-10-19, so one can be switched on alone. */
+const OLD_SEARCHES = Object.fromEntries(Object.entries(DEFAULT_POLICY.feed.paging.searches).map(([name, s]) => [name, { ...s, full: false }]));
 const searchOn = (name: string, over: Partial<SearchPagingPolicy> = {}): Policy => {
   const listed = DEFAULT_POLICY.feed.paging.searches[name];
   assert.ok(listed !== undefined, `${name} is listed`);
-  return withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: false }, paging: { ...DEFAULT_POLICY.feed.paging, searches: { ...DEFAULT_POLICY.feed.paging.searches, [name]: { ...listed, full: true, ...over } } } });
+  return withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: false }, paging: { ...DEFAULT_POLICY.feed.paging, searches: { ...OLD_SEARCHES, [name]: { ...listed, full: true, ...over } } } });
 };
 
 function item(i: number): Item {
@@ -113,14 +115,15 @@ function pass(adapter: PlatformAdapter, policy: Policy, opts: { middle?: LaneLed
 const LATE_AGE_MIN = DEFAULT_POLICY.feed.fresh.late.bands[0]!.ageMin;
 const lateAsks = (seen: readonly DiscoveryQuery[]) => seen.filter((q) => !isMiddle(q) && q.untilMs !== null && NOW - q.untilMs >= (LATE_AGE_MIN - 1) * MIN);
 
-test('★ as shipped: the middle lane reads past short pages, every other search keeps the old rule', () => {
+test('★ as shipped: the middle lane and every other catch-all search read past short pages, each in its own day', () => {
   assert.equal(DEFAULT_POLICY.feed.middle.fullPaging, true);
   assert.equal(DEFAULT_POLICY.feed.middle.maxPages, 40);
   assert.equal(DEFAULT_POLICY.feed.middle.passDeadlineMs, 180_000);
-  assert.equal(DEFAULT_POLICY.feed.middle.cap.dailyUsd, 6);
+  assert.equal(DEFAULT_POLICY.feed.middle.cap.dailyUsd, 3);
+  assert.deepEqual(Object.keys(DEFAULT_POLICY.feed.paging.searches).sort(), ['band_50', 'band_6', 'late_300', 'slow']);
   for (const [name, s] of Object.entries(DEFAULT_POLICY.feed.paging.searches)) {
-    assert.equal(s.full, false, `${name} stays on the old rule`);
-    assert.ok(s.dailyUsd > 0 && s.maxPages >= 1 && s.passDeadlineMs > 0, `${name} has a day ready for when it is switched`);
+    assert.equal(s.full, true, `${name} reads to the source's end (the re-split of 2026-10-19)`);
+    assert.ok(s.dailyUsd > 0 && s.maxPages >= 1 && s.passDeadlineMs > 0, `${name} has its own day`);
   }
   assert.equal(pagingKey({ lane: 'all', slice: false, band: 6, late: false, middle: false }), 'band_6');
   assert.equal(pagingKey({ lane: 'slow', slice: false, band: 300, late: true, middle: false }), 'late_300');
@@ -172,7 +175,7 @@ test('★ the middle lane stops at its three-minute deadline', async () => {
   assert.equal(seen.filter(isMiddle).length, DEFAULT_POLICY.feed.middle.passDeadlineMs / 10_000);
 });
 
-test('★ the middle lane stops at its $6 cap', async () => {
+test('★ the middle lane stops at its own cap', async () => {
   const seen: DiscoveryQuery[] = [];
   const pageUsd = DEFAULT_POLICY.feed.pageLimit * USD_PER_POST;
   /* Each page is checked at its full reservation; short pages cost less, so room for 2.5 reservations reads a few. */
@@ -194,14 +197,25 @@ test('★ three empty pages in a row end the paging though the source says there
   assert.equal(seen2.filter(isMiddle).length, 7);
 });
 
-test('★ the discover pass, as shipped: each band and the late band read one short page, the old rule', async () => {
+test('★ the discover pass, as shipped: each band and the late band read the short pages to the source\'s end, each in its own day', async () => {
   const seen: DiscoveryQuery[] = [];
   const ledger = memoryLaneLedger();
   const { result } = pass(source(seen, [...PROBE, 4]), withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: false } }), { ledger });
   await result;
-  assert.equal(lateAsks(seen).length, 1, 'the late band: one page');
-  assert.equal(seen.length, DEFAULT_POLICY.feed.fresh.bandAgesMin.length + 1, 'one page for each band and the late band, nothing more');
-  assert.equal(ledger.totals.size, 0, 'nothing on the old rule touches the ledger');
+  assert.equal(lateAsks(seen).length, 6, 'the late band: all six pages');
+  assert.equal(seen.length, 6 * (DEFAULT_POLICY.feed.fresh.bandAgesMin.length + 1), 'six pages for each band and the late band');
+  for (const name of [...DEFAULT_POLICY.feed.fresh.bandAgesMin.map((a) => `band_${a}`), `late_${LATE_AGE_MIN}`]) {
+    assert.ok(Math.abs(((await ledger.spent(`search:${name}`, NOW)) ?? 0) - 31 * USD_PER_POST) < 1e-12, `${name} charged its own day`);
+  }
+});
+
+test('the discover pass with every search on the old rule reads one short page each, and touches no ledger', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const ledger = memoryLaneLedger();
+  const { result } = pass(source(seen, [...PROBE, 4]), withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: false }, paging: { ...DEFAULT_POLICY.feed.paging, searches: OLD_SEARCHES } }), { ledger });
+  await result;
+  assert.equal(seen.length, DEFAULT_POLICY.feed.fresh.bandAgesMin.length + 1);
+  assert.equal(ledger.totals.size, 0);
 });
 
 test('★ a search switched on follows the short pages inside its own day, kept as search:<name>', async () => {

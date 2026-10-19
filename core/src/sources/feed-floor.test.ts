@@ -11,7 +11,7 @@ import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, lan
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
    The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
-const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
+const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, slow: { ...DEFAULT_POLICY.feed.slow, dailyUsd: null, langs: null }, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
 
 const at = (all: number, slow = all): { all: number; media: number; slow: number } => ({ all, media: all, slow });
 
@@ -38,6 +38,12 @@ test('★ the targets spend the catch-all share of the day: a fifth on the slow 
   assert.ok(Math.abs(t.media / main - P.feed.mediaShare) < 1e-9);
   assert.ok(Math.abs(t.slow * 96 - posts * P.feed.slow.share) < 1e-9);
   assert.ok(Math.abs(((t.all + t.media) * 720 + t.slow * 96) * 0.00015 - P.feed.budgetShare) < 1e-9, 'a day at target is the share, exactly');
+});
+
+test('★ the slow lane steers toward its own money a day when it has one', () => {
+  const own = { ...P, feed: { ...P.feed, slow: { ...P.feed.slow, dailyUsd: 0.5 } } };
+  const t = laneTargets(17, 0.00015, 720, own);
+  assert.ok(Math.abs(t.slow * 96 * 0.00015 - 0.5) < 1e-9, 'a day of slow passes at target is its $0.50, whatever the line');
 });
 
 test('the slow lane is due on the first pass, then every fifteen minutes', () => {

@@ -223,11 +223,17 @@ export function laneTargets(dailyCapUsd: number, usdPerPost: number, passesPerDa
   const perPass = (posts * (1 - p.feed.slow.share)) / passesPerDay;
   const media = perPass * p.feed.mediaShare;
   const slowPassesPerDay = MS_PER_DAY / p.feed.slow.everyMs;
-  const slow = (posts * p.feed.slow.share) / slowPassesPerDay;
+  /* Its own money a day when set (`slow.dailyUsd`), else its share of the line. */
+  const slow = ((p.feed.slow.dailyUsd === null ? posts * p.feed.slow.share : p.feed.slow.dailyUsd / usdPerPost)) / slowPassesPerDay;
   /* Fresh bands (`feed.fresh`) replace both main lanes: they steer the 'all' floor toward both
      lanes' money, less the share that pays for the longer re-reads. The media lane is not asked. */
   if (p.feed.fresh.enabled) return { all: perPass * p.feed.fresh.targetScale, media: 0, slow };
   return { all: perPass - media, media, slow };
+}
+
+/** The languages the slow lane and the late bands ask (`slow.langs`), each its own search; `feed.langs` when unset. */
+export function slowLangs(p: Policy): readonly string[] {
+  return p.feed.slow.langs ?? p.feed.langs;
 }
 
 /**

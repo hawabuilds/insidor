@@ -1452,6 +1452,17 @@ export interface FeedPolicy {
      * lanes'. A target, not a reservation: the paced line is still the only limit.
      */
     readonly share: number;
+    /**
+     * ★ ITS MONEY A DAY, when set (the owner's re-split, 2026-10-19): the floor steers toward this
+     * many dollars of posts a day over its passes in place of `share` of the line. Null: `share`.
+     */
+    readonly dailyUsd: number | null;
+    /**
+     * ★ THE LANGUAGES IT AND THE LATE BANDS (`fresh.late`) ASK, when set, each as its own search;
+     * null asks `feed.langs`. Every language is one more billed page on every slice of every pass,
+     * so this is what keeps the older searches from multiplying with the languages.
+     */
+    readonly langs: readonly string[] | null;
   };
   /**
    * ★ FRESH DISCOVERY (the owner's "find text posts sooner at the same cost", 2026-10-14). OFF by
@@ -4893,6 +4904,18 @@ const POLICY_V1: Policy = {
       /* 0.2: a fifth of the search money, uncalibrated. The lane's floor adapts to it, so
          a wrong share moves the floor, not the bill. */
       share: 0.2,
+      /* English only, $0.50 a day, from 2026-10-19 (the owner's re-split: "cut the older slice and late
+         band to the minimum that still serves their purpose"). What they are for: posts that cross a
+         floor only after their first hour — recall for the coin link and the record of what ran, not
+         beating a coin (a viral post's coin comes a median 24 minutes after it). Each slice was asked
+         once per language, eight billed pages a slice; in English alone, at the floor $0.50 buys
+         (~10,000 likes, replayed on 18-19 Oct), it keeps the English posts that run late. What is lost:
+         the other seven languages' posts that cross the newest bands' floors only after an hour and
+         were found by this lane (on 18-19 Oct, mostly Japanese and Portuguese viral posts, rarely
+         coined), and English ones between the late band's 6,500 and ~10,000 likes at one to four
+         hours. A coin that names such a post still brings it in (the coin-link lane). */
+      dailyUsd: 0.5,
+      langs: ['en'],
     },
     /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
        6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones
@@ -4945,10 +4968,18 @@ const POLICY_V1: Policy = {
        About $3.10 to $4.25 a day in all, under its own $6 cap whatever the day brings.
        `judgedShare` 0.9: of the 1,850 posts the slow lane found in the 24 hours to 08:30 UTC, 1,645
        were judged; `judgeUsdPerPost` is the live judge's $14.35 over 10,139 answers that day. */
+    /* 15 to 60 minutes from 2026-10-19, the owner's re-split ("narrow the middle search's age window to
+       ~15-60 min and give the freed money to the newest bands"). Replayed on the stored posts of 18-19
+       Oct (8 languages, 2,000 likes, a pass a quarter-hour, each post returned on every pass it is over
+       the floor and in the window): 15-180 minutes is ~130,000 returns a day, ~$19.50 at full paging —
+       why its $6 cap closed at about 04:00 UTC on 2026-10-19 and the lane was dark for the rest of the
+       day — and 15-60 is ~13,700, ~$2.05 (15-45 ~$1.00, 15-90 ~$5.00). After an hour a post is the
+       older searches' (slow, late), found too late to beat a coin: coins on viral posts come a median
+       24 minutes after the post. */
     middle: {
       on: true,
       minAgeMin: 15,
-      maxAgeMin: 180,
+      maxAgeMin: 60,
       minApproval: 2_000,
       everyMs: 900_000, // a quarter-hour
       maxPages: 40,
@@ -4961,7 +4992,9 @@ const POLICY_V1: Policy = {
          posts it answered — $2.13 over 4,614 posts in the 24 hours to 01:15 UTC on 2026-10-18, and
          $0.88 over 2,053 ($0.00043) in the last six of them, when it was the only judge answering.
          The higher of the two, so the cap closes early rather than late. */
-      cap: { dailyUsd: 6, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
+      /* $3 from 2026-10-19 (was $6): its search at 15-60 minutes is ~$2.05 a day and the bands, now read
+         to the end, find most of its posts first, so its judging is small. */
+      cap: { dailyUsd: 3, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
       /* On from 2026-10-18, the owner's approval: "keep reading while there's more, with your limits:
          40 pages a pass, 3 minutes a pass, and its own $6 a day cap". */
       fullPaging: true,
@@ -4980,10 +5013,20 @@ const POLICY_V1: Policy = {
     paging: {
       maxEmptyRun: 3, // an empty page is still billed $0.00015; three in a row ends a pass
       searches: {
-        band_6: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.44 },
-        band_50: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.28 },
-        late_300: { full: false, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.45 },
-        slow: { full: false, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.32 },
+        /* ★ ALL FOUR READ TO THE END FROM 2026-10-19, the owner's re-split. Measured on the 557 viral
+           posts of 18 Oct 09:22 to 19 Oct 05:00 UTC found more than an hour after posting: 94% were over
+           the 6-minute band's floor when it asked (the straight line from nothing to their first
+           reading, which under-reads early likes for most posts), and 91% over the 50-minute band's.
+           The floor did not keep them out; one short page a language did. Read to the end, a band
+           costs what is over its floor, which each language's floor now steers (`langSplit`), and the
+           day is held by `searchDay`. Each day here is a backstop over its share of that: the bands
+           ~$1.80 and ~$1.40 of their $3.20 (English at 49 and 404 likes), slow $0.50 and the late band
+           ~$0.35 in English. 15 pages a band: English's ~37 posts a four-minute pass come in pages of
+           about 5, so 9 would cut a busy hour short. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 2.2 },
+        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.8 },
+        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.5 },
+        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.6 },
       },
     },
     /* On from 2026-10-19, the owner's "hard daily total for X search, spread evenly". The search bill
@@ -4997,8 +5040,9 @@ const POLICY_V1: Policy = {
        part of the X search day (feed.searchDay), the rest of which is the middle lane's 15 to 60
        minutes (~$1.90), the slow and late searches in English (~$0.85), the last short page of every
        ask (~$0.55) and the narrative-name and quote searches (~$0.30); replayed on the stored posts of
-       18-19 Oct (the report of 2026-10-19), $3.20 sets English's floor near 390 likes (39 at 6
-       minutes, 325 at 50) and Portuguese's, the busiest for its share, near 16,000. 2 posts an ask:
+       18-19 Oct (the report of 2026-10-19), $3.20 sets English's floor near 485 likes (49 at 6
+       minutes, 404 at 50: about today's shared 510, so English gains from reading to the end, not
+       from a lower floor) and Portuguese's, the busiest for its share, near 17,600. 2 posts an ask:
        the last short page is at most half a small language's money; it asks Korean every ~34
        minutes, French every ~6 and English every pass. */
     langSplit: {

@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -426,7 +426,8 @@ export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, po
     filter: {
       minApproval: effectiveFloor(lane, floors, policy),
       mediaOnly: lane === 'media',
-      langs: policy.feed.langs,
+      /* The slow lane asks its own languages (`slow.langs`), so its slices do not multiply with `feed.langs`. */
+      langs: lane === 'slow' ? slowLangs(policy) : policy.feed.langs,
       /* Plain reposts only: replies and quotes are searched (the owner, 2026-10-13). */
       excludeRebroadcasts: true,
     },
@@ -535,7 +536,8 @@ export interface BandLanguageAsk extends LanguageAsk {
 export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined, split?: LanguageSplit): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] {
   const base = feedQueryFor('all', floors, now, policy);
   const ask = (age: number, keyOf: (lang: string | null) => string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] => {
-    const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval } };
+    /* A late band asks the slow lane's languages (`slow.langs`): it is the slow lane's kind of search. */
+    const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval, ...(late ? { langs: slowLangs(policy) } : {}) } };
     /* ★ EACH LANGUAGE ITS OWN WINDOW (work/languages.ts): from where that language's last answered
        ask ended, so one that failed is asked again and the others are not re-bought. With the split
        (`feed.langSplit`) a fresh band's language also has its own floor, and is asked only once its
@@ -557,10 +559,11 @@ export function freshBandQueries(source: string, floors: LaneFloors, now: Millis
   };
   /* A single language (or none) keeps the band's own key, so its clock reads as it always has. */
   const one = languageAsks(base).length === 1;
+  const oneLate = slowLangs(policy).length <= 1;
   return [
     ...policy.feed.fresh.bandAgesMin.flatMap((age) => ask(age, (lang) => bandKey(source, age, one ? null : lang), bandFloor(age, floors, policy), false)),
     /* ★ LATE BANDS (`feed.fresh.late`): the same tiling at an age in hours, at a fixed floor. Empty while off. */
-    ...lateBands(policy).flatMap((b) => ask(b.ageMin, (lang) => lateBandKey(source, b.ageMin, one ? null : lang), lateBandFloor(b.minApproval, floors, policy), true)),
+    ...lateBands(policy).flatMap((b) => ask(b.ageMin, (lang) => lateBandKey(source, b.ageMin, oneLate ? null : lang), lateBandFloor(b.minApproval, floors, policy), true)),
   ];
 }
 
@@ -974,7 +977,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
       /* The middle lane is in neither figure: it stops at its own cap (`feed.middle.cap`), which is its worst day. */
       /* Every language is its own search (work/languages.ts), so each ask's pages are counted once a language. */
-      worstUsd: usdPerPage * Math.max(1, deps.policy.feed.langs.length) * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length + lateBands(deps.policy).length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
+      worstUsd: usdPerPage * (Math.max(1, deps.policy.feed.langs.length) * pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length : MAIN_LANES.length) * passesPerDay + Math.max(1, slowLangs(deps.policy).length) * (pages * lateBands(deps.policy).length * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay)),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
