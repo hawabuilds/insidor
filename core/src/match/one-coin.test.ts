@@ -51,6 +51,20 @@ test('matcher: timing — up to ten minutes before the post counts, more does no
   assert.equal(launchMatches(coin({ ...named, launchedAtMs: 1_000 * MIN + P.postWindowMs + MIN }), [post()], MATCH).length, 0);
 });
 
+test('★ matcher: a link ties past the window — and through the coin\'s own quote of the post, one hop', () => {
+  /* HI, 19 Oct: launched a day after the baby post, linking its account's quote of it. */
+  const late = 1_000 * MIN + P.postWindowMs + 18 * 60 * MIN;
+  const [direct] = launchMatches(coin({ launchedAtMs: late, linksPosts: new Set(['x:1']) }), [post()], MATCH);
+  assert.deepEqual(direct?.evidence, ['link']);
+  assert.equal(direct?.linkedThrough, null);
+  const [quoted] = launchMatches(coin({ launchedAtMs: late, linksPosts: new Set(['x:quote']), linksThrough: new Map([['x:1', 'x:quote']]) }), [post()], MATCH);
+  assert.deepEqual(quoted?.evidence, ['link']);
+  assert.equal(quoted?.linkedThrough, 'x:quote');
+  /* A name alone past the window is chance; a link still never reaches back before the post. */
+  assert.equal(launchMatches(coin({ launchedAtMs: late, name: 'Pancake' }), [post()], MATCH).length, 0);
+  assert.equal(launchMatches(coin({ launchedAtMs: 980 * MIN, linksThrough: new Map([['x:1', 'x:quote']]) }), [post()], MATCH).length, 0);
+});
+
 const trades = (o: Partial<TradeFacts>): TradeFacts => ({ uniqueBuyers: 40, netBuy: 30, capUsd: 40_000, cap: 200, peakCap: 220, creatorSold: false, ...o });
 const c = (address: string, launchMin: number, t: Contender['trades'], o: Partial<Contender> = {}): Contender => ({ address, launchedAtMs: launchMin * MIN, evidence: ['name_judge'], trades: t, market: null, ...o });
 const NOW = 1_020 * MIN;

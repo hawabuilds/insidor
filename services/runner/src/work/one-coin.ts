@@ -17,7 +17,9 @@
  *            picture's embedding where both are embedded. A name or link hit whose picture is not
  *            embedded is embedded now (the existing paid path, work/coin-match.ts), at most
  *            `perPass.embeds`, and compared on a later pass. Candidates written, coins watched
- *            until launch + `watchMs`.
+ *            until launch + `watchMs`. A post a launch LINKS — itself, or through the quote or
+ *            re-share the coin links — is read by id whatever its age (core: a link is not bound
+ *            by the window).
  *   existing a post new to this process whose coin already exists (it was launched more than
  *            `launchLeadMs` before the post): the biggest coin of its exact name with a recent
  *            reading over the bar, as a candidate judged from now (core `biggestOfName`).
@@ -39,7 +41,7 @@
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, type Contender, type LaunchMatch, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
-import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
+import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
 import { HASH_VERSION } from './picture-hash.ts';
@@ -52,7 +54,7 @@ const POSTS_READ = 5_000;
 const NAMED_COINS_READ = 50;
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'picks' | 'writePicks' | 'appliedFit'>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'picks' | 'writePicks' | 'appliedFit'>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -79,7 +81,15 @@ export interface OneCoinResult {
   readonly basis: 'trades' | 'market_readings' | null;
 }
 
-const evidenceOf = (m: LaunchMatch): Record<string, unknown> => ({ ties: m.evidence, hashDistance: m.hashDistance, similarity: m.similarity, launchedAfterMs: m.launchedAfterMs });
+const evidenceOf = (m: LaunchMatch): Record<string, unknown> => ({ ties: m.evidence, hashDistance: m.hashDistance, similarity: m.similarity, launchedAfterMs: m.launchedAfterMs, ...(m.linkedThrough === null ? {} : { linkedThrough: m.linkedThrough }) });
+
+/** A launch as the matcher reads it: its links as sets, the one-hop originals by the post that reaches them. */
+const sideOf = (c: RecentLaunch, similarity: ReadonlyMap<string, number>) => ({
+  ...c,
+  linksPosts: new Set(c.linksPosts),
+  linksThrough: new Map(c.linksThrough.map((t) => [t.itemId, t.via] as const)),
+  similarity,
+});
 
 /** The ties a stored candidate carries, as core's evidence words. */
 function tiesOf(c: CandidateRow): MatchEvidence[] {
@@ -130,8 +140,12 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
 
   /* ── match: new launches to recent posts ─────────────────────────── */
   const launches = await repo.recentLaunches(now - P.rematchMs, P.perPass.launches, HASH_VERSION);
+  /* A linked post older than the window is read by id: only a link may reach it. */
+  const known = new Set(posts.map((p) => p.itemId));
+  const linkedIds = [...new Set(launches.flatMap((c) => [...c.linksPosts, ...c.linksThrough.map((t) => t.itemId)]))].filter((id) => !known.has(id));
+  const matchable = linkedIds.length === 0 ? posts : [...posts, ...(await repo.postsByIds(linkedIds, HASH_VERSION))];
   const noSimilarity = new Map<string, number>();
-  const firstLook = launches.map((c) => ({ c, matches: launchMatches({ ...c, linksPosts: new Set(c.linksPosts), similarity: noSimilarity }, posts, bars) }));
+  const firstLook = launches.map((c) => ({ c, matches: launchMatches(sideOf(c, noSimilarity), matchable, bars) }));
   /* The embedding is compared only where a name or link tied the coin: read what is held, embed what is not. */
   const pairs = firstLook.flatMap(({ c, matches }) => matches.filter((m) => m.evidence.some((e) => e !== 'picture')).map((m) => ({ assetKey: c.assetKey, itemId: m.itemId })));
   const sims = await repo.similarities(pairs, deps.policy.group.image.space);
@@ -144,7 +158,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
       const s = sims.get(`${c.assetKey}|${m.itemId}`);
       return s === undefined ? [] : [[m.itemId, s] as const];
     }));
-    const final = similarity.size === 0 ? matches : launchMatches({ ...c, linksPosts: new Set(c.linksPosts), similarity }, posts, bars);
+    const final = similarity.size === 0 ? matches : launchMatches(sideOf(c, similarity), matchable, bars);
     for (const m of final) {
       rows.push({ itemId: m.itemId, address: c.address, path: 'launch', evidence: evidenceOf(m), launchedAtMs: c.launchedAtMs, foundAtMs: now });
       if (m.wantsPicture && c.imageUri !== null) wantPictures.set(c.assetKey, c.imageUri);
