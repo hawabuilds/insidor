@@ -69,6 +69,67 @@ export function bandWindow(ageMin: number, lastUntil: number | null, now: number
 }
 
 /**
+ * ★ PER LANGUAGE (`feed.langSplit`): whether the split is in force — on, with the fresh bands on.
+ */
+export function langSplitOn(p: Policy): boolean {
+  return p.feed.langSplit.on && p.feed.fresh.enabled;
+}
+
+/** A language's share of the bands' money: its `shares` entry over the entries of `feed.langs`. 0 for one not listed. */
+export function langShare(lang: string, p: Policy): number {
+  const shares = p.feed.langSplit.shares;
+  const total = p.feed.langs.reduce((sum, l) => sum + Math.max(0, shares[l] ?? 0), 0);
+  return total > 0 ? Math.max(0, shares[lang] ?? 0) / total : 0;
+}
+
+/** Posts a day a language's share of `langSplit.bandsDailyUsd` buys, at `usdPerPost`. */
+export function langPostsPerDay(lang: string, usdPerPost: number, p: Policy): number {
+  if (!(usdPerPost > 0)) return 0;
+  return (p.feed.langSplit.bandsDailyUsd * langShare(lang, p)) / usdPerPost;
+}
+
+/**
+ * How often a language is asked on each band: when its share has bought `minPostsPerAsk` posts a
+ * band since the last ask, and never less often than `maxEveryMs`. A language whose share buys that
+ * every pass gets a spacing shorter than a pass, so it is asked every pass.
+ */
+export function langEveryMs(lang: string, usdPerPost: number, p: Policy): number {
+  const s = p.feed.langSplit;
+  const perDay = langPostsPerDay(lang, usdPerPost, p);
+  if (!(perDay > 0)) return s.maxEveryMs;
+  const bands = Math.max(1, p.feed.fresh.bandAgesMin.length);
+  return Math.min(s.maxEveryMs, Math.ceil((MS_PER_DAY * bands * Math.max(0, s.minPostsPerAsk)) / perDay));
+}
+
+/**
+ * One language's band window this pass (`feed.langSplit`): like `bandWindow`, but only once it spans
+ * `everyMs` of posting time (null before), and reaching back `everyMs` beyond `fresh.maxWindowMin` so
+ * a language asked every half hour is not cut to the last quarter-hour. A first ask (no `lastUntil`)
+ * reaches back `fresh.maxWindowMin`, as a band's does, and goes at once.
+ *
+ * What breaks if changed carelessly: a cap on the reach-back shorter than `everyMs` leaves posts no
+ * ask of that language ever looks at.
+ */
+export function langBandWindow(ageMin: number, lastUntil: number | null, now: number, everyMs: number, p: Policy): { readonly since: number; readonly until: number } | null {
+  const until = now - ageMin * MS_PER_MINUTE;
+  const reach = p.feed.fresh.maxWindowMin * MS_PER_MINUTE;
+  if (lastUntil === null) return { since: until - reach, until };
+  const since = Math.max(lastUntil, until - reach - Math.max(0, everyMs));
+  if (until - since < Math.max(0, everyMs) || since >= until) return null;
+  return { since, until };
+}
+
+/**
+ * A language's target this pass: the posts its share buys a day, over the minutes of posting time
+ * its band asks covered (`windowMin`, summed over the bands), as a share of the day's — each band
+ * tiles the whole day once, so a day of asks covers `bands` days of minutes.
+ */
+export function langTarget(postsPerDay: number, windowMin: number, p: Policy): number {
+  const bands = Math.max(1, p.feed.fresh.bandAgesMin.length);
+  return (Math.max(0, postsPerDay) * Math.max(0, windowMin)) / (bands * (MS_PER_DAY / MS_PER_MINUTE));
+}
+
+/**
  * Whether a slow-lane slice is already covered by the fresh bands: its youngest age is no older
  * than the oldest band, so the band has looked at those posts at about that age.
  */
