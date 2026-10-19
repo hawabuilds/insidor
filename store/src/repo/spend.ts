@@ -101,6 +101,20 @@ export class PgSpendRepo implements SpendLedger {
   }
 
   /**
+   * ★ ONE ENDPOINT'S BILL on or after `sinceMs`: the X search day (`Policy.feed.searchDay`) reads the
+   * posts supplier's `search` since 00:00 UTC before each pass. Every live and job row alike, because
+   * the vendor bills them on one account; a job's search is rare and small, and counting it can only
+   * close the day early, never late.
+   */
+  async usdSince(vendor: string, endpoint: string, sinceMs: Millis): Promise<number> {
+    const rows = await this.#db.query<{ usd: string | null }>(
+      `select coalesce(sum(usd), 0)::text as usd from internal.spend where vendor = $1 and endpoint = $2 and at >= $3`,
+      [vendor, endpoint, toTimestamp(sinceMs)],
+    );
+    return toUsd(rows[0]?.usd ?? 0, vendor);
+  }
+
+  /**
    * Everything spent on or after `sinceMs`, overall and per vendor.
    *
    * ★ ONE QUERY AND NOT TWO. A total taken separately from the per-vendor breakdown is

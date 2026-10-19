@@ -11,7 +11,9 @@
  * and a page-by-page lane (the text source's middle lane) would overrun by a whole pass.
  */
 
-import type { LaneCapPolicy } from '@insidor/contracts/policy.ts';
+import type { LaneCapPolicy, Policy } from '@insidor/contracts/policy.ts';
+
+import { MS_PER_DAY } from '../math.ts';
 
 /** True when an ask quoted at `askUsd` keeps the lane's day at or under its cap. */
 export function laneMayAsk(spentUsd: number, askUsd: number, cap: LaneCapPolicy): boolean {
@@ -25,4 +27,28 @@ export function laneMayAsk(spentUsd: number, askUsd: number, cap: LaneCapPolicy)
  */
 export function laneJudgeUsd(newPosts: number, cap: LaneCapPolicy): number {
   return Math.max(0, newPosts) * cap.judgeUsdPerPost * cap.judgedShare;
+}
+
+/**
+ * ★ THE X SEARCH DAY'S ALLOWANCE AT `now` (`feed.searchDay`): what the whole day's search may have
+ * spent by this instant — `dailyUsd` spread evenly over the UTC day, `aheadMs` of it allowed early so
+ * a pass at a quarter past midnight is not refused for being a quarter-hour in. Never above
+ * `dailyUsd`, so by midnight the day is the hard total and no more. Infinite while off.
+ *
+ * What breaks if changed carelessly: an allowance on the day alone (no pace) lets a busy night spend
+ * the day by breakfast, which is how 19 Oct 2026 spent $8.50 by 08:00 UTC; a pace with no `aheadMs`
+ * refuses the first ask of every day.
+ */
+export function searchDayAllowanceUsd(now: number, p: Policy): number {
+  const d = p.feed.searchDay;
+  if (!d.on) return Number.POSITIVE_INFINITY;
+  const intoDay = ((now % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY;
+  return d.dailyUsd * Math.min(1, (intoDay + Math.max(0, d.aheadMs)) / MS_PER_DAY);
+}
+
+/** True when an ask quoted at `askUsd` keeps the day's X search at or under its allowance now. */
+export function searchDayMayAsk(spentUsd: number, askUsd: number, now: number, p: Policy): boolean {
+  if (!p.feed.searchDay.on) return true;
+  if (!Number.isFinite(spentUsd) || !Number.isFinite(askUsd)) return false;
+  return spentUsd + Math.max(0, askUsd) <= searchDayAllowanceUsd(now, p);
 }

@@ -1582,6 +1582,30 @@ export interface FeedPolicy {
     readonly searches: Readonly<Record<string, SearchPagingPolicy>>;
   };
   /**
+   * ★ THE X SEARCH DAY, ONE HARD TOTAL PACED OVER THE UTC DAY (the owner, 2026-10-19: "a HARD daily
+   * total for X search across all lanes and languages, spread evenly through the day, not
+   * front-loaded"). With `on`, every catch-all search page — the newest bands, the late band, the
+   * slow lane's slices and the middle lane, in every language — is asked only while the posts
+   * supplier's metered search bill today (internal.spend, endpoint `search`, since 00:00 UTC) plus
+   * the page's quote stays within `dailyUsd` × (the share of the UTC day gone, plus `aheadMs`), and
+   * never above `dailyUsd` (core `searchDayAllowanceUsd`). The narrative-name and quote searches are
+   * not held to it — each keeps its own cap — but their pages are on the same bill, so the catch-all
+   * gets what they leave.
+   *
+   * Why the metered bill and not a ledger of our own: every search the posts supplier bills lands
+   * there whoever asked it, so a lane added later cannot spend outside the total by forgetting to
+   * write to a ledger. Read once a pass and kept up to date in the pass from each page's own bill; two
+   * loops (discover, middle) each read it at their own start, so the day can overrun by at most one
+   * pass of the other loop — the pace's `aheadMs` is the margin for that.
+   *
+   * What breaks if changed carelessly: the floors still steer what each search costs; this is the
+   * stop when they cannot. A `dailyUsd` the floors' targets do not fit under turns into refusals at
+   * the end of every pace step, and a refused band reaches back further at its next ask
+   * (`fresh.maxWindowMin`, `langSplit.maxEveryMs`) and loses what is older than that.
+   * Unreadable bill: no catch-all search is asked (the middle lane's rule).
+   */
+  readonly searchDay: { readonly on: boolean; readonly dailyUsd: number; readonly aheadMs: number };
+  /**
    * ★ VIEW READINGS OFTEN ENOUGH FOR THE SHEET'S CHART: every post on For You is read again on a
    * cadence set by its age, and a post whose sheet was just opened is read again when its newest
    * reading is over `openReadMinGapMs` old (services/runner/src/work/readings.ts, its own loop).
@@ -4929,6 +4953,11 @@ const POLICY_V1: Policy = {
         slow: { full: false, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.32 },
       },
     },
+    /* On from 2026-10-19, the owner's "hard daily total for X search, spread evenly". The search bill
+       was $13.81 in the 24 hours to 08:08 UTC on 2026-10-19 ($8.50 of it since midnight): $1.22 to
+       $1.69 an hour from 00:00 to 04:00 UTC, against $0.15 to $0.63 an hour on 2026-10-18. $7, the
+       owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
+    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000 },
     /* OFF until the owner approves the cost (asked 2026-10-16: "show me the extra cost per day
        before switching on; keep the day within ~$50").
        Measured over the 48 hours to 2026-10-16 17:37 UTC from public.feed_post and public.item: For
