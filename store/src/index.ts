@@ -35,6 +35,9 @@ export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, Po
 export { PgOlderCoinRepo } from './repo/older-coin.ts';
 export { fromBits, missingTable, PgImageHashRepo, toBits } from './repo/image-hash.ts';
 export type { DuePicture, PictureNeighbour } from './repo/image-hash.ts';
+/* One post, one coin (0113, with 0112's trade feed when it is there): the runner's matcher and rule, and the tools. */
+export { PgOneCoinRepo } from './repo/one-coin.ts';
+export type { CandidateRow, ExistingCoinRow, MinuteRow, PickKind, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from './repo/one-coin.ts';
 export type { DueOlderCoin, FoundOlderCoin, OlderCoinReading } from './repo/older-coin.ts';
 export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
 export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';
