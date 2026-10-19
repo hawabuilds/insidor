@@ -134,12 +134,12 @@ export interface ExistingCoin {
   readonly readAtMs: number | null;
 }
 
-export function biggestOfName(
+export function biggestOfName<C extends ExistingCoin>(
   post: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'postedAtMs'>,
-  coins: readonly ExistingCoin[],
+  coins: readonly C[],
   bars: Pick<LaunchMatchBars, 'minVariantLength'> & { readonly readingWithinMs: number; readonly minCapUsd: number },
   nowMs: number,
-): ExistingCoin | null {
+): C | null {
   const names = [...post.judgeNames, ...post.guessNames];
   if (names.length === 0) return null;
   const live = coins.filter((c) => c.capUsd !== null && c.capUsd >= bars.minCapUsd && c.readAtMs !== null && nowMs - c.readAtMs <= bars.readingWithinMs && nameMatch(names, c, bars) === 'exact');
