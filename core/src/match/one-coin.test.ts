@@ -86,7 +86,9 @@ test('waiting: too early, under the bars, no clear lead, a rival we could not me
   assert.equal((pickOneCoin([c('A', 1_018, trades({}))], null, NOW, true, BARS) as { reason?: string }).reason, 'too_early');
   assert.equal((pickOneCoin([c('A', 1_005, trades({ uniqueBuyers: 3 }))], null, NOW, true, BARS) as { reason?: string }).reason, 'under_bars');
   assert.equal((pickOneCoin([c('A', 1_005, trades({})), c('B', 1_005, trades({ netBuy: 20 }))], null, NOW, true, BARS) as { reason?: string }).reason, 'no_clear_lead');
-  assert.equal((pickOneCoin([c('A', 1_005, trades({})), c('B', 1_005, null)], null, NOW, true, BARS) as { reason?: string }).reason, 'rival_unmeasured');
+  /* A rival we could not measure sends the post to market readings, said in `basis`, never a stall. */
+  const unread = pickOneCoin([c('A', 1_005, trades({})), c('B', 1_005, null)], null, NOW, true, BARS);
+  assert.equal(unread.kind !== 'none' && unread.basis, 'market_readings');
   /* A watched coin with no trade is a measured nothing, never a block. */
   assert.equal(pickOneCoin([c('A', 1_005, trades({})), c('B', 1_005, 'quiet')], null, NOW, true, BARS).kind, 'picked');
 });

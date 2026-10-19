@@ -99,13 +99,12 @@ test('★ the rule reads them: the coin twenty wallets are buying is picked on t
   assert.deepEqual([quiet?.measured, quiet?.strength], [true, 0], 'watched and measured with no trade: a real nothing');
 });
 
-test('★ a coin the feed stopped measuring is unknown, never zero: it is not read as quiet, and it holds the pick back', async () => {
+test('★ a coin the feed stopped measuring is unknown, never zero: it is not read as quiet, and the post is judged on market readings instead', async () => {
   assert.equal((await repo().tradeFacts([CAPPED]))?.has(CAPPED), false, 'its partial totals are not handed to the rule');
   assert.equal((await repo().watched([CAPPED], NOW)).has(CAPPED), false);
   const o = await judge([BUYING, CAPPED]);
-  assert.equal(o.kind, 'waiting');
-  assert.equal(o.kind === 'waiting' ? o.reason : null, 'rival_unmeasured');
-  assert.equal(o.kind === 'waiting' ? o.standings.find((s) => s.address === CAPPED)?.measured : null, false);
+  assert.notEqual(o.kind, 'none');
+  assert.equal(o.kind !== 'none' ? o.basis : null, 'market_readings', 'never a pick on trades it could not see');
 });
 
 test('a restart ends what the previous process was measuring, from its last heartbeat', async () => {
