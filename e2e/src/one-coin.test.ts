@@ -58,7 +58,7 @@ async function reading(address: string, atMs: number, cap: number): Promise<void
 async function minute(address: string, atMs: number, o: { newBuyers: number; net: number; cap: number; usd: number; creatorSold?: number }): Promise<void> {
   await db.query(
     `insert into internal.coin_trade_minute (address, minute, buys, sells, buyers, new_buyers, buy_sol, sell_sol, net_sol, creator_sold_sol, last_mcap_sol, last_mcap_usd)
-     values ($1, $2, 1, 1, $3, $3, greatest($4, 0), greatest(-$4, 0), $4, $5, $6, $7)`,
+     values ($1, $2, greatest($3::int, 1), 1, $3, $3, greatest($4, 0), greatest(-$4, 0), $4, $5, $6, $7)`,
     [address, iso(atMs), o.newBuyers, o.net, o.creatorSold ?? 0, o.cap, o.usd],
   );
 }

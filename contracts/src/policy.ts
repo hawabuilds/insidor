@@ -4467,7 +4467,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v118',
+  version: 'policy.v119',
 
   admit: {
     maxAgeMin: 240,
@@ -4912,7 +4912,7 @@ const POLICY_V1: Policy = {
     tickerLookbackMs: 604_800_000, // seven days
     tickerMinCoverage: 0.95,
     launchListing: {
-      on: true,
+      on: false, // off until the listing reads chain accounts through our own chain provider (owner rule: no new outside service without asking)
       everyMs: 30_000,
       pagesPerPass: 5,
       maxAgeMs: 1_800_000, // thirty minutes
