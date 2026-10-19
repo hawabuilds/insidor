@@ -23,6 +23,9 @@ import { PgOneCoinRepo, type Db } from '@insidor/store';
 
 import { loadCases } from '@insidor/project/src/onecoin-cases.ts';
 import { migratedDb } from './db.ts';
+/* These cases were written for the matcher in shadow; the live cards and pushes have their own cases. */
+const SHADOW_POLICY = { ...DEFAULT_POLICY, oneCoin: { ...DEFAULT_POLICY.oneCoin, mode: 'shadow' as const } };
+
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet } as unknown as Logger;
 const MIN = 60_000;
@@ -62,7 +65,7 @@ async function minute(address: string, atMs: number, o: { newBuyers: number; net
 }
 
 const pass = (now = NOW) =>
-  oneCoinPass({ repo: new PgOneCoinRepo(db), policy: DEFAULT_POLICY, log: quiet, now: () => now as Millis }, newOneCoinState());
+  oneCoinPass({ repo: new PgOneCoinRepo(db), policy: SHADOW_POLICY, log: quiet, now: () => now as Millis }, newOneCoinState());
 
 before(async () => {
   db = await migratedDb();
@@ -127,7 +130,7 @@ test('★ on trade minutes: the coin people are buying takes over at three times
   /* Every candidate is on the trade feed's watch list until an hour after its launch. */
   const watched = await db.query<{ address: string; until: string }>(`select address, until from internal.coin_watch order by address`);
   assert.deepEqual(watched.map((w) => w.address), [LINK, NAME, RUG]);
-  assert.equal(new Date(watched.find((w) => w.address === LINK)!.until).getTime(), NOW - 20 * MIN + DEFAULT_POLICY.oneCoin.watchMs);
+  assert.equal(new Date(watched.find((w) => w.address === LINK)!.until).getTime(), NOW - 20 * MIN + SHADOW_POLICY.oneCoin.watchMs);
   /* The narrative is judged over its posts' candidates together, to the same coin. */
   assert.equal((await loadNarrativePicks(db, ['n-x:1001'])).get('n-x:1001'), LINK);
 });
@@ -154,19 +157,19 @@ test('★ a saved post is pushed on its pick, and once more when the pick is han
   await lineIs({ kind: 'unsure', claimCount: 3, ownerList: true });
   await ndb.query(`insert into people.post_watch (user_id, item_id) values ('u1', 'x:1001')`);
   const state = { cursor: iso(NOW) };
-  const ports = { policy: DEFAULT_POLICY.notify, now: () => NOW, onPick: true };
+  const ports = { policy: SHADOW_POLICY.notify, now: () => NOW, onPick: true };
   assert.equal(await checkWatched(ndb, ports, state), 0, 'no pick yet: nothing, and the list is not news');
   await lineIs({ kind: 'matched', coin: { address: LINK, ticker: 'FKITTY' }, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 600_000, picked: true } });
   assert.equal(await checkWatched(ndb, ports, state), 1);
   await lineIs({ kind: 'matched', coin: { address: NAME, ticker: 'PNCK' }, evidence: { linksPost: null, samePicture: null, launchedAfterMs: 660_000, picked: true } });
   assert.equal(await checkWatched(ndb, ports, state), 1);
-  await deliverQueued({ db: ndb, push, pushOn: true, policy: DEFAULT_POLICY.notify, now: () => NOW });
+  await deliverQueued({ db: ndb, push, pushOn: true, policy: SHADOW_POLICY.notify, now: () => NOW });
   assert.deepEqual(sent, ['$FKITTY is the first coin for a post you saved', '$PNCK is now the coin for a post you saved']);
 });
 
 test('the replay reads the same rows back: the owner\'s coin is the truth, and the rule finds it', async () => {
   await db.query(`insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address) values ('x:owner', 'did:owner', 'coin_match', 'x:1001', 'right', $1)`, [LINK]);
-  const P = DEFAULT_POLICY.oneCoin;
+  const P = SHADOW_POLICY.oneCoin;
   const loaded = await loadCases(db, NOW - 2 * 3_600_000, NOW + MIN, { truthAtMs: P.refit.truthAtMs, truthMinCapUsd: P.refit.truthMinCapUsd, watchMs: P.watchMs });
   assert.equal(loaded.useTrades, true);
   assert.deepEqual(loaded.truths.get('x:1001'), { address: LINK, by: 'owner' });
