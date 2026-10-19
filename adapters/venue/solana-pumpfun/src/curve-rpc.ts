@@ -89,9 +89,13 @@ export async function curvePlaces(config: CurveRpcConfig, mints: readonly string
   return { places, calls };
 }
 
-/** One confirmed transaction's log lines, or null when the chain does not have it (yet). One call. */
+/**
+ * One confirmed transaction's log lines, or null when the chain does not have it (yet). One call.
+ * Version 1 is asked for because launches now come in version-1 transactions (19 Oct: the node
+ * refused one asked for at version 0), and a lower ceiling fails the read rather than answering.
+ */
 export async function transactionLogs(config: CurveRpcConfig, signature: string): Promise<readonly string[] | null> {
-  const result = await call(config, 'getTransaction', [signature, { encoding: 'json', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }]);
+  const result = await call(config, 'getTransaction', [signature, { encoding: 'json', commitment: 'confirmed', maxSupportedTransactionVersion: 1 }]);
   if (result === null || result === undefined) return null;
   const meta = rec(rec(result).meta);
   if (meta.err !== null && meta.err !== undefined) return null;
