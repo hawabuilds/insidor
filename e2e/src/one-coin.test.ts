@@ -1,6 +1,5 @@
 /**
- * ★ ONE POST, ONE COIN on the real schema (PGlite, every migration; 0112's trade tables from a
- * fixture): a post and its launches through the runner's matcher and rule, into 0113's candidates,
+ * ★ ONE POST, ONE COIN on the real schema (PGlite, every migration; 0112's trade tables): a post and its launches through the runner's matcher and rule, into 0113's candidates,
  * picks and history; first on market readings (no trade feed yet, said in the pick), then on trade
  * minutes, where the coin people are buying takes over from the one that merely read high and a rug
  * is out; the narrative's pick over its posts; the live card's line and the saved post's pushes on the
@@ -24,7 +23,6 @@ import { PgOneCoinRepo, type Db } from '@insidor/store';
 
 import { loadCases } from '@insidor/project/src/onecoin-cases.ts';
 import { migratedDb } from './db.ts';
-import { TRADE_FEED_0112 } from './trade-feed-0112.fixture.ts';
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet } as unknown as Logger;
 const MIN = 60_000;
@@ -108,7 +106,6 @@ test('★ before the trade feed: the matcher ties link, name and ticker; the pic
 });
 
 test('★ on trade minutes: the coin people are buying takes over at three times, the rug is out, and the change is kept', async () => {
-  await db.query(TRADE_FEED_0112);
   /* The rug: a burst of buying, then the creator sells and the cap collapses. */
   await minute(RUG, NOW - 20 * MIN, { newBuyers: 40, net: 60, cap: 400, usd: 70_000 });
   await minute(RUG, NOW - 14 * MIN, { newBuyers: 0, net: -58, cap: 30, usd: 4_000, creatorSold: 25 });
@@ -117,7 +114,7 @@ test('★ on trade minutes: the coin people are buying takes over at three times
   await minute(LINK, NOW - 19 * MIN, { newBuyers: 30, net: 15, cap: 120, usd: 20_000 });
   await minute(LINK, NOW - 10 * MIN, { newBuyers: 25, net: 20, cap: 260, usd: 46_000 });
   for (const [a, buyers, peak, last, sold] of [[RUG, 40, 400, 30, true], [NAME, 6, 150, 150, false], [LINK, 55, 260, 260, false]] as const) {
-    await db.query(`insert into internal.coin_trade_state (address, unique_buyers, peak_mcap_sol, last_mcap_sol, creator_sold, updated_at) values ($1, $2, $3, $4, $5, $6)`, [a, buyers, peak, last, sold, iso(NOW - 5_000)]);
+    await db.query(`insert into internal.coin_trade_state (address, unique_buyers, peak_mcap_sol, last_mcap_sol, creator_sold, first_trade_at, last_trade_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8)`, [a, buyers, peak, last, sold, iso(NOW - 21 * MIN), iso(NOW - 10 * MIN), iso(NOW - 5_000)]);
   }
   const r = await pass();
   assert.equal(r.basis, 'trades');
