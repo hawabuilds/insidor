@@ -64,15 +64,14 @@ test('★ the strongest first: a pass queues its coins highest market cap first,
   assert.deepEqual(r.due.map((d) => d.address), ['BIG', 'SMALL', 'NONE']);
 });
 
-test('★ a coin-first post: its coin came first, and it is pushed only when the picked coin is the post\'s first coin', () => {
+test('★ a coin-first post: its coin came first, and its first pick is pushed, even when a dud copycat linked it first', () => {
   const before = { launchedMs: ON_FYP - 10 * MIN };
   const first = launchEvents([pick('p:x:9', 'LAURA', { ...before, coinFirst: { firstCoinAddress: 'LAURA' } })], [], new Set(), NOW, L);
   assert.deepEqual(first.due.map((d) => d.address), ['LAURA'], 'the first coin that launched and is running');
   const copycatFirst = launchEvents([pick('p:x:9', 'LAURA', { ...before, coinFirst: { firstCoinAddress: 'COPYCAT' } })], [], new Set(), NOW, L);
-  assert.deepEqual(copycatFirst.due, [], 'another coin linked the post first: this one is not news');
-  assert.deepEqual(copycatFirst.keys, ['p:x:9'], 'and the post is spent');
-  const unknown = launchEvents([pick('p:x:9', 'LAURA', { ...before, coinFirst: { firstCoinAddress: null } })], [], new Set(), NOW, L);
-  assert.deepEqual(unknown.due, [], 'no known first coin: no claim it is the first');
+  assert.deepEqual(copycatFirst.due.map((d) => d.address), ['LAURA'], 'a dud linked first; the first coin to run is still the news');
+  const later = launchEvents([pick('p:x:9', 'OTHER', { ...before, coinFirst: { firstCoinAddress: 'LAURA' } })], [], new Set(['p:x:9']), NOW, L);
+  assert.deepEqual(later.due, [], 'a post already picked once is spent: no later coin is pushed');
   const notRoute = launchEvents([pick('p:x:9', 'LAURA', before)], [], new Set(), NOW, L);
   assert.deepEqual(notRoute.due, [], 'a post For You took on its views keeps rule 2');
   const stale = launchEvents([pick('p:x:9', 'LAURA', { launchedMs: NOW - L.maxLaunchAgeMs - 1, coinFirst: { firstCoinAddress: 'LAURA' } })], [], new Set(), NOW, L);

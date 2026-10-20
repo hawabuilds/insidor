@@ -18,12 +18,12 @@
  *      than the post — those ten are the coins the owner said he does not care about.
  *      ★ EXCEPT A COIN-FIRST POST (internal.coin_first_post, 0116: For You took it by the coin-first
  *      route alone, on the judge's yes and its picked coin). There the coin always came first — it is
- *      why the post is there — so rule 2 would never push it. It is pushed when the picked coin is
- *      the post's FIRST coin: the earliest-launched observed coin whose own link ties the post, or its
- *      repost (the route records it). That is the owner's "first coin that launched and is running";
- *      a copycat that ran after an earlier coin linked the post is not news. Rules 1, 3 and 4 hold as
- *      for any post. The Laura case (20 Oct): $Laura ran, but a copycat linked Saylor's repost four
- *      seconds before it launched, so it would join For You and not be pushed.
+ *      why the post is there — so rule 2 would never push it. It is pushed on its FIRST PICK: the first
+ *      coin for the post that passed the running rule (rule 1 remembers the post, so no later coin is
+ *      pushed). The owner's "first coin that launched and is running" is the first to RUN, not the
+ *      first to link: in the Laura case (20 Oct) a dud copycat linked Saylor's repost four seconds
+ *      before $Laura launched, and a "first to link" rule would have kept $Laura from being pushed.
+ *      Rules 1, 3 and 4 hold as for any post.
  *   3. the coin is still "just launched": seen within Policy.notify.launch.maxLaunchAgeMs of its launch.
  *      A coin whose launch time we do not know is not pushed (we cannot say it came after).
  *   4. the coin was never pushed before (`c:<address>`), so a post and its narrative picking the
@@ -81,11 +81,12 @@ export interface Picked {
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
 }
 
-/** Whether the push's timing rule passes: launched after For You (rule 2) or, for a coin-first post, the post's first coin; and just launched (rule 3). */
+/** Whether the push's timing rule passes: launched after For You (rule 2) or, for a coin-first post, its first pick; and just launched (rule 3). */
 export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYouMs' | 'coinFirst'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
   if (p.launchedMs === null || nowMs - p.launchedMs > rule.maxLaunchAgeMs) return false;
   if (p.launchedMs >= p.onForYouMs) return true;
-  return p.coinFirst !== undefined && p.coinFirst.firstCoinAddress !== null && p.coinFirst.firstCoinAddress === p.address;
+  /* A coin-first post: its first pick is the first coin to run; rule 1 keeps it to one. */
+  return p.coinFirst !== undefined;
 }
 
 /**
