@@ -758,6 +758,13 @@ export interface JudgePolicy {
    */
   readonly primary: 'main' | 'open';
   /**
+   * The open model on its first host is the only judge: the main judge and the open model's second
+   * host are left dormant at boot whatever keys are set (the owner, 2026-10-20: "openrouter only as
+   * judge"). Their failover had kept billing the second host ($5.97 in a day and a half) and kept
+   * asking the main judge, whose account is empty.
+   */
+  readonly openOnly: boolean;
+  /**
    * ★ EACH OPEN MODEL'S OWN YES/NO CUTOFF (the owner, 2026-10-17: "switch the live post judge to
    * Nemotron at cutoff 0.70, Gemma 3 as its automatic fallback"). A confidence is a model's own
    * scale: Nemotron's yeses on hand gold sit at a median 0.88, so the 0.90 the evening re-tune chose
@@ -4522,7 +4529,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v126',
+  version: 'policy.v127',
 
   admit: {
     maxAgeMin: 240,
@@ -4807,6 +4814,7 @@ const POLICY_V1: Policy = {
        the evening re-tune's block 10 at its 0.90 cutoff (hand gold 65% against the old judge's 60%,
        missed 64% against 62%, live non-memes 27% against 19%), so the block's own cutoff rules. */
     primary: 'open',
+    openOnly: true,
     /* Measured 2026-10-17 on block 10 (scratch vote/nemo), the same test posts: Nemotron at 0.70
        passes hand gold 76/120, missed 8/15, live non-memes 18/80 and 8 of the owner's 90 fresh "Not
        a meme" calls; Gemma 3 at the block's 0.90 passes 78, 8, 27 and 24. The fallback's 0.90 is

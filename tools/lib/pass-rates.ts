@@ -177,7 +177,8 @@ export async function openGradeSetup(env: Record<string, string | undefined>): P
   const second = readOpenJudgeBackupSetup(env);
   const secondModel = second.state === 'configured' ? (KNOWN_MODELS.find((m) => m.id === second.model) ?? null) : null;
   const router = readOpenJudgeSetup(env);
-  if (second.state === 'configured' && secondModel !== null && (readPostFirst(env) === 'second' || router.state !== 'configured')) return { setup: second, model: secondModel };
+  /* `judge.openOnly`: the re-tune grades on the same host as the live judge, never the second one. */
+  if (!P.judge.openOnly && second.state === 'configured' && secondModel !== null && (readPostFirst(env) === 'second' || router.state !== 'configured')) return { setup: second, model: secondModel };
   const setup = router;
   if (setup.state !== 'configured') throw new Error(`the open judge is not configured (${OPEN_API_KEY} is not set, nor a priced second host)`);
   const listed = await listModels(globalThis.fetch, setup.baseUrl, P.judge.timeoutMs).catch(() => KNOWN_MODELS);

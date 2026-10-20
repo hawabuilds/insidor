@@ -423,7 +423,7 @@ function platformEnv(env: Env): CredentialEnv {
   return Object.freeze(slice);
 }
 
-export function loadRunnerConfig(env: Env): RunnerConfig {
+export function loadRunnerConfig(env: Env, openOnly: boolean = DEFAULT_POLICY.judge.openOnly): RunnerConfig {
   const problems: string[] = [];
   const r = reader(env, problems);
 
@@ -480,7 +480,9 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
   const spend: SpendConfig = { kind: spendMode, dailyBudgetUsd };
 
   /* ── the judge ───────────────────────────────────────────────────────────── */
-  const judge = readJudgeSetup(env);
+  /* `judge.openOnly`: the main judge and the second host read no key, so both stay dormant. */
+  const judgeEnv = openOnly ? { ...env, ANTHROPIC_API_KEY: '', JUDGE_MODEL: '', TOGETHER_API_KEY: '', OPEN_JUDGE_BACKUP_API_KEY: '' } : env;
+  const judge = readJudgeSetup(judgeEnv);
   if (judge.state === 'misconfigured') {
     problems.push(
       `${judge.variable} ${judge.note}. Set both ANTHROPIC_API_KEY and JUDGE_MODEL to turn the ` +
@@ -512,7 +514,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     sourceEnv: platformEnv(env),
     judge,
     openJudge: readOpenJudgeSetup(env),
-    openJudgeBackup: readOpenJudgeBackupSetup(env),
+    openJudgeBackup: readOpenJudgeBackupSetup(judgeEnv),
     postJudgeFirst: readPostFirst(env),
     embeddings:
       (env['VOYAGE_API_KEY'] ?? '').trim() === ''
