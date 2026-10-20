@@ -20,7 +20,7 @@ import { NotImplemented } from '@insidor/vendor-kit';
 
 import { billedUnits } from './capabilities.ts';
 import type { SearchPage, XClient } from './client.ts';
-import { CutoffNotHonoured, cutoffSecond, requireCutoffHonoured, searchPage, toSearchQuery } from './discover.ts';
+import { AccountsNotHonoured, CutoffNotHonoured, cutoffSecond, MAX_ACCOUNTS_PER_ASK, requireCutoffHonoured, searchPage, toSearchQuery } from './discover.ts';
 import { toItem } from './to-item.ts';
 
 const AT = 1_800_000_000_000;
@@ -269,4 +269,33 @@ test('the rendered query, not the raw term, is what reaches the client', async (
   await searchPage(client, query({ cursor: 'PAGE2', untilMs }), AT);
   assert.equal(seen.query, `chillguy until_time:${cutoffSecond(untilMs)}`);
   assert.equal(seen.cursor, 'PAGE2');
+});
+
+/* ── a group of accounts (the account watch) ──────────────────────────── */
+
+const byAuthor = (id: string, handle: string): unknown => ({ ...(post(id, AT - 1) as object), author: { id: `u${handle}`, userName: handle } });
+
+test('several accounts render as one OR group of from: with reposts left out, one account as before', () => {
+  assert.equal(
+    toSearchQuery(query({ mode: 'account', term: 'alice', terms: ['alice', 'Bob_2'], sinceMs: 1_800_000_000_000 })),
+    '(from:alice OR from:Bob_2) -filter:retweets since_time:1800000000',
+  );
+  assert.equal(toSearchQuery(query({ mode: 'account', term: 'alice', terms: ['alice'] })), 'from:alice');
+});
+
+test('a group is refused, not rendered, when a handle is malformed, repeated or the group too long', () => {
+  assert.throws(() => toSearchQuery(query({ mode: 'account', term: 'a', terms: ['a', 'two words'] })), NotImplemented);
+  assert.throws(() => toSearchQuery(query({ mode: 'account', term: 'a', terms: ['a', 'b', 'A'] })), NotImplemented);
+  assert.throws(() => toSearchQuery(query({ mode: 'account', term: 'a', terms: ['a', 'sixteen_letters_'] })), NotImplemented);
+  const many = Array.from({ length: MAX_ACCOUNTS_PER_ASK + 1 }, (_v, k) => `acct${k}`);
+  assert.throws(() => toSearchQuery(query({ mode: 'account', term: many[0] ?? '', terms: many })), NotImplemented);
+});
+
+test('★ a post by an account the group did not name fails the page; an unnamed author does not', async () => {
+  const ask = query({ mode: 'account', term: 'alice', terms: ['alice', 'bob'] });
+  const stranger = clientReturning({ items: [byAuthor('1', 'ALICE'), byAuthor('2', 'mallory')], cursor: null, hasMore: false });
+  await assert.rejects(searchPage(stranger, ask, AT), AccountsNotHonoured);
+  const fine = clientReturning({ items: [byAuthor('1', 'ALICE'), byAuthor('2', 'bob'), post('3', AT - 1)], cursor: null, hasMore: false });
+  const result = await searchPage(fine, ask, AT);
+  assert.equal(result.items.length, 3);
 });
