@@ -22,6 +22,10 @@
  * is complete, so a pass writes no coverage row, and a pass that could not reach the previous one
  * says so in the log rather than in the table.
  *
+ * ★ THE CHAIN READS ARE CAPPED BY THE DAY, in the key's credits (`dayCapCredits`): the key is the
+ * trade feed's too, on a free day of 33k credits. One read asks `accountsPerCall` coins, so a pass
+ * costs one read in ordinary traffic. Past the cap a pass skips the read, as if it had failed.
+ *
  * ★ A CHAIN READ THAT FAILS DOES NOT STOP THE ADD. The coin is added with the listing's own name
  * and ticker and no metadata link, which costs it a picture; leaving it out would cost us the coin.
  *
@@ -59,6 +63,11 @@ export interface ListingDeps {
 export interface ListingOptions {
   readonly pagesPerPass: number;
   readonly maxAgeMs: number;
+  /** Coins one chain read can ask about, and what one read costs on the key's day. */
+  readonly accountsPerCall: number;
+  readonly creditsPerCall: number;
+  /** The most credits the chain reads may cost in a UTC day; past it, coins are added without details. */
+  readonly dayCapCredits: number;
 }
 
 export interface ListingPassResult {
@@ -73,6 +82,8 @@ export interface ListingPassResult {
   readonly pagesRead: number;
   /** The pass ran out of pages before reaching the previous pass's newest pool. */
   readonly behind: boolean;
+  /** Credits this pass's chain reads cost (counted when asked, whether or not they answered). */
+  readonly credits: number;
 }
 
 export interface Listing {
@@ -82,6 +93,8 @@ export interface Listing {
 export function createListing(deps: ListingDeps, opts: ListingOptions): Listing {
   /** The newest pool creation instant any completed pass saw. Null before the first. */
   let highWater: number | null = null;
+  /** The chain reads' credits on the UTC day `day`, and whether the cap was said that day. */
+  const spend = { day: '', credits: 0, capSaid: false };
 
   return {
     async pass() {
@@ -128,17 +141,32 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
       const fresh = young.filter((h) => !held.has(h.address));
       if (fresh.length === 0) {
         highWater = newest;
-        return { listed: listed.size, fresh: 0, added: 0, withoutDetails: 0, pagesRead, behind };
+        return { listed: listed.size, fresh: 0, added: 0, withoutDetails: 0, pagesRead, behind, credits: 0 };
       }
 
+      /* ★ THE DAY'S CREDIT CAP: the chain reads share a key's free day with the trade feed. Past the
+         cap a coin is still added, from the listing's own name and ticker, without its link. */
+      const day = new Date(nowMs).toISOString().slice(0, 10);
+      if (spend.day !== day) Object.assign(spend, { day, credits: 0, capSaid: false });
+      const cost = Math.ceil(fresh.length / Math.max(1, opts.accountsPerCall)) * opts.creditsPerCall;
       let details: ReadonlyMap<string, ChainDetails> = new Map();
-      try {
-        details = await deps.details(fresh.map((h) => h.address));
-      } catch (e) {
-        deps.note('chain details unavailable; listed launches are added without a metadata link', {
-          err: e instanceof Error ? e.message : String(e),
-          launches: fresh.length,
-        });
+      let credits = 0;
+      if (spend.credits + cost > opts.dayCapCredits) {
+        if (!spend.capSaid) {
+          spend.capSaid = true;
+          deps.note('launch listing: the day\'s chain-read credits are spent; listed launches are added without a metadata link until 00:00 UTC', { credits: spend.credits, capCredits: opts.dayCapCredits });
+        }
+      } else {
+        spend.credits += cost;
+        credits = cost;
+        try {
+          details = await deps.details(fresh.map((h) => h.address));
+        } catch (e) {
+          deps.note('chain details unavailable; listed launches are added without a metadata link', {
+            err: e instanceof Error ? e.message : String(e),
+            launches: fresh.length,
+          });
+        }
       }
 
       const added = await deps.add(
@@ -149,7 +177,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
       highWater = newest;
       const addedSet = new Set(added);
       const withoutDetails = fresh.filter((h) => addedSet.has(h.address) && !details.has(h.address)).length;
-      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind };
+      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind, credits };
     },
   };
 }

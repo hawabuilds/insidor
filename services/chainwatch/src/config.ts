@@ -88,8 +88,9 @@ export interface ChainwatchConfig {
   readonly backoffMaxMs: number;
   /**
    * The chain RPC the launch listing asks for a listed coin's own name, ticker and metadata link
-   * (one read per pass). OPTIONAL, unlike everything above: null means the chain's public
-   * endpoint, chosen in wiring.ts. It is a free, keyless read that changes no number this service
+   * (one read per pass). OPTIONAL, unlike everything above: null means the trade feed's keyed
+   * endpoint (HELIUS_API_KEY), built in wiring.ts, and with no key either the chain is not read —
+   * never the chain's public endpoint. It is a read that changes no number this service
    * claims — when it fails, a listed coin is still added, only without its link — and making it
    * required would stop an already-deployed watcher from booting until someone set it.
    */
