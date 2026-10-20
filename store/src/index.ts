@@ -85,6 +85,7 @@ export { PgSourceHealthRepo } from './repo/sources.ts';
    every recorded call — which is the whole of "a restart is not a fresh day's budget".
    Without this export the cap in policy means "per process lifetime". */
 export { PgSpendRepo } from './repo/spend.ts';
+export type { CallBucket } from './repo/spend.ts';
 export type { StageRunClose } from './repo/runs.ts';
 export { PgHistoryRepo } from './repo/history.ts';
 export { PgJobFileRepo } from './repo/job-files.ts';

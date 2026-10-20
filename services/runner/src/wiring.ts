@@ -57,12 +57,13 @@ import { supplierWarnings } from './supplier-warnings.ts';
 import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
 import { languageAlarm } from './language-alarm.ts';
 import { diskAlarm } from './disk-alarm.ts';
+import { judgeCostAlarm } from './judge-cost-alarm.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { KNOWN_MODELS, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { KNOWN_MODELS, OPEN_JUDGE_ENDPOINT, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, postJudgeOrder, postsPerCall, rolesFor, sideName, type JudgeRole, type OpenSide } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
 import { failoverNamer, failoverSameSubject, failoverTranslator, type SameSubjectPart } from './open-questions.ts';
@@ -847,6 +848,20 @@ export async function withRuntime<T>(
       });
       void disk.check();
       setInterval(() => void disk.check(), policy.store.disk.everyMs).unref();
+      /* ★ THE OWNER'S JUDGE COST ALARM (judge-cost-alarm.ts): the judge's booked cost a call over the
+         last hour against the median hour of the week before; past twice it, the owner is told, at
+         most once in six hours (Policy.notify.judgeCost). Read from the ledger, so it runs whichever
+         host the judge is on. */
+      const judgeCost = judgeCostAlarm({
+        policy: policy.notify.judgeCost,
+        buckets: (fromMs, toMs, bucketMs) => new PgSpendRepo(db).callBuckets(OPEN_JUDGE_ENDPOINT, fromMs as Millis, toMs as Millis, bucketMs),
+        ownerWallets: cfg.ownerWallets,
+        owner,
+        log: log.child({ step: 'judge-cost' }),
+        now: () => Date.now(),
+      });
+      void judgeCost.check();
+      setInterval(() => void judgeCost.check(), policy.notify.judgeCost.everyMs).unref();
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',

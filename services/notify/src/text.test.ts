@@ -202,6 +202,13 @@ test('the disk alerts say the size against the inferred disk; the bill says its 
   });
 });
 
+test('the judge cost alert says the hour\'s cost a call against the median, from the ledger', () => {
+  assert.deepEqual(alertText('outage', { what: 'judge-cost', perCallUsd: 0.0096, medianUsd: 0.0013, ratio: 7.3, factor: 2, calls: 119, usd: 1.14, windowMinutes: 60, baselineDays: 7 }), {
+    title: 'The judge costs 7.3× its usual per call',
+    body: '$0.0096 a call over the last 60 minutes (119 calls, $1.14), against a median of $0.0013 over the 7 days before. A call that got no reply is booked at its estimate.',
+  });
+});
+
 test('★ the notification design in its own words (2026-10-18)', () => {
   assert.deepEqual(alertText('starred_speed', { title: 'Pancake the cat', newPosts: 6, viewsGained: 2_100_000 }), { title: 'Pancake the cat is taking off', body: '6 new posts, +2.1M views in the last hour' });
   assert.deepEqual(alertText('blowing_up', { what: 'post', author: '@rawsalerts', excerpt: 'Goliath at Six Flags closed', views: 1_200_000, gain: 240_000, gainMinutes: 30, noCoin: true }), { title: 'Rising fast, no coin yet', body: '@rawsalerts: Goliath at Six Flags closed 1.2M views, +240K in 30m' });
