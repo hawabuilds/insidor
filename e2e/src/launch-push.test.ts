@@ -83,7 +83,7 @@ test('★ a coin older than the post on For You is not pushed, nor that post\'s 
   assert.deepEqual(sent, ['$NEW launched for a post you may have seen']);
 });
 
-test('★ a coin-first post is pushed for its first coin, launched before For You took it; not for a copycat-led post', async () => {
+test('★ a coin-first post is pushed on its first pick, launched before For You took it, even when a dud copycat linked it first', async () => {
   const { db, sent, post, launches, deliver } = await setup();
   await post('x:cf1', null);
   await post('x:cf2', null);
@@ -99,7 +99,7 @@ test('★ a coin-first post is pushed for its first coin, launched before For Yo
     );
   await record('x:cf1', mint(7), mint(7));
   await record('x:cf2', mint(8), mint(9));
-  assert.equal(await launches(), 1, 'only the post whose picked coin is its first coin');
-  assert.deepEqual(await deliver(), ['push']);
-  assert.deepEqual(sent, ['$LAURA launched for a post you may have seen']);
+  assert.equal(await launches(), 2, 'the first pick of each post, whoever linked it first');
+  assert.deepEqual(await deliver(), ['push', 'push']);
+  assert.deepEqual([...sent].sort(), ['$LATE launched for a post you may have seen', '$LAURA launched for a post you may have seen']);
 });
