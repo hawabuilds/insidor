@@ -208,10 +208,15 @@ function lockKey(name: string): number {
  * The launch listing, and the second place this service names a vendor.
  *
  * ★ WHY THESE TWO SOURCES. The newest-pools listing is the market data source the runner already
- * reads free and keyless, and it lists launches on the curve about a minute after they happen,
- * whichever transaction version made them — which is exactly what the socket misses. It is asked
- * on the FREE plan always, never with a key: a key here would put a per-call bill on a loop that
- * runs twice a minute for ever. The chain read is one `getMultipleAccounts` a pass for the
+ * reads, and it lists launches on the curve a few minutes after they happen, whichever
+ * transaction version made them — which is exactly what the socket misses.
+ *
+ * ★ WITH THE PLAN'S KEY WHEN THE SERVICE HAS ONE (COINGECKO_API_KEY), keyless otherwise. Reversed
+ * on 20 Oct: keyless, from the host's shared address, the listing was refused (429) often enough
+ * to fall behind. Keyed, each page costs one credit of the monthly plan the runner and the read
+ * service already use, so the pages are capped by the day in policy (`dayCapPages`) and held to
+ * an even pace through it; keyless, the cap is not applied, because nothing is billed. The chain
+ * read is one `getMultipleAccounts` a pass for the
  * coins the listing found that we do not hold, on LISTING_RPC_URL when it is set and otherwise on
  * the trade feed's own keyed endpoint (HELIUS_API_KEY), counted against the policy's day of
  * credits for it.
@@ -230,10 +235,15 @@ function lockKey(name: string): number {
 function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): Listing | null {
   const lp = DEFAULT_POLICY.assets.launchListing;
   if (!lp.on) return null;
-  const market = geckoterminal({ plan: 'free', baseUrl: BASE_URLS.free, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs, now: () => Date.now() });
+  const keyed = cfg.listingMarketKey;
+  const market = geckoterminal(
+    keyed === null
+      ? { plan: 'free', baseUrl: BASE_URLS.free, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs, now: () => Date.now() }
+      : { plan: keyed.plan, apiKey: keyed.key, baseUrl: BASE_URLS[keyed.plan], fetch: globalThis.fetch, timeoutMs: lp.timeoutMs, now: () => Date.now() },
+  );
   const listingLog = log.child({ part: 'launch-listing' });
   const rpcUrl = cfg.listingRpcUrl ?? (cfg.tradeFeedKey === null ? null : TRADE_RPC_URL + cfg.tradeFeedKey);
-  listingLog.info('launch listing on', { chainReads: cfg.listingRpcUrl !== null ? 'LISTING_RPC_URL' : rpcUrl !== null ? 'HELIUS_API_KEY' : 'none', dayCapCredits: lp.dayCapCredits });
+  listingLog.info('launch listing on', { chainReads: cfg.listingRpcUrl !== null ? 'LISTING_RPC_URL' : rpcUrl !== null ? 'HELIUS_API_KEY' : 'none', dayCapCredits: lp.dayCapCredits, listingPlan: keyed?.plan ?? 'free', dayCapPages: keyed === null ? null : lp.dayCapPages });
   return createListing(
     {
       page: (n) => market.newLaunches(n),
@@ -259,9 +269,9 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
       creditsPerCall: lp.creditsPerCall,
       /* No chain to read: nothing is spent, whatever the cap says. */
       dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits,
-      /* The free plan bills nothing: no page cap, no pace. */
-      dayCapPages: Number.POSITIVE_INFINITY,
-      paceSlackPages: Number.POSITIVE_INFINITY,
+      /* Keyless pages are not billed: no cap, no pace. */
+      dayCapPages: keyed === null ? Number.POSITIVE_INFINITY : lp.dayCapPages,
+      paceSlackPages: keyed === null ? Number.POSITIVE_INFINITY : lp.paceSlackPages,
     },
   );
 }
