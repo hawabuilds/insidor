@@ -2679,6 +2679,13 @@ export interface RisingPolicy {
     readonly minAgeMs: number;
     readonly minReach: number;
     readonly recentMinSpanMs: number;
+    /**
+     * ★ FOR YOU'S OWN YOUNGEST AGE ON THIS PATH (null: `minAgeMs`, as every other caller uses). Only
+     * the projector's admission (services/project rising.ts `forYouBarPolicy`) reads it; the scorer's
+     * "judge it now" and the replays keep `minAgeMs`, so it never asks the judge about one more post.
+     * Every other condition — the pace, `minReach`, the recent rate, the judge, the junk bar — holds.
+     */
+    readonly forYouMinAgeMs: number | null;
   };
   /**
    * A promoted narrative stays on the board only while at least this many of its posts pass the
@@ -6300,7 +6307,11 @@ const POLICY_V1: Policy = {
     shortVideoSpeedBar: { enabled: true, earlyReach: 20_000, fastReachPerMinute: 250 },
     /* Off until the owner approves the cost; see RisingPolicy.speedBar for the replay. */
     /* On 2026-10-14: +$1.36 a day of judging, paid by fresh.cutStale's -$1.34. */
-    speedBar: { enabled: true, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
+    /* forYouMinAgeMs, 2026-10-20, replayed read-only over 17-20 Oct (310 found X posts judged yes, kind
+       not held, while under an hour old): at 15 minutes instead of 30, 45 of them join For You a median
+       13 minutes sooner (p25 entry 31 -> 23 minutes), the same 256 join and no other; 10 of the 42 shown
+       were tapped Not a meme, against 77 of 236 of all. $0: no read and no judge call changes. */
+    speedBar: { enabled: true, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000, forYouMinAgeMs: 900_000 },
     narrativeMinPassingPosts: 2,
     /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
        the For You views bar), is a narrative most of the timeline has seen. */

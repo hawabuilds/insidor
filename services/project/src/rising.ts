@@ -9,7 +9,8 @@
  * replies naming a coin — never passes. A post with no score yet is not here: it waits, and is
  * never shown as if it had passed.
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
- * early growth, Popular at 250k. A post whose views we have not read is on neither — except that
+ * early growth, Popular at 250k (For You's speed path from `rising.speedBar.forYouMinAgeMs`, not the
+ * scorer's age: `forYouBarPolicy`). A post whose views we have not read is on neither — except that
  * For You also takes a post a coin vouches for (`rising.coinLinked`, core `coinVouches`): the first
  * observed coin naming it launched within six hours of the post, which had 5,000 approvals. The
  * coin stands in for the views only; the judge, the kind and the six hours still decide.
@@ -717,6 +718,19 @@ export function withVouchingCoin(lookup: PostLookup | undefined, address: string
 /** Whether the first coin naming a post puts it past For You's view bar (core `coinVouches`); no coin, no. */
 export const coinVouchesFor = (facts: CoinVouchRow | undefined, policy = DEFAULT_POLICY): boolean => facts !== undefined && coinVouches(facts, policy);
 
+/**
+ * ★ THE POLICY FOR YOU'S VIEWS BAR IS HELD TO (`rising.speedBar.forYouMinAgeMs`, 2026-10-20): the speed
+ * bar from its own youngest age instead of the shared `minAgeMs`. Here only, never in core: the scorer
+ * asks core's bar to decide whether a post is judged now, and a younger age there would judge more
+ * posts. A post already judged yes and on pace at 15 minutes waited for 30 on that shared number.
+ * Null, or the speed bar off: the policy as it is.
+ */
+export function forYouBarPolicy<P extends typeof DEFAULT_POLICY>(policy: P): P {
+  const s = policy.rising.speedBar;
+  if (s.forYouMinAgeMs === null || s.forYouMinAgeMs === s.minAgeMs) return policy;
+  return { ...policy, rising: { ...policy.rising, speedBar: { ...s, minAgeMs: s.forYouMinAgeMs } } };
+}
+
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
@@ -800,6 +814,8 @@ export async function buildRising(
   const applied = await scores.latestApplied();
   const fit: ScoreFit | null = applied === null ? null : { intercept: applied.intercept, terms: applied.terms };
   const attention = fit !== null && fit.terms.some((t) => t.signal === 'attention') ? await scores.attention(rows.map((row) => row.item_id)) : new Map<string, number>();
+  /* For You's views bar only (`forYouBarPolicy`); Popular, freshness and the order model keep `policy`. */
+  const fypBar = forYouBarPolicy(policy);
   const build = (row: RisingRow) => {
     const readings = reach.get(row.item_id) ?? [];
     /* Measured counts only: a censored reading's last level is an older number, and read at a
@@ -832,7 +848,7 @@ export async function buildRising(
       ownerNone: check?.none === true,
       wrong: check?.wrong ?? new Set(),
     }, coinFirst, nowMs, policy);
-    const byViews = !underBar && (clearsReachBar('fyp', barViews, postedAt, policy, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
+    const byViews = !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     return {
       passes: passing.has(row.item_id),
       byCoin,
