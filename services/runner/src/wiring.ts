@@ -1146,6 +1146,7 @@ export async function withRuntime<T>(
         scores: new PgPostJudgementRepo(db),
         ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'early-lane' })),
         embedSpentUsd: () => earlyEmbedUsd.total,
+        watchHandles: () => watchState.list?.handles ?? [],
         meter,
         mode: cfg.spend.kind,
         policy,

@@ -19,6 +19,11 @@
  * `judge_early`, 0088) so a restart does not refill it. An unreadable ledger asks nothing (fail
  * closed, as the capped lanes do). The cap can be passed by at most one pass's spend.
  *
+ * ★ THE QUOTE BOOST RIDES THE SAME LOOP (Policy.judge.reproductionBoost, its own cap and lane 'quoted').
+ * A stored post a big account has just quoted or reposted the media of is judged first, whatever
+ * its views, and credited to 'quoted' so TRACK re-reads it. It runs whether or not early judging is
+ * on, and never skips through the junk filter: the reproduction is the evidence.
+ *
  * ★ NOT THE NORMAL PATH'S POSTS. A post already over the bar is left to score-posts, so the two
  * do not race for the same post; a post that crosses the bar between the two reads can be judged
  * twice, and the newer answer stands, as after any re-score.
@@ -50,7 +55,10 @@ const PREFETCH_FACTOR = 30;
 const MS_PER_MINUTE = 60_000;
 
 export interface EarlyDeps extends Omit<ScoringDeps, 'items' | 'shadow'> {
-  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings'>;
+  /** `reproducedOriginals` and `markFoundBy` are the quote boost's; without them it reads nothing. */
+  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings'> & Partial<Pick<PgItemRepo, 'reproducedOriginals' | 'markFoundBy'>>;
+  /** The account watch's list as last read (handles), for the quote boost's "big". Absent: followers only. */
+  readonly watchHandles?: () => readonly string[];
   readonly ledger: Pick<LaneLedger, 'spent' | 'add'>;
   /**
    * What the embeddings this pass's precedents asked for have cost so far, as a running total in
@@ -67,6 +75,8 @@ export interface EarlyResult extends ScoringResult {
   readonly eligible: number;
   /** Why nothing was asked, when nothing was. */
   readonly held?: 'off' | 'no-judge' | 'ledger' | 'cap';
+  /** Originals the quote boost sent to the judge this pass (inside `queued`). */
+  readonly boosted?: number;
 }
 
 const none = (held: EarlyResult['held'], looked = 0, eligible = 0): EarlyResult => ({ queued: 0, scored: 0, copied: 0, waiting: 0, wouldSpendUsd: 0, spentUsd: 0, looked, eligible, ...(held === undefined ? {} : { held }) });
@@ -87,8 +97,90 @@ export function earlySpeed(readings: readonly { atMs: number; reach: number | nu
   return best;
 }
 
-/** One early pass. Says once per day when the cap holds it, and every time the ledger cannot be read. */
+/** Its row in the capped lanes' ledger, and the lane its originals are credited to (0116). */
+export const BOOST_LANE: CappedLane = 'quoted';
+
+/**
+ * THE QUOTE BOOST (Policy.judge.reproductionBoost): the never-judged originals a big account has just
+ * quoted or reposted the media of, judged now whatever their views, credited to 'quoted' so TRACK
+ * re-reads them. Its own cap; the junk filter is not applied. Returns what it asked.
+ */
+async function boostPass(deps: EarlyDeps, saidCap: { day: string | null }): Promise<ScoringResult & { readonly boosted: number }> {
+  const b = deps.policy.judge.reproductionBoost;
+  const nothing = { queued: 0, scored: 0, copied: 0, waiting: 0, wouldSpendUsd: 0, spentUsd: 0, boosted: 0 };
+  const find = deps.items.reproducedOriginals?.bind(deps.items);
+  if (!b.on || deps.judge === null || find === undefined) return nothing;
+  const now = deps.now();
+  const spent = await deps.ledger.spent(BOOST_LANE, now);
+  if (spent === null) {
+    deps.log.warn('quote boost: what it spent today cannot be read; it asks nothing until it can', { lane: BOOST_LANE });
+    return nothing;
+  }
+  if (spent >= b.dailyUsd) {
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (saidCap.day !== day) {
+      saidCap.day = day;
+      deps.log.info('quote boost: the day\'s cap is spent; reproduced posts wait for the reach bar', { spentUsd: Number(spent.toFixed(4)), capUsd: b.dailyUsd });
+    }
+    return nothing;
+  }
+  const found = await find({
+    reproducedSince: (now - b.windowMs) as Millis,
+    postedSince: (now - b.maxOriginalAgeMs) as Millis,
+    minFollowers: b.minFollowers,
+    handles: deps.watchHandles?.() ?? [],
+    limit: b.maxPerPass,
+  });
+  if (found.length === 0) return nothing;
+  const queue = found.map((f) => f.item);
+  /* Credited before judging, so a post judged here is re-read even if the judge fails it this pass. */
+  if (deps.mode === 'live' && deps.items.markFoundBy !== undefined) {
+    try {
+      await deps.items.markFoundBy(queue.map((i) => i.itemId), BOOST_LANE, now);
+    } catch (e) {
+      deps.log.error('quote boost could not credit its originals; they are judged but not re-read', { err: errorText(e) });
+    }
+  }
+  const embedBefore = deps.embedSpentUsd?.() ?? 0;
+  const precedents = deps.precedents === undefined || deps.precedents === null ? null : { refresh: async () => ({ embedded: 0, relabelled: 0 }), forPosts: deps.precedents.forPosts };
+  const result = await judgeQueue({ ...deps, precedents, shadow: null }, queue, { rescoring: [], junkFit: null, kindLabel: kindLabelOf(deps.kindJudge), now });
+  const usd = result.spentUsd + Math.max(0, (deps.embedSpentUsd?.() ?? 0) - embedBefore);
+  if (deps.mode === 'live' && usd > 0) {
+    try {
+      await deps.ledger.add(BOOST_LANE, deps.now(), usd);
+    } catch (e) {
+      deps.log.error('quote boost could not record what it spent', { usd, err: errorText(e) });
+    }
+  }
+  deps.log.info('quote boost', { asked: queue.length, scored: result.scored, by: found.map((f) => `${String(f.item.itemId)}<${f.by}`), usd: Number(usd.toFixed(6)) });
+  return { ...result, boosted: queue.length };
+}
+
+/**
+ * One early pass: the quote boost's originals first, then the early picks. Says once per day when a
+ * cap holds it, and every time a ledger cannot be read.
+ */
 export function earlyJudge(deps: EarlyDeps): () => Promise<EarlyResult> {
+  const boostCap = { day: null as string | null };
+  const early = earlyPicks(deps);
+  return async () => {
+    const boosted = await boostPass(deps, boostCap);
+    const r = await early();
+    if (boosted.boosted === 0) return r;
+    return {
+      ...r,
+      queued: r.queued + boosted.queued,
+      scored: r.scored + boosted.scored,
+      copied: r.copied + boosted.copied,
+      waiting: r.waiting + boosted.waiting,
+      wouldSpendUsd: r.wouldSpendUsd + boosted.wouldSpendUsd,
+      spentUsd: r.spentUsd + boosted.spentUsd,
+      boosted: boosted.boosted,
+    };
+  };
+}
+
+function earlyPicks(deps: EarlyDeps): () => Promise<EarlyResult> {
   let capSaidFor: string | null = null;
   return async () => {
     const e = deps.policy.judge.early;

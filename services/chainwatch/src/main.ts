@@ -384,7 +384,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
   const everyMs = DEFAULT_POLICY.assets.launchListing.everyMs;
   let failures = 0;
   let passes = 0;
-  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0 };
+  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0 };
   while (!signal.aborted) {
     const started = Date.now();
     try {
@@ -394,12 +394,14 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
       totals.listed += r.listed;
       totals.added += r.added;
       totals.withoutDetails += r.withoutDetails;
+      totals.credits += r.credits;
       totals.behind += r.behind ? 1 : 0;
       if (passes % LISTING_SUMMARY_PASSES === 0) {
         log.info('launch listing', { passes: LISTING_SUMMARY_PASSES, ...totals });
         totals.listed = 0;
         totals.added = 0;
         totals.withoutDetails = 0;
+        totals.credits = 0;
         totals.behind = 0;
       }
     } catch (e) {

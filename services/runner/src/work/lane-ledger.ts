@@ -32,7 +32,7 @@ import { errorText, type Logger } from '../log.ts';
  * day, while its posts are credited to 'narrative_name') and the account watch ('account', 0115,
  * work/account-watch.ts). The table holds any lane name.
  */
-export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early' | 'narrative_name' | 'narrative_back' | 'quote' | 'account' | `search:${string}`;
+export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early' | 'narrative_name' | 'narrative_back' | 'quote' | 'account' | 'quoted' | `search:${string}`;
 
 export interface LaneLedger {
   /** Dollars the lane has recorded today, or null when that cannot be read (do not ask). */

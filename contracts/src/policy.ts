@@ -1027,6 +1027,35 @@ export interface JudgePolicy {
     readonly everyMs: number;
     readonly dailyUsd: number;
   };
+  /**
+   * ★ THE QUOTE BOOST (the owner, 2026-10-20, after the "going up forever, Laura" miss). A post we
+   * already stored, by another account, that a big account has just reproduced — quoted it
+   * (public.item.reproduction_of) or posted the same picture or video (the same first media address)
+   * — is judged at once, whatever its views, and credited to the 'quoted' lane (0116) so TRACK
+   * re-reads it and For You may show it when it clears the bar. Big: at least `minFollowers`
+   * followers as last read, or an account on the account watch's list (feed.accountWatch). Once: an
+   * original with any judgement is never asked again.
+   *
+   * Read every early pass (its loop, `early.everyMs`), whether or not `early.on`: the reproducing
+   * posts first seen in the last `windowMs`, originals posted in the last `maxOriginalAgeMs`, at most
+   * `maxPerPass`, ahead of the early picks. Charged to internal.lane_spend lane 'quoted', at most
+   * `dailyUsd` a UTC day, failing closed. The junk filter is not applied: a big account's choice is
+   * stronger evidence than the fit.
+   *
+   * Why: AlexesNakamoto's post (2026-10-20 12:56 London) was stored at 1,007 views at 13:09 and never
+   * judged or re-read; Michael Saylor (5.2M) reposted its video at 13:37 and only his post was
+   * judged. Measured over the three days to 2026-10-20: about 50 stored, never-judged originals a
+   * day are reproduced by 1M+ accounts (quotes ~13, same media ~37), ~$0.0005 a post judged with its
+   * precedents' embeddings: ~$0.03 a day. The cap is a busy day's.
+   */
+  readonly reproductionBoost: {
+    readonly on: boolean;
+    readonly minFollowers: number;
+    readonly windowMs: number;
+    readonly maxOriginalAgeMs: number;
+    readonly maxPerPass: number;
+    readonly dailyUsd: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -1310,6 +1339,14 @@ export interface LaunchListingPolicy {
   readonly pagesPerPass: number;
   readonly maxAgeMs: number;
   readonly timeoutMs: number;
+  /**
+   * ★ THE CHAIN READS' DAY (2026-10-20). A pass's chain read (one per `ACCOUNTS_PER_CALL` new coins,
+   * so one a pass in any traffic a pass's pages can hold) costs `creditsPerCall` of the key the
+   * trade feed uses, whose free day is about 33k credits and whose feed already takes 8–14k. At most
+   * `dayCapCredits` a UTC day; past it, listed coins are still added, without a metadata link.
+   */
+  readonly creditsPerCall: number;
+  readonly dayCapCredits: number;
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -5070,6 +5107,17 @@ const POLICY_V1: Policy = {
       everyMs: 60_000,
       dailyUsd: 1.5,
     },
+    /* See JudgePolicy.reproductionBoost. 1M followers, the big-account bar the pushes use
+       (notify.bigAccount): 50 originals a day at 1M, ~180 at 100k (~$0.09); 1M keeps it to the
+       accounts whose reproduction is itself news. */
+    reproductionBoost: {
+      on: true,
+      minFollowers: 1_000_000,
+      windowMs: 1_800_000, // half an hour: a pass that misses one (a restart) still sees it
+      maxOriginalAgeMs: 43_200_000, // twelve hours
+      maxPerPass: 10,
+      dailyUsd: 0.25,
+    },
   },
 
   resolve: {
@@ -5139,12 +5187,22 @@ const POLICY_V1: Policy = {
     feedFreshnessMs: 900_000,
     tickerLookbackMs: 604_800_000, // seven days
     tickerMinCoverage: 0.95,
+    /* On from 2026-10-20, its chain reads on the trade feed's keyed endpoint (never the public one).
+       The miss that turned it on: the "Laura" coin (Cg9z…) launched on the curve at 12:04:59 UTC
+       paired with a stock token rather than the chain's own, 8 minutes after the post it named; the
+       socket never sent it and nothing else listed it. Its curve pool is on the listing (the coin as
+       its base), so a pass would have added it about three minutes after launch (the listing's lag).
+       Credits: a pass reads at most 5 pages × 20 pools = 100 coins = one chain read, every 30 s:
+       2,880 reads a day at 1 credit, against the trade feed's 8–14k of the free 33k; the cap is that
+       day with a little room. */
     launchListing: {
-      on: false, // off until the listing reads chain accounts through our own chain provider (owner rule: no new outside service without asking)
+      on: true,
       everyMs: 30_000,
       pagesPerPass: 5,
       maxAgeMs: 1_800_000, // thirty minutes
       timeoutMs: 10_000,
+      creditsPerCall: 1,
+      dayCapCredits: 3_000,
     },
   },
 
