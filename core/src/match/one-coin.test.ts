@@ -1,7 +1,7 @@
 /**
  * One post, one coin: the matcher's four ties (link, exact name, picture, timing) and the rule's
- * outcomes — a pick, a rug dropped, a hand-over only at three times, waiting, none, and the fallback
- * on readings saying so.
+ * outcomes — a pick, a rug dropped, a held coin's dip kept on grace, a hand-over only at three
+ * times, waiting, none, and the fallback on readings saying so.
  */
 
 import assert from 'node:assert/strict';
@@ -129,9 +129,56 @@ test('★ rugs are out: the creator sold, or the cap fell under 30% of its peak'
   const sold = pickOneCoin([c('A', 1_005, trades({ creatorSold: true })), c('B', 1_006, trades({ netBuy: 2, capUsd: 9_000 }))], null, NOW, true, BARS);
   assert.equal(sold.kind, 'waiting');
   assert.equal(sold.kind === 'waiting' && sold.standings.find((s) => s.address === 'A')?.out, 'creator_sold');
-  const fell = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500 }))], { address: 'A', sinceMs: 1_011 * MIN }, NOW, true, BARS);
+  const fell = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: 4_000 }))], { address: 'A', sinceMs: 1_011 * MIN }, NOW, true, BARS);
   assert.equal(fell.kind, 'waiting');
   assert.equal(fell.kind === 'waiting' && fell.droppedHolder, 'A');
+  /* Not held yet, a coin under the share is out whatever its cap. */
+  const unheld = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500 }))], null, NOW, true, BARS);
+  assert.equal(unheld.kind === 'waiting' && unheld.standings[0]?.out, 'fell_from_peak');
+});
+
+test('★ a held coin that dips stays on grace: the floor, the grace and a leading rival end it; the creator selling at once', () => {
+  const holder = { address: 'A', sinceMs: 1_011 * MIN };
+  const dipped = trades({ cap: 50, peakCap: 500, capUsd: 12_000 });
+  const kept = pickOneCoin([c('A', 1_005, dipped)], holder, NOW, true, BARS);
+  assert.equal(kept.kind === 'picked' && kept.address, 'A');
+  assert.equal(kept.kind === 'picked' && kept.underShareSinceMs, NOW);
+  assert.equal(kept.kind === 'picked' && kept.sinceMs, 1_011 * MIN);
+  /* The grace runs from when it first went under, carried in the holder. */
+  const late = pickOneCoin([c('A', 1_005, dipped)], { ...holder, underShareSinceMs: NOW - P.rugGraceMs }, NOW, true, BARS);
+  assert.equal(late.kind === 'waiting' && late.droppedHolder, 'A');
+  const inGrace = pickOneCoin([c('A', 1_005, dipped)], { ...holder, underShareSinceMs: NOW - P.rugGraceMs + MIN }, NOW, true, BARS);
+  assert.equal(inGrace.kind === 'picked' && inGrace.underShareSinceMs, NOW - P.rugGraceMs + MIN);
+  /* Under the floor: out now. */
+  assert.equal(pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: P.rugFloorUsd - 1 }))], holder, NOW, true, BARS).kind, 'waiting');
+  /* A rival that clears and leads the dipped coin three times takes it; under that it does not. */
+  const rival = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: 12_000, netBuy: 10 })), c('B', 1_006, trades({ netBuy: 30 }))], holder, NOW, true, BARS);
+  assert.equal(rival.kind === 'picked' && rival.address, 'B');
+  assert.equal(rival.kind === 'picked' && rival.handedOverFrom, 'A');
+  const weak = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: 12_000, netBuy: 10 })), c('B', 1_006, trades({ netBuy: 29 }))], holder, NOW, true, BARS);
+  assert.equal(weak.kind === 'picked' && weak.address, 'A');
+  /* Back over the share: the grace is over and forgotten. */
+  const back = pickOneCoin([c('A', 1_005, trades({}))], { ...holder, underShareSinceMs: NOW - 5 * MIN }, NOW, true, BARS);
+  assert.equal(back.kind === 'picked' && back.underShareSinceMs, null);
+  /* The creator selling is no dip. */
+  assert.equal(pickOneCoin([c('A', 1_005, trades({ creatorSold: true }))], holder, NOW, true, BARS).kind, 'waiting');
+});
+
+test('★ $Laura (20 Oct): the dip from $51k to $12k keeps the card on the coin through its run to $219k', () => {
+  const at = (hhmm: string): number => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return ((h ?? 0) * 60 + (m ?? 0)) * MIN;
+  };
+  const caps: readonly (readonly [string, number])[] = [
+    ['13:07', 38_000], ['13:10', 45_000], ['13:16', 51_000], ['13:19', 14_000], ['13:22', 12_000], ['13:26', 15_000],
+    ['13:30', 13_000], ['13:33', 14_000], ['13:36', 15_000], ['13:37', 89_000], ['13:40', 150_000], ['13:43', 219_000],
+  ];
+  const laura: ReplayCoin = { address: 'LAURA', launchedAtMs: at('13:05'), evidence: ['link'], minutes: [], readings: caps.map(([t, capUsd]) => ({ atMs: at(t), capUsd })) };
+  const soft = replayTimeline([laura], BARS, at('13:45'), false);
+  assert.deepEqual(soft, [[at('13:10'), 'LAURA']]);
+  /* The bare share rule (no grace) blanked the card from 13:19 to 13:37. */
+  const bare = replayTimeline([laura], { ...BARS, rugGraceMs: 0 }, at('13:45'), false);
+  assert.deepEqual(bare, [[at('13:10'), 'LAURA'], [at('13:19'), null], [at('13:37'), 'LAURA']]);
 });
 
 test('★ hand-over only at three times the holder\'s net buying', () => {

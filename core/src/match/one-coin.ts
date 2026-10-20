@@ -20,8 +20,17 @@
  *                              rival's, at least `minUniqueBuyers` distinct buyers
  *                      keep    a held coin is handed over only to a rival with `handOverRatio` times
  *                              its net buying; a held coin that goes out is dropped and the rest
- *                              judged afresh
+ *                              judged afresh — except a fall from its peak, see below
  *                    otherwise no pick: `waiting` while there are candidates, `none` without.
+ *
+ * ★ A HELD COIN THAT DIPS IS NOT A RUG YET. A coin we hold that falls under `rugShareOfPeak` stays
+ * the post's coin on grace until its cap is also under `rugFloorUsd`, or it has stayed under the
+ * share for `rugGraceMs`, or a rival clears the bars and leads it `leadRatio` times. The creator
+ * selling is still out at once. $Laura (20 Oct): $51k peak, $12-18k for eighteen minutes, then
+ * $219k after a big repost — the bare share rule blanked the card ("No coin yet") through the dip.
+ * Replayed on readings since live, the floor alone told the coins apart: every kept coin that never
+ * came back had fallen to $2-6k, and every one held over $10k was still trading. A coin not yet
+ * held keeps the bare rule: a fall before we ever showed it is evidence against it.
  *
  * ★ A SHORT TICKER NEEDS THE POST'S OWN WORDS. An exact name or ticker ties a launch; a looser
  * spelling does not, and a ticker under `minVariantLength` letters never counts as one. So "Rip Kim
@@ -271,6 +280,10 @@ export interface OneCoinBars {
   readonly minUniqueBuyers: number;
   readonly handOverRatio: number;
   readonly rugShareOfPeak: number;
+  /** A HELD coin under the share is kept until its cap is under this, in USD… */
+  readonly rugFloorUsd: number;
+  /** …or it has stayed under the share this long, or a rival clears the bars and leads it. */
+  readonly rugGraceMs: number;
   readonly openingCapUsd: number;
   readonly minLiquidityUsd: number;
 }
@@ -326,7 +339,17 @@ export interface Standing {
 export type WaitingReason = 'too_early' | 'under_bars' | 'no_clear_lead' | 'rival_unmeasured' | 'all_out';
 
 export type OneCoinOutcome =
-  | { readonly kind: 'picked'; readonly address: string; readonly sinceMs: number; readonly confirmed: boolean; readonly handedOverFrom: string | null; readonly basis: Basis; readonly standings: readonly Standing[] }
+  | {
+      readonly kind: 'picked';
+      readonly address: string;
+      readonly sinceMs: number;
+      readonly confirmed: boolean;
+      readonly handedOverFrom: string | null;
+      /** The held coin has been under `rugShareOfPeak` of its peak since then, and is kept on grace; null: it is not under. */
+      readonly underShareSinceMs: number | null;
+      readonly basis: Basis;
+      readonly standings: readonly Standing[];
+    }
   | { readonly kind: 'waiting'; readonly reason: WaitingReason; readonly droppedHolder: string | null; readonly basis: Basis; readonly standings: readonly Standing[] }
   | { readonly kind: 'none' };
 
@@ -334,6 +357,8 @@ export type OneCoinOutcome =
 export interface Holder {
   readonly address: string;
   readonly sinceMs: number;
+  /** Since when it has been under the share while held (the last judgement's `underShareSinceMs`); absent or null: it was not. */
+  readonly underShareSinceMs?: number | null;
 }
 
 const visibleFrom = (c: Contender, bars: OneCoinBars): number | null =>
@@ -398,20 +423,24 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const ranked = judged.filter((s) => s.measured).sort((a, b) => strength(b) - strength(a) || a.address.localeCompare(b.address));
   const unmeasured = judged.some((s) => !s.measured);
   const contender = (a: string) => contenders.find((c) => c.address === a);
-  const picked = (address: string, sinceMs: number, from: string | null): OneCoinOutcome => {
+  const picked = (address: string, sinceMs: number, from: string | null, underShareSinceMs: number | null = null): OneCoinOutcome => {
     const c = contender(address);
     const existing = c?.existingSinceMs ?? null;
     const confirmAt = existing !== null ? existing + bars.confirmByMs - bars.judgeFromMs : (c?.launchedAtMs ?? sinceMs) + bars.confirmByMs;
-    return { kind: 'picked', address, sinceMs, confirmed: nowMs >= confirmAt, handedOverFrom: from, basis, standings };
+    return { kind: 'picked', address, sinceMs, confirmed: nowMs >= confirmAt, handedOverFrom: from, underShareSinceMs, basis, standings };
   };
 
   const held = holder === null ? null : standings.find((s) => s.address === holder.address) ?? null;
-  const holdStands = held !== null && held.out === null;
-  if (holder !== null && holdStands) {
+  /* A held coin under the share stays on grace: not under the floor, not under for `rugGraceMs`. */
+  const under = held?.out === 'fell_from_peak' ? holder?.underShareSinceMs ?? nowMs : null;
+  const onGrace = held !== null && under !== null && !(held.capUsd !== null && held.capUsd < bars.rugFloorUsd) && nowMs - under < bars.rugGraceMs;
+  if (holder !== null && held !== null && (held.out === null || onGrace)) {
     const challenger = ranked.find((s) => s.address !== holder.address);
     const holdStrength = Math.max(held.strength ?? 0, floor);
-    if (challenger !== undefined && challenger.clears && strength(challenger) >= bars.handOverRatio * holdStrength) return picked(challenger.address, nowMs, holder.address);
-    return picked(holder.address, holder.sinceMs, null);
+    /* On grace a rival takes it on the bar of a fresh pick against it; standing, only at the hand-over bar. */
+    const ratio = onGrace ? bars.leadRatio : bars.handOverRatio;
+    if (challenger !== undefined && challenger.clears && strength(challenger) >= ratio * holdStrength) return picked(challenger.address, nowMs, holder.address);
+    return picked(holder.address, holder.sinceMs, null, onGrace ? under : null);
   }
   const dropped = holder === null ? null : holder.address;
   const wait = (reason: WaitingReason): OneCoinOutcome => ({ kind: 'waiting', reason, droppedHolder: dropped, basis, standings });
@@ -431,7 +460,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -442,6 +471,8 @@ export function oneCoinBars(
     minUniqueBuyers: fit?.minUniqueBuyers ?? p.minUniqueBuyers,
     handOverRatio: fit?.handOverRatio ?? p.handOverRatio,
     rugShareOfPeak: p.rugShareOfPeak,
+    rugFloorUsd: p.rugFloorUsd,
+    rugGraceMs: p.rugGraceMs,
     openingCapUsd: p.openingCapUsd,
     minLiquidityUsd: p.minLiquidityUsd,
   };
