@@ -99,7 +99,7 @@ import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
-import { offFeedTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
+import { offFeedTooOld, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
 import { heldDecisionReads } from './decision-log-cache.ts';
 
@@ -516,9 +516,17 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          hidden narrative's unjudged watch post. See work/track-gate.ts for what is kept and
          why: unjudged catch-all posts always are, because their reach decides their judging. */
       const facts = await repos.items.trackingFacts(onScreen.map((i) => i.itemId));
-      /* ★ And none for a post past `track.offFeedMaxAgeMs` that is not on For You (track-gate.ts). */
+      /* ★ And none for a post past `track.offFeedMaxAgeMs` that is not on For You (track-gate.ts),
+         nor, from a source billed per post returned, past `track.offForYouPerPostMaxAgeMs`. The
+         short-video source bills by the run and keeps the twelve-hour cut. */
+      const billedPerPost = (source: string): boolean =>
+        tracking.platforms.has(source as never) && tracking.platforms.get(source as never).capabilities.billing === 'per-item-returned';
       const worth = onScreen.filter(
-        (i) => worthRereading(i.itemId, facts, policy) && !staleUnpassed(i.itemId, i.postedAt, now, facts, policy) && !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy),
+        (i) =>
+          worthRereading(i.itemId, facts, policy) &&
+          !staleUnpassed(i.itemId, i.postedAt, now, facts, policy) &&
+          !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy) &&
+          !offForYouPerPostTooOld(i.itemId, billedPerPost(String(i.source)), i.postedAt, now, facts, policy),
       );
       /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one run at most every
          `track.paidRunEveryMinutes`, of at most `track.paidReadMaxPosts` posts: its young posts

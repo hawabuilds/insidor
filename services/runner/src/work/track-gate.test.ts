@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { offFeedTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
+import { offFeedTooOld, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -95,4 +95,24 @@ test('the off-feed cut keeps For You (frame or scroll), Popular\'s frame, younge
   assert.equal(offFeedTooOld('a', 'x', now - P.track.offFeedMaxAgeMs, now, facts(), P), false);
   assert.equal(offFeedTooOld('a', 'tiktok', null, now, facts(), P), false);
   assert.equal(offFeedTooOld('a', 'reddit', old, now, facts(), P), false);
+});
+
+test('★ the three-hour cut: a post billed per post, past three hours and off For You, loses its re-reads whatever its answer', () => {
+  assert.equal(P.track.offForYouPerPostMaxAgeMs, 3 * 3_600_000);
+  const now = 100 * 3_600_000;
+  const old = now - P.track.offForYouPerPostMaxAgeMs - 1;
+  assert.equal(offForYouPerPostTooOld('a', true, old, now, facts({ judged: new Map([['a', yes]]) }), P), true);
+  assert.equal(offForYouPerPostTooOld('a', true, old, now, facts({ catchAll: new Set(['a']) }), P), true);
+  assert.equal(offForYouPerPostTooOld('a', true, old, now, facts(), P), true);
+});
+
+test('the three-hour cut keeps For You (frame or scroll), Popular\'s frame, younger and undated posts, and sources billed otherwise', () => {
+  const now = 100 * 3_600_000;
+  const old = now - P.track.offForYouPerPostMaxAgeMs - 1;
+  assert.equal(offForYouPerPostTooOld('a', true, old, now, facts({ onForYou: new Set(['a']) }), P), false);
+  assert.equal(offForYouPerPostTooOld('a', true, old, now, facts({ onFeed: new Set(['a']) }), P), false);
+  assert.equal(offForYouPerPostTooOld('a', true, now - P.track.offForYouPerPostMaxAgeMs, now, facts(), P), false);
+  assert.equal(offForYouPerPostTooOld('a', true, null, now, facts(), P), false);
+  /* billed by the run: the twelve-hour cut is the one that applies */
+  assert.equal(offForYouPerPostTooOld('a', false, old, now, facts(), P), false);
 });
