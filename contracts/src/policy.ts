@@ -3103,6 +3103,13 @@ export interface BudgetPolicy {
    *   embeddings  the image embedding service (Part 1)
    */
   /** `secondVideo`: the short-video source's second vendor (its feed, re-reads and creator pages, `feed.secondVendor`). */
+  /**
+   * The short-video source's first scraper is left dormant at boot whatever its token (the owner,
+   * 2026-10-20): its runs went from about $0.01 to $0.10 each that morning, and because a run is priced
+   * before it is sent at the old rate, its own line did not hold — it spent $22.58 and the whole day.
+   * The second vendor's reads are unaffected.
+   */
+  readonly shortVideoFirstScraperOff: boolean;
   readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number; readonly secondVideo: number };
   /** Shares of a supplier's line at which the owner is warned (a push and a log line), once each a day. */
   readonly warnAt: readonly number[];
@@ -4781,7 +4788,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v136',
+  version: 'policy.v137',
 
   admit: {
     maxAgeMin: 240,
@@ -6440,7 +6447,8 @@ const POLICY_V1: Policy = {
        $43.50 from 2026-10-16 18:20 UTC for the view readings (feed.readings, its own $3.75 cap), the
        owner's option 1: about $49 measured for the whole day; the books' caps sum to $53 as headroom. */
     /* $48.50 on 2026-10-19 only (X ran over and the owner wanted the night running); back to 43.5 on the 20th. */
-    dailyUsd: 43.5,
+    /* $48.50 for 2026-10-20 only, the owner's yes: the short-video scraper's price rise spent the day by 16:20 London; back to 43.5 on the 21st, after DAILY_BUDGET_USD is. */
+    dailyUsd: 48.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -6467,6 +6475,7 @@ const POLICY_V1: Policy = {
        the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
        adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
     /* embeddings was $6 and posts $24 on 2026-10-19 only (an outage catch-up, then X re-reads over the line); back on the 20th. */
+    shortVideoFirstScraperOff: true,
     supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
