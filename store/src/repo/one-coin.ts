@@ -161,6 +161,43 @@ export class PgOneCoinRepo {
    * the viral post is the usual link). The launch time is the coin's own, else when we first saw it.
    */
   async recentLaunches(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
+    return this.#launches(`a.origin in ('live_stream', 'backfill') and a.first_seen_at >= $1`, [new Date(sinceMs).toISOString()], limit, hashVersion);
+  }
+
+  /**
+   * ★ THE COIN-FIRST ROUTE'S LAUNCHES (Policy.rising.coinFirst, 0116): every observed coin first seen
+   * since `sinceMs` whose own link ties a post the route recorded — the post itself, or a post whose
+   * `reproduction_of` is it. `recentLaunches` looks at a launch for `rematchMs` only, and a coin-first
+   * post is judged after its coin starts running, minutes later: without these, its coin and its
+   * rivals would never become its candidates. Empty before 0116.
+   */
+  async coinFirstLaunches(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
+    try {
+      return await this.#launches(
+        `a.origin in ('live_stream', 'backfill') and a.first_seen_at >= $1
+         and a.asset_key in (
+           select l.asset_key from internal.coin_first_post c
+             join internal.coin_post_link l on l.source = split_part(c.item_id, ':', 1) and l.source_item_id = substr(c.item_id, strpos(c.item_id, ':') + 1)
+            where c.launched_at >= $1
+           union
+           select l.asset_key from internal.coin_first_post c
+             join public.item i on i.reproduction_of = c.item_id
+             join internal.coin_post_link l on l.source = i.source and l.source_item_id = i.source_item_id
+            where c.launched_at >= $1)`,
+        [new Date(sinceMs).toISOString()],
+        limit,
+        hashVersion,
+      );
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
+  /** The launches `where` selects (its parameters first), with everything the matcher reads of each. */
+  async #launches(where: string, params: readonly unknown[], limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
+    const limitAt = `$${params.length + 1}`;
+    const hashAt = `$${params.length + 2}`;
     const rows = await this.#db.query<{ address: string; asset_key: string; launched_at: string; name: string | null; ticker: string | null; image_uri: string | null; bits: string | null; links: string[] | null; through: string[] | null }>(
       `select a.address, a.asset_key, coalesce(a.minted_at, a.first_seen_at) as launched_at,
               coalesce(m.name, a.name) as name, coalesce(m.ticker, a.symbol) as ticker,
@@ -174,11 +211,11 @@ export class PgOneCoinRepo {
                 where l.asset_key = a.asset_key and o.target is not null and o.target <> i.item_id) as through
          from public.asset a
          left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-         left join internal.image_hash h on h.uri = coalesce(m.image_uri, a.image_uri) and h.version = $3 and h.bits is not null
-        where a.origin in ('live_stream', 'backfill') and a.first_seen_at >= $1
+         left join internal.image_hash h on h.uri = coalesce(m.image_uri, a.image_uri) and h.version = ${hashAt} and h.bits is not null
+        where ${where}
         order by a.first_seen_at desc
-        limit $2`,
-      [new Date(sinceMs).toISOString(), limit, hashVersion],
+        limit ${limitAt}`,
+      [...params, limit, hashVersion],
     );
     return rows.map((r) => ({
       address: r.address,

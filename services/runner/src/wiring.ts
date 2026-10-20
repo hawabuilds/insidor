@@ -93,6 +93,7 @@ import {
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
   PgImageEmbeddingRepo,
+  PgCoinFirstRepo,
   PgOneCoinRepo,
   PgImagePairRepo,
   PgJudgementRepo,
@@ -152,6 +153,7 @@ import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
 import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
 import { instantItems, instantJudge, type InstantResult } from './work/coin-instant.ts';
+import { coinFirstPass, newCoinFirstState, type CoinFirstResult } from './work/coin-first.ts';
 import { repostsPass, type RepostResult } from './work/reposts.ts';
 import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
 import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
@@ -254,6 +256,8 @@ export interface Runtime {
     readonly coinLinks: () => Promise<CoinLinkResult>;
     /** The posts a coin just named that the coin rule picks, judged at once (work/coin-instant.ts). */
     readonly instant: () => Promise<InstantResult>;
+    /** The posts a running coin's own link ties: read, judged once and credited (work/coin-first.ts). */
+    readonly coinFirst: () => Promise<CoinFirstResult>;
     readonly reposts: () => Promise<RepostResult>;
     readonly searchWords: () => Promise<SearchWordResult>;
     readonly trendingFeed: () => Promise<TrendingFeedResult>;
@@ -1571,6 +1575,7 @@ export async function withRuntime<T>(
               oneCoinPass(
                 {
                   repo: new PgOneCoinRepo(db),
+                  coinFirstLaunches: (sinceMs, limit, hashVersion) => new PgOneCoinRepo(db).coinFirstLaunches(sinceMs, limit, hashVersion),
                   ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
                   policy,
                   log: log.child({ step: 'one-coin' }),
@@ -1618,6 +1623,38 @@ export async function withRuntime<T>(
               log: log.child({ step: 'coin-instant' }),
               now: () => Date.now() as Millis,
             }),
+            /* The coin-first route: its own clock and its own record (0116); the same judges as the instant judge. */
+            coinFirst: (() => {
+              const state = newCoinFirstState();
+              return () =>
+                coinFirstPass(
+                  {
+                    repo: new PgCoinFirstRepo(db),
+                    items: repos.items,
+                    sources: finderSources,
+                    store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                    score: (queue) =>
+                      scorePosts({
+                        judge: postJudge,
+                        kindJudge,
+                        precedents,
+                        items: instantItems(queue, repos.items),
+                        scores: new PgPostJudgementRepo(db),
+                        meter,
+                        mode: cfg.spend.kind,
+                        policy,
+                        log: log.child({ step: 'coin-first' }),
+                        now: () => Date.now() as Millis,
+                      }),
+                    meter,
+                    mode: cfg.spend.kind,
+                    policy,
+                    log: log.child({ step: 'coin-first' }),
+                    now: () => Date.now() as Millis,
+                  },
+                  state,
+                );
+            })(),
             reposts: () =>
               repostsPass({
                 finders: new PgFinderRepo(db),
