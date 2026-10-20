@@ -264,6 +264,14 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const tail = [ticker(f), mc, moved(f)].filter((x): x is string => x !== null).join(', ');
       return { title: 'Watchlist: coin found', body: `${post} now has a coin: ${tail}.` };
     }
+    case 'coin_launched': {
+      /* The one push (launch.ts): "$FALCON launched for a post you may have seen" / '"Falcon 9 lands…" (@SpaceX). $48K MC.' */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const who = s(f['author'], '');
+      const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post on For You' : `A post by ${who}`;
+      const mc = cap(f);
+      return { title: `${ticker(f)} launched for a post you may have seen`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
+    }
     case 'watched_first_coin': {
       /* "$FALCON is the first coin for a post you saved" / '"Falcon 9 lands…" (@SpaceX). $3K MC.' */
       const words = cutWords(f['excerpt'], EXCERPT_CHARS);

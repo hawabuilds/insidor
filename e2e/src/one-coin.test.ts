@@ -2,8 +2,8 @@
  * ★ ONE POST, ONE COIN on the real schema (PGlite, every migration; 0112's trade tables): a post and its launches through the runner's matcher and rule, into 0113's candidates,
  * picks and history; first on market readings (no trade feed yet, said in the pick), then on trade
  * minutes, where the coin people are buying takes over from the one that merely read high and a rug
- * is out; the narrative's pick over its posts; the live card's line and the saved post's pushes on the
- * pick and on its hand-over; and the replay reading the same rows back. Nothing is fetched, paid for
+ * is out; the narrative's pick over its posts; the live card's line, the one push on the post's first
+ * pick (never on its hand-over) and the saved post's rows; and the replay reading the same rows back. Nothing is fetched, paid for
  * or sent anywhere.
  */
 
@@ -15,6 +15,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { PushSender } from '@insidor/contracts/ports/people.ts';
 import { oneCoinBars, scoreReplay } from '@insidor/core';
 import { deliverQueued, type Db as NotifyDb } from '@insidor/notify/deliver.ts';
+import { checkLaunches } from '@insidor/notify/launch.ts';
 import { checkWatched } from '@insidor/notify/watch.ts';
 import { liveCoinLine, loadNarrativePicks, loadPostPicks } from '@insidor/project/src/one-coin-cards.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
@@ -145,26 +146,38 @@ test('★ the live card shows the pick with its facts, or Create; the list is th
   assert.deepEqual(liveCoinLine({ kind: 'unsure', claimCount: 2 }, picks.get('x:1002'), null, { count: 2, more: false }, new Set()), { kind: 'unsure', claimCount: 2, ownerList: true });
 });
 
-test('★ a saved post is pushed on its pick, and once more when the pick is handed over', async () => {
+test('★ the one push: the post\'s first pick, launched after For You showed it, to everyone — never its hand-over; the saver gets that one push, not two', async () => {
   const ndb = db as unknown as NotifyDb;
-  const sent: string[] = [];
-  const push: PushSender = { configured: true, publicKey: 'PUB', send: async (_t, m) => (sent.push(m.title), 'sent') };
-  await ndb.query(`insert into people.profile (user_id, name) values ('u1', 'u1')`);
-  await ndb.query(`insert into people.push_subscription (endpoint, user_id, p256dh, auth) values ('https://push.example/u1', 'u1', 'p', 'a')`);
+  const sent: { to: string; title: string }[] = [];
+  const push: PushSender = { configured: true, publicKey: 'PUB', send: async (t, m) => (sent.push({ to: t.endpoint, title: m.title }), 'sent') };
+  for (const u of ['u1', 'u2']) {
+    await ndb.query(`insert into people.profile (user_id, name) values ($1, $1)`, [u]);
+    await ndb.query(`insert into people.push_subscription (endpoint, user_id, p256dh, auth) values ($1, $2, 'p', 'a')`, [`https://push.example/${u}`, u]);
+  }
   await ndb.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
+  /* On For You from 25 minutes ago; its coins launched 18 to 21 minutes ago, after. */
+  await ndb.query(`insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at) values ('fyp', 'x:1001', $1, $2, '{}', $2)`, [iso(NOW - 25 * MIN), iso(NOW)]);
   const lineIs = (coins: unknown) =>
     ndb.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', 'x:1001', 0, $1) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [JSON.stringify({ authorLabel: '@catposter', excerpt: 'Pancake the cat drinks from the fountain', coins })]);
   await lineIs({ kind: 'unsure', claimCount: 3, ownerList: true });
   await ndb.query(`insert into people.post_watch (user_id, item_id) values ('u1', 'x:1001')`);
   const state = { cursor: iso(NOW) };
   const ports = { policy: SHADOW_POLICY.notify, now: () => NOW, onPick: true };
+  const launches = () => checkLaunches(ndb, ports);
   assert.equal(await checkWatched(ndb, ports, state), 0, 'no pick yet: nothing, and the list is not news');
+  assert.equal(await launches(), 0, 'the first look sends nothing');
   await lineIs({ kind: 'matched', coin: { address: LINK, ticker: 'FKITTY' }, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 600_000, picked: true } });
-  assert.equal(await checkWatched(ndb, ports, state), 1);
+  assert.equal(await checkWatched(ndb, ports, state), 1, 'the saver\'s row');
+  assert.equal(await launches(), 2, 'one to each profile, saved or not');
+  assert.equal(await launches(), 0, 'once');
   await lineIs({ kind: 'matched', coin: { address: NAME, ticker: 'PNCK' }, evidence: { linksPost: null, samePicture: null, launchedAfterMs: 660_000, picked: true } });
-  assert.equal(await checkWatched(ndb, ports, state), 1);
-  await deliverQueued({ db: ndb, push, pushOn: true, policy: SHADOW_POLICY.notify, now: () => NOW });
-  assert.deepEqual(sent, ['$FKITTY is the first coin for a post you saved', '$PNCK is now the coin for a post you saved']);
+  assert.equal(await checkWatched(ndb, ports, state), 1, 'the hand-over is still a row for the saver');
+  assert.equal(await launches(), 0, 'the hand-over is never pushed');
+  const out = (await deliverQueued({ db: ndb, push, pushOn: true, policy: SHADOW_POLICY.notify, now: () => NOW })).map((o) => o.outcome);
+  assert.deepEqual(out, ['list-only', 'push', 'push', 'list-only']);
+  assert.deepEqual(sent, [{ to: 'https://push.example/u1', title: '$FKITTY launched for a post you may have seen' }, { to: 'https://push.example/u2', title: '$FKITTY launched for a post you may have seen' }]);
+  const [row] = await ndb.query<{ href: string; body: string }>(`select href, body from people.alert where kind = 'coin_launched' and user_id = 'u2'`);
+  assert.deepEqual(row, { href: '/#/post/x%3A1001', body: '"Pancake the cat drinks from the fountain" (@catposter). $9K MC.' }, 'opens the post, whose card has the coin; the cap is the last one stored');
 });
 
 test('the replay reads the same rows back: the owner\'s coin is the truth, and the rule finds it', async () => {

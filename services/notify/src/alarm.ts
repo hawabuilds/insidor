@@ -247,6 +247,8 @@ export interface AlarmDeps {
   readonly primaryJudgeVendor: string;
   readonly push: PushSender;
   readonly ttlS: number;
+  /** Policy.notify.launch.ownerAlarmsPush: false, and the database alarm's direct push is only logged, as the queued ones are only listed. Absent: pushed. */
+  readonly directPush?: boolean;
   readonly log: (level: 'info' | 'error', msg: string, fields?: Record<string, unknown>) => void;
 }
 
@@ -317,6 +319,7 @@ export async function checkAlarms(deps: AlarmDeps, mem: AlarmMemory): Promise<nu
     deps.log(e.state === 'down' ? 'error' : 'info', e.state === 'down' ? 'outage alarm: down' : 'outage alarm: back', { alarm: e.id, subject: e.subject, ...e.facts });
     if (mem.failingSince !== null) {
       /* No database: no queue, no claim. Straight to the devices last read (the header says why). */
+      if (deps.directPush === false) continue;
       const text = alertText('outage', e.facts);
       for (const d of mem.devices) {
         try {

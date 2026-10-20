@@ -1,9 +1,10 @@
 /**
  * ★ THE OWNER'S NOTIFICATION DESIGN (2026-10-18) on the real schema (PGlite, every migration),
- * through each producer and the deliverer, with seeded people, devices and events: what is pushed,
- * what is only listed, the caps (three blowing-up pushes a day, three hours apart; one speed push per
- * starred narrative per window), the groups (one push for three follows, one a day for likes), and
- * that the first look after a deploy pushes nothing old. Nothing is fetched and nothing is sent anywhere.
+ * through each producer and the deliverer, with seeded people, devices and events: what each
+ * producer writes to Notifications, the order it picks in, and that the first look after a deploy
+ * writes nothing old. Since the one push (2026-10-20, notify launch.ts) none of these reaches a
+ * phone: each is listed, never pushed (launch.test.ts has the one push). Nothing is fetched and
+ * nothing is sent anywhere.
  */
 
 import { strict as assert } from 'node:assert';
@@ -40,7 +41,9 @@ async function people(n: number) {
   }
   const deliver = async () => (await deliverQueued({ db, push, pushOn: true, policy: P, now: () => NOW })).map((o) => o.outcome);
   const groups = async () => deliverGroups({ db, push, pushOn: true, policy: P, now: () => NOW });
-  return { db, sent, deliver, groups };
+  /* What Notifications shows, in order: each row's words. */
+  const listed = async () => (await db.query<{ title: string; body: string }>('select title, body from people.alert order by alert_id')).map((r) => [r.title, r.body]);
+  return { db, sent, deliver, groups, listed };
 }
 
 /** A For You card whose views a minute were `before` from 90 to 30 minutes ago and `now` since: a riser when now is well over. */
@@ -68,8 +71,8 @@ test('★ every new For You post and every coin found for one is listed, never p
   assert.equal(sent.length, 0);
 });
 
-test('★ blowing up: the first look pushes nothing; then the coinless riser goes first, one push a pass, three a day three hours apart, the rest listed', async () => {
-  const { db, sent, deliver } = await people(2);
+test('★ blowing up: the first look lists nothing; then the coinless riser goes first, each post once — listed, never pushed', async () => {
+  const { db, sent, deliver, listed } = await people(2);
   await card(db, 'old', { before: 1_000, now: 6_000, coins: { kind: 'none' } });
   assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 0, 'the first look remembers what is already blowing up');
 
@@ -80,25 +83,16 @@ test('★ blowing up: the first look pushes nothing; then the coinless riser goe
   const order = await db.query<{ subject: string }>(`select subject from people.alert_queue where user_id = 'u1' order by queue_id`);
   assert.deepEqual(order.map((r) => r.subject), ['x:fresh', 'x:coined'], 'no coin yet goes first, though the coined post is faster');
 
-  assert.deepEqual(await deliver(), ['push', 'push', 'daily-limit', 'daily-limit'], 'the coinless pick to each person; the coined one the same pass is listed');
-  assert.equal(sent[0]?.title, 'Rising fast, no coin yet');
-  assert.match(sent[0]?.body ?? '', /^@fresh: Post fresh words .*views, \+150K in 30m$/);
+  assert.deepEqual(await deliver(), ['list-only', 'list-only', 'list-only', 'list-only'], 'in Notifications, not on the phone');
+  assert.equal(sent.length, 0);
+  const [first] = await listed();
+  assert.equal(first?.[0], 'Rising fast, no coin yet');
+  assert.match(first?.[1] ?? '', /^@fresh: Post fresh words .*views, \+150K in 30m$/);
   assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 0, 'each post is a pick once, ever');
-
-  /* Three hours later the allowance has room again; after three pushes in a day it does not. */
-  await db.query(`update people.alert set at = now() - interval '3 hours 1 minute' where delivery = 'push'`);
-  await card(db, 'next', { before: 1_000, now: 7_000, coins: { kind: 'none' } });
-  await checkBlowingUp(db, SHADOW_POLICY, NOW);
-  assert.deepEqual(await deliver(), ['push', 'push']);
-  await db.query(`update people.alert set at = at - interval '3 hours 1 minute' where delivery = 'push'`);
-  await db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery, at) values ('u1', 'blowing_up', 'x:third', 0, 't', 'b', '/#/', '{}', 'push', now() - interval '3 hours 30 minutes')`);
-  await card(db, 'fourth', { before: 1_000, now: 7_000, coins: { kind: 'none' } });
-  await checkBlowingUp(db, SHADOW_POLICY, NOW);
-  assert.deepEqual(await deliver(), ['daily-limit', 'push'], 'u1 had three in the day; u2 two');
 });
 
 test('★ a brand-new narrative taking off is a blowing-up pick, after coinless posts; not for those who starred it', async () => {
-  const { db, deliver, sent } = await people(2);
+  const { db, deliver, sent, listed } = await people(2);
   const page = async (id: string, ageMs: number, posts: number, views: number) =>
     db.query(
       `insert into public.story_view (story_id, payload, found_at, views_total, dead) values ($1, $2, now(), 1, false) on conflict (story_id) do update set payload = excluded.payload`,
@@ -110,46 +104,24 @@ test('★ a brand-new narrative taking off is a blowing-up pick, after coinless 
   await page('n-small', HOUR, 2, 2_000_000);
   await db.query(`insert into people.watch (user_id, story_id) values ('u2', 'n-new')`);
   assert.equal(await checkBlowingUp(db, SHADOW_POLICY, NOW), 1, 'only the new one over both bars, and not to its starrer');
-  assert.deepEqual(await deliver(), ['push']);
-  assert.deepEqual(sent.map((s) => [s.title, s.body]), [['New narrative taking off: Narrative n-new', '6 new posts, +2.1M views in the last hour']]);
+  assert.deepEqual(await deliver(), ['list-only']);
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await listed(), [['New narrative taking off: Narrative n-new', '6 new posts, +2.1M views in the last hour']]);
 });
 
-test('★ follows are pushed as one group after the wait, an hour apart; each is still listed', async () => {
-  const { db, sent, deliver, groups } = await people(1);
+test('★ follows and likes are each listed, never pushed, and never held for a group', async () => {
+  const { db, sent, deliver, groups, listed } = await people(1);
   for (const who of ['@ann', '@bob', '@cyd']) await db.query(`insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ('u1', 'follow', $1, 0, $2, '/#/u/x')`, [who, JSON.stringify({ who })]);
-  assert.deepEqual(await deliver(), ['held', 'held', 'held']);
-  assert.deepEqual(await groups(), [], 'a burst waits ten minutes to gather');
-  await db.query(`update people.alert set at = now() - interval '11 minutes'`);
-  const g = await groups();
-  assert.deepEqual(g.map((x) => [x.kind, x.count, x.outcome]), [['follow', 3, 'push']]);
-  assert.deepEqual(sent.map((s) => [s.title, s.body]), [['3 new followers', '@cyd, @bob and @ann followed you']]);
-  const rows = await db.query<{ delivery: string }>(`select delivery from people.alert order by alert_id`);
-  assert.deepEqual(rows.map((r) => r.delivery), ['grouped', 'grouped', 'push'], 'the list keeps all three; the hourly count sees one push');
-
-  await db.query(`insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ('u1', 'follow', '@dee', 0, '{"who":"@dee"}', '/#/u/dee')`);
-  await deliver();
-  await db.query(`update people.alert set at = now() - interval '11 minutes' where delivery = 'held'`);
-  assert.deepEqual(await groups(), [], 'within the hour of the last group');
-  await db.query(`update people.alert set at = at - interval '1 hour'`);
-  assert.deepEqual((await groups()).map((x) => x.count), [1]);
-  assert.deepEqual(sent.at(-1), { to: 'https://push.example/u1', title: 'New follower', body: '@dee followed you' });
+  for (let n = 1; n <= 2; n++) await db.query(`insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ('u1', 'comment_useful', '7', $1, $2, '/#/story/s')`, [n, JSON.stringify({ count: n, excerpt: 'Pancake' })]);
+  assert.deepEqual(await deliver(), ['list-only', 'list-only', 'list-only', 'list-only', 'list-only']);
+  await db.query(`update people.alert set at = now() - interval '2 hours'`);
+  assert.deepEqual(await groups(), [], 'nothing is held, so no group push');
+  assert.equal(sent.length, 0);
+  assert.deepEqual((await listed()).slice(0, 3), [['New follower', '@ann followed you'], ['New follower', '@bob followed you'], ['New follower', '@cyd followed you']]);
 });
 
-test('★ likes on your comments: one push a day, counting the people', async () => {
-  const { db, sent, deliver, groups } = await people(1);
-  for (let n = 1; n <= 12; n++) await db.query(`insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ('u1', 'comment_useful', '7', $1, $2, '/#/story/s')`, [n, JSON.stringify({ count: n, excerpt: 'Pancake is going to the moon' })]);
-  assert.equal((await deliver()).filter((x) => x === 'held').length, 12);
-  await db.query(`update people.alert set at = now() - interval '61 minutes'`);
-  await groups();
-  assert.deepEqual(sent.map((s) => [s.title, s.body]), [['12 people liked your comment', 'Pancake is going to the moon']]);
-  await db.query(`insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ('u1', 'comment_useful', '7', 13, '{"count":13}', '/#/story/s')`);
-  await deliver();
-  await db.query(`update people.alert set at = now() - interval '5 hours' where delivery = 'held'`);
-  assert.deepEqual(await groups(), [], 'one a day');
-});
-
-test('★ a saved post\'s first settled coin is pushed at once; a post that showed a coin when saved, or an unsure one, is not', async () => {
-  const { db, sent, deliver } = await people(2);
+test('★ a saved post\'s first settled coin is listed at once; a post that showed a coin when saved, or an unsure one, is not', async () => {
+  const { db, sent, deliver, listed } = await people(2);
   await db.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
   const line = (id: string, coins: unknown) =>
     db.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', $1, 0, $2) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [id, JSON.stringify({ authorLabel: '@SpaceX', excerpt: 'Falcon 9 lands again', coins })]);
@@ -164,15 +136,16 @@ test('★ a saved post\'s first settled coin is pushed at once; a post that show
   assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 0, 'unsure is not a coin');
   await line('x:1', { kind: 'one', coin: { address: 'Fal111', ticker: 'FALCON', marketCapUsd: { v: 3_000 } }, evidence: { linksPost: true } });
   assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 1);
-  assert.deepEqual(await deliver(), ['push']);
-  assert.deepEqual(sent.map((s) => [s.title, s.body]), [['$FALCON is the first coin for a post you saved', '"Falcon 9 lands again" (@SpaceX). $3K MC.']]);
+  assert.deepEqual(await deliver(), ['list-only'], 'listed: the one push is a coin launched for a For You post (launch.ts)');
+  assert.equal(sent.length, 0);
+  assert.deepEqual((await listed()).at(-1), ['$FALCON is the first coin for a post you saved', '"Falcon 9 lands again" (@SpaceX). $3K MC.']);
   await line('x:1', { kind: 'one', coin: { address: 'Two111', ticker: 'TWO' }, evidence: { linksPost: true } });
   await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state);
   assert.deepEqual(await deliver(), ['list-only'], 'a later coin is listed, not pushed');
 });
 
-test('★ a starred narrative picking up speed: one push per window; a big account posting in it: pushed, paced per narrative; nothing old on the first look', async () => {
-  const { db, sent, deliver } = await people(1);
+test('★ a starred narrative picking up speed: once per window; a big account posting in it: listed; nothing old on the first look', async () => {
+  const { db, sent, deliver, listed } = await people(1);
   const page = (posts: number, views: number) =>
     db.query(`insert into public.story_view (story_id, payload, found_at, views_total, dead) values ('n-p', $1, now(), 1, false) on conflict (story_id) do update set payload = excluded.payload`, [
       JSON.stringify({ title: 'Pancake the cat', provenance: { kind: 'observed' }, inWindow: [{ hours: 1, newPosts: posts, viewsGained: { v: views } }], viewsPerMinute: { now: 900, before: 300 } }),
@@ -195,18 +168,16 @@ test('★ a starred narrative picking up speed: one push per window; a big accou
   await item('x:c', 'x:small', 5 * MIN);
   await item('x:old', 'x:big', 3 * 24 * HOUR);
   assert.equal(await checkStarred(db, P, NOW), 1, 'the new big-account post; not the small account, not the old post the regroup added');
-  assert.deepEqual(await deliver(), ['push', 'push']);
-  assert.deepEqual(sent.map((s) => [s.title, s.body]), [
+  assert.deepEqual(await deliver(), ['list-only', 'list-only']);
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await listed(), [
     ['Pancake the cat is taking off', '6 new posts, +2.1M views in the last hour'],
     ['@bigone posted in Pancake the cat', '48M followers: Pancake drinks from the fountain'],
   ]);
-  await item('x:d', 'x:big', MIN);
-  await checkStarred(db, P, NOW);
-  assert.deepEqual(await deliver(), ['daily-limit'], 'a second big-account post in the same narrative within three hours is listed');
 });
 
-test('★ a coin you made gets its first buyers: pushed once to its creator; the creator\'s own buys and coins made before the deploy are not', async () => {
-  const { db, sent, deliver } = await people(1);
+test('★ a coin you made gets its first buyers: listed once for its creator; the creator\'s own buys and coins made before the deploy are not', async () => {
+  const { db, sent, deliver, listed } = await people(1);
   await db.query(`insert into public.created_coin (address, creator, signature, created_at) values ('Old111', $1, 's0', now() - interval '1 day')`, [wallet(1)]);
   const txs = new Map<string, ParsedTx[]>();
   /* A buy as the parser shows it: the payer's SOL down, its token account up by the coin. */
@@ -223,7 +194,7 @@ test('★ a coin you made gets its first buyers: pushed once to its creator; the
   txs.set('New111', [buy('s1', wallet(1), 'New111'), buy('s2', 'Buyer1', 'New111'), buy('s3', 'Buyer2', 'New111')]);
   assert.equal(await checkCreatorBuyers(db, ports, P), 1);
   assert.equal(await checkCreatorBuyers(db, ports, P), 0, 'once per coin');
-  assert.deepEqual(await deliver(), ['push']);
-  assert.equal(sent[0]?.title, '$COIN has its first buyers');
-  assert.equal(sent[0]?.body, '2 wallets bought the coin you made.');
+  assert.deepEqual(await deliver(), ['list-only']);
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await listed(), [['$COIN has its first buyers', '2 wallets bought the coin you made.']]);
 });
