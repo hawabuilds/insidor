@@ -62,3 +62,10 @@ test('the age ladder is one step per tier boundary and strictly ascending', () =
   assert.equal(ages.length, DEFAULT_POLICY.track.tierMinutes.length - 1);
   for (let i = 1; i < ages.length; i += 1) assert.ok((ages[i] ?? 0) > (ages[i - 1] ?? 0));
 });
+
+test('re-reads may take $5 of the search day and no more than the day, and reply reads stop at 140 posts', () => {
+  const day = DEFAULT_POLICY.feed.searchDay;
+  assert.equal(day.rereadDailyUsd, 5);
+  assert.ok(day.rereadDailyUsd <= day.dailyUsd, 're-reads are a part of the day, not beside it');
+  assert.equal(DEFAULT_POLICY.attention.postsPerDay, 140);
+});

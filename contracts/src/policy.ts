@@ -5247,7 +5247,10 @@ const POLICY_V1: Policy = {
        owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
     /* Counted from 2026-10-19 19:00 UTC, the owner's "running rest of night": the X day restarts then at the normal pace. */
     /* $6.30 for search and re-reads from 2026-10-20: the reply reads' own ~$0.72 a day (attention.postsPerDay) sits beside it, so X stays at the owner's $7. */
-    searchDay: { on: true, dailyUsd: 6.3, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 2 },
+    /* Re-reads $5 of it from 2026-10-20 (was $2), the owner's figure, with the three-hour cut and
+       For You's slower re-reads (track.offForYouPerPostMaxAgeMs, onForYouIntervalFactor): replayed
+       over 2026-10-19 13:00–18:00 UTC, TRACK's text-source re-reads come to about $4.60 a day. */
+    searchDay: { on: true, dailyUsd: 6.3, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 5 },
     /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
        tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
        that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'
@@ -5395,8 +5398,10 @@ const POLICY_V1: Policy = {
     reproductionsPerPost: 20,
     postsPerPass: 10,
     /* About 1,000 text posts a day clear For You's bar (2026-10-13); 300 reads is at most $1.80 a
-       day, the judged-yes posts first (services/runner/src/work/crypto-attention.ts). */
-    postsPerDay: 300,
+       day, the judged-yes posts first (services/runner/src/work/crypto-attention.ts).
+       140 from 2026-10-20 (the owner): a post's reads cost about $0.0053, and 300 cost $1.58 on
+       2026-10-20; 140 is about $0.74 a day. */
+    postsPerDay: 140,
     rereadAfterMs: 3_600_000, // an hour
     coinWords: ['coin', 'coins', 'memecoin', 'memecoins', 'token', 'tokens', 'pump', 'pumping', 'pumped', 'ticker', 'mcap', 'marketcap', 'dex', 'bonded', 'aped', 'rugged', 'launched', 'contract'],
     cryptoAccountWords: ['crypto', 'cryptos', 'memecoin', 'memecoins', 'degen', 'degens', 'trader', 'trading', 'web3', 'defi', 'nft', 'nfts', 'onchain', 'airdrop', 'airdrops', 'calls', 'caller', '100x', '1000x', 'gem', 'gems', 'sol', 'btc', 'eth', 'bnb', 'dex', 'pump', 'token', 'tokens', 'coin', 'coins', 'shitcoin', 'shitcoins', 'bitcoin', 'altcoin', 'altcoins', 'trenches', 'chart', 'charts'],
