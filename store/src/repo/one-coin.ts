@@ -292,7 +292,9 @@ export class PgOneCoinRepo {
    * keeps its end. False: 0112 is not applied, nothing was written.
    */
   async watch(addresses: readonly string[], reason: string, nowMs: number, untilMs: number): Promise<boolean> {
-    if (addresses.length === 0) return true;
+    /* A watch already over (an older coin whose watch window ended before now) has nothing to
+       follow; written, it broke 0112's `watch_ends_after_it_starts` and threw the whole pick loop. */
+    if (addresses.length === 0 || untilMs <= nowMs) return true;
     try {
       await this.#db.query(
         `insert into internal.coin_watch (address, reason, since, until)
