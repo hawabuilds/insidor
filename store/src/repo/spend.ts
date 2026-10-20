@@ -163,4 +163,30 @@ export class PgSpendRepo implements SpendLedger {
 
     return { totalUsd, byVendor, jobs: { totalUsd: jobTotalUsd, byVendor: jobByVendor }, learning: { totalUsd: learnTotalUsd, byVendor: learnByVendor }, learningTests: { totalUsd: testTotalUsd, byVendor: testByVendor } };
   }
+
+  /**
+   * ★ ONE ENDPOINT'S BILLED CALLS IN BUCKETS COUNTED BACK FROM `toMs` (the judge's cost alarm,
+   * services/runner judge-cost-alarm.ts): bucket 0 is [toMs − bucketMs, toMs), bucket 1 the one
+   * before, back to `fromMs`. Every vendor's rows under that exact endpoint, so a judge that moves
+   * host is still one judge; a prefixed endpoint (`job:`, `learn:`) is another book and not read.
+   * Only rows booked with units > 0: a refusal booked at $0 is no call, and counting it would pull
+   * the average down exactly when a provider is failing. Buckets with no calls are absent.
+   */
+  async callBuckets(endpoint: string, fromMs: Millis, toMs: Millis, bucketMs: number): Promise<readonly CallBucket[]> {
+    const rows = await this.#db.query<{ k: number | string; calls: number | string; usd: string | number }>(
+      `select floor(extract(epoch from ($3::timestamptz - at)) * 1000 / $4)::int as k, count(*)::int as calls, coalesce(sum(usd), 0) as usd
+         from internal.spend
+        where endpoint = $1 and units > 0 and at >= $2 and at < $3
+        group by 1 order by 1`,
+      [endpoint, toTimestamp(fromMs), toTimestamp(toMs), bucketMs],
+    );
+    return rows.map((r) => ({ ago: Number(r.k), calls: Number(r.calls), usd: toUsd(r.usd, endpoint) }));
+  }
+}
+
+/** One bucket of `callBuckets`: how many buckets back from the end (0 is the last), its calls and their dollars. */
+export interface CallBucket {
+  readonly ago: number;
+  readonly calls: number;
+  readonly usd: number;
 }

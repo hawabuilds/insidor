@@ -406,6 +406,22 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `${finds === null ? 'Few' : finds} ${language === null ? '' : `${language} `}posts found by the ${source} searches in ${window}, against ${base ?? 'many more'} in the same hours the day before.${language === null ? ' Every language fell together.' : ''}`,
         };
       }
+      if (f['what'] === 'judge-cost') {
+        /* The runner's judge cost alarm (services/runner judge-cost-alarm.ts): the last hour's booked
+           cost a call against the median hour of the days before. Said as the ledger's numbers. */
+        const per = n(f['perCallUsd']);
+        const med = n(f['medianUsd']);
+        const ratio = n(f['ratio']);
+        const calls = n(f['calls']);
+        const total = n(f['usd']);
+        const minutes = n(f['windowMinutes']);
+        const days = n(f['baselineDays']);
+        const cents = (x: number | null): string => (x === null ? '–' : `$${x.toFixed(4)}`);
+        return {
+          title: `The judge costs ${ratio === null ? 'far more than usual' : `${ratio}× its usual`} per call`,
+          body: `${cents(per)} a call over the last ${minutes ?? 60} minutes${calls === null ? '' : ` (${calls} calls${total === null ? '' : `, ${usd(total)}`})`}, against a median of ${cents(med)} over the ${days ?? 7} days before. A call that got no reply is booked at its estimate.`,
+        };
+      }
       if (f['what'] === 'disk') {
         /* The runner's disk alarm (services/runner disk-alarm.ts): the database's own size against the
            disk the host's grow rule says it has. Inferred, so said as "probably" where it is. */
