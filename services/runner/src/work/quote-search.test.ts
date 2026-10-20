@@ -17,7 +17,9 @@ import { memoryLaneLedger } from './lane-ledger.ts';
 import { NOW, openMeter, pagingSource } from './lane-search-fakes.ts';
 import { dueAge, quoteClock, quoteSearchPass, type QuoteSearchDeps } from './quote-search.ts';
 
-const P = DEFAULT_POLICY.feed.reproductions;
+/* Shipped off since 2026-10-20 (its money went to the account watch); what it does when on is tested on this. */
+const P = { ...DEFAULT_POLICY.feed.reproductions, on: true };
+const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, reproductions: P } };
 const MIN = 60_000;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
@@ -54,7 +56,7 @@ function deps(seen: DiscoveryQuery[], stored: unknown[], targets: readonly Quote
     ledger: memoryLaneLedger(),
     meter: openMeter,
     mode: 'live',
-    policy: DEFAULT_POLICY,
+    policy: ON,
     log: quiet,
     now: () => NOW,
     ...over,

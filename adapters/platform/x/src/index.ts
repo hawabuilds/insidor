@@ -203,8 +203,9 @@ export { CREDENTIALS, clientConfig } from './credentials.ts';
 export type { XClient, XClientConfig } from './client.ts';
 /* The rendering, and the proof that the vendor applied it. `CutoffNotHonoured` is
    exported because it is the one failure on this source that must never be retried
-   or swallowed: it means a blind historical run stopped being blind. */
-export { CutoffNotHonoured, toSearchQuery } from './discover.ts';
+   or swallowed: it means a blind historical run stopped being blind. `AccountsNotHonoured` is its
+   twin for a group of accounts (the account watch): `from:` was dropped and the page was everyone's. */
+export { AccountsNotHonoured, CutoffNotHonoured, MAX_ACCOUNTS_PER_ASK, toSearchQuery } from './discover.ts';
 /* The citation link. Exported from the barrel because the projector — which must
    never know a URL shape — is the caller, and it asks this package by name. */
 export { postUrl } from './permalink.ts';

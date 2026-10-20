@@ -183,6 +183,76 @@ function filterOperators(query: DiscoveryQuery, feature: string, what: string): 
 }
 
 /**
+ * ★ SEVERAL ACCOUNTS IN ONE SEARCH (the account watch, the runner's work/account-watch.ts): an
+ * `account` ask whose `terms` name more than one handle renders `(from:a OR from:b …)
+ * -filter:retweets`. Why one search and not one per account: this vendor bills a request at least
+ * one post even when it returns nothing, so a hundred accounts asked one by one every few minutes
+ * is a hundred billed empties each time; grouped, an empty ask costs one post for the whole group
+ * and a busy one costs exactly the posts it returns. Plain reposts are left out: a watched account's
+ * repost is someone else's post, and it would be billed on every ask that returns it.
+ *
+ * Refused, not guessed: a handle that is not the platform's handle shape (letters, digits and
+ * underscores, at most 15) would turn the group into a phrase search over everything, and a group
+ * over `MAX_ACCOUNTS_PER_ASK` risks a query the vendor truncates silently. Duplicates are refused
+ * too: they hide a caller that lost track of its own list.
+ *
+ * ★ THE SAME VENDOR DROPPED THE OR OF `lang:` (see the header); whether it honours an OR of `from:`
+ * was not measured when this was written. `requireAccountsHonoured` makes a dropped `from:` loud;
+ * an OR answered with its last member only would look like quiet accounts, which is why the
+ * runner turns each group's order on every ask (each handle is last in turn) and logs who answered.
+ */
+export const MAX_ACCOUNTS_PER_ASK = 20;
+const HANDLE = /^[A-Za-z0-9_]{1,15}$/;
+
+function accountGroupOperators(handles: readonly string[]): string[] {
+  if (handles.length > MAX_ACCOUNTS_PER_ASK) {
+    throw new NotImplemented('x:discover:accounts', `at most ${MAX_ACCOUNTS_PER_ASK} accounts an ask; asked ${handles.length}`);
+  }
+  const seen = new Set<string>();
+  for (const h of handles) {
+    if (!HANDLE.test(h)) throw new NotImplemented('x:discover:accounts', `'${h.slice(0, 32)}' is not an account handle on this source`);
+    if (seen.has(h.toLowerCase())) throw new NotImplemented('x:discover:accounts', `'${h}' is asked twice in one group`);
+    seen.add(h.toLowerCase());
+  }
+  return [`(${handles.map((h) => `from:${h}`).join(' OR ')})`, '-filter:retweets'];
+}
+
+/**
+ * The vendor returned a post by an account the group did not name: `from:` was not applied, so the
+ * page is the open search's and not the watch's.
+ *
+ * ★ ITS OWN CLASS FOR THE SAME REASON AS `CutoffNotHonoured`: retrying gets the same page, and it
+ * is not a shape change. It is thrown rather than the stranger's posts filtered out, because a
+ * dropped operator means every later ask is the open search too, billed a full page each time; the
+ * runner's lane stops on a failure, and its daily cap bounds the rest.
+ */
+export class AccountsNotHonoured extends Error {
+  readonly asked: readonly string[];
+  readonly got: string;
+
+  constructor(asked: readonly string[], got: string) {
+    super(`${String(SOURCE)} returned a post by @${got} to a search for ${asked.length} named accounts; the from: operator was not applied. The page is discarded.`);
+    this.name = 'AccountsNotHonoured';
+    this.asked = asked;
+    this.got = got;
+  }
+}
+
+/**
+ * Every post on the page is by one of the asked accounts, or the page is refused. A post whose
+ * author came back with no handle cannot be checked and is let through: an absence is not a
+ * stranger. Handles compare without case, as the platform does. Exported and pure for its test.
+ */
+export function requireAccountsHonoured(items: readonly Item[], authors: readonly Author[], asked: readonly string[]): void {
+  const want = new Set(asked.map((h) => h.toLowerCase()));
+  const handleOf = new Map(authors.map((a) => [String(a.authorKey), a.handle]));
+  for (const item of items) {
+    const handle = handleOf.get(String(item.authorKey)) ?? null;
+    if (handle !== null && !want.has(handle.toLowerCase())) throw new AccountsNotHonoured(asked, handle);
+  }
+}
+
+/**
  * Renders a query into this vendor's search syntax, or refuses.
  *
  * Exported and pure so every refusal above is unit-testable with no network at all —
@@ -209,6 +279,8 @@ export function toSearchQuery(query: DiscoveryQuery): string {
     if (query.filter !== undefined) parts.push(...filterOperators(query, 'x:discover:quotes', "a post's quotes"));
   } else if (query.mode === 'catchall') {
     parts.push(...feedOperators(query));
+  } else if (query.mode === 'account' && (query.terms?.length ?? 0) > 1) {
+    parts.push(...accountGroupOperators(query.terms ?? []));
   } else {
     const term = query.term.trim();
     if (term.length === 0) {
@@ -288,6 +360,8 @@ export async function searchPage(
      of it is precisely where an unapplied ceiling would show up first. Checking the
      tail instead would be checking the items least likely to breach. */
   if (query.untilMs !== null) requireCutoffHonoured(items, query.untilMs);
+  /* A group of accounts (`accountGroupOperators`): nothing by anyone else may leave this function. */
+  if (query.mode === 'account' && (query.terms?.length ?? 0) > 1) requireAccountsHonoured(items, authors, query.terms ?? []);
 
   return {
     items,

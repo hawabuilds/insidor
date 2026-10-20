@@ -21,6 +21,8 @@ const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () 
 const HOUR = 3_600_000;
 const FIRST = NOW - 30 * HOUR;
 const OFF = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, backSearch: { ...DEFAULT_POLICY.narrative.backSearch, on: false } } };
+/* Shipped off since 2026-10-20 (its money went to the account watch); what it does when on is tested on this. */
+const ON = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, backSearch: { ...DEFAULT_POLICY.narrative.backSearch, on: true } } };
 
 const narrative = (id: string, formedAgo: number, posts = 3): StoredNarrative => ({
   id,
@@ -37,7 +39,7 @@ const rows = (ids: readonly string[]): NarrativePostRow[] => ids.map((itemId, i)
   proposedName: 'ROADSTER', alternateNames: [], judgeId: null, kindLabel: null, ownerCall: null, ownTalk: false,
 }));
 
-function deps(seen: DiscoveryQuery[], stored: unknown[], open: readonly StoredNarrative[], policy = DEFAULT_POLICY, ledger = memoryLaneLedger()): NarrativeBackDeps {
+function deps(seen: DiscoveryQuery[], stored: unknown[], open: readonly StoredNarrative[], policy = ON, ledger = memoryLaneLedger()): NarrativeBackDeps {
   return {
     sources: () => [pagingSource(seen, () => 3)],
     narratives: { live: async () => open, standingRows: async (ids) => rows(ids) },
@@ -59,7 +61,7 @@ test('off: nothing is asked', async () => {
 });
 
 test('★ on: a narrative of 3 posts formed in the last two days is asked once, back from its earliest post, in every language at once', async () => {
-  assert.equal(DEFAULT_POLICY.narrative.backSearch.on, true);
+  assert.equal(DEFAULT_POLICY.narrative.backSearch.on, false, 'shipped off');
   const seen: DiscoveryQuery[] = [];
   const stored: unknown[] = [];
   const asked = new Set<string>();
@@ -78,20 +80,20 @@ test('★ on: a narrative of 3 posts formed in the last two days is asked once, 
 test('★ its own day: charged to narrative_back, never to the forward search, and stopped at its own cap', async () => {
   const ledger = memoryLaneLedger();
   const seen: DiscoveryQuery[] = [];
-  await narrativeBackPass(deps(seen, [], [narrative('new', HOUR)], DEFAULT_POLICY, ledger), new Set());
+  await narrativeBackPass(deps(seen, [], [narrative('new', HOUR)], ON, ledger), new Set());
   const day = new Date(NOW).toISOString().slice(0, 10);
   assert.ok((ledger.totals.get(`${day}:narrative_back`) ?? 0) > 0);
   assert.equal(ledger.totals.get(`${day}:narrative_name`), undefined);
 
   const spent = memoryLaneLedger({ narrative_back: DEFAULT_POLICY.narrative.backSearch.cap.dailyUsd, narrative_name: 0 });
   const none: DiscoveryQuery[] = [];
-  await narrativeBackPass(deps(none, [], [narrative('new', HOUR)], DEFAULT_POLICY, spent), new Set());
+  await narrativeBackPass(deps(none, [], [narrative('new', HOUR)], ON, spent), new Set());
   assert.equal(none.length, 0, 'its day spent: nothing asked, whatever the forward search has left');
 });
 
 test('the biggest narrative is asked first', async () => {
   const seen: DiscoveryQuery[] = [];
-  const one = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, backSearch: { ...DEFAULT_POLICY.narrative.backSearch, perPass: 1 } } };
+  const one = { ...ON, narrative: { ...ON.narrative, backSearch: { ...ON.narrative.backSearch, perPass: 1 } } };
   const asked = new Set<string>();
   await narrativeBackPass(deps(seen, [], [narrative('newer', HOUR, 3), narrative('bigger', 20 * HOUR, 9)], one), asked);
   assert.deepEqual([...asked], ['bigger']);
