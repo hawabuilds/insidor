@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, firstCount, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
+import { barReadings, firstCount, forYouBarPolicy, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -272,4 +272,30 @@ test("★ a feed's rows are written in one statement, a post listed twice in its
   assert.equal(inserts.length, 1);
   assert.deepEqual(inserts[0]?.params.slice(0, 3), ['fyp', ['a', 'b'], [2, 1]]);
   assert.deepEqual(asked.find((q) => q.sql.includes('rising_view ('))?.params, ['fyp', 5], 'the tick moves on by one');
+});
+
+test("For You's speed path starts at its own age; the scorer's shared age is left as it is", () => {
+  const MIN = 60_000;
+  const posted = 1_000_000_000_000;
+  /* On pace (40k by 90 minutes is 444 a minute): 6k at 8 minutes, 15k at 20, 750 a minute both ways. */
+  const readings = [
+    { atMs: posted + 8 * MIN, reach: 6_000 },
+    { atMs: posted + 20 * MIN, reach: 15_000 },
+  ];
+  const at = (minAgeMs: number | null) => ({ ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, speedBar: { ...DEFAULT_POLICY.rising.speedBar, enabled: true, minAgeMs: 30 * MIN, forYouMinAgeMs: minAgeMs } } });
+  const fifteen = at(15 * MIN);
+  /* The shared bar waits for 30 minutes: the scorer and the replays read it unchanged. */
+  assert.equal(clearsReachBar('fyp', readings, posted, fifteen), false);
+  assert.equal(fifteen.rising.speedBar.minAgeMs, 30 * MIN);
+  /* For You's bar takes it at 20 minutes. */
+  assert.equal(clearsReachBar('fyp', readings, posted, forYouBarPolicy(fifteen)), true);
+  /* Null is the shared age: the policy itself, not a copy. */
+  const none = at(null);
+  assert.equal(forYouBarPolicy(none), none);
+  assert.equal(clearsReachBar('fyp', readings, posted, forYouBarPolicy(none)), false);
+  /* The pace still decides: 9k at 20 minutes (450 a minute, under 15k views) is not let in early. */
+  assert.equal(clearsReachBar('fyp', [{ atMs: posted + 20 * MIN, reach: 9_000 }], posted, forYouBarPolicy(fifteen)), false);
+  /* The speed bar off stays off. */
+  const off = { ...fifteen, rising: { ...fifteen.rising, speedBar: { ...fifteen.rising.speedBar, enabled: false } } };
+  assert.equal(clearsReachBar('fyp', readings, posted, forYouBarPolicy(off)), false);
 });
