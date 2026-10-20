@@ -373,7 +373,9 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
 /**
  * The launch listing's loop. A failed pass waits longer each time (doubling, up to
  * `LISTING_MAX_WAIT_MS`) and never retries faster than the policy's cadence: the listing is a
- * shared free API, and a refusal is answered by asking less. Logged as a summary every
+ * rate-limited API, and a refusal is answered by asking less. A pass refused after its first page
+ * keeps what it read but counts as a failure for the wait; a pass held by the day's page budget
+ * is not a failure and waits the ordinary cadence. Logged as a summary every
  * `LISTING_SUMMARY_PASSES` passes and on every failure streak's first and tenth failure, so a
  * pass twice a minute does not become a log line twice a minute.
  */
@@ -384,13 +386,20 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
   const everyMs = DEFAULT_POLICY.assets.launchListing.everyMs;
   let failures = 0;
   let passes = 0;
-  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0 };
+  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0, pages: 0, held: 0, refused: 0 };
   while (!signal.aborted) {
     const started = Date.now();
     try {
       const r = await listing.pass();
-      failures = 0;
+      // A page refused after the first: what was read is added, and the wait still grows.
+      if (r.refused !== null) {
+        failures += 1;
+        if (failures === 1 || failures % 10 === 0) log.warn('launch listing page refused; the pages before it were kept', { err: r.refused, failures });
+      } else failures = 0;
       passes += 1;
+      totals.pages += r.pagesRead;
+      totals.held += r.held === null ? 0 : 1;
+      totals.refused += r.refused === null ? 0 : 1;
       totals.listed += r.listed;
       totals.added += r.added;
       totals.withoutDetails += r.withoutDetails;
@@ -403,6 +412,9 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
         totals.withoutDetails = 0;
         totals.credits = 0;
         totals.behind = 0;
+        totals.pages = 0;
+        totals.held = 0;
+        totals.refused = 0;
       }
     } catch (e) {
       failures += 1;

@@ -13,7 +13,7 @@ import { createListing, type ChainDetails, type ListingDeps } from './listing.ts
 
 const NOW = 1_800_000_000_000;
 /** A cap no test but the cap's own reaches. */
-const CREDITS = { accountsPerCall: 100, creditsPerCall: 1, dayCapCredits: 1_000 };
+const CREDITS = { accountsPerCall: 100, creditsPerCall: 1, dayCapCredits: 1_000, dayCapPages: 1_000, paceSlackPages: 1_000 };
 
 function hit(address: string, ageS: number): CoinSearchHit {
   return { address, name: `name ${address}`, ticker: address.toUpperCase(), venue: 'curve', marketAddress: null, createdAt: NOW - ageS * 1_000, marketCapUsd: null, imageUrl: null, source: 'listing' };
@@ -177,7 +177,7 @@ test('★ the chain reads stop at the day\'s credit cap; coins are still added, 
     return details(a);
   };
   /* Two coins a read, a credit each, two credits a day: the three coins need two reads. */
-  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, accountsPerCall: 2, creditsPerCall: 1, dayCapCredits: 2 });
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, accountsPerCall: 2, creditsPerCall: 1, dayCapCredits: 2, dayCapPages: 1_000, paceSlackPages: 1_000 });
   const first = await listing.pass();
   assert.equal(first.credits, 2);
   assert.equal(asked, 1);
@@ -191,4 +191,53 @@ test('★ the chain reads stop at the day\'s credit cap; coins are still added, 
   r.pages = [[hit('e', 1)]];
   await listing.pass();
   assert.equal(r.notes.filter((n) => n.includes('credits are spent')).length, 1);
+});
+
+test('★ a page refused after the first keeps what was read, and the place, so the next pass reads back to it', async () => {
+  const r = rig([[hit('a', 100)]]);
+  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000, ...CREDITS });
+  await listing.pass();
+  r.pages = [[hit('b', 10), hit('c', 20)], [hit('d', 40)], [hit('e', 60), hit('a', 100)]];
+  const page = r.deps.page;
+  (r.deps as { page: ListingDeps['page'] }).page = async (n) => {
+    if (n === 2) throw new Error('listing responded 429');
+    return page(n);
+  };
+  const refused = await listing.pass();
+  assert.equal(refused.refused, 'listing responded 429');
+  assert.equal(refused.behind, false, 'a refusal is said as one, not as falling behind');
+  assert.equal(refused.added, 2, "page 1's launches are added");
+  (r.deps as { page: ListingDeps['page'] }).page = page;
+  r.pagesAsked.length = 0;
+  const res = await listing.pass();
+  assert.deepEqual(r.pagesAsked, [1, 2, 3], 'the place did not move: the pass reads back to the last good one');
+  assert.equal(res.behind, false);
+  assert.deepEqual(r.added.map((x) => x.address).sort(), ['a', 'b', 'c', 'd', 'e']);
+});
+
+test('★ the listing pages stop at the day\'s cap and the cap is said once', async () => {
+  const r = rig([[hit('a', 5)], [hit('b', 10)], [hit('c', 15)]]);
+  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000, ...CREDITS, dayCapPages: 2, paceSlackPages: 10 });
+  const first = await listing.pass();
+  assert.deepEqual(r.pagesAsked, [1, 2], 'the cap stops a pass part way');
+  assert.equal(first.added, 2);
+  const second = await listing.pass();
+  await listing.pass();
+  assert.equal(second.held, 'cap');
+  assert.equal(second.pagesRead, 0);
+  assert.deepEqual(r.pagesAsked, [1, 2]);
+  assert.equal(r.notes.filter((n) => n.includes('listing pages are spent')).length, 1);
+});
+
+test('★ a pass ahead of the day\'s even pace is held, and reads again once the day catches up', async () => {
+  let now = Date.UTC(2027, 0, 1, 0, 0, 0);
+  const r = rig([[hit('a', 5)]]);
+  (r.deps as { now: ListingDeps['now'] }).now = () => now as Millis;
+  /* 2,880 pages a day is one a 30 s; with a slack of 1 the second page in the first 30 s waits. */
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: Number.POSITIVE_INFINITY, ...CREDITS, dayCapPages: 2_880, paceSlackPages: 1 });
+  assert.equal((await listing.pass()).held, null);
+  assert.equal((await listing.pass()).held, 'pace');
+  now += 30_000;
+  assert.equal((await listing.pass()).held, null);
+  assert.deepEqual(r.pagesAsked, [1, 1]);
 });
