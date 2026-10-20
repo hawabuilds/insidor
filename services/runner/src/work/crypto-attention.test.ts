@@ -26,8 +26,10 @@ const meter = {
 
 const due = (id: string, source = 'x'): DueAttention => ({ itemId: `${source}:${id}`, source, sourceItemId: id, postedAt: (NOW - 3_600_000) as Millis, reads: 0, judgedYes: false, text: TEXT, authorId: 'au', authorHandle: 'poster' });
 let TEXT = 'a dog';
+/* The step as it reads when on: shipped, the reply reads are off (postsPerDay 0, 2026-10-20). */
+const ON = { ...DEFAULT_POLICY, attention: { ...DEFAULT_POLICY.attention, postsPerDay: 140 } };
 
-function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'; text?: string; ownReply?: boolean } = {}) {
+function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'; text?: string; ownReply?: boolean; policy?: typeof DEFAULT_POLICY } = {}) {
   const recorded: { id: string; row: AttentionRow }[] = [];
   const filed: { id: string; name: string | null; prompt: string }[] = [];
   const asked: string[] = [];
@@ -61,7 +63,7 @@ function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'
     },
     meter,
     mode: over.mode ?? 'live',
-    policy: DEFAULT_POLICY,
+    policy: over.policy ?? ON,
     log: quiet,
     now: () => NOW,
   };
@@ -81,9 +83,18 @@ test('★ only the post over the bar, on a source that reads responses, is read 
 });
 
 test('the day\'s cap, counted from the table, stops the step', async () => {
-  const { d, asked } = deps({ readsToday: DEFAULT_POLICY.attention.postsPerDay });
+  const { d, asked } = deps({ readsToday: ON.attention.postsPerDay });
   assert.equal((await readCryptoAttention(d)).read, 0);
   assert.deepEqual(asked, []);
+});
+
+test('★ shipped off: with postsPerDay 0 nothing is read and nothing is spent', async () => {
+  const { d, asked, recorded } = deps({ policy: DEFAULT_POLICY });
+  const out = await readCryptoAttention(d);
+  assert.equal(out.read, 0);
+  assert.equal(out.spentUsd, 0);
+  assert.deepEqual(asked, []);
+  assert.equal(recorded.length, 0);
 });
 
 test('a dry run prices the read and reads nothing', async () => {

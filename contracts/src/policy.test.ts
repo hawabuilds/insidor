@@ -71,9 +71,9 @@ test('the account watch asks its 40 most coined accounts every 6 minutes, on a $
   assert.ok(w.maxWindowMs >= w.everyMs, 'a pass after a restart must reach back at least one cadence');
 });
 
-test('re-reads may take $5 of the search day and no more than the day, and reply reads stop at 140 posts', () => {
+test('re-reads may take $5 of the search day and no more than the day, and reply reads are off', () => {
   const day = DEFAULT_POLICY.feed.searchDay;
   assert.equal(day.rereadDailyUsd, 5);
   assert.ok(day.rereadDailyUsd <= day.dailyUsd, 're-reads are a part of the day, not beside it');
-  assert.equal(DEFAULT_POLICY.attention.postsPerDay, 140);
+  assert.equal(DEFAULT_POLICY.attention.postsPerDay, 0);
 });
