@@ -45,6 +45,7 @@ import { middleLoop } from './loops/middle.ts';
 import { readingsLoop } from './loops/readings.ts';
 import { nameSearchLoop } from './loops/name-search.ts';
 import { quotesLoop } from './loops/quotes.ts';
+import { accountWatchLoop } from './loops/account-watch.ts';
 import { earlyLoop } from './loops/early.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
@@ -239,6 +240,9 @@ async function main(): Promise<void> {
          each its own loop, deadline and daily cap, so neither can hold up discovery or the judge. */
       nameSearchLoop(runtime.loopDeps.policy.feed.narrativeNames.everyMs, runtime.nameSearch),
       quotesLoop(runtime.loopDeps.policy.feed.reproductions.everyMs, runtime.quoteSearch),
+      /* The account watch (`feed.accountWatch`): the accounts whose posts get coined again and again,
+         asked by name every few minutes, its own loop, deadline and daily cap (loops/account-watch.ts). */
+      accountWatchLoop(runtime.loopDeps.policy.feed.accountWatch.everyMs, runtime.accountWatch),
       /* Early judging (`judge.early`, work/early-judge.ts): the likeliest catch-all posts judged before
          their views clear For You's bar. Its own loop, cadence and daily cap, never in the discovery
          pass, so a slow judge here cannot hold up the normal judging or the feed. */
