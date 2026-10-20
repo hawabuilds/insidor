@@ -273,17 +273,24 @@ test('★ the judge is dormant when neither value is set, and that is not a faul
 });
 
 test('★ a judge key with no model fails the boot: there is no default model', () => {
-  assert.throws(() => loadRunnerConfig({ ...complete, ANTHROPIC_API_KEY: 'k' }), /JUDGE_MODEL/);
+  assert.throws(() => loadRunnerConfig({ ...complete, ANTHROPIC_API_KEY: 'k' }, false), /JUDGE_MODEL/);
 });
 
 test('★ a dry run can price the judge with only a model, and a live run cannot run on one', () => {
-  assert.equal(loadRunnerConfig({ ...complete, SPEND: 'dry', JUDGE_MODEL: 'claude-haiku-4-5' }).judge.state, 'priced');
-  assert.throws(() => loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5' }), /ANTHROPIC_API_KEY/);
+  assert.equal(loadRunnerConfig({ ...complete, SPEND: 'dry', JUDGE_MODEL: 'claude-haiku-4-5' }, false).judge.state, 'priced');
+  assert.throws(() => loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5' }, false), /ANTHROPIC_API_KEY/);
 });
 
 test('★ with the open model configured, a model and no main key boots live: the main judge is simply off', () => {
-  const c = loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5', OPENROUTER_API_KEY: 'sk-or-test' });
+  const c = loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5', OPENROUTER_API_KEY: 'sk-or-test' }, false);
   assert.equal(c.judge.state, 'priced');
+  assert.equal(c.openJudge.state, 'configured');
+});
+
+test('★ open model only: the main judge and the second host stay dormant whatever keys are set', () => {
+  const c = loadRunnerConfig({ ...complete, SPEND: 'live', ANTHROPIC_API_KEY: 'k', JUDGE_MODEL: 'claude-haiku-4-5', TOGETHER_API_KEY: 't', OPENROUTER_API_KEY: 'sk-or-test' }, true);
+  assert.equal(c.judge.state, 'dormant');
+  assert.equal(c.openJudgeBackup.state, 'dormant');
   assert.equal(c.openJudge.state, 'configured');
 });
 
