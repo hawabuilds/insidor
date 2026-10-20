@@ -19,6 +19,8 @@
  * six hours stop a post joining late and never take one off). Off, it keeps every post inside the
  * window, as it has since the News tab went. Everything a frame ever showed stays on the infinite
  * scroll (public.feed_post), whatever later frames show.
+ * With `rising.junkBar.on`, a post the re-tune's junk fit puts at or over its own held-out For You
+ * bar does not join For You either (junk-bar.ts); like the six hours it never takes a member off.
  *
  * How much of For You one topic may take (the owner, 2026-10-15): at most a few cards in any run of
  * twenty (variety.ts, `rising.variety*`); the rest of the topic leave the live list, never reordered.
@@ -102,6 +104,7 @@ import { COIN_MODEL_TARGETS, DEFAULT_POLICY, type CoinModelTarget } from '@insid
 import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
+import { overJunkBar } from './junk-bar.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
 import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
@@ -842,7 +845,11 @@ export async function buildRising(
     }
   });
 
-  const fypAll = posts.filter((p) => p.passes && p.fyp && (p.fresh || p.member)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
+     the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
+     this bar only stop a post joining, so neither records a reason. */
+  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && p.fresh && !p.member).map((p) => p.post.id), policy);
+  const fypAll = posts.filter((p) => p.passes && p.fyp && (p.member || (p.fresh && !junk.has(p.post.id)))).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   /* ★ No one topic fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = policy.rising.varietyOn ? await varied(db, fypAll, rows, policy) : fypAll;
   const views = (p: WireRisingPost): number | null => p.reach.v;
