@@ -32,13 +32,18 @@ export const OPEN_BASE_URL = 'OPENROUTER_BASE_URL';
 export const OPEN_PROVIDERS = 'OPEN_JUDGE_PROVIDERS';
 
 /**
- * The providers to ask, in order (client.ts says what the others did on 2026-10-16): NextBit
- * answered the learned-block prompt cleanly every time it was not rate-limited; DeepInfra is second
- * because NextBit's shared pool was rate-limited for minutes at a time, and DeepInfra looped once
- * of the once it answered. The others looped every time and are not asked: a call refused by both
- * is a failover to the main judge, not a hand-off to a provider that bills a looping answer.
+ * The providers to ask, in order (client.ts says what the others did on 2026-10-16).
+ *
+ * ★ DEEPINFRA ALONE, FROM 2026-10-20. NextBit, first until then, is no longer listed for the post
+ * judge's model on the router, so every call already went to DeepInfra; naming a provider that is
+ * not there only made each retry's "next provider" the same one. Crusoe, the cheapest listed
+ * ($0.10 in and $0.40 out a million tokens against DeepInfra's $0.15 and $0.50), was tried on 20 of
+ * the live judge's own ten-post calls that day and refused all 20 with a 400: it takes at most one
+ * picture a prompt, and a batched post call carries up to ten. So it is not asked: it would fail
+ * every pictured batch. A second provider here is only worth adding once it is measured on the same
+ * calls; the others looped on 2026-10-16 and bill a looping answer.
  */
-export const DEFAULT_OPEN_PROVIDERS: readonly string[] = ['nextbit', 'deepinfra'];
+export const DEFAULT_OPEN_PROVIDERS: readonly string[] = ['deepinfra'];
 
 /** The owner's pick, 2026-10-15: hand gold 70/99, missed 9/13, $0.00016 a post, against three others. */
 export const DEFAULT_OPEN_MODEL = 'google/gemma-3-27b-it';

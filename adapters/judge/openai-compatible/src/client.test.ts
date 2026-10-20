@@ -118,6 +118,8 @@ test('★ every text part is the live body\'s, in the same order; each picture i
 
 test('OPEN_JUDGE_PROVIDERS: unset is the default order, blank lets the router choose; no key is dormant', () => {
   assert.deepEqual(openProviders({}), DEFAULT_OPEN_PROVIDERS);
+  /* 2026-10-20: NextBit is gone from the router's list and Crusoe takes one picture a prompt (setup.ts). */
+  assert.deepEqual(DEFAULT_OPEN_PROVIDERS, ['deepinfra']);
   assert.deepEqual(openProviders({ OPEN_JUDGE_PROVIDERS: ' ' }), []);
   assert.deepEqual(openProviders({ OPEN_JUDGE_PROVIDERS: 'a, b' }), ['a', 'b']);
   assert.deepEqual(readOpenJudgeSetup({}), { state: 'dormant' });
