@@ -947,6 +947,16 @@ export interface JudgePolicy {
    * 6–30 s). `answerTokensPerPost` sizes the answer
    * budget to the batch (about 80 used a post), so a looping provider is cut off at 900 tokens, not
    * 1,200, and its posts are re-asked.
+   *
+   * ★ `answerTokensPerPost` FROM THE MEASURED ANSWERS (2026-10-20): 20 of the live judge's own
+   * ten-post calls, rebuilt from the stored posts and asked of the router's provider, answered in a
+   * median of 74 tokens a post, 84 at the 90th percentile and 92 at most, with no reasoning tokens.
+   * 120 a post, one post spare, is about 1.6 times the median call and 1.3 times the longest; a
+   * full call of ten stays at `postBatchMaxOutputTokens`. What it bounds: at the provider's $0.50 a
+   * million output tokens, a call that runs to its cap costs about $0.0006 more than its input,
+   * against about $0.003 for the whole of a normal ten-post call, so no answer can make a call cost
+   * more than about 1.2 times normal. What it gives up: a call whose answers are longer than this
+   * (long name lists) stops at the cap and its posts are asked again, then left unanswered.
    */
   readonly open: {
     readonly batchSize: number;
@@ -3299,6 +3309,42 @@ export interface NotifyPolicy {
   readonly perClient: number;
   readonly windowMs: number;
   readonly languageDrop: LanguageDropPolicy;
+  readonly judgeCost: JudgeCostPolicy;
+}
+
+/**
+ * ★ THE JUDGE'S COST-PER-CALL ALARM (the owner, 2026-10-20): the owner is told when the post judge's
+ * average cost a call over the last `windowMs` is more than `factor` times the median of the same
+ * average over the `baselineMs` before it. On 2026-10-20 from 06:00 to 11:00 London the judge's
+ * booked cost a call ran at four to seven times normal for five hours at the same number of calls,
+ * and nothing said so; the day's line still had room, so the supplier warnings stayed quiet.
+ *
+ * THE RULE (services/runner judge-cost-alarm.ts): every `everyMs`, the judge's calls in hour-long
+ * buckets ending now, counting only calls booked as billed (a refusal booked at $0 is no call). The
+ * last bucket is "the last hour"; the baseline is the median of the average cost a call in each
+ * bucket of the `baselineMs` before it that had at least `minCalls` calls, and is only trusted with
+ * at least `minBaselineHours` such buckets. The last hour needs `minCalls` too: a handful of calls
+ * is too few to call an average. Fired at most once every `quietMs`.
+ *
+ * Replayed by clock hour over every judge call the ledger holds (2026-10-16 20:00 to 2026-10-20
+ * 13:00 London; 32 hours with a trusted baseline): it fires on each of the five hours from 06:00 to
+ * 10:00 on 2026-10-20 (4.2 to 8.3 times the median), and at 13:00 that day, when the same thing
+ * began again while this was being written (3.2 times). No other hour fires. The highest was 1.87
+ * times, at 09:00 on 2026-10-19, the hour the judge moved to a dearer model with the baseline still
+ * the cheaper one's; normal hours since sit at 1.1 to 1.7.
+ *
+ * What breaks if changed carelessly: a `factor` near 1 fires on a busy hour's larger batches; a
+ * `minCalls` near 1 fires on one slow call; a `quietMs` shorter than the episode pushes it hourly.
+ */
+export interface JudgeCostPolicy {
+  readonly on: boolean;
+  readonly everyMs: number;
+  readonly windowMs: number;
+  readonly baselineMs: number;
+  readonly factor: number;
+  readonly minCalls: number;
+  readonly minBaselineHours: number;
+  readonly quietMs: number;
 }
 
 /**
@@ -4554,7 +4600,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v128',
+  version: 'policy.v129',
 
   admit: {
     maxAgeMin: 240,
@@ -4896,7 +4942,8 @@ const POLICY_V1: Policy = {
       refitAt: ['00:00'],
       text: { maxQuotedWords: 6, minCapsLetters: 3, shortWords: 8 },
     },
-    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150, primaryBatchSize: 10 },
+    /* answerTokensPerPost 120 from 150 (v129): sized from 20 measured ten-post calls (see JudgePolicy.open). */
+    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 120, primaryBatchSize: 10 },
     /* The owner, 2026-10-16: no main-judge API from now on (its credit ran out at 19:26 UTC that
        evening). Each question copy-tested that night on 30 recent real inputs against the main
        judge's stored answers (the open model's cost for all of it: $0.02):
@@ -5787,6 +5834,20 @@ const POLICY_V1: Policy = {
         text: ['all', 'media', 'slow', 'middle', 'narrative_name', 'quote'],
         video: ['watch', 'learned_tag', 'trending', 'trend', 'creator'],
       },
+    },
+    /* The owner, 2026-10-20: "when the judge's average cost per call over the last hour exceeds 2×
+       the trailing 7-day median, alert me, at most once per 6 hours" (see JudgeCostPolicy). */
+    judgeCost: {
+      on: true,
+      everyMs: 600_000, // ten minutes
+      windowMs: 3_600_000, // an hour
+      baselineMs: 604_800_000, // seven days
+      factor: 2,
+      /* 90 to 200 calls an hour on 2026-10-19 and 20; under 20 is a handful. */
+      minCalls: 20,
+      /* Half a day of normal hours before a median is trusted: the router's judge began on 2026-10-19. */
+      minBaselineHours: 12,
+      quietMs: 21_600_000, // six hours
     },
   },
 
