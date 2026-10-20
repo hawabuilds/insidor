@@ -5250,7 +5250,8 @@ const POLICY_V1: Policy = {
     /* Re-reads $5 of it from 2026-10-20 (was $2), the owner's figure, with the three-hour cut and
        For You's slower re-reads (track.offForYouPerPostMaxAgeMs, onForYouIntervalFactor): replayed
        over 2026-10-19 13:00–18:00 UTC, TRACK's text-source re-reads come to about $4.60 a day. */
-    searchDay: { on: true, dailyUsd: 6.3, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 5 },
+    /* $11.30 from 2026-10-20 03:10 London: re-reads are on this bill, so searches keep $6.30 beside re-reads' $5 (the owner's ~$12 X day with the reply reads). */
+    searchDay: { on: true, dailyUsd: 11.3, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 5 },
     /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
        tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
        that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'
