@@ -46,6 +46,11 @@
  * minutes of 429s: a retry now starts at the NEXT pinned provider (`rotated`), and the answer budget
  * can be sized to the batch (`answerTokensPerSubject`) so a loop ends sooner.
  *
+ * ★ THE ANSWER CAP IS CHECKED HERE, NOT TRUSTED (`answerCapProblem`): a body without `max_tokens`,
+ * or with one above the client's budget, is refused before it is sent. An answer that reaches the
+ * cap stops with `length` and is no answer at all (the parser above), so its posts are re-asked or
+ * left unavailable, never filed as a verdict.
+ *
  * What breaks if changed carelessly: anything added to or reworded in the content parts changes
  * the question, and the comparison with the live judge stops being one.
  */
@@ -236,6 +241,23 @@ export function decodeChatReply(body: unknown): OpenJudgeResponse {
 const RETRYABLE = new Set([408, 429, 500, 502, 503, 504, 529]);
 const FRAME_TYPES = new Set<Frame['mediaType']>(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
+/**
+ * ★ NO CALL LEAVES WITHOUT AN ANSWER CAP, AND NONE ABOVE ITS CLIENT'S (2026-10-20). A body without
+ * `max_tokens` lets the host answer up to the model's whole window: a provider that ignores
+ * `reasoning: { enabled: false }`, or loops inside the forced JSON (header), would then bill tens of
+ * thousands of tokens for one call. Every question built here sets it, but four files build bodies
+ * (this one, questions.ts, titles.ts and a tool), so the client checks the one thing they must all
+ * agree on before anything is sent: a whole number from 1 to the `maxOutputTokens` the client was
+ * built with, which is the policy's number for that question. Why, or null when the body is fine.
+ */
+export function answerCapProblem(payload: Record<string, unknown>, maxOutputTokens: number): string | null {
+  const cap = payload['max_tokens'];
+  if (typeof cap !== 'number' || !Number.isInteger(cap)) return 'max_tokens is not set to a whole number';
+  if (cap < 1) return `max_tokens is ${cap}`;
+  if (cap > maxOutputTokens) return `max_tokens is ${cap}, over this client's ${maxOutputTokens}`;
+  return null;
+}
+
 /** Out of credit, from the host's own words or a 402; null otherwise. The body is read, never repeated. */
 export function billingReason(status: number, text: string): string | null {
   if (status === 402) return 'payment required';
@@ -271,12 +293,15 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
     for (let n = 0; n < config.maxAttempts; n += 1) {
       if (n > 0) await config.sleep(wait);
       wait = Math.min(config.maxWaitMs, config.backoffMs * 2 ** n);
+      const payload = payloadFor(n);
+      const capProblem = answerCapProblem(payload, config.maxOutputTokens);
+      if (capProblem !== null) throw new RangeError(`open judge client: refused before sending: ${capProblem}`);
       let res: { status: number; text: string };
       try {
         const response = await config.fetch(`${root}${CHAT_PATH}`, {
           method: 'POST',
           headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
-          body: JSON.stringify(payloadFor(n)),
+          body: JSON.stringify(payload),
           signal: AbortSignal.timeout(config.timeoutMs),
         });
         res = { status: response.status, text: await response.text() };
