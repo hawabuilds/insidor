@@ -2637,6 +2637,24 @@ export interface RisingPolicy {
    */
   readonly scorePassBar: number | null;
   /**
+   * ★ FOR YOU'S JUNK BAR (the owner, 2026-10-20: "people shouldn't be thrown trashy narratives").
+   * A post does not JOIN For You when the re-tune's applied junk fit (internal.junk_filter, core
+   * `junkProbability`) puts it at or over the fit's For You bar; a post already on For You stays.
+   * The bar is never a number here: a probability from one fit means nothing for another's weights,
+   * so it is read from each fit's own held-out table (core `forYouJunkBar`) — the lowest threshold
+   * at which at least `keepShare` of the owner's held-out memeable posts (the `keepGroups`: hand
+   * gold and his "this is the coin" posts, his missed posts, his Meme taps) would still pass, with
+   * at least `minTested` of them tested. No fit, no such row, or no vector for the post: no bar, the
+   * post joins as before — a missing input is never read as junk. Coined posts are not a keep
+   * group: a coin is not proof of a meme (the owner, 2026-10-20). Off: For You as before.
+   */
+  readonly junkBar: {
+    readonly on: boolean;
+    readonly keepShare: number;
+    readonly keepGroups: readonly string[];
+    readonly minTested: number;
+  };
+  /**
    * ★ FOR YOU'S VARIETY (the owner, 2026-10-15: "the feed is majority gta 6"). Among any
    * `varietyWindow` consecutive For You cards, at most `varietyPerWindow` are about one topic; the
    * rest of that topic leave the live list (services/project variety.ts) and stay on Popular, the
@@ -6048,6 +6066,14 @@ const POLICY_V1: Policy = {
        hour, at about $0.0004 a post on the kind line (Nemotron). */
     kindCatchUpPerPass: 100,
     scorePassBar: null,
+    /* Replayed 2026-10-20 over For You's last 7 days (2,408 posts, 945 the owner called Not a meme),
+       each post scored by the fit applied when it was first shown: no judge confidence, view bar or
+       hourly cap kept 95% of the owner's memeable posts while cutting more Not a memes than memes;
+       the junk fit alone did. Held out (5 folds), today's fit keeps 192 of 198 memeable posts under
+       0.90 and 189 under 0.85 (95.5%), and cuts 21% and 33% of the Not a memes. On the 1,157 posts
+       with a vector at admission: 319 a day to 292 (0.90) or 272 (0.85), every one of the owner's 27
+       "this is the coin" posts kept, no post shown later. $0: the vectors are already stored. */
+    junkBar: { on: true, keepShare: 0.95, keepGroups: ['gold', 'missed', 'meme'], minTested: 100 },
     /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game, most named for it. Measured on
        that frame, the posts about it under other names (its music, art, city) sat 0.60 to 0.75 from a
        game post, and every unrelated post's nearest neighbour 0.52 or less; one cast post at 0.58 stays

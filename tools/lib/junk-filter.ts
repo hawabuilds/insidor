@@ -49,8 +49,14 @@ import { chooseThreshold, crossJunk, droppedAt, fitJunk, junkScore, JUNK_GROUPS,
 import { handGoldIds } from './pass-rates.ts';
 
 const LABELS = new URL('../../eval/src/feed/live-labels.json', import.meta.url);
-/** The thresholds the owner's table lists beside the chosen one. */
-export const TABLE_THRESHOLDS = [0.5, 0.7, 0.8, 0.9, 0.95, 0.98, 0.99] as const;
+/**
+ * The thresholds the owner's table lists beside the chosen one. The steps between 0.8 and 0.9 are
+ * For You's (Policy.rising.junkBar, core `forYouJunkBar`): its bar is the lowest row of this table
+ * that keeps 95% of the owner's held-out memeable posts, and measured on 2026-10-20 that line falls
+ * between 0.84 and 0.86 — with only 0.8 and 0.9 to choose from, it would take 0.9 and let through a
+ * third of the Not a memes 0.85 stops (238 against 378 of 1,156 held out).
+ */
+export const TABLE_THRESHOLDS = [0.5, 0.7, 0.8, 0.82, 0.84, 0.86, 0.88, 0.9, 0.95, 0.98, 0.99] as const;
 /** How far back "today's traffic" reaches for the share skipped. */
 const DAY_MS = 86_400_000;
 
