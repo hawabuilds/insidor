@@ -129,19 +129,21 @@ export function creditable(item: Item, adapter: PlatformAdapter, launchedAt: Mil
 /**
  * The posts we hold of `wanted`, and up to `limit` of the rest read by id and stored: priced first,
  * checked against the source's line, skipped on a dry run. A read that fails leaves its posts
- * unread; the caller's record of them stands. Shared with the reposts finder.
+ * unread; the caller's record of them stands. Shared with the reposts finder. The posts of
+ * `reread` are read even when held (the coin-first route reads a post again for its links).
  */
 export async function readMissing(
   deps: Pick<CoinLinkDeps, 'items' | 'store' | 'meter' | 'mode' | 'log' | 'now'>,
   wanted: ReadonlyMap<string, { readonly adapter: PlatformAdapter; readonly sourceItemId: string }>,
   limit: number,
   what: string,
+  reread: ReadonlySet<string> = new Set(),
 ): Promise<{ readonly items: Map<string, Item>; readonly usd: number; readonly postsRead: number }> {
   const held = await deps.items.byIds([...wanted.keys()].map((k) => k as ItemId));
   const items = new Map<string, Item>([...held].map(([k, v]) => [String(k), v]));
   let usd = 0;
   let postsRead = 0;
-  const missing = [...wanted.entries()].filter(([k]) => !items.has(k)).slice(0, limit);
+  const missing = [...wanted.entries()].filter(([k]) => !items.has(k) || reread.has(k)).slice(0, limit);
   const bySource = new Map<PlatformAdapter, string[]>();
   for (const [, p] of missing) bySource.set(p.adapter, [...(bySource.get(p.adapter) ?? []), p.sourceItemId]);
   for (const [adapter, list] of bySource) {

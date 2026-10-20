@@ -170,11 +170,14 @@ export class PgOneCoinRepo {
    * `reproduction_of` is it. `recentLaunches` looks at a launch for `rematchMs` only, and a coin-first
    * post is judged after its coin starts running, minutes later: without these, its coin and its
    * rivals would never become its candidates. Empty before 0116.
+   *
+   * ★ AND THE COINS OF THE POINTER IT WALKED FROM (0118). The route takes the original a coin's linked
+   * post points at, which may be hops away (a link by URL, a re-uploaded video, a quote of a quote):
+   * every coin linking that pointer is returned with the original in `linksThrough`, through the
+   * pointer, so the pick is made for the post For You shows. Before 0118, as before.
    */
   async coinFirstLaunches(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
-    try {
-      return await this.#launches(
-        `a.origin in ('live_stream', 'backfill') and a.first_seen_at >= $1
+    const base = `a.origin in ('live_stream', 'backfill') and a.first_seen_at >= $1
          and a.asset_key in (
            select l.asset_key from internal.coin_first_post c
              join internal.coin_post_link l on l.source = split_part(c.item_id, ':', 1) and l.source_item_id = substr(c.item_id, strpos(c.item_id, ':') + 1)
@@ -183,11 +186,25 @@ export class PgOneCoinRepo {
            select l.asset_key from internal.coin_first_post c
              join public.item i on i.reproduction_of = c.item_id
              join internal.coin_post_link l on l.source = i.source and l.source_item_id = i.source_item_id
-            where c.launched_at >= $1)`,
-        [new Date(sinceMs).toISOString()],
+            where c.launched_at >= $1`;
+    const params = [new Date(sinceMs).toISOString()];
+    try {
+      return await this.#launches(
+        `${base}
+           union
+           select l.asset_key from internal.coin_first_post c
+             join internal.coin_post_link l on l.source = split_part(c.pointer_item_id, ':', 1) and l.source_item_id = substr(c.pointer_item_id, strpos(c.pointer_item_id, ':') + 1)
+            where c.launched_at >= $1 and c.role = 'original' and c.pointer_item_id is not null)`,
+        params,
         limit,
         hashVersion,
+        true,
       );
+    } catch (e) {
+      if (!missingTable(e)) throw e;
+    }
+    try {
+      return await this.#launches(`${base})`, params, limit, hashVersion);
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
@@ -195,10 +212,16 @@ export class PgOneCoinRepo {
   }
 
   /** The launches `where` selects (its parameters first), with everything the matcher reads of each. */
-  async #launches(where: string, params: readonly unknown[], limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
+  async #launches(where: string, params: readonly unknown[], limit: number, hashVersion: string, throughPointers = false): Promise<readonly RecentLaunch[]> {
     const limitAt = `$${params.length + 1}`;
     const hashAt = `$${params.length + 2}`;
-    const rows = await this.#db.query<{ address: string; asset_key: string; launched_at: string; name: string | null; ticker: string | null; image_uri: string | null; bits: string | null; links: string[] | null; through: string[] | null }>(
+    /* The originals the coin-first route walked to from a post this coin links (0118), through that post. */
+    const pointed = throughPointers
+      ? `(select array_agg(distinct c.item_id || ' ' || c.pointer_item_id) from internal.coin_post_link l
+                 join internal.coin_first_post c on c.pointer_item_id = l.source || ':' || l.source_item_id and c.role = 'original'
+                where l.asset_key = a.asset_key and c.item_id <> c.pointer_item_id)`
+      : 'null::text[]';
+    const rows = await this.#db.query<{ address: string; asset_key: string; launched_at: string; name: string | null; ticker: string | null; image_uri: string | null; bits: string | null; links: string[] | null; through: string[] | null; pointed: string[] | null }>(
       `select a.address, a.asset_key, coalesce(a.minted_at, a.first_seen_at) as launched_at,
               coalesce(m.name, a.name) as name, coalesce(m.ticker, a.symbol) as ticker,
               coalesce(m.image_uri, a.image_uri) as image_uri, h.bits::text as bits,
@@ -208,7 +231,8 @@ export class PgOneCoinRepo {
               (select array_agg(distinct o.target || ' ' || i.item_id) from internal.coin_post_link l
                  join public.item i on i.source = l.source and i.source_item_id = l.source_item_id
                  cross join lateral (values (i.reproduction_of), (i.rebroadcast_of)) as o(target)
-                where l.asset_key = a.asset_key and o.target is not null and o.target <> i.item_id) as through
+                where l.asset_key = a.asset_key and o.target is not null and o.target <> i.item_id) as through,
+              ${pointed} as pointed
          from public.asset a
          left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
          left join internal.image_hash h on h.uri = coalesce(m.image_uri, a.image_uri) and h.version = ${hashAt} and h.bits is not null
@@ -226,7 +250,7 @@ export class PgOneCoinRepo {
       imageUri: r.image_uri,
       hash: hex(r.bits),
       linksPosts: r.links ?? [],
-      linksThrough: (r.through ?? []).flatMap((t) => {
+      linksThrough: [...new Set([...(r.through ?? []), ...(r.pointed ?? [])])].flatMap((t) => {
         const [itemId, via] = t.split(' ');
         return itemId === undefined || via === undefined ? [] : [{ itemId, via }];
       }),

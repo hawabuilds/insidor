@@ -12,7 +12,7 @@ import type { Item, Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import { inMemoryMeter } from '@insidor/meter';
-import type { CoinFirstRow, CoinFirstWrite } from '@insidor/store';
+import type { CoinFirstRow, CoinFirstWrite, CoinOriginPost } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
 import { byPost, coinFirstPass, newCoinFirstState, room, type CoinFirstDeps } from './coin-first.ts';
@@ -29,7 +29,24 @@ const row = (over: Partial<CoinFirstRow>): CoinFirstRow => ({
 
 const item = (itemId: string): Item => ({ itemId, sourceItemId: itemId.split(':')[1], postedAt: NOW - HOUR, counters: {} }) as unknown as Item;
 
-function harness(rows: CoinFirstRow[], o: { policy?: Policy; mode?: 'dry' | 'live'; spent?: { fetches: number; judgements: number } } = {}) {
+/** A held post as the walk reads it: no quote, no links, by its own account. */
+const held = (itemId: string, over: Partial<CoinOriginPost> = {}): CoinOriginPost => ({
+  itemId, authorKey: `a:${itemId}`, postedAtMs: (NOW - HOUR) as Millis, reach: null, rebroadcastOf: null, reproductionOf: null, refersTo: [], hasLink: false, sameMediaAs: null, judged: false, credited: false, ...over,
+});
+
+interface Extra {
+  policy?: Policy;
+  mode?: 'dry' | 'live';
+  spent?: { fetches: number; judgements: number };
+  /** The posts the walk reads beyond the linked ones (and overrides for those). */
+  posts?: CoinOriginPost[];
+  /** Accounts that are launchers. */
+  launchers?: string[];
+  fetchAsked?: string[];
+  resolves?: boolean;
+}
+
+function harness(rows: CoinFirstRow[], o: Extra = {}) {
   const looked: string[][] = [];
   const judged: string[] = [];
   const credited: string[] = [];
@@ -57,9 +74,25 @@ function harness(rows: CoinFirstRow[], o: { policy?: Policy; mode?: 'dry' | 'liv
       spentSince: async () => o.spent ?? { fetches: 0, judgements: 0 },
       record: async (w) => void written.push(...w),
       ties: async () => new Map([['txt:1', [{ address: 'EARLIER', launchedAtMs: (NOW - 20 * 60_000) as Millis }]]]),
+      resolves: async () => o.resolves ?? true,
+      origins: async (ids) => {
+        const all = new Map<string, CoinOriginPost>();
+        for (const r of rows) if (r.held) all.set(r.itemId, held(r.itemId, { postedAtMs: r.postedAtMs, judged: r.judged, credited: r.credited }));
+        for (const p of o.posts ?? []) all.set(p.itemId, { ...all.get(p.itemId), ...p });
+        const asked = new Map<string, Millis>();
+        for (const r of rows) if (r.fetchAskedAtMs !== null) asked.set(r.itemId, r.fetchAskedAtMs);
+        for (const id of o.fetchAsked ?? []) asked.set(id, (NOW - 60_000) as Millis);
+        const judgeAsked = new Map<string, Millis>();
+        for (const r of rows) if (r.judgeAskedAtMs !== null) judgeAsked.set(r.itemId, r.judgeAskedAtMs);
+        const want = new Set(ids);
+        const only = <V>(m: Map<string, V>) => new Map([...m].filter(([k]) => want.has(k)));
+        return { held: only(all), fetchAskedAtMs: only(asked), judgeAskedAtMs: only(judgeAsked), referencesKept: true };
+      },
+      accounts: async (keys) => new Map(keys.map((k) => [k, (o.launchers ?? []).includes(k) ? { posts: 100, linked: 99, followers: 300 } : { posts: 1, linked: 0, followers: 300 }] as const)),
     },
     items: {
-      byIds: async (ids) => new Map(ids.filter((id) => rows.some((r) => r.itemId === String(id) && r.held)).map((id) => [id, item(String(id))] as const)),
+      byIds: async (ids) =>
+        new Map(ids.filter((id) => rows.some((r) => r.itemId === String(id) && r.held) || (o.posts ?? []).some((p) => p.itemId === String(id))).map((id) => [id, item(String(id))] as const)),
       markFoundBy: async (ids) => void credited.push(...ids.map(String)),
     },
     sources: () => [t],
@@ -148,4 +181,60 @@ test('the record names the earliest coin tying the post; the route waits its own
 test('one row per post: the earliest-launched running coin', () => {
   const rows = byPost([row({ address: 'LATE', launchedAtMs: (NOW - 60_000) as Millis }), row({ address: 'EARLY', launchedAtMs: (NOW - 120_000) as Millis })]);
   assert.deepEqual(rows.map((r) => r.address), ['EARLY']);
+});
+
+test("★ the Laura case: a launcher's quote is a pointer; only the quoted post is judged, and recorded as the original", async () => {
+  const h = harness([row({ itemId: 'txt:theog', sourceItemId: 'theog' })], {
+    posts: [held('txt:theog', { reproductionOf: 'txt:laura', authorKey: 'a:theog', reach: 3 }), held('txt:laura', { reach: 1_007 })],
+    launchers: ['a:theog'],
+  });
+  const r = await coinFirstPass(h.deps, newCoinFirstState());
+  assert.deepEqual(h.judged, ['txt:laura']);
+  assert.equal(r.pointers, 1);
+  const w = new Map(h.written.map((x) => [x.itemId, x]));
+  assert.deepEqual([w.get('txt:laura')?.role, w.get('txt:laura')?.pointerItemId, w.get('txt:laura')?.resolvedBy, w.get('txt:laura')?.via], ['original', 'txt:theog', 'quote', 'hop']);
+  assert.equal(w.get('txt:theog')?.role, 'pointer');
+  assert.notEqual(w.get('txt:theog')?.judgeAsked, true);
+});
+
+test('★ the original we do not hold is read by id first; the pointer is never judged meanwhile', async () => {
+  const h = harness([row({ itemId: 'txt:p', sourceItemId: 'p' })], { posts: [held('txt:p', { reproductionOf: 'txt:o' })] });
+  await coinFirstPass(h.deps, newCoinFirstState());
+  assert.deepEqual(h.looked, [['o']]);
+  assert.equal(h.judged.length, 0);
+  const w = new Map(h.written.map((x) => [x.itemId, x]));
+  assert.deepEqual([w.get('txt:o')?.role, w.get('txt:o')?.fetchAsked], ['pointer', true]);
+  assert.equal(w.get('txt:p')?.role, 'pointer');
+});
+
+test('a held post whose links were never read and whose text has one is read again, once', async () => {
+  const h = harness([row({})], { posts: [held('txt:1', { refersTo: null, hasLink: true })] });
+  await coinFirstPass(h.deps, newCoinFirstState());
+  assert.deepEqual(h.looked, [['1']]);
+  assert.equal(h.judged.length, 0);
+  const again = harness([row({})], { posts: [held('txt:1', { refersTo: null, hasLink: true })], fetchAsked: ['txt:1'] });
+  await coinFirstPass(again.deps, newCoinFirstState());
+  assert.equal(again.looked.length, 0);
+  assert.deepEqual(again.judged, ['txt:1'], 'read once: its links are none, and it is the post');
+});
+
+test("★ a big account quoting a small post is the post people coined: it stays, and is judged", async () => {
+  const h = harness([row({})], { posts: [held('txt:1', { reproductionOf: 'txt:small', reach: 9_000_000 }), held('txt:small', { reach: 40_000 })] });
+  await coinFirstPass(h.deps, newCoinFirstState());
+  assert.deepEqual(h.judged, ['txt:1']);
+  assert.equal(h.written.find((x) => x.itemId === 'txt:1')?.role, 'original');
+});
+
+test("★ a launcher's own post pointing at nothing is a pointer: never judged", async () => {
+  const h = harness([row({})], { posts: [held('txt:1', { authorKey: 'a:dev' })], launchers: ['a:dev'] });
+  await coinFirstPass(h.deps, newCoinFirstState());
+  assert.equal(h.judged.length, 0);
+  assert.equal(h.written[0]?.role, 'pointer');
+});
+
+test('before 0118 every linked post is taken as it is: no walk, no pointer for a quote', async () => {
+  const h = harness([row({})], { posts: [held('txt:1', { reproductionOf: 'txt:o' })], resolves: false });
+  await coinFirstPass(h.deps, newCoinFirstState());
+  assert.deepEqual(h.judged, ['txt:1']);
+  assert.equal(h.looked.length, 0);
 });

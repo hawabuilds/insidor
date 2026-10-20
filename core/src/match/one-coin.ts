@@ -50,7 +50,9 @@
  * rather than the post itself (HI, 19 Oct: launched 24 h after the baby post, linking its account's
  * quote of it): the caller passes those originals in `linksThrough`, and they tie as a link, under
  * the same age bound on the original. One hop only — a quote of a quote is somebody else's post,
- * and following chains would tie a coin to whatever went viral first.
+ * and following chains would tie a coin to whatever went viral first. The one exception is the
+ * coin-first route's walk (match/coin-origin.ts), bounded in depth and stopped at a bigger post: the
+ * caller passes the original it reached, through the pointer, as one more such entry.
  *
  * ★ WITHOUT TRADE DATA THE RULE SAYS SO. When the trade feed is not running (no internal
  * coin_trade_minute, or nothing written lately) the pick falls back to the replay's rule on market

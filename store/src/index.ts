@@ -38,7 +38,7 @@ export type { DuePicture, PictureNeighbour } from './repo/image-hash.ts';
 /* One post, one coin (0113, with 0112's trade feed when it is there): the runner's matcher and rule, and the tools. */
 export { PgOneCoinRepo } from './repo/one-coin.ts';
 export { PgCoinFirstRepo } from './repo/coin-first.ts';
-export type { CoinFirstRecord, CoinFirstRow, CoinFirstWrite, CoinTie } from './repo/coin-first.ts';
+export type { AccountCoinRow, CoinFirstRecord, CoinFirstRole, CoinFirstRow, CoinFirstWrite, CoinOriginPost, CoinOrigins, CoinTie } from './repo/coin-first.ts';
 export { PgTradeFeedRepo } from './repo/trade-feed.ts';
 export type { CoverWrite, FeedDay, OpeningWrite, TradeFeedWrite, TradeMinuteWrite, TradeStateWrite, UnmeasuredReason, WatchedCoin } from './repo/trade-feed.ts';
 export type { CandidateRow, ExistingCoinRow, MinuteRow, PickKind, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from './repo/one-coin.ts';
