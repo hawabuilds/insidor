@@ -14,7 +14,7 @@ import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import type { Logger } from '../log.ts';
-import { EARLY_LANE, earlyJudge, earlySpeed } from './early-judge.ts';
+import { BOOST_LANE, EARLY_LANE, earlyJudge, earlySpeed } from './early-judge.ts';
 import { memoryLaneLedger } from './lane-ledger.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
@@ -169,4 +169,58 @@ test('earlySpeed: the fastest qualifying reading inside the window, null when no
   assert.equal(earlySpeed([{ atMs: NOW, reach: 1_000 }], posted, 2_000, E.maxAgeMs), null);
   assert.equal(earlySpeed([{ atMs: NOW, reach: null }], posted, 2_000, E.maxAgeMs), null);
   assert.equal(earlySpeed([{ atMs: posted, reach: 9_000 }], posted, 2_000, E.maxAgeMs), null);
+});
+
+/* ── The quote boost ── */
+
+function boostDeps(originals: readonly Item[], over: { ledger?: ReturnType<typeof memoryLaneLedger>; policy?: typeof P } = {}) {
+  const credited: { ids: string[]; lane: string }[] = [];
+  const asked: { minFollowers: number; handles: readonly string[] }[] = [];
+  const j = fakeJudge();
+  const recorded = new Map<ItemId, Judgement>();
+  const ledger = over.ledger ?? memoryLaneLedger();
+  const run = earlyJudge({
+    judge: j.judge,
+    items: {
+      catchAllUnscored: async () => [],
+      reachReadings: async () => new Map(),
+      reproducedOriginals: async (a) => (asked.push({ minFollowers: a.minFollowers, handles: a.handles }), originals.map((item) => ({ item, by: 'x:999' }))),
+      markFoundBy: async (ids, lane) => void credited.push({ ids: ids.map(String), lane }),
+    },
+    scores: {
+      record: async (id: ItemId, jj: Judgement) => void recorded.set(id, jj),
+      recordCopy: async () => undefined,
+      reusable: async () => ({ byItem: new Map(), byImage: new Map() }),
+    },
+    ledger,
+    watchHandles: () => ['saylor'],
+    meter,
+    mode: 'live',
+    policy: over.policy ?? P,
+    log: quiet,
+    now: () => NOW,
+  });
+  return { run, j, recorded, credited, asked, ledger };
+}
+
+test('★ quote boost: an original a big account reproduced is judged whatever its views, credited to its lane, and charged there', async () => {
+  const original = post(7, { ageMin: 40, likes: 8 }); // 1k views, 8 likes: under every early bar
+  const d = boostDeps([original], { policy: { ...P, judge: { ...P.judge, early: { ...E, on: false } } } });
+  const r = await d.run();
+  assert.equal(r.boosted, 1);
+  assert.deepEqual([...d.recorded.keys()].map(String), [String(original.itemId)]);
+  assert.deepEqual(d.credited, [{ ids: [String(original.itemId)], lane: BOOST_LANE }]);
+  assert.deepEqual(d.asked, [{ minFollowers: P.judge.reproductionBoost.minFollowers, handles: ['saylor'] }]);
+  const charged = await d.ledger.spent(BOOST_LANE, NOW);
+  assert.ok(charged !== null && Math.abs(charged - 0.0002) < 1e-9, `charged ${charged}`);
+});
+
+test('quote boost: off, or its day spent, nothing is read or asked', async () => {
+  const off = boostDeps([post(7)], { policy: { ...P, judge: { ...P.judge, reproductionBoost: { ...P.judge.reproductionBoost, on: false } } } });
+  assert.equal((await off.run()).boosted, undefined);
+  assert.equal(off.asked.length, 0);
+  const capped = boostDeps([post(7)], { ledger: memoryLaneLedger({ quoted: P.judge.reproductionBoost.dailyUsd }) });
+  await capped.run();
+  assert.equal(capped.asked.length, 0);
+  assert.equal(capped.j.sent.length, 0);
 });

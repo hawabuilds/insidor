@@ -67,6 +67,7 @@ import { curveAddress, curvePlaces, launchOpening, transactionLogs } from '@insi
 import { curveEvents } from '@insidor/venue-solana-pumpfun/events.ts';
 import { createTradeSocket } from '@insidor/venue-solana-pumpfun/trade-socket.ts';
 import {
+  ACCOUNTS_PER_CALL,
   CHAIN,
   TOKEN_DECIMALS,
   VENUE_ID,
@@ -203,9 +204,6 @@ function lockKey(name: string): number {
   return createHash('sha256').update(name).digest().readUInt32BE(0);
 }
 
-/** The chain's own public RPC: free, keyless, rate-limited per address. */
-const PUBLIC_RPC_URL = 'https://api.mainnet-beta.solana.com';
-
 /**
  * The launch listing, and the second place this service names a vendor.
  *
@@ -214,8 +212,16 @@ const PUBLIC_RPC_URL = 'https://api.mainnet-beta.solana.com';
  * whichever transaction version made them — which is exactly what the socket misses. It is asked
  * on the FREE plan always, never with a key: a key here would put a per-call bill on a loop that
  * runs twice a minute for ever. The chain read is one `getMultipleAccounts` a pass for the
- * coins the listing found that we do not hold, on the chain's public endpoint unless
- * LISTING_RPC_URL names another.
+ * coins the listing found that we do not hold, on LISTING_RPC_URL when it is set and otherwise on
+ * the trade feed's own keyed endpoint (HELIUS_API_KEY), counted against the policy's day of
+ * credits for it.
+ *
+ * ★ NEVER THE CHAIN'S PUBLIC ENDPOINT (the owner: no outside service without asking). With
+ * neither variable set the chain is not read at all: listed coins are added with the listing's
+ * own name and ticker and no metadata link, and the boot says so once.
+ *
+ * ★ THE KEY IS NEVER LOGGED. The URL is built here and handed only to the reader; a failed read
+ * reports the vendor and the status, never the URL.
  *
  * A listed coin is a `backfill` row (search-asset.ts): we learned of it after the fact, from a
  * listing, and its mint time is the listing's pool creation, ('vendor_field', 'bounded'). It is
@@ -226,11 +232,13 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
   if (!lp.on) return null;
   const market = geckoterminal({ plan: 'free', baseUrl: BASE_URLS.free, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs, now: () => Date.now() });
   const listingLog = log.child({ part: 'launch-listing' });
+  const rpcUrl = cfg.listingRpcUrl ?? (cfg.tradeFeedKey === null ? null : TRADE_RPC_URL + cfg.tradeFeedKey);
+  listingLog.info('launch listing on', { chainReads: cfg.listingRpcUrl !== null ? 'LISTING_RPC_URL' : rpcUrl !== null ? 'HELIUS_API_KEY' : 'none', dayCapCredits: lp.dayCapCredits });
   return createListing(
     {
       page: (n) => market.newLaunches(n),
       known: (addresses) => assets.knownAddresses(CHAIN, addresses),
-      details: (addresses) => tokenMetadata({ rpcUrl: cfg.listingRpcUrl ?? PUBLIC_RPC_URL, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, addresses),
+      details: async (addresses) => (rpcUrl === null ? new Map() : tokenMetadata({ rpcUrl, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, addresses)),
       add: (launches, seenAt) =>
         assets.addListed(
           launches.flatMap(({ hit, details }) => {
@@ -244,7 +252,14 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
       now: () => Date.now() as Millis,
       note: (msg, fields) => listingLog.warn(msg, fields),
     },
-    { pagesPerPass: lp.pagesPerPass, maxAgeMs: lp.maxAgeMs },
+    {
+      pagesPerPass: lp.pagesPerPass,
+      maxAgeMs: lp.maxAgeMs,
+      accountsPerCall: ACCOUNTS_PER_CALL,
+      creditsPerCall: lp.creditsPerCall,
+      /* No chain to read: nothing is spent, whatever the cap says. */
+      dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits,
+    },
   );
 }
 

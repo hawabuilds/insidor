@@ -211,6 +211,62 @@ export class PgItemRepo implements ItemRepo {
   }
 
   /**
+   * Never-judged posts a big account has just reproduced (Policy.judge.reproductionBoost): the originals of
+   * the posts first seen since `reproducedSince` by an account with at least `minFollowers` followers
+   * as last read, or whose handle is in `handles` (lower case) — an original being the post a
+   * reproduction names (`reproduction_of`), or an earlier post by another account whose first
+   * picture or video has the same address. Only stored, observed originals posted since
+   * `postedSince`, by another account, with no judgement at all; newest reproduction first.
+   *
+   * ★ THE SAME MEDIA ADDRESS COUNTS: the text source names a quote, but a repost of someone's video
+   * under one's own words carries no quote — only the video's address, which is the original's.
+   * That is how the Saylor repost of 2026-10-20 looked (reproduction_of empty, the same video).
+   */
+  async reproducedOriginals(args: { readonly reproducedSince: Millis; readonly postedSince: Millis; readonly minFollowers: number; readonly handles: readonly string[]; readonly limit: number }): Promise<readonly { readonly item: Item; readonly by: string }[]> {
+    if (args.limit <= 0) return [];
+    const rows = await this.#db.query<ItemRow & { by_item: string }>(
+      `with q as (
+         select i.item_id, i.author_key, i.posted_at, i.reproduction_of, i.media->0->>'uri' as m, i.first_seen_at
+           from public.item i
+           join public.author a on a.author_key = i.author_key
+          where i.first_seen_at >= $1
+            and i.origin = 'observed'
+            and i.rebroadcast_of is null
+            and (a.follower_count >= $3 or lower(a.handle) = any($4::text[]))
+       ), pairs as (
+         select q.reproduction_of as oid, q.item_id as by_item, q.author_key as by_author, q.first_seen_at as at
+           from q where q.reproduction_of is not null
+         union all
+         select o.item_id, q.item_id, q.author_key, q.first_seen_at
+           from q
+           join public.item o on o.media->0->>'uri' = q.m
+                             and o.first_seen_at >= $2
+                             and o.posted_at < q.posted_at
+          where q.m is not null
+       ), picked as (
+         select distinct on (p.oid) p.oid, p.by_item, p.at
+           from pairs p
+           join public.item o on o.item_id = p.oid
+          where o.origin = 'observed'
+            and o.posted_at >= $2
+            and o.author_key <> p.by_author
+            and not exists (select 1 from internal.post_judgement j where j.item_id = p.oid)
+          order by p.oid, p.at desc
+       )
+       select i.item_id, i.source, i.source_item_id, i.origin, i.author_key, i.posted_at, i.first_seen_at,
+              i.lang, i.body, i.media, i.counters, i.rebroadcast_of, i.reproduction_of,
+              i.format_ids, i.raw_ref, picked.by_item
+         from picked
+         join public.item i on i.item_id = picked.oid
+        order by picked.at desc
+        limit $5`,
+      [toTimestamp(args.reproducedSince), toTimestamp(args.postedSince), args.minFollowers, args.handles.map((h) => h.toLowerCase()), args.limit],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    return rows.map((row) => ({ item: this.#toItem(row, fingerprints), by: row.by_item }));
+  }
+
+  /**
    * Catch-all posts whose newest answer to the post question came from ANOTHER version of it than
    * `promptId` — the queue the scorer re-judges after a prompt change, newest first, with the same
    * window, lane and reach floor as `catchAllUnscored`. Kind answers (prompt ids starting
