@@ -4522,7 +4522,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v125',
+  version: 'policy.v126',
 
   admit: {
     maxAgeMin: 240,
@@ -5209,7 +5209,8 @@ const POLICY_V1: Policy = {
        $1.69 an hour from 00:00 to 04:00 UTC, against $0.15 to $0.63 an hour on 2026-10-18. $7, the
        owner's figure for the day's search; half an hour ahead, so midnight is not a refusal. */
     /* Counted from 2026-10-19 19:00 UTC, the owner's "running rest of night": the X day restarts then at the normal pace. */
-    searchDay: { on: true, dailyUsd: 7, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 2 },
+    /* $6.30 for search and re-reads from 2026-10-20: the reply reads' own ~$0.72 a day (attention.postsPerDay) sits beside it, so X stays at the owner's $7. */
+    searchDay: { on: true, dailyUsd: 6.3, aheadMs: 1_800_000, countFromMs: 1_792_436_400_000, rereadDailyUsd: 2 },
     /* On from 2026-10-19, the owner's "per-language floors and budget shares". The shares are
        tools/lang-shares.ts at 08:30 UTC on 2026-10-19: the 771 coined X posts of the 7 days before
        that we hold with 500,000 views or more, 735 of them in these languages. $3.20 is the bands'

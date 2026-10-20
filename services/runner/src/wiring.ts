@@ -171,8 +171,13 @@ import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
-/** The posts supplier's endpoints on the X day's bill (`feed.searchDay`), as its adapter records them. */
-const X_DAY_ENDPOINTS = ['search', 'lookup', 'responses'] as const;
+/**
+ * The posts supplier's endpoints on the X day's bill (`feed.searchDay`), as its adapter records them.
+ * Not `responses`: the reply reads (work/crypto-attention.ts) keep their own count, `attention.postsPerDay`,
+ * about $0.72 a day, and all of it lands in the first hour after 00:00 UTC. On the paced bill that hour's
+ * spend held every search back until about 04:00 London on 2026-10-20. The day is $6.30 so the X total stays $7.
+ */
+const X_DAY_ENDPOINTS = ['search', 'lookup'] as const;
 import { advisoryLockKey, policyHash } from './hash.ts';
 import { errorText, type Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
