@@ -6,6 +6,8 @@
  * the latest APPLIED fit, and "this post was not asked" — and neither may ever be mistaken for a
  * judge's answer. A skipped post has NO row in internal.post_judgement: every feed reader that takes
  * a post's newest answer sees "never judged", which is the truth, and keeps it off the feed.
+ * The projector reads one more: the applied fit with its held-out table, for For You's junk bar
+ * (Policy.rising.junkBar, services/project junk-bar.ts), and the vectors of the posts about to join.
  *
  * ★ A TABLE NOT YET MIGRATED IS "NO FIT". The runner may deploy before 0091 is applied:
  * `latestApplied` then answers null and every post goes to the judge as before. Recording a skip
@@ -56,6 +58,30 @@ export interface PostVector {
   readonly values: Float32Array;
 }
 
+/** One row of a fit's held-out table: at `threshold`, how many of each label group's held-out posts it would drop. */
+export interface HeldOutTableRow {
+  readonly threshold: number;
+  readonly dropped: Readonly<Record<string, { readonly tested: number; readonly dropped: number }>>;
+}
+
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+/** `held_out.table` read defensively: each row's threshold and every group with two counts. */
+export function heldOutTable(heldOut: unknown): HeldOutTableRow[] {
+  const table = typeof heldOut === 'object' && heldOut !== null ? (heldOut as { table?: unknown }).table : undefined;
+  if (!Array.isArray(table)) return [];
+  return table.flatMap((row: unknown) => {
+    if (typeof row !== 'object' || row === null) return [];
+    const { threshold, dropped } = row as { threshold?: unknown; dropped?: unknown };
+    if (typeof threshold !== 'number' || !Number.isFinite(threshold) || typeof dropped !== 'object' || dropped === null) return [];
+    const groups = Object.entries(dropped as Record<string, unknown>).flatMap(([g, d]) => {
+      const { tested, dropped: n } = (typeof d === 'object' && d !== null ? d : {}) as { tested?: unknown; dropped?: unknown };
+      return isCount(tested) && isCount(n) ? [[g, { tested, dropped: n }] as const] : [];
+    });
+    return [{ threshold, dropped: Object.fromEntries(groups) }];
+  });
+}
+
 const UNDEFINED_TABLE = '42P01';
 const isMissingTable = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === UNDEFINED_TABLE;
 
@@ -86,6 +112,29 @@ export class PgJunkFilterRepo {
       );
       const r = rows[0];
       return r === undefined ? null : { id: Number(r.id), space: r.space, intercept: Number(r.intercept), weights: r.weights.map(Number), threshold: Number(r.threshold) };
+    } catch (e) {
+      if (isMissingTable(e)) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * The applied fit with its own held-out table (`held_out.table`, tools/lib/junk-filter.ts), for
+   * For You's junk bar (Policy.rising.junkBar). Rows that are not the table's shape are left out, so
+   * a fit recorded before the table had a group is read as not having tested it, never as having
+   * dropped nothing. Null as `latestApplied`.
+   */
+  async latestAppliedTable(space: string | null = null): Promise<{ readonly fit: AppliedJunkFit; readonly table: readonly HeldOutTableRow[] } | null> {
+    try {
+      const rows = await this.#db.query<{ id: string; space: string; intercept: number; weights: number[]; threshold: number; held_out: unknown }>(
+        `select id, space, intercept, weights, threshold, held_out from internal.junk_filter
+          where applied and ($1::text is null or space = $1) and threshold is not null order by applied_at desc, id desc limit 1`,
+        [space],
+      );
+      const r = rows[0];
+      if (r === undefined) return null;
+      const fit = { id: Number(r.id), space: r.space, intercept: Number(r.intercept), weights: r.weights.map(Number), threshold: Number(r.threshold) };
+      return { fit, table: heldOutTable(r.held_out) };
     } catch (e) {
       if (isMissingTable(e)) return null;
       throw e;

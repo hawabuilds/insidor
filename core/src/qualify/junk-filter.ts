@@ -14,6 +14,11 @@
  * ★ ONE SPACE. A vector from another embedding space, or of another length, is `unscored`: weights
  * fitted on one meaning say nothing about another.
  *
+ * ★ AND FOR YOU'S JUNK BAR (Policy.rising.junkBar, `forYouJunkBar`): the same probability, after the
+ * judge, keeps a post from joining For You at a lower bar than the skip's — chosen from the same fit's
+ * held-out table so that the owner's memeable posts still pass. Here too a missing fit, bar or
+ * vector lets the post through.
+ *
  * What breaks if changed carelessly: the arithmetic must stay exactly the fit's (eval
  * `junkScore`): intercept plus the dot product, through the logistic. The probability decides and
  * never leaves the runner; no number from here reaches a screen.
@@ -54,3 +59,34 @@ export function junkVerdict(vector: { readonly values: ArrayLike<number>; readon
   if (probability === null) return { kind: 'unscored', why: 'other_space' };
   return probability >= fit.threshold ? { kind: 'junk', probability, fitId: fit.id } : { kind: 'ask', probability, fitId: fit.id };
 }
+
+/** One row of a fit's held-out table (tools/lib/junk-filter.ts): how many of each label group it would drop at `threshold`. */
+export interface HeldOutRow {
+  readonly threshold: number;
+  readonly dropped: Readonly<Record<string, { readonly tested: number; readonly dropped: number }>>;
+}
+
+/**
+ * ★ FOR YOU'S JUNK BAR (Policy.rising.junkBar), chosen on the fit's OWN held-out table: the lowest
+ * threshold at which at least `keepShare` of the owner's held-out memeable posts (`keepGroups`) are
+ * under it, with at least `minTested` of them tested. Null when no row qualifies: then there is no
+ * bar, never a guessed one. Each post in the table was scored by a fit made without its fold, so the
+ * share is what the bar keeps of posts the fit never saw, not of the posts it was taught.
+ */
+export function forYouJunkBar(table: readonly HeldOutRow[], p: Policy): number | null {
+  const b = p.rising.junkBar;
+  const rows = [...table].filter((r) => Number.isFinite(r.threshold)).sort((x, y) => x.threshold - y.threshold);
+  for (const r of rows) {
+    let tested = 0;
+    let dropped = 0;
+    for (const g of b.keepGroups) {
+      tested += r.dropped[g]?.tested ?? 0;
+      dropped += r.dropped[g]?.dropped ?? 0;
+    }
+    if (tested >= b.minTested && tested - dropped >= b.keepShare * tested) return r.threshold;
+  }
+  return null;
+}
+
+/** Whether a post may join For You under the bar: no bar or no probability lets it through. */
+export const underJunkBar = (probability: number | null, bar: number | null): boolean => bar === null || probability === null || probability < bar;
