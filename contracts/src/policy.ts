@@ -250,6 +250,23 @@ export interface TrackPolicy {
    * still-growing exception) is no longer re-read to show the climb, so it does not join.
    */
   readonly offFeedMaxAgeMs: number;
+  /**
+   * ★ THE THREE-HOUR CUT FOR A SOURCE BILLED PER POST RETURNED (the owner, 2026-10-20). The same
+   * cut as `offFeedMaxAgeMs`, sooner, and only where every re-read is its own charge: a post older
+   * than this by its post time that is not on For You (frame or scroll) nor in Popular's live frame
+   * gets no more re-reads, whatever else would keep it. A source billed by the run keeps the
+   * twelve-hour cut: its re-reads are already rationed in runs (`paidReadMaxPosts`).
+   *
+   * Measured over 2026-10-19 13:00–18:00 UTC: of about 2,600 such re-reads of posts never admitted
+   * to For You, 4 came before an admission; replayed over that window the cut takes about 2,200 of
+   * TRACK's 8,860 text-source re-reads and 1 of the 240 that came before an admission.
+   *
+   * What it gives up: a post between this age and For You's own age limit (`rising.fypMaxAgeMs`)
+   * that would still have cleared the reach bar late is no longer re-read to show it, so it does
+   * not join. It also applies to the holdout, as the twelve-hour cut does: the holdout's re-reads
+   * of a post off For You end at this age too.
+   */
+  readonly offForYouPerPostMaxAgeMs: number;
 
   /*
    * ── the lifecycle bars ──────────────────────────────────────────────
@@ -4529,7 +4546,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v127',
+  version: 'policy.v128',
 
   admit: {
     maxAgeMin: 240,
@@ -4589,6 +4606,8 @@ const POLICY_V1: Policy = {
     paidFastMinReachPerMinute: 250,
     /* Twelve hours: off For You and past this, a post's re-reads stop (see TrackPolicy). */
     offFeedMaxAgeMs: 43_200_000,
+    /* Three hours, for the source billed per post (see TrackPolicy). */
+    offForYouPerPostMaxAgeMs: 10_800_000,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges

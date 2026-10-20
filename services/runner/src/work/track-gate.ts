@@ -15,7 +15,8 @@
  *     judged at all) or it sits in a narrative the board shows.
  * Skipped:
  *   - a post past `track.offFeedMaxAgeMs` from a paid-read source that is on neither For You nor
- *     Popular's live frame (`offFeedTooOld`, below) — whatever else would keep it;
+ *     Popular's live frame (`offFeedTooOld`, below) — whatever else would keep it — and the same
+ *     at `track.offForYouPerPostMaxAgeMs` for a source billed per post (`offForYouPerPostTooOld`);
  *   - a post whose newest judgement fails core's per-post rule even with the best picture match
  *     there could be — any "no", a broken name test, a "yes" too far under the bar. A
  *     post is judged once, so that answer is final until someone re-scores it, and then this
@@ -90,5 +91,19 @@ const OFF_FEED_CUT_SOURCES: ReadonlySet<string> = new Set(['x', 'tiktok']);
 export function offFeedTooOld(itemId: string, source: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
   if (!OFF_FEED_CUT_SOURCES.has(source) || postedAt === null) return false;
   if (now - postedAt <= policy.track.offFeedMaxAgeMs) return false;
+  return !facts.onForYou.has(itemId) && !facts.onFeed.has(itemId);
+}
+
+/**
+ * ★ THE THREE-HOUR CUT (`track.offForYouPerPostMaxAgeMs`, the owner's rule of 2026-10-20): the
+ * off-feed cut above, at three hours, for a source billed per post returned — where each re-read
+ * is its own charge. The caller says whether this post's source is billed that way (TRACK reads
+ * it from the adapter's declared billing), so a source changing how it bills moves with it.
+ * Kept, as above: a post on For You (frame or scroll), one in Popular's live frame, and a post
+ * with no time, which is not shown to be old.
+ */
+export function offForYouPerPostTooOld(itemId: string, billedPerPost: boolean, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
+  if (!billedPerPost || postedAt === null) return false;
+  if (now - postedAt <= policy.track.offForYouPerPostMaxAgeMs) return false;
   return !facts.onForYou.has(itemId) && !facts.onFeed.has(itemId);
 }
