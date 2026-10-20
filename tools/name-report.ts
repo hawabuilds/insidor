@@ -4,6 +4,9 @@
  * THE NAMER'S NUMBERS FOR THE 20:00 REPORT (the owner, 2026-10-14), from what is stored. Free and
  * read-only: no model is asked, nothing is searched, nothing is written but `--out`.
  *
+ *   0. Goals scorecard (the owner, 2026-10-20), first: speed to For You for X and TikTok, before the
+ *      coin, quality, coin match, notifications and cost, each UTC day of the last seven and the
+ *      trend in plain words (tools/lib/goals.ts, also tools/goals.ts on its own).
  *   1. Name guessing, top 5 and top 1: live — every feed post the namer guessed whose real coin is
  *      known (the owner's confirmed coin, a coin whose links carry the post, a coin created from it),
  *      by core `guessHit`; and the held-out measurement (tools/name-guess-eval.ts) when `--eval`.
@@ -57,6 +60,7 @@ import { funnelLines, funnelRows } from './lib/funnel.ts';
 import { languageLines } from './lib/language-finds.ts';
 import { coinPickSection } from './lib/coin-picks.ts';
 import { diskBillLines } from './lib/disk-bill.ts';
+import { goalSection } from './lib/goals.ts';
 import { narrativeTimeLines, narrativeTimeRows } from './lib/narrative-times.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
@@ -90,6 +94,13 @@ const outcomeOf = (d: PostCoinMatch, right: string | null): MatchOutcome => {
 
 try {
   say(`# Namer report, ${new Date().toISOString().slice(0, 16)} UTC`);
+  say();
+
+  /* 0. The goals scorecard, at the top (the owner, 2026-10-20; tools/lib/goals.ts). */
+  say('## Goals scorecard (last 7 days)');
+  say('```');
+  for (const line of await goalSection(db, Date.now())) say(line);
+  say('```');
   say();
 
   /* 1. Name guessing. */
