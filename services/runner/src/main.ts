@@ -346,7 +346,31 @@ process.on('unhandledRejection', (e) => {
   process.exit(1);
 });
 
-main().catch((e: unknown) => {
+/*
+ * ★ A RUNNER THAT FINDS THE LOCK HELD WAITS FOR IT IN THIS PROCESS, rather than exiting. On a deploy
+ * the platform starts the new runner while the old one still holds insidor.runner; the new one used
+ * to exit at once, the platform restarted it a few times inside the old one's shutdown, gave up, and
+ * then stopped the old one — leaving no runner at all (six times on 2026-10-19/20, the longest 33
+ * minutes with nothing searched or judged). Waiting here, the new runner takes the lock the moment
+ * the old one lets it go. Only the held lock is waited out: any other boot failure exits as before.
+ */
+const LOCK_WAIT_START_MS = 2_000;
+const LOCK_WAIT_MAX_MS = 15_000;
+
+async function boot(): Promise<void> {
+  for (let waitMs = LOCK_WAIT_START_MS; ; waitMs = Math.min(waitMs * 2, LOCK_WAIT_MAX_MS)) {
+    try {
+      await main();
+      return;
+    } catch (e) {
+      if (!errorText(e).includes('already holds')) throw e;
+      log.warn('the lock is still held by the runner being replaced; waiting for it', { retryInMs: waitMs });
+      await delay(waitMs);
+    }
+  }
+}
+
+boot().catch((e: unknown) => {
   log.error('boot failed', { err: errorText(e) });
   process.exit(1);
 });
