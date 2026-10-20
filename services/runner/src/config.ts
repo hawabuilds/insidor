@@ -512,7 +512,8 @@ export function loadRunnerConfig(env: Env, openOnly: boolean = DEFAULT_POLICY.ju
     discovery,
     rank: env['RANK'] === 'on' ? 'on' : 'off',
     spend,
-    sourceEnv: platformEnv(env),
+    /* `budget.shortVideoFirstScraperOff`: its token is read as unset, so the source runs on its second vendor alone. */
+    sourceEnv: platformEnv(DEFAULT_POLICY.budget.shortVideoFirstScraperOff ? { ...env, APIFY_TOKEN: '' } : env),
     judge,
     openJudge: readOpenJudgeSetup(env),
     openJudgeBackup: readOpenJudgeBackupSetup(judgeEnv),
