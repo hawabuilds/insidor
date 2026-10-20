@@ -20,6 +20,8 @@
  *            until launch + `watchMs`. A post a launch LINKS — itself, or through the quote or
  *            re-share the coin links — is read by id whatever its age (core: a link is not bound
  *            by the window).
+ *            The coin-first route's coins (Policy.rising.coinFirst) are matched again for the whole
+ *            watch: their post is judged only once the coin runs, after the rematch window.
  *   existing a post new to this process whose coin already exists (it was launched more than
  *            `launchLeadMs` before the post): the biggest coin of its exact name with a recent
  *            reading over the bar (core `biggestOfName`), and beside it the most traded coins
@@ -70,6 +72,12 @@ const wordsOf = (text: string | null): string[] =>
 
 export interface OneCoinDeps {
   readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'>;
+  /**
+   * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
+   * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
+   * coin runs. Absent: none, as before 2026-10-20.
+   */
+  readonly coinFirstLaunches?: (sinceMs: number, limit: number, hashVersion: string) => Promise<readonly RecentLaunch[]>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -164,7 +172,11 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const bars = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, linkMaxAgeMs: P.linkMaxAgeMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: deps.policy.postCoin.minVariantLength };
 
   /* ── match: new launches to recent posts ─────────────────────────── */
-  const launches = await repo.recentLaunches(now - P.rematchMs, P.perPass.launches, HASH_VERSION);
+  const recent = await repo.recentLaunches(now - P.rematchMs, P.perPass.launches, HASH_VERSION);
+  /* ★ And the coin-first route's coins for the whole watch: their posts were judged after the rematch window. */
+  const extra = deps.coinFirstLaunches !== undefined && deps.policy.rising.coinFirst.on ? await deps.coinFirstLaunches(now - P.watchMs, P.perPass.launches, HASH_VERSION) : [];
+  const recentAddresses = new Set(recent.map((c) => c.address));
+  const launches = [...recent, ...extra.filter((c) => !recentAddresses.has(c.address))];
   /* A linked post older than the window is read by id: only a link may reach it. */
   const known = new Set(posts.map((p) => p.itemId));
   const linkedIds = [...new Set(launches.flatMap((c) => [...c.linksPosts, ...c.linksThrough.map((t) => t.itemId)]))].filter((id) => !known.has(id));

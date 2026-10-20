@@ -435,7 +435,9 @@ export class PgItemRepo implements ItemRepo {
    *     runner's work/paid-reads.ts, so a wider window here costs nothing it has not budgeted.
    *
    * On-screen and judged posts sort first, so the unjudged watch list can never crowd them out
-   * of the page TRACK pulls.
+   * of the page TRACK pulls — and ahead of them, ★ a found post whose newest answer is a yes, posted
+   * since `watch.judgedYesSince` and not on For You (Policy.track.judgedYesMaxAgeMs): read until it
+   * joins, whatever its views rate, and first, so TRACK's per-pass reads reach it before the rest.
    *
    * TRACK narrows this further with `trackingFacts` (the runner's work/track-gate.ts): a story
    * member that can never be shown — a firm "no", a failed name test — is not re-read.
@@ -450,11 +452,19 @@ export class PgItemRepo implements ItemRepo {
       readonly judgedSince: Millis;
       readonly judgedMinReach: number;
       readonly longer?: { readonly source: string; readonly since: Millis; readonly minPerMinute: number };
+      /** A found post whose newest answer is a yes, posted since this and not on For You, is kept and pulled first (Policy.track.judgedYesMaxAgeMs). */
+      readonly judgedYesSince?: Millis;
     },
   ): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
       `with recent as (
          select i.item_id, i.source, i.posted_at, i.first_seen_at,
+                (i.posted_at >= $11
+                 and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
+                 and coalesce((select j.coinable from internal.post_judgement j
+                                where j.item_id = i.item_id and j.prompt_id not like 'post-kind%'
+                                order by j.judged_at desc, j.id desc limit 1), false)
+                 and not exists (select 1 from public.rising_row r where r.item_id = i.item_id and r.feed_id = 'fyp')) as yes,
                 (exists (select 1 from public.story_member m
                            join public.story s on s.story_id = m.story_id
                           where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
@@ -469,8 +479,8 @@ export class PgItemRepo implements ItemRepo {
            from public.item i
           where i.first_seen_at >= $1
        ), picked as (
-         select r.item_id, r.kept, r.first_seen_at from recent r
-          where r.kept
+         select r.item_id, r.yes, r.kept or r.yes as kept, r.first_seen_at from recent r
+          where r.kept or r.yes
              or (r.posted_at >= (case when r.source = $8 then $9::timestamptz else $3::timestamptz end)
                  and exists (select 1 from internal.item_found_by f where f.item_id = r.item_id)
                  and not exists (select 1 from internal.post_judgement j where j.item_id = r.item_id)
@@ -478,7 +488,7 @@ export class PgItemRepo implements ItemRepo {
                        where o.item_id = r.item_id and o.kind = 'reach' and o.value is not null
                        order by o.captured_at desc limit 1)
                      >= (case when r.source = $8 then $10::float8 else $4::float8 end) * greatest(extract(epoch from ($5::timestamptz - r.posted_at)) / 60, 1))
-          order by r.kept desc, r.first_seen_at desc
+          order by r.yes desc, (r.kept or r.yes) desc, r.first_seen_at desc
           limit $2
        )
        select item.item_id, item.source, item.source_item_id, item.origin, item.author_key,
@@ -486,11 +496,13 @@ export class PgItemRepo implements ItemRepo {
               item.rebroadcast_of, item.reproduction_of, item.format_ids, item.raw_ref
          from picked p
          join public.item item on item.item_id = p.item_id
-        order by p.kept desc, p.first_seen_at desc`,
+        order by p.yes desc, p.kept desc, p.first_seen_at desc`,
       [
         toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince), watch.judgedMinReach,
         /* No longer window: a source name nothing has, so every post takes the half-hour one. */
         watch.longer?.source ?? '', toTimestamp(watch.longer?.since ?? watch.since), watch.longer?.minPerMinute ?? watch.minPerMinute,
+        /* No yes window: a time nothing is posted after, so no post is kept as a yes. */
+        toTimestamp(watch.judgedYesSince ?? (8_640_000_000_000_000 as Millis)),
       ],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));

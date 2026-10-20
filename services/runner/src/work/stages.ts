@@ -99,7 +99,7 @@ import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
-import { offFeedTooOld, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
+import { judgedYesUnshown, offFeedTooOld, offForYouPerPostTooOld, rereadsThatFit, staleUnpassed, worthRereading } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
 import { heldDecisionReads } from './decision-log-cache.ts';
 
@@ -485,6 +485,8 @@ export interface TrackingDeps {
 function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): StageWork<TrackInput> {
   /* When each source that bills a re-read as a run was last given a batch: see the gate in `pull`. */
   const lastPaidBatch = new Map<string, number>();
+  /* The last pull's yeses not on For You (track-gate.ts `judgedYesUnshown`): read first when the re-read day is short. */
+  let yesFirst: ReadonlySet<string> = new Set();
   const work: StageWork<TrackInput> = {
     async pull(limit, ctx) {
       const now = ctx.now();
@@ -510,6 +512,8 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           /* ★ The short-video source's unjudged posts over its own growth window, at the rate its
              paid re-reads take a post as fast (work/paid-reads.ts picks and caps them). */
           longer: { source: SHORT_VIDEO_SOURCE, since: (now - policy.rising.shortVideoFastWindowMs) as Millis, minPerMinute: policy.track.paidFastMinReachPerMinute },
+          /* ★ A found post the judge said yes to, read until it joins For You (track-gate.ts `judgedYesUnshown`). */
+          judgedYesSince: (now - policy.track.judgedYesMaxAgeMs) as Millis,
         },
       );
       /* ★ NO PAID READ FOR A POST THAT CAN NEVER BE SHOWN — a firm "no", a failed name test, a
@@ -521,13 +525,19 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          short-video source bills by the run and keeps the twelve-hour cut. */
       const billedPerPost = (source: string): boolean =>
         tracking.platforms.has(source as never) && tracking.platforms.get(source as never).capabilities.billing === 'per-item-returned';
-      const worth = onScreen.filter(
-        (i) =>
-          worthRereading(i.itemId, facts, policy) &&
-          !staleUnpassed(i.itemId, i.postedAt, now, facts, policy) &&
-          !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy) &&
-          !offForYouPerPostTooOld(i.itemId, billedPerPost(String(i.source)), i.postedAt, now, facts, policy),
-      );
+      /* ★ A yes not on For You yet is read until it joins, before the rest (track-gate.ts `judgedYesUnshown`). */
+      const yes = new Set(onScreen.filter((i) => judgedYesUnshown(i.itemId, i.postedAt, now, facts, policy)).map((i) => i.itemId));
+      yesFirst = yes;
+      const worth = onScreen
+        .filter(
+          (i) =>
+            worthRereading(i.itemId, facts, policy) &&
+            !staleUnpassed(i.itemId, i.postedAt, now, facts, policy) &&
+            !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy) &&
+            (yes.has(i.itemId) || !offForYouPerPostTooOld(i.itemId, billedPerPost(String(i.source)), i.postedAt, now, facts, policy)),
+        )
+        /* Stable: the store's order otherwise. TRACK's per-pass reads go in queue order (`readsAvailable`). */
+        .sort((a, b) => Number(yes.has(b.itemId)) - Number(yes.has(a.itemId)));
       /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one run at most every
          `track.paidRunEveryMinutes`, of at most `track.paidReadMaxPosts` posts: its young posts
          growing fast on every run, the rest once their reading is `track.paidReadMinMinutes`
@@ -668,7 +678,9 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           continue;
         }
         const adapter = tracking.platforms.get(sourceId);
-        const ids = entries.map((e) => e.input.item.sourceItemId);
+        /* A yes not on For You first: when the re-read day can take only part of the batch, it takes these. */
+        entries.sort((a, b) => Number(yesFirst.has(b.input.item.itemId)) - Number(yesFirst.has(a.input.item.itemId)));
+        let ids = entries.map((e) => e.input.item.sourceItemId);
         /* A source that addresses a post by URL needs each author's handle; the adapter reads it
            synchronously from this cache, so it is filled from the store first (handle-cache.ts). */
         if (adapter.capabilities.billing === 'per-run') {
@@ -688,9 +700,18 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
         if (tracking.spentSince !== undefined && adapter.capabilities.billing !== 'per-run' && estimate.usd > 0) {
           const now = tracking.now();
           const spent = await tracking.spentSince(estimate.vendor, estimate.endpoint, searchDayStart(now, policy) as Millis).catch(() => null);
-          if (spent === null || spent + estimate.usd > rereadAllowanceUsd(now, policy)) {
+          const yesCount = entries.filter((e) => yesFirst.has(e.input.item.itemId)).length;
+          const fits = rereadsThatFit(ids.length, yesCount, estimate.usd, spent, rereadAllowanceUsd(now, policy));
+          if (fits === 0) {
             tracking.log.warn('re-reads paused for the day; the call was not made', { source, reads: ids.length, wouldSpendUsd: estimate.usd, spentUsd: spent });
             continue;
+          }
+          if (fits < ids.length) {
+            /* Only the yeses that fit are asked; the rest wait in the repair queue as a paused batch does. */
+            const waiting = ids.length - fits;
+            entries.splice(fits);
+            ids = ids.slice(0, fits);
+            tracking.log.info('re-read day short: only the yeses not on For You are read', { source, reads: fits, waiting });
           }
         }
 
