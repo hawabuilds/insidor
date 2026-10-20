@@ -103,7 +103,7 @@ export function replayTimeline(coins: readonly ReplayCoin[], bars: OneCoinBars, 
     }));
     const o = pickOneCoin(contenders, holder, t, useTrades, bars);
     const now = o.kind === 'picked' ? o.address : null;
-    holder = o.kind === 'picked' ? { address: o.address, sinceMs: o.sinceMs } : null;
+    holder = o.kind === 'picked' ? { address: o.address, sinceMs: o.sinceMs, underShareSinceMs: o.underShareSinceMs } : null;
     const prev = out[out.length - 1];
     if (prev === undefined ? now !== null : prev[1] !== now) out.push([t, now]);
   }

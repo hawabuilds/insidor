@@ -2280,8 +2280,12 @@ export interface OneCoinPolicy {
   readonly minUniqueBuyers: number;
   /** A held coin is handed over only to a rival with this many times its net buying. */
   readonly handOverRatio: number;
-  /** A coin whose cap fell under this share of its peak is out (the rugs of the replay). */
+  /** A coin whose cap fell under this share of its peak is out (the rugs of the replay)… */
   readonly rugShareOfPeak: number;
+  /** …except a HELD coin, kept until its cap is also under this many USD… */
+  readonly rugFloorUsd: number;
+  /** …or it has stayed under the share this long, or a rival clears the bars and leads it. */
+  readonly rugGraceMs: number;
   /** Without trade data: the cap a coin opens at, so its climb is the cap over it (the replay's rule). */
   readonly openingCapUsd: number;
   /**
@@ -6110,6 +6114,13 @@ const POLICY_V1: Policy = {
     minUniqueBuyers: 15,
     handOverRatio: 3,
     rugShareOfPeak: 0.3,
+    /* A held coin's dip (the owner's "more forgiving", 20 Oct, after $Laura blanked for 18 minutes).
+       Replayed on readings since live: of 22 drops kept at $10k / 30 min, 12 came back over the
+       share within the hour and 10 were still trading over $15k; none was a rug. Without the floor,
+       27 more were kept: 22 were $2-6k rugs that never came back (2 did, 3 unread). $15k kept the same set but would drop
+       Laura's $12k; 20 minutes kept the same coins but two fewer were right at +30 min. */
+    rugFloorUsd: 10_000,
+    rugGraceMs: 1_800_000, // half an hour
     /* pump's opening cap in 15-19 Oct's first readings, the median. */
     openingCapUsd: 2_900,
     /* 17-19 Oct, readings at $15k or more: 469 readings of 213 coins had a pool under $1 (the most
