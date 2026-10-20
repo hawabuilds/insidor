@@ -63,6 +63,14 @@ test('the age ladder is one step per tier boundary and strictly ascending', () =
   for (let i = 1; i < ages.length; i += 1) assert.ok((ages[i] ?? 0) > (ages[i - 1] ?? 0));
 });
 
+test('the account watch asks its 40 most coined accounts every 6 minutes, on a $2.40 day', () => {
+  const w = DEFAULT_POLICY.feed.accountWatch;
+  assert.equal(w.maxAccounts, 40);
+  assert.equal(w.everyMs, 360_000);
+  assert.equal(w.cap.dailyUsd, 2.4);
+  assert.ok(w.maxWindowMs >= w.everyMs, 'a pass after a restart must reach back at least one cadence');
+});
+
 test('re-reads may take $5 of the search day and no more than the day, and reply reads stop at 140 posts', () => {
   const day = DEFAULT_POLICY.feed.searchDay;
   assert.equal(day.rereadDailyUsd, 5);

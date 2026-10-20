@@ -5557,11 +5557,23 @@ const POLICY_V1: Policy = {
        asks a day of which ~3,800 come back empty, 660 to 1,320 posts: $0.67 to $0.77 a day of search.
        20 to a search would be ~$0.10 less, at a query near the platform's length limit. The cap is
        that plus the judging of its new posts at the live judge's price, with room for a busy day. */
+    /* ★ 40 ACCOUNTS EVERY 6 MINUTES from 2026-10-20 (the owner's go; was every account with two coined
+       posts, 124 of them, every 3 minutes). Its first 25 minutes live (12:56 to 13:21 UTC) answered
+       640 posts, not the ~30 an hour the estimate above expected: 539 (84%) were one account's
+       replies, an answering bot ranked 44th with 3 coined posts, which filled its group's three pages
+       every ask and so hid its 14 group-mates. 543 of the 640 were replies, 5 quotes, 92 posts; 2 got
+       the judge's yes and 1 reached For You (both from the top 40). Paced to $1.10 a day, that buys
+       about one check an hour. The 40 with the most coined posts of 100k views (30 days; the list is
+       already ranked) hold 529 of the 717 such posts the 124 did, and posted ~110 times an hour in
+       that sample (none of them replies): 3 asks a pass, 720 a day, ~2,600 posts, ~$0.40-0.45 a day
+       of search and ~$1.10 of judging, under a $2.40 day paced from 00:00 UTC.
+       REPLIES STAY IN: 48 of those 529 coined posts were replies, 45 of them the first account's
+       (30% of its 149), and once the bot is off the list replies are ~4% of what comes back. */
     accountWatch: {
       on: true,
-      everyMs: 180_000, // every 3 minutes
+      everyMs: 360_000, // every 6 minutes
       accountsPerAsk: 15,
-      maxAccounts: 150,
+      maxAccounts: 40,
       minCoinedPosts: 2,
       minReach: 100_000,
       lookbackMs: 2_592_000_000, // 30 days
@@ -5570,7 +5582,7 @@ const POLICY_V1: Policy = {
       maxWindowMs: 900_000, // a quarter-hour back at most, after a restart
       maxPagesPerAsk: 3,
       passDeadlineMs: 90_000,
-      cap: { dailyUsd: 1.1, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
+      cap: { dailyUsd: 2.4, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
     },
   },
 
