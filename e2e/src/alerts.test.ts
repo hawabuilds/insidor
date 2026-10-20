@@ -72,7 +72,7 @@ test('★ switching an alert type off stops it — no list row, no push, and its
 test('★ the hourly limit holds: past it, alerts are listed and not pushed', async () => {
   const { prefs, q, run, sent } = await setup();
   await prefs('u1', { perHour: 2 });
-  for (const s of ['a', 'b', 'c', 'd']) await q('u1', 'graduated', s);
+  for (const s of ['a', 'b', 'c', 'd']) await q('u1', 'coin_launched', s);
   assert.deepEqual(await run(), ['push', 'push', 'hourly-limit', 'hourly-limit']);
   assert.equal(sent.length, 2);
 });

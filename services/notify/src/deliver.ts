@@ -38,7 +38,7 @@ export interface DeliverDeps {
 }
 
 /** The kinds about a coin: their small picture is the coin's logo when we have one. */
-const COIN_KINDS: readonly AlertKind[] = ['fyp_coin', 'fyp_proven', 'watch_coin', 'starred_first_coin', 'watched_first_coin', 'holding_down', 'creator_buyers'];
+const COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'fyp_coin', 'fyp_proven', 'watch_coin', 'starred_first_coin', 'watched_first_coin', 'holding_down', 'creator_buyers'];
 const httpsFact = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) && v.length <= 2_000 ? v : null);
 
 /**

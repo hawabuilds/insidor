@@ -220,3 +220,12 @@ test('★ the notification design in its own words (2026-10-18)', () => {
   assert.deepEqual(alertText('creator_buyers', { symbol: 'PAN', buyers: 1 }), { title: '$PAN has its first buyer', body: 'A wallet bought the coin you made.' });
   assert.equal(alertText('starred_big_account', { author: '@elonmusk', title: 'Pancake', followers: 220_000_000, excerpt: 'lol' }).body, '220M followers: lol');
 });
+
+test('★ the one push says the coin, the post and its cap, and nothing of why', () => {
+  assert.deepEqual(alertText('coin_launched', { symbol: 'FALCON', excerpt: 'Falcon 9 lands on the drone ship again tonight, the tenth time', author: '@SpaceX', mcUsd: 48_200 }), {
+    title: '$FALCON launched for a post you may have seen',
+    body: '"Falcon 9 lands on the drone ship again tonight…" (@SpaceX). $48.2K MC.',
+  });
+  assert.deepEqual(alertText('coin_launched', { symbol: '$KIM', author: '@rawsalerts', mcUsd: null }), { title: '$KIM launched for a post you may have seen', body: 'A post by @rawsalerts.' }, 'no words, no cap: left out, never a zero');
+  assert.deepEqual(alertText('coin_launched', {}), { title: '$COIN launched for a post you may have seen', body: 'A post on For You.' });
+});

@@ -42,6 +42,15 @@
  *      posting in one, a reply, a coin you hold doubling or halving, a coin you made getting its
  *      first buyers; new followers and likes pushed as one group (`GROUPED_KINDS`). Everything else
  *      about the pipeline — every new For You post, every coin found for one — is `LIST_ONLY`.
+ *   4i. ★ ONE PUSH (the owner, 2026-10-20: "only receive notifications if theres a coin that just
+ *      launched and is running from that post"). `coin_launched` — the first coin the one-coin rule
+ *      picks for a For You post or a narrative, launched after it was on For You — is the only kind
+ *      that reaches a person's phone (`PUSHED_KINDS`), on for everyone, nothing to star, at most
+ *      Policy.notify.launch.perDay a day. Every other kind above is still written to the list, so
+ *      the Notifications tab keeps showing it, and is never pushed: a saved post's or starred
+ *      narrative's first coin, blowing up, speed, big accounts, replies, holdings, follows and likes
+ *      included. The owner's own alarms (4, 4b, 4f, the namer, 5) stay pushed while
+ *      Policy.notify.launch.ownerAlarmsPush is on, and the settings screen's test always is.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -94,6 +103,8 @@ export const ALERT_KINDS = [
   'starred_big_account',
   'holding_down',
   'creator_buyers',
+  /* The one push (2026-10-20): a coin that launched for a For You post and is picked as its coin (services/notify launch.ts). */
+  'coin_launched',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -107,7 +118,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin', 'blowingUp', 'starredSpeed', 'bigAccounts', 'createdCoins'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin', 'blowingUp', 'starredSpeed', 'bigAccounts', 'createdCoins', 'launches'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -141,6 +152,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   starred_big_account: 'bigAccounts',
   holding_down: 'holdings',
   creator_buyers: 'createdCoins',
+  coin_launched: 'launches',
 };
 
 export interface AlertPrefs {
@@ -160,7 +172,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true, blowingUp: true, starredSpeed: true, bigAccounts: true, createdCoins: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true, blowingUp: true, starredSpeed: true, bigAccounts: true, createdCoins: true, launches: true },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,
@@ -244,6 +256,16 @@ const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_acco
 export const LIST_ONLY: readonly AlertKind[] = ['rank_up', 'rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched', 'fyp_coin', 'fyp_proven', 'watch_coin'];
 
 /**
+ * ★ THE ONLY KINDS THAT REACH A PHONE (4i). A kind not here is listed and never pushed, whatever its
+ * switch says — a kind added later is quiet until someone decides it is worth a phone. The owner's
+ * alarms are pushed while Policy.notify.launch.ownerAlarmsPush is on (absent policy: on, so a
+ * caller that forgets the policy never silences an outage).
+ */
+export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'push_test'];
+export const OWNER_ALARM_KINDS: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'outage', 'retune_summary'];
+export const pushable = (kind: AlertKind, P?: NotifyPolicy): boolean => PUSHED_KINDS.includes(kind) || (OWNER_ALARM_KINDS.includes(kind) && (P?.launch.ownerAlarmsPush ?? true));
+
+/**
  * ★ PUSHED AS A GROUP: each follow and each like is listed as it comes, but held from the phone and
  * pushed together ("3 new followers") by the deliverer's group pass (Policy.notify.grouped).
  */
@@ -265,6 +287,8 @@ export function pacingOf(kind: AlertKind, P: NotifyPolicy): Pacing | null {
   if (kind === 'blowing_up') return { perDay: P.blowingUp.perDay, dayMs: P.blowingUp.dayMs, minGapMs: P.blowingUp.minGapMs, per: 'kind' };
   if (kind === 'starred_speed') return { perDay: null, dayMs: P.blowingUp.dayMs, minGapMs: P.starredSpeed.gapMs, per: 'narrative' };
   if (kind === 'starred_big_account') return { perDay: null, dayMs: P.blowingUp.dayMs, minGapMs: P.bigAccount.gapMs, per: 'narrative' };
+  /* The one push: a daily count and no gap — two coins launching minutes apart are both news. */
+  if (kind === 'coin_launched') return { perDay: P.launch.perDay, dayMs: P.launch.dayMs, minGapMs: 0, per: 'kind' };
   return null;
 }
 /** The narrative a paced alert counts against: its subject up to the first `|`. */
@@ -300,7 +324,7 @@ export function groupDue(oldestHeldAgoMs: number, sinceLastPushMs: number | null
 export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: AlertPrefs; readonly localMinutes: number | null; readonly pushedLastHour: number; readonly devices: number; readonly ofKind?: PushedOfKind; readonly policy?: NotifyPolicy; readonly grouped?: boolean }): Delivery {
   if (r.prefs.muted) return { kind: 'skip', why: 'muted' };
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
-  if (LIST_ONLY.includes(r.kind)) return { kind: 'list', why: 'list-only' };
+  if (LIST_ONLY.includes(r.kind) || !pushable(r.kind, r.policy)) return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
   if (!PAST_THE_LIMIT.includes(r.kind) && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
   const pacing = r.policy === undefined ? null : pacingOf(r.kind, r.policy);

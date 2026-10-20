@@ -1,5 +1,7 @@
 /**
- * The alert service, assembled. The routes always answer. With NOTIFY=on, these loops run:
+ * The alert service, assembled. The routes always answer. With NOTIFY=on, these loops run (since
+ * 2026-10-20 only a coin just launched for a For You post, launch.ts, and the owner's alarms reach a
+ * phone; the rest are written to the list, core alerts.ts 4i):
  * deliver what is queued and push the held groups of follows and likes (seconds), check the
  * watched posts (seconds, watch.ts), check prices, curves and created coins' first buyers
  * (minutes), check the pipeline, what is blowing up on For You and the starred narratives, the owner's outage alarm (each minute, alarm.ts) and his
@@ -21,6 +23,7 @@ import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
 import { ALARM_LOOP_MS, alarmMemory, checkAlarms, JUDGE_VENDOR_OF_ROLE } from './alarm.ts';
 import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
+import { checkLaunches } from './launch.ts';
 import { loadNotifyConfig } from './config.ts';
 import { checkBlowingUp } from './blowing-up.ts';
 import { checkCreatorBuyers, type CreatorState } from './creator-buyers.ts';
@@ -107,13 +110,15 @@ if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'delivered', async () => (await deliverQueued(deps)).length);
   /* New followers and likes, pushed as one group (deliver.ts `deliverGroups`). */
   every(P.deliverLoopMs, 'grouped pushes', async () => (await deliverGroups(deps)).length);
+  /* THE ONE PUSH (2026-10-20, launch.ts): a coin just launched and picked for a For You post, to everyone. Every other kind below is listed only. */
+  every(P.pipelineLoopMs, 'launch alerts', () => checkLaunches(db, { policy: P, now: Date.now, quotes }));
   /* The notification design (2026-10-18): For You posts and new narratives blowing up, starred narratives' speed and big accounts. */
   every(P.pipelineLoopMs, 'blowing up alerts', () => checkBlowingUp(db, DEFAULT_POLICY, Date.now()));
   every(P.pipelineLoopMs, 'starred narrative alerts', () => checkStarred(db, P, Date.now()));
   /* The owner's outage alarm (alarm.ts): For You stalled, no judge answering, the backup failing too, the database unreadable —
      watched from here because this service is neither the runner nor the projector. */
   const alarm = alarmMemory();
-  every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, primaryJudgeVendor: JUDGE_VENDOR_OF_ROLE[DEFAULT_POLICY.judge.primary], push, ttlS: P.pushTtlS, log }, alarm));
+  every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, primaryJudgeVendor: JUDGE_VENDOR_OF_ROLE[DEFAULT_POLICY.judge.primary], push, ttlS: P.pushTtlS, directPush: P.launch.ownerAlarmsPush, log }, alarm));
   /* The owner's Not-a-meme alarm (junk.ts): his taps per 100 For You posts shown, clearly above the 3 days before. */
   const junk = junkMemory();
   every(JUNK_LOOP_MS, 'not a meme alarms', () => checkJunk({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, junk));
