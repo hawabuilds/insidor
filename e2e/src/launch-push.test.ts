@@ -82,3 +82,24 @@ test('★ a coin older than the post on For You is not pushed, nor that post\'s 
   assert.deepEqual(await deliver(), ['push']);
   assert.deepEqual(sent, ['$NEW launched for a post you may have seen']);
 });
+
+test('★ a coin-first post is pushed for its first coin, launched before For You took it; not for a copycat-led post', async () => {
+  const { db, sent, post, launches, deliver } = await setup();
+  await post('x:cf1', null);
+  await post('x:cf2', null);
+  assert.equal(await launches(), 0, 'the first look');
+  /* Both coins launched 70 minutes ago, before the posts were first on For You (an hour ago). */
+  await post('x:cf1', { address: mint(7), ticker: 'LAURA', cap: 60_000, launchedAgoMin: 70 });
+  await post('x:cf2', { address: mint(8), ticker: 'LATE', cap: 90_000, launchedAgoMin: 70 });
+  const record = (item: string, coin: string, first: string) =>
+    db.query(
+      `insert into internal.coin_first_post (item_id, coin_address, launched_at, via, first_coin_address, first_seen_at, admitted_at, updated_at)
+       values ($1, $2, $3, 'link', $4, $3, $5, $5)`,
+      [item, coin, iso(NOW - 70 * MIN), first, iso(NOW - 60 * MIN)],
+    );
+  await record('x:cf1', mint(7), mint(7));
+  await record('x:cf2', mint(8), mint(9));
+  assert.equal(await launches(), 1, 'only the post whose picked coin is its first coin');
+  assert.deepEqual(await deliver(), ['push']);
+  assert.deepEqual(sent, ['$LAURA launched for a post you may have seen']);
+});
