@@ -39,6 +39,9 @@ import { errorText } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
 import { laneSearch, type LaneAskEnd, type LaneSearchDeps } from './lane-search.ts';
 
+/** A UTC day, for the watch's pace. */
+const DAY_MS = 86_400_000;
+
 type WatchPolicy = Policy['feed']['accountWatch'];
 
 export interface AccountWatchDeps extends LaneSearchDeps {
@@ -171,7 +174,12 @@ export async function accountWatchPass(deps: AccountWatchDeps, state: AccountWat
       }
       return deps.store(items, authors, lane);
     };
-    const r = await laneSearch({ ...deps, store }, { adapter: source, query, lane: 'account', cap: p.cap, maxPages: p.maxPagesPerAsk, deadline });
+    /* ★ PACED, LIKE THE X DAY: the day's cap is released evenly from 00:00 UTC with the search day's
+       `aheadMs` early. Unpaced, the first live passes (about $0.04 each, 2026-10-20) would have spent
+       the whole $1.10 within the hour and left the accounts unwatched for the rest of the day. */
+    const sinceDayMs = ((now % DAY_MS) + DAY_MS) % DAY_MS;
+    const paced = p.cap.dailyUsd * Math.min(1, (sinceDayMs + deps.policy.feed.searchDay.aheadMs) / DAY_MS);
+    const r = await laneSearch({ ...deps, store }, { adapter: source, query, lane: 'account', cap: { ...p.cap, dailyUsd: paced }, maxPages: p.maxPagesPerAsk, deadline });
     usd += r.usd;
     returned += r.returned;
     fresh += r.fresh;
