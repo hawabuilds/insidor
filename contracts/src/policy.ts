@@ -267,6 +267,14 @@ export interface TrackPolicy {
    * of a post off For You end at this age too.
    */
   readonly offForYouPerPostMaxAgeMs: number;
+  /**
+   * ★ A POST ON FOR YOU WAITS THIS MANY TIMES ITS INTERVAL between TRACK's re-reads (the owner,
+   * 2026-10-20): its tier's minutes, or in its first hours its hot, warm or cold minutes. Its views
+   * on screen are kept current by the readings loop (`feed.readings`, every 2 to 15 minutes while it
+   * is on For You), which every TRACK schedule counts as a read; TRACK's own read of it buys little
+   * more. 1 is the old cadence. The holdout keeps its full grid.
+   */
+  readonly onForYouIntervalFactor: number;
 
   /*
    * ── the lifecycle bars ──────────────────────────────────────────────
@@ -4608,6 +4616,8 @@ const POLICY_V1: Policy = {
     offFeedMaxAgeMs: 43_200_000,
     /* Three hours, for the source billed per post (see TrackPolicy). */
     offForYouPerPostMaxAgeMs: 10_800_000,
+    /* Half as often on For You. */
+    onForYouIntervalFactor: 2,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges

@@ -66,8 +66,8 @@ import { VELOCITY_RANKS, type VelocityRank } from './velocity.ts';
  * system, and the pollution is invisible until somebody fits on it.
  */
 export const NAME = 'track' as const;
-export const FEATURE_SET: FeatureSetId = 'item.track.v3';
-export const DECIDER = 'rule:track@3';
+export const FEATURE_SET: FeatureSetId = 'item.track.v4';
+export const DECIDER = 'rule:track@4';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -115,6 +115,12 @@ export interface TrackInput {
    * `track.youngWindowMin`.
    */
   readonly velocityRank: VelocityRank | null;
+  /**
+   * Whether the post is on For You now (its live frame or its scroll), as the store read it this
+   * pass. A post on it waits `track.onForYouIntervalFactor` times its interval: another loop keeps
+   * its on-screen views current.
+   */
+  readonly onForYou: boolean;
 }
 
 /* ── the schedule this item is on ─────────────────────────────────────── */
@@ -147,12 +153,23 @@ function ageAtLastRead(input: TrackInput): number {
   return Math.max(input.lastReadAt - (input.item.postedAt ?? input.item.firstSeenAt), 0);
 }
 
+/**
+ * ★ HOW MANY TIMES ITS INTERVAL A POST WAITS: `track.onForYouIntervalFactor` on For You, else
+ * once. Applied after every other rule, to whichever interval they chose, so it only ever
+ * stretches a wait. The holdout is exempt: its cadence may not depend on where the post landed,
+ * which is the outcome.
+ */
+function intervalFactor(input: TrackInput, p: Policy): number {
+  return input.onForYou && !input.isHeldBack ? p.track.onForYouIntervalFactor : 1;
+}
+
 function plan(input: TrackInput, p: Policy): Plan {
   const planned = ladder(input, p);
+  const factor = intervalFactor(input, p);
   /* ★ A POST'S FIRST HOURS: THE EARLIER BUILD'S HOT, WARM AND COLD TIERS, by view-rate rank.
      An unranked post — no rate yet — sits on warm. The holdout keeps its full grid. */
   if (!input.isHeldBack && ageAtLastRead(input) < p.track.youngWindowMin * MS_PER_MINUTE) {
-    const minutes = p.track.velocityMinutes[input.velocityRank ?? 'warm'];
+    const minutes = p.track.velocityMinutes[input.velocityRank ?? 'warm'] * factor;
     return { ...planned, schedule: { tier: planned.schedule.tier, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
   }
   /* ★ THE AGE FLOOR, applied last so it can only slow a post down. The holdout is exempt:
@@ -161,7 +178,7 @@ function plan(input: TrackInput, p: Policy): Plan {
   const tier = Math.max(planned.schedule.tier, floor);
   /* ★ AND NEVER FASTER THAN THE COLD TIER once the first hours are over: a paid re-read of
      an older post is worth no more than one of a cold young one. */
-  const minutes = Math.max(p.track.tierMinutes[tier] ?? 0, input.isHeldBack ? 0 : p.track.velocityMinutes.cold);
+  const minutes = Math.max(p.track.tierMinutes[tier] ?? 0, input.isHeldBack ? 0 : p.track.velocityMinutes.cold) * factor;
   return { ...planned, schedule: { tier, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
 }
 
@@ -223,6 +240,9 @@ export function extract(input: TrackInput, p: Policy, ctx: StageContext): Featur
     currentTier: input.tier,
     /* v3: the view-rate rank a young post was scheduled by — hot 2, warm 1, cold 0. */
     velocityRank: input.velocityRank === null ? null : VELOCITY_RANKS.length - 1 - VELOCITY_RANKS.indexOf(input.velocityRank),
+    /* v4: whether the post was on For You, and the factor its interval was stretched by for it. */
+    onForYou: input.onForYou ? PRESENT : ABSENT,
+    intervalFactor: intervalFactor(input, p),
     /* v2: the age floor the schedule was held to, so a row says why a post read slowly. */
     ageFloorTier: input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p),
     scheduledTier: schedule.tier,

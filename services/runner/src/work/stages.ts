@@ -618,6 +618,8 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           readsAvailable: Math.max(TRACK_READ_BUDGET - index, 0),
           costUsd: 0,
           velocityRank: ranks[index] ?? null,
+          /* From the facts read above for the gate: on For You's frame or scroll now. */
+          onForYou: facts.onForYou.has(item.itemId),
         };
       });
     },
