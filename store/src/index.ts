@@ -53,6 +53,8 @@ export { PgLanguageFindsRepo, type LanguageBucket } from './repo/language-finds.
 export { PgDiskSampleRepo, type DiskSample } from './repo/disk-samples.ts';
 /* The quote search's posts (Policy.feed.reproductions): big accounts' held posts past a like floor. */
 export { PgQuoteTargetRepo, type QuoteTarget } from './repo/quote-targets.ts';
+/* The account watch's accounts (Policy.feed.accountWatch): accounts whose viral posts were coined again and again. */
+export { PgWatchAccountRepo, type WatchAccount } from './repo/watch-accounts.ts';
 export { PgJudgeShadowRepo } from './repo/judge-shadow.ts';
 export type { ShadowPair } from './repo/judge-shadow.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
