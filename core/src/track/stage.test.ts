@@ -85,6 +85,7 @@ function input(over: Partial<TrackInput> = {}): TrackInput {
     readsAvailable: 100,
     costUsd: 0,
     velocityRank: null,
+    onForYou: false,
     ...over,
   };
 }
@@ -528,4 +529,36 @@ test('the holdout ignores the age floor, as it ignores every other ladder', () =
   const day = 24 * 60 * MINUTE;
   const held = input({ item: item({ postedAt: NOW - 2 * day, firstSeenAt: NOW - 2 * day }), lastReadAt: NOW - 5 * MINUTE, isHeldBack: true });
   assert.equal(track(held, P, CTX).features['scheduledTier'], TOP_TIER);
+});
+
+/* ── For You ──────────────────────────────────────────────────────────── */
+
+test('★ a post on For You waits its interval times the factor, young or old, and says so on its row', () => {
+  const f = P.track.onForYouIntervalFactor;
+  assert.equal(f, 2);
+  /* young and warm: 15 minutes, 30 on For You */
+  const young = (onForYou: boolean, sinceMin: number) =>
+    track(input({ item: item({ postedAt: NOW - 20 * MINUTE, firstSeenAt: NOW - 20 * MINUTE }), lastReadAt: NOW - sinceMin * MINUTE, velocityRank: 'warm', onForYou }), P, CTX);
+  assert.equal(young(false, 16).verdict, 'pass');
+  assert.equal(young(true, 16).reason, 'T6_not_due');
+  assert.equal(young(true, 31).verdict, 'pass');
+  assert.equal(young(true, 31).features['scheduledIntervalMin'], P.track.velocityMinutes.warm * f);
+  assert.equal(young(true, 31).features['onForYou'], 1);
+  assert.equal(young(true, 31).features['intervalFactor'], f);
+  assert.equal(young(false, 16).features['intervalFactor'], 1);
+  /* older: its age tier's interval (never under cold), doubled */
+  const hours = 4 * 60 * MINUTE;
+  const old = (onForYou: boolean, sinceMin: number) =>
+    track(input({ item: item({ postedAt: NOW - hours, firstSeenAt: NOW - hours }), lastReadAt: NOW - sinceMin * MINUTE, onForYou }), P, CTX);
+  const base = old(false, 31).features['scheduledIntervalMin'] ?? 0;
+  assert.equal(old(true, 31).features['scheduledIntervalMin'], base * f);
+  assert.equal(old(true, base + 1).reason, 'T6_not_due');
+  assert.equal(old(true, base * f + 1).verdict, 'pass');
+});
+
+test('the holdout on For You keeps its full grid: where a post landed is the outcome', () => {
+  const held = input({ lastReadAt: NOW - (P.track.tierMinutes[TOP_TIER] ?? 0) * MINUTE - MINUTE, isHeldBack: true, onForYou: true });
+  const d = track(held, P, CTX);
+  assert.equal(d.verdict, 'pass');
+  assert.equal(d.features['intervalFactor'], 1);
 });
