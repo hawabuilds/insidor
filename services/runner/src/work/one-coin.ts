@@ -37,12 +37,14 @@
  *
  * What breaks if changed carelessly: the holder. Each judgement starts from the coin stored for the
  * subject; judging without it would hand a coin over on any rival's lead instead of three times its
- * own, and the card would flip between coins every pass.
+ * own, and the card would flip between coins every pass. The holder's `underShareSinceMs` rides in
+ * the pick's evidence: dropped, every pass would start the rug grace afresh and a held coin that
+ * crashed would never be let go.
  */
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -137,7 +139,17 @@ export function pickWrite(subjectId: string, o: OneCoinOutcome, prev: StoredPick
   if (o.kind === 'waiting') {
     return { subjectId, address: null, outcome: 'waiting', decidedAtMs: prev?.outcome === 'waiting' ? prev.decidedAtMs : nowMs, evidence: { mode, basis: o.basis, reason: o.reason, droppedHolder: o.droppedHolder, note, standings }, basis: o.basis };
   }
-  return { subjectId, address: o.address, outcome: 'picked', decidedAtMs: o.sinceMs, evidence: { mode, basis: o.basis, confirmed: o.confirmed, handedOverFrom: o.handedOverFrom, note, standings }, basis: o.basis };
+  return { subjectId, address: o.address, outcome: 'picked', decidedAtMs: o.sinceMs, evidence: { mode, basis: o.basis, confirmed: o.confirmed, handedOverFrom: o.handedOverFrom, underShareSinceMs: o.underShareSinceMs, note, standings }, basis: o.basis };
+}
+
+/**
+ * The coin a subject holds, from its stored pick: the coin, since when, and since when it has been
+ * under the rug share on grace (written by `pickWrite`, so the grace survives a restart).
+ */
+export function holderOf(prev: StoredPick | undefined): Holder | null {
+  if (prev?.outcome !== 'picked' || prev.address === null) return null;
+  const under = prev.evidence['underShareSinceMs'];
+  return { address: prev.address, sinceMs: prev.decidedAtMs, underShareSinceMs: typeof under === 'number' && Number.isFinite(under) ? under : null };
 }
 
 export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promise<OneCoinResult> {
@@ -242,7 +254,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const running = trades !== null && feedAt !== null && now - feedAt <= P.tradeFeedFreshMs;
   const ruleBars = oneCoinBars(P, fit);
   const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined): OneCoinOutcome =>
-    pickOneCoin(contendersOf(rs, running ? trades : null, watched, market), prev?.outcome === 'picked' && prev.address !== null ? { address: prev.address, sinceMs: prev.decidedAtMs } : null, now, running, ruleBars);
+    pickOneCoin(contendersOf(rs, running ? trades : null, watched, market), holderOf(prev), now, running, ruleBars);
 
   const prevPosts = await repo.picks('post', [...byPost.keys()]);
   const postPicks = [...byPost].map(([id, rs]) => pickWrite(id, judge(rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));

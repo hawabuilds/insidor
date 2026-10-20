@@ -2,7 +2,7 @@
  * The runner's one-coin pass over a fake store: a launch tied by link, name and picture becomes a
  * candidate and is watched for an hour; a name hit asks for its picture to be embedded; a post whose
  * coin already trades gets it by the second path; the pick is judged on trades when the feed runs
- * and on readings, saying so, when it does not.
+ * and on readings, saying so, when it does not; a held coin's rug grace survives in the stored pick.
  */
 
 import assert from 'node:assert/strict';
@@ -13,7 +13,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { CandidateRow, ExistingCoinRow, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
-import { newOneCoinState, oneCoinPass, type OneCoinDeps } from './one-coin.ts';
+import { holderOf, newOneCoinState, oneCoinPass, pickWrite, type OneCoinDeps } from './one-coin.ts';
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet } as unknown as Logger;
 const MIN = 60_000;
@@ -197,4 +197,14 @@ test('second path: a post whose coin launched long before it gets the biggest co
   /* Each post is given the second path once per process. */
   await oneCoinPass(deps(w), state);
   assert.equal(w.candidates.length, 1);
+});
+
+test('★ a held coin\'s rug grace is stored with the pick and read back as the holder, so a restart does not restart it', () => {
+  const since = NOW - 7 * MIN;
+  const write = pickWrite('x:1', { kind: 'picked', address: 'A', sinceMs: NOW - 20 * MIN, confirmed: true, handedOverFrom: null, underShareSinceMs: since, basis: 'market_readings', standings: [] }, undefined, NOW, 'live');
+  const stored: StoredPick = { subjectId: 'x:1', address: write.address, outcome: write.outcome, decidedAtMs: write.decidedAtMs, evidence: write.evidence };
+  assert.deepEqual(holderOf(stored), { address: 'A', sinceMs: NOW - 20 * MIN, underShareSinceMs: since });
+  /* A pick written before the grace existed has none: it is not under. */
+  assert.deepEqual(holderOf({ ...stored, evidence: {} }), { address: 'A', sinceMs: NOW - 20 * MIN, underShareSinceMs: null });
+  assert.equal(holderOf({ ...stored, outcome: 'waiting', address: null }), null);
 });
