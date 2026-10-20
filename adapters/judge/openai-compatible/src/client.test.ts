@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, accountCredits, answerSide, readPostFirst, readOpenJudgeBackupSetup, routerFields, vendorOfHost, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, accountCredits, answerCapProblem, answerSide, readPostFirst, readOpenJudgeBackupSetup, routerFields, vendorOfHost, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -392,4 +392,40 @@ test('a host of its own is sent the plain chat body: no provider pin, no usage r
   /* Its one field: thinking off, or a thinking model spends the answer budget before it answers. */
   assert.deepEqual(routerFields(false, ['p']), { reasoning: { enabled: false } });
   assert.ok(!('reasoning' in routed));
+});
+
+/* ── the answer cap ───────────────────────────────────────────────────── */
+
+test('★ a body with no answer cap, or one above the client\'s budget, is refused before anything is sent', async () => {
+  assert.equal(answerCapProblem({ max_tokens: 1_200 }, 1_200), null);
+  assert.match(answerCapProblem({}, 1_200) ?? '', /not set/);
+  assert.match(answerCapProblem({ max_tokens: 0 }, 1_200) ?? '', /is 0/);
+  assert.match(answerCapProblem({ max_tokens: 2.5 }, 1_200) ?? '', /whole number/);
+  assert.match(answerCapProblem({ max_tokens: 1_201 }, 1_200) ?? '', /over this client's 1200/);
+  const host = fakeHost([() => json(200, chat([]))]);
+  const client = openChatClient(config(host.fetch, { maxOutputTokens: 300 }));
+  await assert.rejects(client.send({ model: MODEL.id, messages: [] }), /refused before sending: max_tokens is not set/);
+  await assert.rejects(client.send({ model: MODEL.id, max_tokens: 301, messages: [] }), /over this client's 300/);
+  assert.equal(host.calls.length, 0, 'nothing reached the host');
+});
+
+test('★ every post-judge call carries a cap no bigger than the client\'s, sized to the batch', async () => {
+  const host = answeringHost((ids) => json(200, chat(ids.map(ans))));
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const judge = openJudge({ client: openChatClient(config(host.fetch, { answerTokensPerSubject: P.open.answerTokensPerPost })), meter, now: () => AT, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, perCall: 10, question: 'post' });
+  await judge.judge(Array.from({ length: 10 }, (_, i) => subject(`c${i}`)), BUDGET);
+  await judge.judge([subject('one')], BUDGET);
+  const caps = host.calls.map((c) => c.body?.['max_tokens']);
+  assert.deepEqual(caps, [Math.min(P.postBatchMaxOutputTokens, P.open.answerTokensPerPost * 11), P.open.answerTokensPerPost * 2]);
+});
+
+test('★ an answer cut off at the cap is no verdict: its posts are asked again, then left unavailable, and the call is still booked', async () => {
+  /* A cut-off reply whose text happens to parse: the stop reason alone decides, so nothing half-written is filed. */
+  const host = answeringHost((ids) => json(200, chat(ids.map(ans), 'length', 0.0006)));
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const judge = openJudge({ client: openChatClient(config(host.fetch)), meter, now: () => AT, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, perCall: 5, reask: 1, question: 'post' });
+  const out = await judge.judge([subject('a'), subject('b')], BUDGET);
+  assert.equal(host.calls.length, 2, 'asked, then asked again once');
+  assert.ok(out.value.every((o) => o.kind === 'unavailable'), 'no post was judged from a cut-off answer');
+  assert.ok(Math.abs(out.spend.usd - 0.0012) < 1e-9, 'both calls were billed and both are booked');
 });

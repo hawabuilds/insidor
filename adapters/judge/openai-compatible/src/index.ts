@@ -48,7 +48,7 @@ import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { OpenJudgeResponse } from './client.ts';
 import type { HostModel } from './models.ts';
 
-export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured, billingReason, buildChatBody, decodeChatReply, openChatClient, rotated, routerFields, unfenced } from './client.ts';
+export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured, answerCapProblem, billingReason, buildChatBody, decodeChatReply, openChatClient, rotated, routerFields, unfenced } from './client.ts';
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { accountCredits, closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';

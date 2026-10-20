@@ -44,7 +44,10 @@ function fakeHost(script: readonly (() => Response)[]) {
 
 const deps = (fetch: typeof globalThis.fetch, model: HostModel = MODEL) => {
   const meter = inMemoryMeter({ dailyCapUsd: 5, softStop: 1, now: () => AT });
-  const client = openChatClient({ vendor: 'router', apiKey: 'sk-test', baseUrl: 'https://router.invalid/api/v1', model: model.id, vision: model.vision, maxOutputTokens: 500, timeoutMs: 1_000, maxAttempts: 1, backoffMs: 1, maxWaitMs: 1, maxFrameBytes: 1_000_000, fetch, sleep: async () => {} });
+  /* The runner builds each question's client with that question's own answer budget, and the client
+     refuses a body whose cap is over it (client.ts answerCapProblem): one client here serves them all. */
+  const budget = Math.max(P.names.maxOutputTokens, P.translate.maxOutputTokens, P.judge.pairMaxOutputTokens);
+  const client = openChatClient({ vendor: 'router', apiKey: 'sk-test', baseUrl: 'https://router.invalid/api/v1', model: model.id, vision: model.vision, maxOutputTokens: budget, timeoutMs: 1_000, maxAttempts: 1, backoffMs: 1, maxWaitMs: 1, maxFrameBytes: 1_000_000, fetch, sleep: async () => {} });
   return { meter, base: { client, meter, now: () => AT as never, model, vendor: 'router', providers: ['first'], judge: P.judge } };
 };
 
