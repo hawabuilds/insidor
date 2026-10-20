@@ -123,3 +123,25 @@ test('the profile text is profile_bio.description with its links written out; no
   assert.equal(toAuthor({ id: '1', author: { id: '9', userName: 'a' } }, AT)?.bio, null);
   assert.equal(toAuthor({ id: '1', author: { id: '9', userName: 'a', description: '' } }, AT)?.bio, '');
 });
+
+test("the posts a post's own links name are read from the expanded links; none said is absent, not empty", () => {
+  const item = toItem(
+    {
+      id: '2112602660662878351',
+      text: 'I FOUND THE NEW BRAINROT CHARACTER https://t.co/a https://t.co/b',
+      author: { id: '1' },
+      entities: {
+        urls: [
+          { url: 'https://t.co/a', expanded_url: 'https://tiktok.com/@someone/video/1' },
+          { url: 'https://t.co/b', expanded_url: 'https://x.com/literallymecats/status/2111886889406148793' },
+          { url: 'https://t.co/c', expanded_url: 'https://twitter.com/literallymecats/status/2111886889406148793?s=20' },
+          { url: 'https://t.co/d', expanded_url: 'https://x.com/me/status/2112602660662878351/video/1' },
+        ],
+      },
+    },
+    AT,
+  );
+  assert.deepEqual(item.refersTo, ['x:2111886889406148793']);
+  assert.deepEqual(toItem(PLAIN, AT).refersTo, []);
+  assert.equal(toItem(DEGRADED, AT).refersTo, undefined);
+});
