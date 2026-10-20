@@ -1,8 +1,9 @@
 /**
  * A STARRED NARRATIVE'S FIRST COIN on the real schema (PGlite, every migration), through the
- * pipeline pass and the deliverer: one push to each starrer, once, never for a coin it already had
+ * pipeline pass and the deliverer: one row to each starrer, once, never for a coin it already had
  * when they starred it, never for an unsure one, the switch respected, and not doubled by the
- * board's own coin alerts. Nothing is fetched and nothing is sent anywhere.
+ * board's own coin alerts. Listed, not pushed, since the one push (2026-10-20, notify launch.ts).
+ * Nothing is fetched and nothing is sent anywhere.
  */
 
 import { strict as assert } from 'node:assert';
@@ -44,7 +45,7 @@ async function page(db: Db, id: string, o: { coins: unknown; topCoin?: unknown; 
   );
 }
 
-test('★ a starred narrative\'s first coin: one push to each starrer, once; not for a coin it already had, not for an unsure one', async () => {
+test('★ a starred narrative\'s first coin: one row to each starrer, once, listed not pushed; not for a coin it already had, not for an unsure one', async () => {
   const db = await setup();
   const sent: string[] = [];
   const push: PushSender = { configured: true, publicKey: 'PUB', send: async (_t, m) => (sent.push(m.title), 'sent') };
@@ -77,8 +78,10 @@ test('★ a starred narrative\'s first coin: one push to each starrer, once; not
   assert.equal(await checkPipeline(db, { policy: P }), 0);
 
   const out = (await deliverQueued({ db, push, pushOn: true, policy: P, now: () => NOW })).map((o) => o.outcome);
-  assert.deepEqual(out, ['push', 'push']);
-  assert.deepEqual(sent, ['Narrative pancake has its first coin: $PANCAKE', 'Narrative pancake has its first coin: $PANCAKE']);
+  assert.deepEqual(out, ['list-only', 'list-only']);
+  assert.deepEqual(sent, []);
+  const rows = await db.query<{ title: string }>('select title from people.alert order by alert_id');
+  assert.deepEqual(rows.map((r) => r.title), ['Narrative pancake has its first coin: $PANCAKE', 'Narrative pancake has its first coin: $PANCAKE']);
 });
 
 test('the switch is respected: off, the first coin is neither listed nor pushed', async () => {

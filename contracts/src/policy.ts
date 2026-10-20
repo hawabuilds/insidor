@@ -3295,6 +3295,32 @@ export interface NotifyPolicy {
     readonly follow: { readonly waitMs: number; readonly gapMs: number };
     readonly useful: { readonly waitMs: number; readonly gapMs: number };
   };
+  /**
+   * ★ THE ONE PUSH (the owner, 2026-10-20: "only receive notifications if theres a coin that just
+   * launched and is running from that post and idc about the coins that come after"; "people going
+   * about their day, not glued to the app"). Everyone with push on gets it, nothing to star: the
+   * FIRST coin the one-coin rule picks for a For You post (or a narrative), only when that coin
+   * launched at or after the post (the narrative's first post) was first on For You — the "caught
+   * it early" case — and was picked within `maxLaunchAgeMs` of its launch. Never a hand-over,
+   * never a second coin for the same post or narrative, never the same coin twice
+   * (services/notify launch.ts). Every other kind is listed in the app and not pushed.
+   *
+   *   perDay, dayMs     at most `perDay` of these reach one phone in any `dayMs`; when a pass has
+   *                     more than the room left, the highest market caps go first
+   *   maxLaunchAgeMs    a pick seen later than this after the coin's launch is not "just launched"
+   *   postsWithinMs     For You posts first shown this long ago or less are read for a pick (the
+   *                     one-coin rule's link window: an older post is not re-picked)
+   *   ownerAlarmsPush   the owner's own alarms (outages, supplier money, the namer, the re-tune
+   *                     report) still reach his phone. Kept on as the safer default; false makes
+   *                     the launch push the only push there is
+   */
+  readonly launch: {
+    readonly perDay: number;
+    readonly dayMs: number;
+    readonly maxLaunchAgeMs: number;
+    readonly postsWithinMs: number;
+    readonly ownerAlarmsPush: boolean;
+  };
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
@@ -5759,6 +5785,17 @@ const POLICY_V1: Policy = {
     grouped: {
       follow: { waitMs: 600_000, gapMs: 3_600_000 }, // ten minutes to gather, an hour apart
       useful: { waitMs: 3_600_000, gapMs: 86_400_000 }, // an hour to gather, once a day
+    },
+    /* The owner's one push, 2026-10-20. Replayed on the live picks of 19 Oct 17:42 to 20 Oct 13:18
+       UTC: 7 coins qualified (4 on the 19th, 3 on the 20th), so six a day never cut a real day and
+       still stops a burst. Picks came 5 to 117 minutes after launch; three hours keeps those and
+       drops the one narrative pick of a coin 40 hours old ("BENNY"). */
+    launch: {
+      perDay: 6,
+      dayMs: 86_400_000,
+      maxLaunchAgeMs: 10_800_000, // three hours
+      postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
+      ownerAlarmsPush: true,
     },
     perClient: 60,
     windowMs: 60_000,
