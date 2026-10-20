@@ -5233,8 +5233,13 @@ const POLICY_V1: Policy = {
        day — and 15-60 is ~13,700, ~$2.05 (15-45 ~$1.00, 15-90 ~$5.00). After an hour a post is the
        older searches' (slow, late), found too late to beat a coin: coins on viral posts come a median
        24 minutes after the post. */
+    /* OFF from 2026-10-20, its money to the account watch (`accountWatch`). Since the bands read to
+       the end (2026-10-19), they find first what this window holds: in the 28 hours to 2026-10-20 13:00
+       UTC it found 179 posts no lane held — 15 in English, the rest Japanese and Portuguese — 1 coined
+       post of 100k views before its coin and 4 that reached For You, for ~$0.45 a day of search (its
+       ledger, $0.28 by 12:35 UTC, less the judging of its new posts). One switch to bring back. */
     middle: {
-      on: true,
+      on: false,
       minAgeMin: 15,
       maxAgeMin: 45, // the owner, 2026-10-19: 15-45, the saving to the newest bands
       minApproval: 2_000,
@@ -5390,7 +5395,11 @@ const POLICY_V1: Policy = {
        the same cap. */
     narrativeNames: {
       on: true,
-      everyMs: 3_600_000, // hourly
+      /* Every two hours from 2026-10-20 (was hourly), part of the account watch's money: an ask is
+         forward from the name's last one, so the posts are the same and only the per-request floor of
+         ~52 asks an hour is halved, ~$0.09 a day. In the 7 days to 2026-10-20 it found 6 coined posts
+         of 500k views, 1 before its coin; a name's posts come an hour later at most. */
+      everyMs: 7_200_000, // every two hours
       minApproval: 1_000,
       maxNarratives: 60,
       maxPagesPerAsk: 3,
@@ -5418,8 +5427,12 @@ const POLICY_V1: Policy = {
        asks each is ~220-300 asks a day; probed, a typical big post has 0-1 quotes at 300 likes by 3
        hours and a viral one 12 or more (the Tesla post). Search ~$0.07, re-reads ~$0.11, and ~150
        new quotes judged ~$0.20: ~$0.35-0.45 a day, the cap's $1.00 is a viral day's. */
+    /* OFF from 2026-10-20, its money to the account watch (`accountWatch`): in the 7 days to then it
+       found 216 English posts and none was a coined post of 100k views or more (2 coined at all), 5
+       of 327 in the last 3 days reached For You. ~$0.20 to $0.30 a day of search and re-reads (its
+       ledger, $0.21 by 12:35 UTC and $0.43 on 2026-10-19, less ~$0.0013 of judging a new quote). */
     reproductions: {
-      on: true,
+      on: false,
       everyMs: 300_000, // every 5 minutes
       minFollowers: 10_000_000,
       minApproval: 5_000,
@@ -6365,8 +6378,13 @@ const POLICY_V1: Policy = {
        spent on the busiest days and the smallest wait to the next. Two days, not one hour, so a
        narrative that reaches 3 posts on its first or second day is asked, and the ones live when it
        was switched on (the Roadster, first shown 16 Oct) are asked once. */
+    /* OFF from 2026-10-20, with the quote search: it searches before a narrative's first post, so
+       nothing it finds can come before that post's coin, and it spends its whole day in the first
+       minutes after 00:00 UTC ($0.47 by 00:08 on 2026-10-20). Its search part is ~$0.05 to $0.12 a
+       day (most of its ledger is the old judge price on its new posts). What is lost: a narrative's
+       older first post, when no other lane held it. One switch to bring back. */
     backSearch: {
-      on: true,
+      on: false,
       minPosts: 3,
       formedWithinMs: 172_800_000, // two days
       lookbackMs: 604_800_000, // seven days
