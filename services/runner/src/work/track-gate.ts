@@ -12,7 +12,10 @@
  *     still put that one on For You (core's `couldPassWithBoost`), and either may yet clear For
  *     You's reach bar, which only a re-read can show;
  *   - a post not judged yet, when a catch-all lane found it (its reach decides whether it is
- *     judged at all) or it sits in a narrative the board shows.
+ *     judged at all) or it sits in a narrative the board shows;
+ *   - ★ first of all, a found post the judge said yes to that is not on For You yet, until it joins or
+ *     reaches `track.judgedYesMaxAgeMs` (`judgedYesUnshown`), past the three-hour cut below — and when
+ *     the re-read day is short, only those are read (`rereadsThatFit`).
  * Skipped:
  *   - a post past `track.offFeedMaxAgeMs` from a paid-read source that is on neither For You nor
  *     Popular's live frame (`offFeedTooOld`, below) — whatever else would keep it — and the same
@@ -95,6 +98,21 @@ export function offFeedTooOld(itemId: string, source: string, postedAt: number |
 }
 
 /**
+ * ★ A YES IS READ UNTIL IT JOINS (`track.judgedYesMaxAgeMs`): a post a lane found whose newest answer
+ * passes the per-post rule as it stands (no picture-boost allowance: a real yes), not on For You, and
+ * younger than the limit. TRACK pulls it first and the three-hour cut below does not stop it: such a
+ * post can only join For You on a reading that shows it clearing the views bar, and the Laura video
+ * (20 Oct) sat judged yes with a 47-minute-old reading until it aged out. A post with no time is not
+ * shown to be young, so it is not one.
+ */
+export function judgedYesUnshown(itemId: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
+  if (postedAt === null || now - postedAt > policy.track.judgedYesMaxAgeMs) return false;
+  if (!facts.catchAll.has(itemId) || facts.onForYou.has(itemId)) return false;
+  const j = facts.judged.get(itemId);
+  return j !== undefined && postScoreReason(j, policy) === 'passes';
+}
+
+/**
  * ★ THE THREE-HOUR CUT (`track.offForYouPerPostMaxAgeMs`, the owner's rule of 2026-10-20): the
  * off-feed cut above, at three hours, for a source billed per post returned — where each re-read
  * is its own charge. The caller says whether this post's source is billed that way (TRACK reads
@@ -106,4 +124,17 @@ export function offForYouPerPostTooOld(itemId: string, billedPerPost: boolean, p
   if (!billedPerPost || postedAt === null) return false;
   if (now - postedAt <= policy.track.offForYouPerPostMaxAgeMs) return false;
   return !facts.onForYou.has(itemId) && !facts.onFeed.has(itemId);
+}
+
+/**
+ * ★ HOW MANY OF A RE-READ BATCH THE RE-READ DAY TAKES (`feed.searchDay.rereadDailyUsd`), the batch in
+ * its order with the yeses not on For You first (`judgedYesUnshown`): all of it when it fits; when it
+ * does not, as many of the yeses as fit, and nothing else; none when the bill cannot be read (null).
+ * The allowance is the paced one the caller computed, so this never spends past it.
+ */
+export function rereadsThatFit(count: number, yesCount: number, usd: number, spentUsd: number | null, allowanceUsd: number): number {
+  if (spentUsd === null || count === 0) return 0;
+  if (spentUsd + usd <= allowanceUsd) return count;
+  const perRead = usd / count;
+  return Math.max(0, Math.min(yesCount, Math.floor((allowanceUsd - spentUsd) / perRead)));
 }

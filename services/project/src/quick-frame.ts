@@ -10,8 +10,9 @@
  * full frame's: readings land every few seconds and would keep this running for little.
  *
  * What it does, in one transaction:
- *   1. the changed posts: every post with an answer filed after the cursor's answer id, and every post
- *      the judge passed that a coin linked, or the owner called, after the cursor's time;
+ *   1. the changed posts: every post with an answer filed after the cursor's answer id, every post
+ *      the judge passed that a coin linked, or the owner called, after the cursor's time, and every
+ *      coin-first post (coin-first.ts) whose coin was picked since — the pick is what lets it in;
  *   2. those posts built exactly as the full frame builds them (rising.ts `buildRising` with `only`):
  *      the same judge, kind, signal, view and coin bars, the same six hours, the same coin evidence;
  *   3. For You is the committed list with each changed post put in, re-placed or taken off, in
@@ -44,6 +45,7 @@ import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 
+import { recordAdmitted } from './coin-first.ts';
 import { loadMembership, writeMembership } from './feed-members.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { changedPosts, lockForYou, type QuickCursor } from './for-you-lock.ts';
@@ -75,6 +77,8 @@ export interface QuickProbe extends QuickCursor {
   readonly answerAtMs: number | null;
   readonly linkAtMs: number | null;
   readonly callAtMs: number | null;
+  /** The newest pick of a coin-first post (0116); absent or null when none or not readable. */
+  readonly pickAtMs?: number | null;
   readonly kinds?: KindsSince | null;
 }
 
@@ -122,8 +126,21 @@ export async function readProbe(db: Db, since: QuickCursor | null = null): Promi
     answerAtMs: ms(r?.answer_at),
     linkAtMs: ms(r?.link_at),
     callAtMs: ms(r?.call_at),
+    pickAtMs: await coinFirstPickAt(db),
     kinds: since === null || answerId <= since.answerId ? null : await kindsSince(db, since.answerId),
   };
+}
+
+/** When a coin-first post's coin was last picked (0113, 0116); null when none, or before 0116 (looked up, never failed into). */
+async function coinFirstPickAt(db: Db): Promise<number | null> {
+  const present = await db.query<{ t: string | null }>(`select to_regclass('internal.coin_first_post')::text as t`);
+  if ((present[0]?.t ?? null) === null) return null;
+  const rows = await db.query<{ at: Date | string | null }>(
+    `select max(p.decided_at) as at from internal.coin_first_post c
+       join internal.post_coin_pick p on p.item_id = c.item_id and p.outcome = 'picked'
+      where c.launched_at > now() - interval '1 day'`,
+  );
+  return ms(rows[0]?.at);
 }
 
 /** Whether every yes past the cursor has its kind answer (and there is one): a post is ready to show now. */
@@ -133,7 +150,7 @@ export const kindsAllIn = (probe: QuickProbe): boolean => probe.kinds !== undefi
 export function quickDue(cursor: QuickCursor | null, lastQuickAtMs: number | null, probe: QuickProbe, nowMs: number, p: Policy = DEFAULT_POLICY): boolean {
   const q = p.rising.quickFrame;
   if (!q.on || cursor === null) return false;
-  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs;
+  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs || (probe.pickAtMs ?? 0) > cursor.atMs;
   if (!changed) return false;
   /* ★ Every yes has its kind: nothing can show between its two answers, so no wait and no gap. */
   if (q.kindsInSkipsWait && kindsAllIn(probe)) return true;
@@ -194,6 +211,7 @@ export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, po
   await writeNameIdeas(db, await loadNameIdeas(db, fresh), fresh);
   await writeRising(db, 'fyp', fyp);
   if (membership !== null) await writeMembership(db, nowMs, { fyp: [...added, ...replaced], popular: [] }, [], []);
+  await recordAdmitted(db, added.filter((p) => frame.coinFirst?.has(p.id) === true).map((p) => p.id), nowMs);
   await keepFeedHistory(db, nowMs);
   return { changed: ids.length, added: added.length, removed: left.length, wrote: true };
 }

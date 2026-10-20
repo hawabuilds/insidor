@@ -3,7 +3,8 @@
  *
  * Its own supervised loop because the first of them, a new coin's links (work/coin-links.ts),
  * is only worth having within seconds of the launch, and no other loop runs that often. The posts
- * those links name that the coin rule picks are judged in the same pass (work/coin-instant.ts). The
+ * those links name that the coin rule picks are judged in the same pass (work/coin-instant.ts), and
+ * the posts a running coin links are read, judged once and credited (work/coin-first.ts). The
  * others ride the same loop on their own clocks: the reposts (work/reposts.ts) every
  * `finders.reposts.everyMs`, the search words and young re-reads (work/search-words.ts) on their
  * slots, and the recommendation feed (work/trending-feed.ts) on its own. With every switch off a pass does nothing and touches no table.
@@ -17,6 +18,7 @@ import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import type { Logger } from '../log.ts';
 import { errorText } from '../log.ts';
 import type { CoinLinkResult } from '../work/coin-links.ts';
+import type { CoinFirstResult } from '../work/coin-first.ts';
 import type { InstantResult } from '../work/coin-instant.ts';
 import type { RepostResult } from '../work/reposts.ts';
 import type { SearchWordResult } from '../work/search-words.ts';
@@ -33,6 +35,8 @@ export interface FinderWork {
   readonly coinLinks: () => Promise<CoinLinkResult>;
   /** Absent: no instant judge, as before 2026-10-16. */
   readonly instant?: () => Promise<InstantResult>;
+  /** Absent: no coin-first route (work/coin-first.ts), as before 2026-10-20. */
+  readonly coinFirst?: () => Promise<CoinFirstResult>;
   readonly reposts: () => Promise<RepostResult>;
   readonly searchWords: () => Promise<SearchWordResult>;
   readonly trendingFeed: () => Promise<TrendingFeedResult>;
@@ -64,6 +68,8 @@ export function findersLoop(work: FinderWork): Loop {
       /* ★ Straight after the links, before anything slower: a post a coin just named is judged
          now, not after the next discovery pass (work/coin-instant.ts). */
       if (work.instant !== undefined) await step('instant judge', work.instant);
+      /* Then the posts running coins link: read, judged once and credited (work/coin-first.ts, its own clock). */
+      if (work.coinFirst !== undefined) found += (await step('coin-first route', work.coinFirst))?.credited ?? 0;
       const now = ctx.now();
       /* A pass with coins logs its own line (work/coin-links.ts); one with none says so now and then. */
       if (links !== null && links.coins === 0 && now - quietSaidAt >= QUIET_LOG_EVERY_MS) {
