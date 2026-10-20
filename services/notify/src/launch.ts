@@ -16,6 +16,14 @@
  *      early" case. Replayed on 19-20 Oct's live picks: of 16 first picks for For You posts, 6
  *      launched after the post was on For You, 4 between the post and its first showing, 6 were older
  *      than the post — those ten are the coins the owner said he does not care about.
+ *      ★ EXCEPT A COIN-FIRST POST (internal.coin_first_post, 0116: For You took it by the coin-first
+ *      route alone, on the judge's yes and its picked coin). There the coin always came first — it is
+ *      why the post is there — so rule 2 would never push it. It is pushed when the picked coin is
+ *      the post's FIRST coin: the earliest-launched observed coin whose own link ties the post, or its
+ *      repost (the route records it). That is the owner's "first coin that launched and is running";
+ *      a copycat that ran after an earlier coin linked the post is not news. Rules 1, 3 and 4 hold as
+ *      for any post. The Laura case (20 Oct): $Laura ran, but a copycat linked Saylor's repost four
+ *      seconds before it launched, so it would join For You and not be pushed.
  *   3. the coin is still "just launched": seen within Policy.notify.launch.maxLaunchAgeMs of its launch.
  *      A coin whose launch time we do not know is not pushed (we cannot say it came after).
  *   4. the coin was never pushed before (`c:<address>`), so a post and its narrative picking the
@@ -35,6 +43,8 @@
  *
  * What breaks if changed carelessly: remembering the post only when it is pushed. Then a post
  * whose first coin launched before For You would push its hand-over coin later as if it were first.
+ * And reading every post's first coin, not only a coin-first post's: then a post For You took on its
+ * views would push an older coin it never caught early.
  */
 
 import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
@@ -64,6 +74,18 @@ export interface Picked {
   readonly author: string | null;
   readonly image: string | null;
   readonly logo: string | null;
+  /**
+   * For a post For You took by the coin-first route alone (0116): the earliest-launched coin tying it,
+   * null when none is known. Absent for every other post and every narrative: rule 2 holds for them.
+   */
+  readonly coinFirst?: { readonly firstCoinAddress: string | null };
+}
+
+/** Whether the push's timing rule passes: launched after For You (rule 2) or, for a coin-first post, the post's first coin; and just launched (rule 3). */
+export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYouMs' | 'coinFirst'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
+  if (p.launchedMs === null || nowMs - p.launchedMs > rule.maxLaunchAgeMs) return false;
+  if (p.launchedMs >= p.onForYouMs) return true;
+  return p.coinFirst !== undefined && p.coinFirst.firstCoinAddress !== null && p.coinFirst.firstCoinAddress === p.address;
 }
 
 /**
@@ -77,7 +99,7 @@ export function launchEvents(posts: readonly Picked[], narratives: readonly Pick
   for (const p of [...posts, ...narratives]) {
     if (seen.has(p.key) || keys.includes(p.key)) continue;
     keys.push(p.key);
-    const early = p.launchedMs !== null && p.launchedMs >= p.onForYouMs && nowMs - p.launchedMs <= rule.maxLaunchAgeMs;
+    const early = earlyEnough(p, nowMs, rule);
     const coin = `c:${p.address}`;
     if (!early || seen.has(coin) || pushed.has(coin)) continue;
     pushed.add(coin);
@@ -122,6 +144,23 @@ const NARRATIVES_SQL = `
     from first_post fp join public.story_view v on v.story_id = fp.narrative_id
    where v.payload #>> '{provenance,kind}' = 'observed' and v.payload #>> '{coins,kind}' in ('one', 'several')`;
 
+/**
+ * The posts of these For You let in by the coin-first route alone (0116), each with its first coin.
+ * Empty before 0116 or before its grant: looked up first, so no failed statement is ever sent.
+ */
+async function coinFirstOf(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, string | null>> {
+  if (itemIds.length === 0) return new Map();
+  const present = await db.query<{ ok: boolean | null }>(
+    `select case when to_regclass('internal.coin_first_post') is null then false else has_table_privilege('internal.coin_first_post', 'select') end as ok`,
+  );
+  if (present[0]?.ok !== true) return new Map();
+  const rows = await db.query<{ item_id: string; first_coin_address: string | null }>(
+    `select item_id, first_coin_address from internal.coin_first_post where item_id = any($1::text[]) and admitted_at is not null`,
+    [[...itemIds]],
+  );
+  return new Map(rows.map((r) => [r.item_id, r.first_coin_address] as const));
+}
+
 export interface LaunchPorts {
   readonly policy: NotifyPolicy;
   readonly now: () => number;
@@ -153,7 +192,13 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   });
   /* A narrative page's coin carries no launch time or cap: read them as every coin push does. */
   const facts = await coinFacts(db, undefined, [...narrativeCoins.map((n) => n.coin.address), ...posts.filter((p) => p.launchedMs === null).map((p) => p.address)]);
-  const withLaunch = posts.map((p) => (p.launchedMs !== null ? p : { ...p, launchedMs: facts.get(p.address)?.mintedAtMs ?? null }));
+  /* ★ Coin-first posts: the route's record of each, for the first-coin exception to rule 2. */
+  const coinFirst = await coinFirstOf(db, posts.map((p) => p.itemId));
+  const withLaunch = posts.map((p) => {
+    const launched = p.launchedMs !== null ? p : { ...p, launchedMs: facts.get(p.address)?.mintedAtMs ?? null };
+    const cf = coinFirst.get(p.itemId);
+    return cf === undefined ? launched : { ...launched, coinFirst: { firstCoinAddress: cf } };
+  });
   const narratives: Picked[] = narrativeCoins.map(({ r, coin }) => {
     const f = facts.get(coin.address);
     return { key: `n:${r.storyId}`, address: coin.address, ticker: coin.ticker !== '' ? coin.ticker : (f?.symbol ?? ''), onForYouMs: Number(r.onForYouMs), launchedMs: f?.mintedAtMs ?? null, capUsd: f?.mcUsd ?? null, itemId: r.itemId, excerpt: text(r.excerpt), author: text(r.author), image: https(r.image), logo: f?.logo ?? null };
