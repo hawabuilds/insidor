@@ -2743,6 +2743,35 @@ export interface RisingPolicy {
     readonly minApprovals: number;
   };
   /**
+   * ★ THE COIN-FIRST ROUTE (the owner, 2026-10-20). A coin's own link names a post — itself, or the
+   * post its linked post reposts or quotes (one hop) — that was at most `oneCoin.linkMaxAgeMs` old at
+   * the coin's launch. Once that coin trades at `oneCoin.minCapUsd` or more (the running rule's own
+   * cap bar, so money goes only to coins that could be picked), the runner reads the post by id if we
+   * do not hold it and asks the judge once if nobody has (services/runner work/coin-first.ts). The
+   * post joins For You when the judge said yes AND the one-coin rule picked a coin that ties it this
+   * way (core `coinFirstAdmits`): no view bar, no six hours, no junk bar — the coin running is the
+   * evidence people are looking. Replayed over 13-20 Oct: admitting at the judge's yes alone would
+   * have been about 1,650 posts a day, of which 3% ever had a coin that ran; with the running coin,
+   * about 51 a day, a median 9.5 minutes after the launch.
+   *
+   *   fetchesPerDay / judgementsPerDay  the most posts read by id / judged a UTC day by this route,
+   *                                     so a copycat wave cannot spend; past them the rest wait for
+   *                                     the next day or the ordinary passes
+   *   perPass                           the most posts one pass reads or judges, each
+   *   lookbackMs                        coins launched this recently are looked at (the pick's watch)
+   *   admitWithinMs                     a post whose coin launched this recently may still join;
+   *                                     after it the route is closed and only the view bar remains
+   * Off: no read, no judgement, no admission by this route.
+   */
+  readonly coinFirst: {
+    readonly on: boolean;
+    readonly fetchesPerDay: number;
+    readonly judgementsPerDay: number;
+    readonly perPass: number;
+    readonly lookbackMs: number;
+    readonly admitWithinMs: number;
+  };
+  /**
    * ★ THE QUICK FRAME (the owner, 2026-10-16: "event-driven FYP"). Between the full frames, the
    * project service checks every `checkEveryMs` whether a judge's answer, a coin's link to a post the
    * judge passed or the owner's call on a post has landed since the last frame began. When one has, and the answers have
@@ -6206,6 +6235,13 @@ const POLICY_V1: Policy = {
        25 before any coin named them, 26 after, the median 38 minutes after the link. Six hours is For
        You's own (`fypMaxAgeMs`), 5,000 the credit's (`finders.coinLinks.textMinApprovals`). */
     coinLinked: { on: true, maxPostAgeAtLaunchMs: 21_600_000, minApprovals: 5_000 },
+    /* 2026-10-20, replayed read-only over 13-20 Oct: coins whose own link named a post we did not
+       hold or had not judged, and that reached $15k in their first hour, came to about 115 a day;
+       about 50 posts a day had no answer yet when their coin reached the bar (13 were never judged
+       at all) and 11 a day were never read. 200 / 200 is room for four times that; at $0.00015 a
+       read and the open judge's $0.00017 (the paid judge's $0.002 if it is primary) a full day of both is
+       $0.06 ($0.43), the measured day about a cent ($0.10). Watch the pick's hour; admit within two. */
+    coinFirst: { on: true, fetchesPerDay: 200, judgementsPerDay: 200, perPass: 10, lookbackMs: 3_600_000, admitWithinMs: 7_200_000 },
     /* 2026-10-16, read-only from here against the live database: the full frame's For You and Popular
        took 67 s (61 s of it weighing coins for every passing post), and the service's frames began
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and

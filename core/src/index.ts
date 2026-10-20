@@ -190,6 +190,9 @@ export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts
 export { biggestOfName, hashGap, launchMatches, namedInText, oneCoinBars, pickOneCoin, priorCoins } from './match/one-coin.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, PriorBars, PriorCoin, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
 export { coinAt, replayMerit, replayTimeline, scoreReplay, tradesAt } from './match/one-coin-replay.ts';
+/* The coin-first route onto For You: what the runner does for a post a running coin links, and whether it joins (match/coin-first.ts). */
+export { coinFirstAdmits, coinFirstBars, coinFirstStep, firstTie, inRouteAge } from './match/coin-first.ts';
+export type { CoinFirstAdmitFacts, CoinFirstBars, CoinFirstStep, CoinFirstTarget, CoinFirstTie } from './match/coin-first.ts';
 export type { ReplayCase, ReplayCoin, ReplayScore, Timeline, TradeMinute } from './match/one-coin-replay.ts';
 export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
