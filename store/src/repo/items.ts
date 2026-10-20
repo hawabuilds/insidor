@@ -140,7 +140,33 @@ export class PgItemRepo implements ItemRepo {
       );
       await this.#writeFingerprints(item);
     }
+    await this.#writeReferences(items);
     return items.length;
+  }
+
+  /** Whether 0118's internal.post_reference is there; looked up, never found missing by a failed statement. */
+  #referencesPresent: boolean | null = null;
+
+  /**
+   * The posts each post's own links name (`Item.refersTo`, 0118), for the posts whose source said:
+   * a post it did not say about keeps whatever row it had. Skipped before 0118, looked up first —
+   * a failed statement would abort the caller's transaction and lose the posts themselves.
+   */
+  async #writeReferences(items: readonly Item[]): Promise<void> {
+    const said = items.filter((i) => i.refersTo !== undefined);
+    if (said.length === 0) return;
+    if (this.#referencesPresent !== true) {
+      const rows = await this.#db.query<{ t: string | null }>(`select to_regclass('internal.post_reference')::text as t`);
+      this.#referencesPresent = (rows[0]?.t ?? null) !== null;
+      if (!this.#referencesPresent) return;
+    }
+    await this.#db.query(
+      `insert into internal.post_reference (item_id, refers_to, read_at)
+       select r.item_id, array(select jsonb_array_elements_text(r.refs)), now()
+         from unnest($1::text[], $2::jsonb[]) as r(item_id, refs)
+       on conflict (item_id) do update set refers_to = excluded.refers_to, read_at = excluded.read_at`,
+      [said.map((i) => i.itemId), said.map((i) => JSON.stringify(i.refersTo ?? []))],
+    );
   }
 
   /**

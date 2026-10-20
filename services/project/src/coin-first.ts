@@ -14,6 +14,10 @@
  * wrong, the variety rule, the cut. And only in Policy.oneCoin.mode 'live', where the pick is the
  * card's coin: in shadow the route would put a post up without the coin that brought it.
  *
+ * ★ ONLY THE ORIGINAL (0118). The runner records the coin's linked post as a `pointer` when it points
+ * at the viral post or is a launcher's own; the route lets in only the original it walked to, never
+ * a pointer — the owner, 2026-10-20: the original viral post, not the launcher's explanation of it.
+ *
  * What breaks if changed carelessly: recording a post the route did not put up alone. The launch
  * push treats a recorded post as coin-first (services/notify launch.ts) and would push a coin that
  * launched before a post For You took on its views.
@@ -46,7 +50,8 @@ export async function loadCoinFirst(db: Db, nowMs: number, policy: Policy = DEFA
   const since = (nowMs - policy.rising.coinFirst.admitWithinMs) as Millis;
   const rows = await repo.records(only === null ? since : null, only ?? members);
   const memberSet = new Set(members);
-  const fresh = rows.filter((r) => r.launchedAtMs >= since || (r.admittedAtMs !== null && (only !== null || memberSet.has(r.itemId))));
+  /* ★ A pointer (0118: the coin's linked post that only pointed at the original, or a launcher's own) is never the route's. */
+  const fresh = rows.filter((r) => r.role !== 'pointer' && (r.launchedAtMs >= since || (r.admittedAtMs !== null && (only !== null || memberSet.has(r.itemId)))));
   if (fresh.length === 0) return NO_COIN_FIRST;
   const ties = await repo.ties(fresh.map((r) => r.itemId));
   return { records: new Map(fresh.map((r) => [r.itemId, r] as const)), ties };
@@ -69,7 +74,7 @@ export interface CoinFirstPost {
 /** Whether the route lets this post onto For You now (core `coinFirstAdmits`, with the owner's word over it). */
 export function coinFirstLets(p: CoinFirstPost, frame: CoinFirstFrame, nowMs: number, policy: Policy = DEFAULT_POLICY): boolean {
   const record = frame.records.get(p.itemId);
-  if (record === undefined || !p.judgedYes || p.ownerNone) return false;
+  if (record === undefined || record.role === 'pointer' || !p.judgedYes || p.ownerNone) return false;
   if (p.pick?.address !== null && p.pick?.address !== undefined && p.wrong.has(p.pick.address)) return false;
   return coinFirstAdmits({ postedAtMs: p.postedAtMs, pick: p.pick, ties: frame.ties.get(p.itemId) ?? [], admittedAtMs: record.admittedAtMs, member: p.member }, nowMs, coinFirstBars(policy));
 }

@@ -2831,6 +2831,24 @@ export interface RisingPolicy {
    *   lookbackMs                        coins launched this recently are looked at (the pick's watch)
    *   admitWithinMs                     a post whose coin launched this recently may still join;
    *                                     after it the route is closed and only the view bar remains
+   *
+   * ★ THE ORIGINAL, NEVER THE POINTER (`origin`, the owner, 2026-10-20: "i want to see the original
+   * viral post not the [post] a degen who launched the coin made to explain the viral post"). The
+   * coin's linked post is walked to the post it points at — a repost, a quote, a post its own links
+   * name, or an earlier post by another account with the same first picture or video — and only that
+   * original is read, judged, credited and admitted; the linked post is recorded as a pointer (core
+   * match/coin-origin.ts). A quote, link or re-upload is followed when the post it points at was seen
+   * at least as widely, or when the pointing post's author is a launcher; a launcher's post that
+   * points at nothing is never taken.
+   *   maxDepth                          the most hops from the linked post
+   *   rereadLinks                       a held post whose links were never read (stored before the
+   *                                     links were kept) and whose text has one is read again by id,
+   *                                     once, under `fetchesPerDay`
+   *   launcherLookbackMs                the window an account's posts are counted over
+   *   launcherMinLinkedPosts / launcherMinLinkedShare / launcherMaxFollowers
+   *                                     a launcher: at least this many of its posts in the window
+   *                                     named by coins' own links, at least this share of its posts
+   *                                     we hold, and fewer followers than this (core `isLauncher`)
    * Off: no read, no judgement, no admission by this route.
    */
   readonly coinFirst: {
@@ -2840,6 +2858,14 @@ export interface RisingPolicy {
     readonly perPass: number;
     readonly lookbackMs: number;
     readonly admitWithinMs: number;
+    readonly origin: {
+      readonly maxDepth: number;
+      readonly rereadLinks: boolean;
+      readonly launcherLookbackMs: number;
+      readonly launcherMinLinkedPosts: number;
+      readonly launcherMinLinkedShare: number;
+      readonly launcherMaxFollowers: number;
+    };
   };
   /**
    * ★ THE QUICK FRAME (the owner, 2026-10-16: "event-driven FYP"). Between the full frames, the
@@ -6361,7 +6387,20 @@ const POLICY_V1: Policy = {
        at all) and 11 a day were never read. 200 / 200 is room for four times that; at $0.00015 a
        read and the open judge's $0.00017 (the paid judge's $0.002 if it is primary) a full day of both is
        $0.06 ($0.43), the measured day about a cent ($0.10). Watch the pick's hour; admit within two. */
-    coinFirst: { on: true, fetchesPerDay: 200, judgementsPerDay: 200, perPass: 10, lookbackMs: 3_600_000, admitWithinMs: 7_200_000 },
+    /* `origin`, replayed 2026-10-20 over 17-20 Oct (tools/coin-origin-replay.ts, the walk itself, with
+       345 posts read by id for $0.05): of 483 posts linked by coins that reached $15k, 35% are the
+       viral post themselves, 38% point at an original (28% by one quote, 10% by two or three hops, a
+       handful by link or repost) and 23% are launchers' posts with nothing to follow; of the 13 posts
+       the route had put on For You since it went live that afternoon, 9 were such pointers. Three
+       hops reach all but 1% of chains. The launcher bars: every account at 5 coined posts, half its
+       posts and under 15,000 followers in the replay was a launcher (chieh128, Felixonchain,
+       Sizeyon...); at 50,000 they took in accounts that post their own work (Sauers_, aizendyor).
+       Reads: about 9 originals a day we do not hold, and for the first two days after deploy the held
+       posts stored before their links were kept — 115 a day replayed, $0.02, well inside 200. */
+    coinFirst: {
+      on: true, fetchesPerDay: 200, judgementsPerDay: 200, perPass: 10, lookbackMs: 3_600_000, admitWithinMs: 7_200_000,
+      origin: { maxDepth: 3, rereadLinks: true, launcherLookbackMs: 604_800_000, launcherMinLinkedPosts: 5, launcherMinLinkedShare: 0.5, launcherMaxFollowers: 15_000 },
+    },
     /* 2026-10-16, read-only from here against the live database: the full frame's For You and Popular
        took 67 s (61 s of it weighing coins for every passing post), and the service's frames began
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and

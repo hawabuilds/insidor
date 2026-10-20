@@ -17,8 +17,8 @@ const POSTED = 1_000 * H;
 const LAUNCH = POSTED + 30 * H;
 const NOW = LAUNCH + 12 * 60_000;
 
-const frame = (admittedAtMs: number | null = null): CoinFirstFrame => ({
-  records: new Map([['p', { itemId: 'p', coinAddress: 'COIN', launchedAtMs: LAUNCH as Millis, firstCoinAddress: 'COIN', admittedAtMs: admittedAtMs as Millis | null }]]),
+const frame = (admittedAtMs: number | null = null, role: 'original' | 'pointer' = 'original'): CoinFirstFrame => ({
+  records: new Map([['p', { itemId: 'p', coinAddress: 'COIN', launchedAtMs: LAUNCH as Millis, firstCoinAddress: 'COIN', admittedAtMs: admittedAtMs as Millis | null, role }]]),
   ties: new Map([['p', [{ address: 'COIN', launchedAtMs: LAUNCH as Millis }]]]),
 });
 
@@ -33,6 +33,11 @@ test('the judge said yes and the pick is the coin that linked it: it joins, a da
 test('no yes, the safety net, or no record: it does not', () => {
   assert.equal(coinFirstLets(post({ judgedYes: false }), frame(), NOW, DEFAULT_POLICY), false);
   assert.equal(coinFirstLets(post({ itemId: 'other' }), frame(), NOW, DEFAULT_POLICY), false);
+});
+
+test("★ a pointer — the launcher's post that pointed at the original — never joins by the route, however it was judged", () => {
+  assert.equal(coinFirstLets(post({}), frame(null, 'pointer'), NOW, DEFAULT_POLICY), false);
+  assert.equal(coinFirstLets(post({ member: true }), frame(null, 'pointer'), NOW, DEFAULT_POLICY), false);
 });
 
 test("the owner's word keeps it out: no coin is from this, or the pick is a coin he called wrong", () => {

@@ -21,7 +21,8 @@
  *            re-share the coin links — is read by id whatever its age (core: a link is not bound
  *            by the window).
  *            The coin-first route's coins (Policy.rising.coinFirst) are matched again for the whole
- *            watch: their post is judged only once the coin runs, after the rematch window.
+ *            watch: their post is judged only once the coin runs, after the rematch window. And
+ *            each is tied to the original the route walked to from the post it links (0118).
  *   existing a post new to this process whose coin already exists (it was launched more than
  *            `launchLeadMs` before the post): the biggest coin of its exact name with a recent
  *            reading over the bar (core `biggestOfName`), and beside it the most traded coins
@@ -176,7 +177,15 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   /* ★ And the coin-first route's coins for the whole watch: their posts were judged after the rematch window. */
   const extra = deps.coinFirstLaunches !== undefined && deps.policy.rising.coinFirst.on ? await deps.coinFirstLaunches(now - P.watchMs, P.perPass.launches, HASH_VERSION) : [];
   const recentAddresses = new Set(recent.map((c) => c.address));
-  const launches = [...recent, ...extra.filter((c) => !recentAddresses.has(c.address))];
+  /* A coin in both keeps the route's originals beside its own hop (store `coinFirstLaunches`: through the pointer it links). */
+  const extraBy = new Map(extra.map((c) => [c.address, c] as const));
+  const launches = [
+    ...recent.map((c) => {
+      const e = extraBy.get(c.address);
+      return e === undefined ? c : { ...c, linksThrough: [...c.linksThrough, ...e.linksThrough.filter((t) => !c.linksThrough.some((o) => o.itemId === t.itemId))] };
+    }),
+    ...extra.filter((c) => !recentAddresses.has(c.address)),
+  ];
   /* A linked post older than the window is read by id: only a link may reach it. */
   const known = new Set(posts.map((p) => p.itemId));
   const linkedIds = [...new Set(launches.flatMap((c) => [...c.linksPosts, ...c.linksThrough.map((t) => t.itemId)]))].filter((id) => !known.has(id));
