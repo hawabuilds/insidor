@@ -270,7 +270,7 @@ export interface TrackPolicy {
   /**
    * ★ A POST ON FOR YOU WAITS THIS MANY TIMES ITS INTERVAL between TRACK's re-reads (the owner,
    * 2026-10-20): its tier's minutes, or in its first hours its hot, warm or cold minutes. Its views
-   * on screen are kept current by the readings loop (`feed.readings`, every 2 to 15 minutes while it
+   * on screen are kept current by the readings loop (`feed.readings`, every 4 to 30 minutes while it
    * is on For You), which every TRACK schedule counts as a read; TRACK's own read of it buys little
    * more. 1 is the old cadence. The holdout keeps its full grid.
    */
@@ -5436,12 +5436,17 @@ const POLICY_V1: Policy = {
       /* Halved on 2026-10-17 to cut cost without touching finding or judging (the owner: "do 2 and 3"):
          the text source's young posts every 2 minutes (was 1), short video every 10, 30 and 60
          minutes (was 5, 15 and 30), which also halves the second vendor's credits a day. */
+      /* Halved again on 2026-10-20 for the text source only (the owner's go), part of the account
+         watch's money: every 4, 10 and 30 minutes (was 2, 5 and 15). The lane spent $1.40 in the 13.4
+         hours to 13:23 UTC that day, about $0.06 of it on short video, so ~$2.40 a day of the text
+         source, nearly all of it this cadence (the sorts' tops ~$0.12, opens a few cents): about
+         $1.00 to $1.20 a day saved. Short video keeps its cadence: it is paid on another line. */
       cadence: {
         steps: [
-          { underMs: 7_200_000, everyMs: 120_000 }, // under 2 hours: every 2 minutes
-          { underMs: 21_600_000, everyMs: 300_000 }, // under 6 hours: every 5 minutes
+          { underMs: 7_200_000, everyMs: 240_000 }, // under 2 hours: every 4 minutes
+          { underMs: 21_600_000, everyMs: 600_000 }, // under 6 hours: every 10 minutes
         ],
-        thenEveryMs: 900_000, // then every 15 minutes while on For You
+        thenEveryMs: 1_800_000, // then every 30 minutes while on For You
       },
       shortVideoCadence: {
         steps: [

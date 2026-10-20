@@ -25,11 +25,12 @@ const H = 60 * MIN;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
 /* The step logic is tested on the owner's first cadence (one minute under 2 hours); the shipped one is checked below. */
-const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, on: true, cadence: { ...DEFAULT_POLICY.feed.readings.cadence, steps: [{ underMs: 7_200_000, everyMs: 60_000 }, { underMs: 21_600_000, everyMs: 300_000 }] } } } };
+const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, on: true, cadence: { steps: [{ underMs: 7_200_000, everyMs: 60_000 }, { underMs: 21_600_000, everyMs: 300_000 }], thenEveryMs: 900_000 } } } };
 
-test('shipped since 2026-10-17: young text posts every 2 minutes, short video every 10, 30 and 60', () => {
+test('shipped since 2026-10-20: text posts every 4, 10 and 30 minutes; short video every 10, 30 and 60', () => {
   const r = DEFAULT_POLICY.feed.readings;
-  assert.equal(r.cadence.steps[0]?.everyMs, 120_000);
+  assert.deepEqual(r.cadence.steps.map((x) => x.everyMs), [240_000, 600_000]);
+  assert.equal(r.cadence.thenEveryMs, 1_800_000);
   assert.deepEqual(r.shortVideoCadence.steps.map((x) => x.everyMs), [600_000, 1_800_000]);
   assert.equal(r.shortVideoCadence.thenEveryMs, 3_600_000);
 });
