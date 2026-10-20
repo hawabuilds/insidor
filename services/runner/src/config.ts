@@ -99,8 +99,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
    HEARTBEAT=on, HEARTBEAT_SLUG_COINMODEL. `namesearch` and `quotes`: the narrative-name and quote
    searches (loops/name-search.ts, loops/quotes.ts), each with its own cap; with HEARTBEAT=on,
    HEARTBEAT_SLUG_NAMESEARCH and HEARTBEAT_SLUG_QUOTES. `onecoin`: one post, one coin (loops/one-coin.ts); with
-   HEARTBEAT=on, HEARTBEAT_SLUG_ONECOIN. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel', 'namesearch', 'quotes', 'onecoin'] as const;
+   HEARTBEAT=on, HEARTBEAT_SLUG_ONECOIN. `accountwatch`: the account watch (loops/account-watch.ts), with
+   its own cap; with HEARTBEAT=on, HEARTBEAT_SLUG_ACCOUNTWATCH. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel', 'namesearch', 'quotes', 'onecoin', 'accountwatch'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 

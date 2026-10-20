@@ -117,6 +117,7 @@ import {
   PgStoryRepo,
   PgNarrativeRepo,
   PgQuoteTargetRepo,
+  PgWatchAccountRepo,
   asDb,
   createPool,
   withAdvisoryLock,
@@ -142,6 +143,7 @@ import { readingsMemory, readingsPass, type ReadingsResult } from './work/readin
 import { sortTop } from './work/sort-top.ts';
 import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
 import { quoteClock, quoteSearchPass, type QuoteSearchResult } from './work/quote-search.ts';
+import { accountWatchPass, accountWatchState, type AccountWatchResult } from './work/account-watch.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -226,6 +228,8 @@ export interface Runtime {
   readonly nameSearch: () => Promise<NarrativeNamesResult>;
   /** Big accounts' held posts' quotes searched at about 1 and 3 hours old, own ledger. See work/quote-search.ts. */
   readonly quoteSearch: () => Promise<QuoteSearchResult>;
+  /** The accounts whose posts get coined again and again, asked by name every few minutes, own ledger. See work/account-watch.ts. */
+  readonly accountWatch: () => Promise<AccountWatchResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -890,6 +894,8 @@ export async function withRuntime<T>(
       /* Where each narrative's name search last began, and which ages each big post was asked at (this process). */
       const nameClock = narrativeNameClock();
       const quotesAsked = quoteClock();
+      /* The account watch's list and each account's last answered ask (this process). */
+      const watchState = accountWatchState();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
       /* The feed's translations table (work/translate-posts.ts); its translator is built below, with the open model. */
@@ -1368,6 +1374,22 @@ export async function withRuntime<T>(
                 now: () => Date.now() as Millis,
               },
               quotesAsked,
+            ),
+          accountWatch: () =>
+            accountWatchPass(
+              {
+                sources: () => platforms.all(),
+                accounts: new PgWatchAccountRepo(db),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                uncredited: (ids) => repos.items.uncredited(ids),
+                ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'account-lane' })),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'account-watch' }),
+                now: () => Date.now() as Millis,
+              },
+              watchState,
             ),
           embedImages: () =>
             embedImages({
