@@ -103,6 +103,14 @@ export interface ChainwatchConfig {
    * read under that name; wiring.ts is the one place that knows whose it is. Never logged.
    */
   readonly tradeFeedKey: string | null;
+  /**
+   * The market data key the launch listing reads its pages with (COINGECKO_API_KEY, its plan from
+   * COINGECKO_API_PLAN: `demo`, otherwise the paid host — the same two variables the runner and
+   * the read service take). OPTIONAL: null reads the keyless listing, which the host's shared
+   * address gets refused on. With a key every page is billed against the plan the other services
+   * share, so the listing's pages are capped by the day in policy. Never logged.
+   */
+  readonly listingMarketKey: { readonly plan: 'pro' | 'demo'; readonly key: string } | null;
 
   readonly heartbeat: HeartbeatConfig;
 }
@@ -191,6 +199,8 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
   const tradeFeedKey = (env['HELIUS_API_KEY'] ?? '').trim() || null;
   if (tradeFeedKey !== null && !/^[A-Za-z0-9-]+$/.test(tradeFeedKey)) problems.push('HELIUS_API_KEY must be a bare key (letters, digits, dashes)');
   if (listingRpcUrl !== null && !/^https:\/\//.test(listingRpcUrl)) problems.push('LISTING_RPC_URL must be an https URL');
+  const marketKey = (env['COINGECKO_API_KEY'] ?? '').trim();
+  const listingMarketKey = marketKey === '' ? null : { plan: (env['COINGECKO_API_PLAN'] ?? '').trim() === 'demo' ? ('demo' as const) : ('pro' as const), key: marketKey };
 
   const mode = r.choice('HEARTBEAT', ['off', 'on'] as const);
   let heartbeat: HeartbeatConfig = { kind: 'off' };
@@ -258,6 +268,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     backoffMaxMs,
     listingRpcUrl,
     tradeFeedKey,
+    listingMarketKey,
     heartbeat,
   };
 }

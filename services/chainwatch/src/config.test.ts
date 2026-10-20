@@ -177,7 +177,7 @@ test('★ this process needs no paid credential, and a complete environment prov
   const cfg = loadChainwatchConfig(complete);
   assert.ok(cfg.databaseUrl.length > 0);
 
-  for (const paid of ['SOLANA_RPC_URL', 'HELIUS_API_KEY', 'ANTHROPIC_API_KEY', 'X_API_KEY']) {
+  for (const paid of ['SOLANA_RPC_URL', 'HELIUS_API_KEY', 'COINGECKO_API_KEY', 'ANTHROPIC_API_KEY', 'X_API_KEY']) {
     assert.equal(
       Object.hasOwn(complete, paid),
       false,
@@ -195,4 +195,10 @@ test('★ a paid RPC, if one is ever supplied, must not become required', () => 
   const withKey = { ...complete, SOLANA_RPC_URL: 'https://rpc.invalid', HELIUS_API_KEY: 'k' };
   assert.doesNotThrow(() => loadChainwatchConfig(withKey), 'a supplied key broke the boot');
   assert.doesNotThrow(() => loadChainwatchConfig(complete), 'the absence of a key broke the boot');
+});
+
+test('the launch listing reads keyed only when the market data key is set, on the paid host unless the plan says demo', () => {
+  assert.equal(loadChainwatchConfig(complete).listingMarketKey, null, 'no key: the keyless listing');
+  assert.deepEqual(loadChainwatchConfig({ ...complete, COINGECKO_API_KEY: ' k ' }).listingMarketKey, { plan: 'pro', key: 'k' });
+  assert.deepEqual(loadChainwatchConfig({ ...complete, COINGECKO_API_KEY: 'k', COINGECKO_API_PLAN: 'demo' }).listingMarketKey, { plan: 'demo', key: 'k' });
 });
