@@ -1866,6 +1866,51 @@ export interface FeedPolicy {
     readonly passDeadlineMs: number;
     readonly cap: LaneCapPolicy;
   };
+  /**
+   * ★ THE ACCOUNT WATCH (2026-10-20, "find viral posts sooner without raising the X day"). Every
+   * `everyMs`, the newest posts of the text source's accounts whose posts get coined again and
+   * again, asked `accountsPerAsk` accounts to a search, forward from each account's last answered
+   * ask, credited to the 'account' lane (0115), judged like any found post and free to reach For You.
+   *
+   * WHICH ACCOUNTS (store repo/watch-accounts.ts, re-read every `listEveryMs`): those with at least
+   * `minCoinedPosts` posts of `minReach` views or more that a coin launched within `coinWithinMs` of
+   * the post named, inside the last `lookbackMs`, most such posts first, at most `maxAccounts`. From
+   * our own coin links, never a list typed in, so an account that stops being coined drops off.
+   *
+   * Why: replayed on the coined posts of 2026-10-13 to 2026-10-20 that reached 100k views (1,003,
+   * coins 0 to 48 hours after the post), 304 were by accounts already on this list when they posted,
+   * and the catch-all searches found most of those only after their coin, many only through the
+   * coin's own link: a big account's post clears every floor, yet its coin often comes before a band
+   * asks. Asked every 3 minutes, about 99 more of them would have been found before their coin and
+   * about 54 more would have been on For You before it (the posts the judge said yes to, 3 minutes
+   * from found to shown); median 49 minutes earlier found.
+   *
+   * Cost: the text source bills a request one post at least, so an ask that finds nothing costs one
+   * post for the whole group and a busy one costs what it returns: about 124 accounts in 9 groups,
+   * 480 passes a day, ~3,800 billed empty asks plus 660 to 1,320 posts, $0.67 to $0.77 a day of
+   * search; with the judging of its new posts it is held by `cap` (internal.lane_spend, lane
+   * 'account', failing closed). A restart asks at most `maxWindowMs` back. A pass stops at
+   * `passDeadlineMs`; a group at `maxPagesPerAsk` pages.
+   *
+   * What breaks if changed carelessly: an `accountsPerAsk` past the adapter's group limit is refused
+   * there, every ask; a `minReach` far under 100k lets in the accounts that coin their own posts.
+   * Off: nothing here is read and nothing is asked.
+   */
+  readonly accountWatch: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly accountsPerAsk: number;
+    readonly maxAccounts: number;
+    readonly minCoinedPosts: number;
+    readonly minReach: number;
+    readonly lookbackMs: number;
+    readonly coinWithinMs: number;
+    readonly listEveryMs: number;
+    readonly maxWindowMs: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 /**
@@ -5390,6 +5435,38 @@ const POLICY_V1: Policy = {
       maxPagesPerAsk: 3,
       passDeadlineMs: 120_000,
       cap: { dailyUsd: 1, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+    },
+    /* On from 2026-10-20 ("find viral X posts sooner without raising X spend"), paid for by the quote
+       search and the backward name search going off (both below their own entries).
+       Replayed on the coined posts of 2026-10-13 to 2026-10-20 (coin 0-48 hours after the post), each
+       post's author on the list as it stood when the post went up (no look-ahead):
+         100k views or more: 1,003 posts, 183 found before their coin today, 32 on For You before it;
+         304 by listed accounts; every 3 minutes, +99 found before the coin and +54 on For You before
+         it (judge said yes, 3 minutes found to shown), median 49 minutes earlier found. Every 2
+         minutes: +106 and +55 for ~$0.32 a day more; every 5: +91 and +52 for ~$0.25 less.
+         500k views or more: 410 posts, 71 found before, 11 on For You before; +33 and +20, median
+         14 minutes earlier found.
+       Many coins on the biggest accounts come within a minute of the post (bots); no cadence beats
+       those, and they are counted as misses above.
+       Cost, from the listed accounts' held posts of the 7 days to 2026-10-20 (a lower bound on what
+       they post; doubled for the upper figure): 15 to a search, 9 groups, every 3 minutes, 4,320
+       asks a day of which ~3,800 come back empty, 660 to 1,320 posts: $0.67 to $0.77 a day of search.
+       20 to a search would be ~$0.10 less, at a query near the platform's length limit. The cap is
+       that plus the judging of its new posts at the live judge's price, with room for a busy day. */
+    accountWatch: {
+      on: true,
+      everyMs: 180_000, // every 3 minutes
+      accountsPerAsk: 15,
+      maxAccounts: 150,
+      minCoinedPosts: 2,
+      minReach: 100_000,
+      lookbackMs: 2_592_000_000, // 30 days
+      coinWithinMs: 172_800_000, // two days, the coin link's own window
+      listEveryMs: 3_600_000, // hourly
+      maxWindowMs: 900_000, // a quarter-hour back at most, after a restart
+      maxPagesPerAsk: 3,
+      passDeadlineMs: 90_000,
+      cap: { dailyUsd: 1.1, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
     },
   },
 
