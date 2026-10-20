@@ -12,6 +12,8 @@ import type { CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 import { createListing, type ChainDetails, type ListingDeps } from './listing.ts';
 
 const NOW = 1_800_000_000_000;
+/** A cap no test but the cap's own reaches. */
+const CREDITS = { accountsPerCall: 100, creditsPerCall: 1, dayCapCredits: 1_000 };
 
 function hit(address: string, ageS: number): CoinSearchHit {
   return { address, name: `name ${address}`, ticker: address.toUpperCase(), venue: 'curve', marketAddress: null, createdAt: NOW - ageS * 1_000, marketCapUsd: null, imageUrl: null, source: 'listing' };
@@ -66,7 +68,7 @@ function rig(pages: CoinSearchHit[][]): Rig {
 test('the first pass reads every page it may, and adds only the coins we do not hold', async () => {
   const r = rig([[hit('a', 5), hit('b', 10)], [hit('c', 20), hit('d', 30)], [hit('e', 40)]]);
   r.held.add('b');
-  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000, ...CREDITS });
   const res = await listing.pass();
   assert.deepEqual(r.pagesAsked, [1, 2, 3]);
   assert.deepEqual(r.added.map((a) => a.address).sort(), ['a', 'c', 'd', 'e']);
@@ -77,7 +79,7 @@ test('the first pass reads every page it may, and adds only the coins we do not 
 
 test('a later pass stops at the page that reaches the previous pass', async () => {
   const r = rig([[hit('a', 20), hit('b', 30)]]);
-  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 3, maxAgeMs: 1_800_000, ...CREDITS });
   await listing.pass();
   r.pagesAsked.length = 0;
   r.pages = [[hit('x', 1), hit('a', 20)], [hit('y', 60)], [hit('z', 90)]];
@@ -89,7 +91,7 @@ test('a later pass stops at the page that reaches the previous pass', async () =
 
 test('a pass that runs out of pages before the previous one says it fell behind', async () => {
   const r = rig([[hit('a', 100)]]);
-  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000, ...CREDITS });
   await listing.pass();
   r.pages = [[hit('n1', 1), hit('n2', 2)], [hit('n3', 3), hit('n4', 4)]];
   const res = await listing.pass();
@@ -100,7 +102,7 @@ test('a pass that runs out of pages before the previous one says it fell behind'
 
 test('a launch older than the age bar is not added', async () => {
   const r = rig([[hit('young', 60), hit('old', 3_600)]]);
-  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, ...CREDITS });
   await listing.pass();
   assert.deepEqual(r.added.map((a) => a.address), ['young']);
 });
@@ -108,7 +110,7 @@ test('a launch older than the age bar is not added', async () => {
 test('★ a chain read that fails still adds the coins, without a metadata link', async () => {
   const r = rig([[hit('a', 5)]]);
   r.detailsFail = true;
-  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, ...CREDITS });
   const res = await listing.pass();
   assert.equal(res.added, 1);
   assert.equal(res.withoutDetails, 1);
@@ -118,7 +120,7 @@ test('★ a chain read that fails still adds the coins, without a metadata link'
 
 test('★ a page that fails keeps the place, so the next pass reads the same pools again', async () => {
   const r = rig([[hit('a', 50)]]);
-  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000, ...CREDITS });
   await listing.pass();
   const failing = r.deps.page;
   (r.deps as { page: ListingDeps['page'] }).page = async () => {
@@ -137,7 +139,7 @@ test('★ a page that fails keeps the place, so the next pass reads the same poo
 
 test('★ a pass whose write fails keeps the place too', async () => {
   const r = rig([[hit('a', 50)]]);
-  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000 });
+  const listing = createListing(r.deps, { pagesPerPass: 2, maxAgeMs: 1_800_000, ...CREDITS });
   await listing.pass();
   const add = r.deps.add;
   (r.deps as { add: ListingDeps['add'] }).add = async () => {
@@ -161,7 +163,32 @@ test('nothing new is no chain read and no write', async () => {
     asked += 1;
     return details(a);
   };
-  const res = await createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000 }).pass();
+  const res = await createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, ...CREDITS }).pass();
   assert.equal(asked, 0);
   assert.equal(res.added, 0);
+});
+
+test('★ the chain reads stop at the day\'s credit cap; coins are still added, without details, and the cap is said once', async () => {
+  const r = rig([[hit('a', 5), hit('b', 10), hit('c', 15)]]);
+  let asked = 0;
+  const details = r.deps.details;
+  (r.deps as { details: ListingDeps['details'] }).details = async (a) => {
+    asked += 1;
+    return details(a);
+  };
+  /* Two coins a read, a credit each, two credits a day: the three coins need two reads. */
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, accountsPerCall: 2, creditsPerCall: 1, dayCapCredits: 2 });
+  const first = await listing.pass();
+  assert.equal(first.credits, 2);
+  assert.equal(asked, 1);
+  assert.equal(first.withoutDetails, 0);
+  r.pages = [[hit('d', 1)]];
+  const second = await listing.pass();
+  assert.equal(second.credits, 0);
+  assert.equal(asked, 1);
+  assert.equal(second.added, 1);
+  assert.equal(second.withoutDetails, 1);
+  r.pages = [[hit('e', 1)]];
+  await listing.pass();
+  assert.equal(r.notes.filter((n) => n.includes('credits are spent')).length, 1);
 });

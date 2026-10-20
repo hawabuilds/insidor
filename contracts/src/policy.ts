@@ -1339,6 +1339,14 @@ export interface LaunchListingPolicy {
   readonly pagesPerPass: number;
   readonly maxAgeMs: number;
   readonly timeoutMs: number;
+  /**
+   * ★ THE CHAIN READS' DAY (2026-10-20). A pass's chain read (one per `ACCOUNTS_PER_CALL` new coins,
+   * so one a pass in any traffic a pass's pages can hold) costs `creditsPerCall` of the key the
+   * trade feed uses, whose free day is about 33k credits and whose feed already takes 8–14k. At most
+   * `dayCapCredits` a UTC day; past it, listed coins are still added, without a metadata link.
+   */
+  readonly creditsPerCall: number;
+  readonly dayCapCredits: number;
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -5179,12 +5187,22 @@ const POLICY_V1: Policy = {
     feedFreshnessMs: 900_000,
     tickerLookbackMs: 604_800_000, // seven days
     tickerMinCoverage: 0.95,
+    /* On from 2026-10-20, its chain reads on the trade feed's keyed endpoint (never the public one).
+       The miss that turned it on: the "Laura" coin (Cg9z…) launched on the curve at 12:04:59 UTC
+       paired with a stock token rather than the chain's own, 8 minutes after the post it named; the
+       socket never sent it and nothing else listed it. Its curve pool is on the listing (the coin as
+       its base), so a pass would have added it about three minutes after launch (the listing's lag).
+       Credits: a pass reads at most 5 pages × 20 pools = 100 coins = one chain read, every 30 s:
+       2,880 reads a day at 1 credit, against the trade feed's 8–14k of the free 33k; the cap is that
+       day with a little room. */
     launchListing: {
-      on: false, // off until the listing reads chain accounts through our own chain provider (owner rule: no new outside service without asking)
+      on: true,
       everyMs: 30_000,
       pagesPerPass: 5,
       maxAgeMs: 1_800_000, // thirty minutes
       timeoutMs: 10_000,
+      creditsPerCall: 1,
+      dayCapCredits: 3_000,
     },
   },
 
