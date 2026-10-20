@@ -1,7 +1,7 @@
 /**
  * THE NOTIFICATIONS ABOUT A POST OR A NARRATIVE, AS COMPACT CARDS (the owner's approved design,
  * 2026-10-18). A row about a post is the post itself, drawn small: the reason on top with its icon
- * ("Rising fast, no coin yet", "First coin on a post you saved"), then a 62px cover (a play mark on a
+ * ("$PUMPKIN launched for a post you may have seen", "First coin on a post you saved"), then a 62px cover (a play mark on a
  * video, the site's badge), its words, who posted it and when, the green fact of how fast it is
  * gaining when the reason is that, its views at the right, and under a dashed rule the coin when it
  * has one. A narrative's row is the same card with a flame: its picture, its title, the last hour's
@@ -45,7 +45,7 @@ export function cardOf(a: Alert): RisingPost | null {
 function reasonOf(a: Alert): { readonly icon: ReactNode; readonly text: string } {
   if (a.kind === 'blowing_up' || a.kind === 'rising_post') return { icon: <TrendingUpIcon size={15} />, text: a.title };
   if (a.kind === 'watched_first_coin') return { icon: <CoinIcon size={15} />, text: 'First coin on a post you saved' };
-  if (a.kind === 'fyp_coin' || a.kind === 'fyp_proven' || a.kind === 'watch_coin' || a.kind === 'story_post') return { icon: <CoinIcon size={15} />, text: a.title };
+  if (a.kind === 'coin_launched' || a.kind === 'fyp_coin' || a.kind === 'fyp_proven' || a.kind === 'watch_coin' || a.kind === 'story_post') return { icon: <CoinIcon size={15} />, text: a.title };
   return { icon: <FlameIcon size={15} />, text: a.title };
 }
 
