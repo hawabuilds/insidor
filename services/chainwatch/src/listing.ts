@@ -26,6 +26,17 @@
  * trade feed's too, on a free day of 33k credits. One read asks `accountsPerCall` coins, so a pass
  * costs one read in ordinary traffic. Past the cap a pass skips the read, as if it had failed.
  *
+ * ★ THE LISTING PAGES ARE CAPPED BY THE DAY TOO (`dayCapPages`), because a keyed listing bills
+ * each page against a monthly plan other code shares. Spending is held to an even pace through
+ * the UTC day plus `paceSlackPages`: a pass that would run ahead is held, so a busy hour spaces
+ * the passes out (each then reads more pages back) rather than raising the day's total. 20 Oct:
+ * in its first 42 minutes the keyless listing began ten streaks of refusals (429, and one
+ * timeout) from the host's shared address and fell behind three times after them.
+ *
+ * ★ A PAGE REFUSED AFTER THE FIRST KEEPS WHAT WAS READ. The earlier pages' launches are added and
+ * the place is not moved, so the next pass reads back to the same previous pass. A refusal of the
+ * first page fails the pass as before.
+ *
  * ★ A CHAIN READ THAT FAILS DOES NOT STOP THE ADD. The coin is added with the listing's own name
  * and ticker and no metadata link, which costs it a picture; leaving it out would cost us the coin.
  *
@@ -68,6 +79,10 @@ export interface ListingOptions {
   readonly creditsPerCall: number;
   /** The most credits the chain reads may cost in a UTC day; past it, coins are added without details. */
   readonly dayCapCredits: number;
+  /** The most listing pages a UTC day may ask for; past it, passes read nothing until 00:00 UTC. */
+  readonly dayCapPages: number;
+  /** How many pages the day's asking may run ahead of an even pace before a pass is held. */
+  readonly paceSlackPages: number;
 }
 
 export interface ListingPassResult {
@@ -84,28 +99,67 @@ export interface ListingPassResult {
   readonly behind: boolean;
   /** Credits this pass's chain reads cost (counted when asked, whether or not they answered). */
   readonly credits: number;
+  /** Why the pass read no page at all: the day's page cap, or running ahead of the day's pace. */
+  readonly held: 'cap' | 'pace' | null;
+  /** A page after the first was refused: what the earlier pages listed is added, the place is kept. */
+  readonly refused: string | null;
 }
 
 export interface Listing {
   pass(): Promise<ListingPassResult>;
 }
 
+const DAY_MS = 86_400_000;
+
 export function createListing(deps: ListingDeps, opts: ListingOptions): Listing {
   /** The newest pool creation instant any completed pass saw. Null before the first. */
   let highWater: number | null = null;
   /** The chain reads' credits on the UTC day `day`, and whether the cap was said that day. */
   const spend = { day: '', credits: 0, capSaid: false };
+  /** The listing pages asked on the UTC day `day` (refused ones too), and whether their cap was said. */
+  const asked = { day: '', pages: 0, capSaid: false };
+
+  const nothing = (extra: Partial<ListingPassResult>): ListingPassResult => ({
+    listed: 0, fresh: 0, added: 0, withoutDetails: 0, pagesRead: 0, behind: false, credits: 0, held: null, refused: null, ...extra,
+  });
 
   return {
     async pass() {
+      /* ★ THE DAY'S PAGES: a keyed listing bills each page. Past `dayCapPages` nothing is read
+         until 00:00 UTC. Ahead of an even pace through the day by more than `paceSlackPages`,
+         the pass is held and the next one reads further back — so a busy hour spaces the passes
+         out instead of raising the day's total. */
+      const startMs = deps.now();
+      const today = new Date(startMs).toISOString().slice(0, 10);
+      if (asked.day !== today) Object.assign(asked, { day: today, pages: 0, capSaid: false });
+      if (asked.pages >= opts.dayCapPages) {
+        if (!asked.capSaid) {
+          asked.capSaid = true;
+          deps.note('launch listing: the day\'s listing pages are spent; nothing is listed until 00:00 UTC', { pages: asked.pages, capPages: opts.dayCapPages });
+        }
+        return nothing({ held: 'cap' });
+      }
+      if (asked.pages >= (opts.dayCapPages * (startMs % DAY_MS)) / DAY_MS + opts.paceSlackPages) return nothing({ held: 'pace' });
+
       const listed = new Map<string, CoinSearchHit>();
       let pagesRead = 0;
       let reached = false;
+      let refused: string | null = null;
       let newest: number | null = highWater;
 
-      for (let n = 1; n <= opts.pagesPerPass; n += 1) {
-        // A throw here fails the whole pass and leaves `highWater` where it was: see the header.
-        const hits = await deps.page(n);
+      for (let n = 1; n <= opts.pagesPerPass && asked.pages < opts.dayCapPages; n += 1) {
+        asked.pages += 1;
+        let hits: readonly CoinSearchHit[];
+        try {
+          hits = await deps.page(n);
+        } catch (e) {
+          // Nothing read: the whole pass fails and `highWater` stays where it was (see the header).
+          if (pagesRead === 0) throw e;
+          // ★ A REFUSAL PAST THE FIRST PAGE KEEPS WHAT WAS READ: those pages' launches are added,
+          // and the place is not moved, so the next pass reads back to the same previous pass.
+          refused = e instanceof Error ? e.message : String(e);
+          break;
+        }
         pagesRead += 1;
         if (hits.length === 0) {
           reached = true;
@@ -128,7 +182,8 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
         if (highWater !== null && oldestOnPage !== null && oldestOnPage <= highWater) reached = true;
       }
 
-      const behind = highWater !== null && !reached;
+      // A refused pass is not "behind": it keeps its place and the next pass reads back to it.
+      const behind = refused === null && highWater !== null && !reached;
       if (behind) {
         deps.note('launch listing fell behind; launches older than its last page and newer than the previous pass may be missing from it', {
           pagesRead,
@@ -140,8 +195,8 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
       const held = await deps.known(young.map((h) => h.address));
       const fresh = young.filter((h) => !held.has(h.address));
       if (fresh.length === 0) {
-        highWater = newest;
-        return { listed: listed.size, fresh: 0, added: 0, withoutDetails: 0, pagesRead, behind, credits: 0 };
+        if (refused === null) highWater = newest;
+        return nothing({ listed: listed.size, pagesRead, behind, refused });
       }
 
       /* ★ THE DAY'S CREDIT CAP: the chain reads share a key's free day with the trade feed. Past the
@@ -173,11 +228,11 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
         fresh.map((hit) => ({ hit, details: details.get(hit.address) ?? null })),
         nowMs,
       );
-      // Only now: a pass that failed anywhere above is read again from the same place.
-      highWater = newest;
+      // Only now, and not after a refusal: a pass that failed anywhere above is read again from the same place.
+      if (refused === null) highWater = newest;
       const addedSet = new Set(added);
       const withoutDetails = fresh.filter((h) => addedSet.has(h.address) && !details.has(h.address)).length;
-      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind, credits };
+      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind, credits, held: null, refused };
     },
   };
 }

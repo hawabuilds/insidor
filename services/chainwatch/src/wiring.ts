@@ -259,6 +259,9 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
       creditsPerCall: lp.creditsPerCall,
       /* No chain to read: nothing is spent, whatever the cap says. */
       dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits,
+      /* The free plan bills nothing: no page cap, no pace. */
+      dayCapPages: Number.POSITIVE_INFINITY,
+      paceSlackPages: Number.POSITIVE_INFINITY,
     },
   );
 }

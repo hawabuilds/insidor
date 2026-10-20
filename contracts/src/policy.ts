@@ -1334,7 +1334,8 @@ export interface AssetPolicy {
  * - `pagesPerPass`: how far back a pass may read. A page holds 20 pools (about 30 s of launches
  *   at a busy hour) and a pass reads until it meets the previous one, plus one page for the
  *   cache's skew: two to four pages in ordinary traffic. Each page is one request on a free API
- *   that allows about 30 a minute per address, shared with whatever else runs there.
+ *   that allows about 30 a minute per address, shared with whatever else runs there — or, with
+ *   the plan's key, one credit, counted against `dayCapPages`.
  * - `maxAgeMs`: a listed launch older than this is not added. The listing is for launches the
  *   socket missed now, not a backfill of history.
  * - `timeoutMs`: one request's limit, listing or chain read alike.
@@ -1358,6 +1359,16 @@ export interface LaunchListingPolicy {
    */
   readonly creditsPerCall: number;
   readonly dayCapCredits: number;
+  /**
+   * ★ THE LISTING'S OWN DAY (2026-10-20), when it reads with the market data plan's key. Keyless,
+   * from the host's shared address, it was refused (429) often enough to fall behind; keyed, each
+   * page is one credit of a monthly plan (500k) whose other readers already take about 8.4k a day.
+   * At most `dayCapPages` pages a UTC day, and never more than an even pace through the day plus
+   * `paceSlackPages`: a pass that would run ahead is held, and the next one reads further back, so
+   * a busy hour spaces the passes out instead of raising the day. Not applied keyless.
+   */
+  readonly dayCapPages: number;
+  readonly paceSlackPages: number;
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -5244,11 +5255,20 @@ const POLICY_V1: Policy = {
     launchListing: {
       on: true,
       everyMs: 30_000,
-      pagesPerPass: 5,
+      /* 10 (the vendor's last page) from 20 Oct: a pass reads only as far as the previous one plus a
+         page, so the depth is paid for only after a held or refused pass. In a 10-minute keyed test
+         at 32 launches a minute one pass in 31 needed 7 pages; 5 would have fallen behind there. */
+      pagesPerPass: 10,
       maxAgeMs: 1_800_000, // thirty minutes
       timeoutMs: 10_000,
       creditsPerCall: 1,
       dayCapCredits: 3_000,
+      /* Measured 20 Oct, 10 minutes keyed against every launch on the chain (32 a minute): 2.5 pages
+         a pass every 30 s, about 7,200 a day at that rate. The cap holds it to 6,000 (a pass in six
+         held, the next reading further back), which keeps the plan's month at (8.4k + 6k) × 31 ≈
+         446k of 500k at the other readers' month-to-date rate. The slack is an hour of the cap. */
+      dayCapPages: 6_000,
+      paceSlackPages: 250,
     },
   },
 
