@@ -268,6 +268,17 @@ export interface TrackPolicy {
    */
   readonly offForYouPerPostMaxAgeMs: number;
   /**
+   * ★ A YES IS READ UNTIL IT JOINS (the coordinator's brief, 2026-10-20, for the owner). A post a lane
+   * found that the judge said yes to — its newest answer passing the per-post rule — and that is not on
+   * For You keeps being re-read until it joins or is this old by its post time, whatever its views
+   * rate: it is pulled first, read first inside the re-read day, and the three-hour cut above does not
+   * stop it before this age. Measured over 13-20 Oct: about 259 such text posts a day, 85 of them
+   * never read again after the yes (the Laura video: judged yes at 0.8, its views last read 47 minutes
+   * before, never again). Their full grid to six hours is about 4,500 more reads a day ($0.68), taken
+   * inside the re-read day's own allowance, ahead of the reads that are not a yes.
+   */
+  readonly judgedYesMaxAgeMs: number;
+  /**
    * ★ A POST ON FOR YOU WAITS THIS MANY TIMES ITS INTERVAL between TRACK's re-reads (the owner,
    * 2026-10-20): its tier's minutes, or in its first hours its hot, warm or cold minutes. Its views
    * on screen are kept current by the readings loop (`feed.readings`, every 4 to 30 minutes while it
@@ -4780,6 +4791,8 @@ const POLICY_V1: Policy = {
     offFeedMaxAgeMs: 43_200_000,
     /* Three hours, for the source billed per post (see TrackPolicy). */
     offForYouPerPostMaxAgeMs: 10_800_000,
+    /* Six hours: For You's own age limit (rising.fypMaxAgeMs). */
+    judgedYesMaxAgeMs: 21_600_000,
     /* Half as often on For You. */
     onForYouIntervalFactor: 2,
 

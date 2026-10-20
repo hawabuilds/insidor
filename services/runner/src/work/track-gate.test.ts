@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { offFeedTooOld, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
+import { judgedYesUnshown, offFeedTooOld, rereadsThatFit, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -115,4 +115,26 @@ test('the three-hour cut keeps For You (frame or scroll), Popular\'s frame, youn
   assert.equal(offForYouPerPostTooOld('a', true, null, now, facts(), P), false);
   /* billed by the run: the twelve-hour cut is the one that applies */
   assert.equal(offForYouPerPostTooOld('a', false, old, now, facts(), P), false);
+});
+
+test('★ a found yes not on For You is read until it joins, up to its own age limit', () => {
+  const now = 1_800_000_000_000;
+  const H = 3_600_000;
+  const found = facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]) });
+  assert.equal(judgedYesUnshown('a', now - 5 * H, now, found, P), true, 'past the three-hour cut, inside six hours');
+  assert.equal(judgedYesUnshown('a', now - P.track.judgedYesMaxAgeMs - 1, now, found, P), false, 'aged out');
+  assert.equal(judgedYesUnshown('a', null, now, found, P), false, 'no time: not shown to be young');
+  assert.equal(judgedYesUnshown('a', now - H, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), onForYou: new Set(['a']) }), P), false, 'joined: the usual reads');
+  assert.equal(judgedYesUnshown('a', now - H, now, facts({ judged: new Map([['a', yes]]) }), P), false, 'no lane found it: For You never reads it');
+  assert.equal(judgedYesUnshown('a', now - H, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', nearYes]]) }), P), false, 'a yes under the bar is not a yes');
+  assert.equal(judgedYesUnshown('a', now - H, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]) }), P), false);
+});
+
+test('★ a short re-read day reads the yeses that fit and nothing else; a full one reads the batch; an unread bill reads none', () => {
+  assert.equal(rereadsThatFit(10, 3, 0.0015, 4, 5), 10, 'it all fits');
+  assert.equal(rereadsThatFit(10, 3, 0.0015, 4.9995, 5), 3, 'room for three reads: the three yeses');
+  assert.equal(rereadsThatFit(10, 3, 0.0015, 4.99975, 5), 1, 'room for one: one yes');
+  assert.equal(rereadsThatFit(10, 0, 0.0015, 4.9995, 5), 0, 'no yes: paused as before');
+  assert.equal(rereadsThatFit(10, 3, 0.0015, 5.1, 5), 0, 'over: none');
+  assert.equal(rereadsThatFit(10, 3, 0.0015, null, 5), 0, 'the bill unread: none');
 });
