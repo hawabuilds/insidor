@@ -322,6 +322,14 @@ export interface Item {
   readonly rebroadcastOf: ItemId | null;
   /** Added ONE new authorship. The signal we sell. */
   readonly reproductionOf: ItemId | null;
+  /**
+   * Other posts of the same source that the post's own links name, in the order they appear — a
+   * post pointing at another by URL rather than by quoting it ("this is going viral: <link>").
+   * Absent when the source did not say what its links are (an unread link is not "names nothing");
+   * empty when it said and none is a post. Kept apart from `reproductionOf`, which counts as a
+   * reproduction everywhere: a link in passing is not one.
+   */
+  readonly refersTo?: readonly ItemId[];
 
   /** Reusable templates — a sound, an effect, a layout. Free carrier joins. */
   readonly formatIds: readonly string[];

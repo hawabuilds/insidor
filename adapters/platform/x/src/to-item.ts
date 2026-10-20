@@ -8,12 +8,13 @@
  * test rather than a sentence in a vendor file.
  */
 
-import type { Author, Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterSet, Fingerprint, Item, ItemId, MediaRef, Millis } from '@insidor/contracts';
 import { authorKey, itemId } from '@insidor/contracts/ids.ts';
 import { arr, cashtagKey, dateToMillis, hashtagKey, num, rec, shingles, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
 
 import { FIDELITY, SOURCE } from './capabilities.ts';
+import { parseLink } from './post-time.ts';
 
 /* ── counters ─────────────────────────────────────────────────────────── */
 
@@ -121,6 +122,30 @@ function fingerprints(r: Rec, text: string): readonly Fingerprint[] {
   return out;
 }
 
+/* ── links to other posts ─────────────────────────────────────────────── */
+
+/**
+ * The posts this post's own links name, from the vendor's link entities: the text carries each link
+ * shortened, and only the expanded form says it is a post on this source. A post linking another
+ * this way points at it as a quote does (a coin's launcher explaining someone else's viral post),
+ * and nothing else in the payload records it. Its own id is dropped (a link to its own video), and
+ * repeats are kept once, in the order they appear. Undefined when the payload has no link entities
+ * at all: the vendor did not say, which is not "links nothing".
+ */
+function refersTo(r: Rec, ownId: string): readonly ItemId[] | undefined {
+  const ents = r.entities;
+  if (ents === null || ents === undefined || typeof ents !== 'object') return undefined;
+  const out: ItemId[] = [];
+  for (const u of arr(rec(ents).urls)) {
+    const expanded = str(rec(u).expanded_url);
+    const parsed = expanded === null ? null : parseLink(expanded);
+    if (parsed?.kind !== 'post' || parsed.sourceItemId === ownId) continue;
+    const id = itemId(SOURCE, parsed.sourceItemId);
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
 /* ── the translation ──────────────────────────────────────────────────── */
 
 /**
@@ -168,6 +193,11 @@ export function toItem(raw: unknown, at: Millis): Item {
     reproductionOf: (() => {
       const src = str(rec(r.quoted_tweet).id) ?? str(r.quoted_status_id_str);
       return src === null ? null : itemId(SOURCE, src);
+    })(),
+
+    ...(() => {
+      const refs = refersTo(r, id);
+      return refs === undefined ? {} : { refersTo: refs };
     })(),
 
     // This source has no reusable format object — no shared sound, no template
