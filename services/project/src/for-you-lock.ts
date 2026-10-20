@@ -54,7 +54,25 @@ export async function frameCursor(db: Db): Promise<QuickCursor> {
   return { answerId: r?.answer_id === null || r?.answer_id === undefined ? 0 : Number(r.answer_id), atMs: ms(r?.now) ?? 0 };
 }
 
-/** The posts that changed past the cursor: every post with an answer filed after its answer id, and every post the judge passed that a coin linked, or the owner called, after its time. */
+/**
+ * The coin-first route's posts whose coin was picked after the cursor's time (0113, 0116): the pick is
+ * what lets such a post in (coin-first.ts). Empty before 0116.
+ */
+export async function pickedCoinFirst(db: Db, cursor: QuickCursor): Promise<readonly string[]> {
+  /* Looked up first: a failed statement would abort the frame's transaction. */
+  const present = await db.query<{ t: string | null }>(`select to_regclass('internal.coin_first_post')::text as t`);
+  if ((present[0]?.t ?? null) === null) return [];
+  const rows = await db.query<{ item_id: string }>(
+    `select p.item_id from internal.post_coin_pick p
+       join internal.coin_first_post c on c.item_id = p.item_id
+      where p.outcome = 'picked' and p.decided_at > $1
+      limit $2`,
+    [new Date(cursor.atMs).toISOString(), MAX_CHANGED],
+  );
+  return rows.map((r) => r.item_id);
+}
+
+/** The posts that changed past the cursor: every post with an answer filed after its answer id, every post the judge passed that a coin linked, or the owner called, after its time, and every coin-first post picked since. */
 export async function changedPosts(db: Db, cursor: QuickCursor): Promise<readonly string[]> {
   const rows = await db.query<{ item_id: string }>(
     `(select distinct item_id from internal.post_judgement where id > $1 order by item_id limit $3)
@@ -72,5 +90,6 @@ export async function changedPosts(db: Db, cursor: QuickCursor): Promise<readonl
        limit $3)`,
     [cursor.answerId, new Date(cursor.atMs).toISOString(), MAX_CHANGED],
   );
-  return rows.map((r) => r.item_id);
+  const picked = await pickedCoinFirst(db, cursor);
+  return [...new Set([...rows.map((r) => r.item_id), ...picked])];
 }

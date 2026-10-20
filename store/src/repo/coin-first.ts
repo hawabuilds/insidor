@@ -9,7 +9,9 @@
  *
  * ★ SAFE BEFORE 0116. Every read answers "nothing" and every write is skipped while the table is
  * missing, so a runner deployed before the migration runs the route empty instead of failing its
- * loop every few seconds.
+ * loop every few seconds. The table is looked up first (`to_regclass`), never found missing by a
+ * failed statement: the projector calls this inside its frame's transaction, which a failed
+ * statement would abort.
  *
  * ★ ONE HOP, BOTH WAYS THE SAME. Forward (the runner): a coin's linked post, and the post that linked
  * post reposts or quotes (`reproduction_of` / `rebroadcast_of`). Backward (who ties a post): coins
@@ -81,12 +83,22 @@ const splitId = (id: string): [string, string] => {
 
 export class PgCoinFirstRepo {
   readonly #db: Db;
+  #present: boolean | null = null;
 
   constructor(db: Db) {
     this.#db = db;
   }
 
+  /** Whether 0116 is applied; asked once per repo, and again until it is. */
+  async present(): Promise<boolean> {
+    if (this.#present === true) return true;
+    const rows = await this.#db.query<{ t: string | null }>(`select to_regclass('internal.coin_first_post')::text as t`);
+    this.#present = (rows[0]?.t ?? null) !== null;
+    return this.#present;
+  }
+
   async #guard<T>(empty: T, run: () => Promise<T>): Promise<T> {
+    if (!(await this.present())) return empty;
     try {
       return await run();
     } catch (e) {

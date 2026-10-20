@@ -13,6 +13,10 @@
  * For You also takes a post a coin vouches for (`rising.coinLinked`, core `coinVouches`): the first
  * observed coin naming it launched within six hours of the post, which had 5,000 approvals. The
  * coin stands in for the views only; the judge, the kind and the six hours still decide.
+ * ★ And For You takes a post by the coin-first route (`rising.coinFirst`, coin-first.ts): a coin whose
+ * own link ties it (or its repost, one hop) launched within 48 hours of the post, the judge said yes,
+ * and the one-coin rule picked that coin. No view bar, score bar, six hours or junk bar for it; the
+ * post may be up to two days old, so it is loaded and counted in the window whatever its age.
  * With `rising.fypMaxAgeOn`, For You also turns away a post over `rising.fypMaxAgeMs` old unless it
  * is still growing fast (fyp-freshness.ts) — but only one that is not on it yet: a post already on
  * For You (feed-members.ts, 0075) stays while it is inside the window (the owner, 2026-10-14: the
@@ -115,6 +119,7 @@ import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.
 /** The source whose posts are held to the short-video bars. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
+import { coinFirstLets, loadCoinFirst, recordAdmitted } from './coin-first.ts';
 import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
@@ -529,6 +534,12 @@ export interface RisingFrame {
    * without 0075. A member the judge has since turned down is here too: it keeps its place.
    */
   readonly members: readonly WireRisingPost[];
+  /**
+   * The posts this frame lets onto For You by the coin-first route alone (coin-first.ts): not members
+   * yet, and no other gate would have let them in. The writer records the ones it shows (0116); never
+   * sent. Absent on a frame built by hand.
+   */
+  readonly coinFirst?: ReadonlySet<string>;
 }
 
 /** What a post's newest split crypto read said (0064): other accounts' coin talk, and the author's own. */
@@ -722,7 +733,9 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null);
+  /* ★ THE COIN-FIRST ROUTE's posts (coin-first.ts): loaded whatever their age, as a member is. */
+  const coinFirst = await loadCoinFirst(db, nowMs, policy, only, membership === null ? [] : [...membership.fyp]);
+  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
@@ -733,7 +746,7 @@ export async function buildRising(
   const netOnly = new Set<string>();
   const rows = candidates.filter((row) => {
     const { why, route } = postRoute(row, policyForAnswer(row.judge_id, answers), cryptoSignalFor(row, crypto.get(row.item_id), policy));
-    const inWindow = atOf(row) >= sinceMs;
+    const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id);
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
@@ -806,8 +819,23 @@ export async function buildRising(
       readings: views, postedAtMs: postedAt, reachScale: scale, attention: attention.get(row.item_id) ?? null,
     }, policy), fit);
     const underBar = underScoreBar(score, policy.rising.scorePassBar, row.owner_call ?? null);
+    const member = membership?.fyp.has(row.item_id) === true;
+    /* ★ THE COIN-FIRST ROUTE: the judge's own yes (never the safety net), and the pick a coin that ties it. */
+    const check = checks.get(row.item_id);
+    const pick = picks.get(row.item_id);
+    const byCoin = coinFirst.records.has(row.item_id) && coinFirstLets({
+      itemId: row.item_id,
+      postedAtMs: postedAt,
+      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id),
+      pick: pick === undefined ? null : { outcome: pick.outcome, address: pick.address },
+      member,
+      ownerNone: check?.none === true,
+      wrong: check?.wrong ?? new Set(),
+    }, coinFirst, nowMs, policy);
+    const byViews = !underBar && (clearsReachBar('fyp', barViews, postedAt, policy, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     return {
       passes: passing.has(row.item_id),
+      byCoin,
       score,
       underBar,
       post: withPick(row, projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
@@ -821,13 +849,14 @@ export async function buildRising(
       }, checks.get(row.item_id) ?? null), lookup),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: !underBar && (clearsReachBar('fyp', barViews, postedAt, policy, scale) || coinVouchesFor(vouch.get(row.item_id), policy)),
+      fyp: byViews || byCoin,
+      byViews,
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
       fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
       /* ★ The six hours only stop a post JOINING For You late (the owner, 2026-10-14): a post already
          on it (feed-members.ts) stays while it is inside the window and passes. */
-      member: membership?.fyp.has(row.item_id) === true,
+      member,
       unread: barViews.every((v) => v.reach === null),
       popular: clearsReachBar('popular', barViews, postedAt, policy, scale),
     };
@@ -848,8 +877,11 @@ export async function buildRising(
   /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
      the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
      this bar only stop a post joining, so neither records a reason. */
-  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && p.fresh && !p.member).map((p) => p.post.id), policy);
-  const fypAll = posts.filter((p) => p.passes && p.fyp && (p.member || (p.fresh && !junk.has(p.post.id)))).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && p.fresh && !p.member && !p.byCoin).map((p) => p.post.id), policy);
+  /* By the views and the other gates, or by the coin-first route, which none of the six hours and the junk bar hold. */
+  const byGates = (p: (typeof posts)[number]): boolean => p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
+  const fypAll = posts.filter((p) => p.passes && (byGates(p) || p.byCoin)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const coinFirstAlone = new Set(posts.filter((p) => p.passes && p.byCoin && !p.member && !byGates(p)).map((p) => p.post.id));
   /* ★ No one topic fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = policy.rising.varietyOn ? await varied(db, fypAll, rows, policy) : fypAll;
   const views = (p: WireRisingPost): number | null => p.reach.v;
@@ -874,7 +906,7 @@ export async function buildRising(
   /* A member's list of same-named coins is kept with its card, so See N coins opens on an old card too. */
   for (const p of posts) if (!ids.has(p.post.id) && membership?.all.has(p.post.id) === true && p.sameName.length > 0) sameName.set(p.post.id, p.sameName);
   for (const id of sameName.keys()) evidenceOf(id);
-  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members };
+  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members, coinFirst: coinFirstAlone };
 }
 
 /**
@@ -1131,5 +1163,7 @@ export async function projectRisingFeeds(
   await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
   const written = (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
   if (membership !== null) await writeMembership(db, nowMs, frame, frame.members, membership.refresh);
+  /* The posts shown by the coin-first route alone: recorded once, so each joins by it once (0116). */
+  await recordAdmitted(db, frame.fyp.filter((p) => frame.coinFirst?.has(p.id) === true).map((p) => p.id), nowMs);
   return written;
 }
