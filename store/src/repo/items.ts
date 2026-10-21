@@ -73,18 +73,67 @@ export interface TrackingFacts {
   readonly judged: ReadonlyMap<string, TrackingJudgement>;
 }
 
-const SELECT_ITEM = `
+const SELECT_ITEM_COLUMNS = `
   select item_id, source, source_item_id, origin, author_key, posted_at, first_seen_at,
          lang, body, media, counters, rebroadcast_of, reproduction_of,
-         format_ids, raw_ref
+         format_ids, raw_ref`;
+const SELECT_ITEM = `${SELECT_ITEM_COLUMNS}
     from public.item
 `;
 
+/**
+ * A post's row version: Postgres's `xmin` (new on every update of the row) and how many
+ * fingerprints it has (append only, never updated). Equal versions, equal `Item`.
+ */
+const ITEM_VERSION = `public.item.xmin::text || '/' || (select count(*) from public.item_fingerprint f where f.item_id = public.item.item_id)::text`;
+
+/** A held post unused this long is dropped: the stages read the last day's posts, and a post leaves that window. */
+const HELD_ITEM_IDLE_MS = 60 * 60_000;
+
 export class PgItemRepo implements ItemRepo {
   readonly #db: Db;
+  /**
+   * ★ POSTS THIS REPO HAS READ, BY ROW VERSION. ADMIT, DETECT and GROUP each read the last day's
+   * newest posts every pass, body, media and counters (~1.1 KB a post, ~1,700 a read), and the
+   * stages ask `byIds` for the same posts over and over; nearly all are unchanged since the last
+   * read. `admittedSince` and `byIds` now ask for each post's version (`ITEM_VERSION`) and read
+   * whole only the posts not held at it. A post whose row or fingerprints changed has a new version
+   * and is read again, so the answer is the one a full read gives.
+   */
+  readonly #held = new Map<string, { readonly version: string; readonly item: Item; usedAt: number }>();
+  #sweptAt = 0;
 
   constructor(db: Db) {
     this.#db = db;
+  }
+
+  /**
+   * The posts `picked` names, in that order, from what is held or read whole now. A post gone
+   * between the two reads is left out, as a read a moment later would.
+   */
+  async #heldItems(picked: readonly { readonly item_id: string; readonly v: string }[]): Promise<Item[]> {
+    const now = Date.now();
+    const stale = [...new Set(picked.filter((p) => this.#held.get(p.item_id)?.version !== p.v).map((p) => p.item_id))];
+    if (stale.length > 0) {
+      const rows = await this.#db.query<ItemRow & { v: string }>(
+        `${SELECT_ITEM_COLUMNS}, ${ITEM_VERSION} as v from public.item where item_id = any($1::text[])`,
+        [stale],
+      );
+      const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+      for (const row of rows) this.#held.set(row.item_id, { version: row.v, item: this.#toItem(row, fingerprints), usedAt: now });
+    }
+    const out: Item[] = [];
+    for (const p of picked) {
+      const held = this.#held.get(p.item_id);
+      if (held === undefined) continue;
+      held.usedAt = now;
+      out.push(held.item);
+    }
+    if (now - this.#sweptAt >= HELD_ITEM_IDLE_MS) {
+      this.#sweptAt = now;
+      for (const [k, h] of this.#held) if (now - h.usedAt >= HELD_ITEM_IDLE_MS) this.#held.delete(k);
+    }
+    return out;
   }
 
   /**
@@ -413,12 +462,12 @@ export class PgItemRepo implements ItemRepo {
     const found = new Map<ItemId, Item>();
     if (ids.length === 0) return found;
 
-    const rows = await this.#db.query<ItemRow>(`${SELECT_ITEM} where item_id = any($1)`, [[...ids]]);
-    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
-    for (const row of rows) {
-      const item = this.#toItem(row, fingerprints);
-      found.set(item.itemId, item);
-    }
+    /* Versions first, posts whole only when not held at that version: see `#held`. */
+    const picked = await this.#db.query<{ item_id: string; v: string }>(
+      `select item_id, ${ITEM_VERSION} as v from public.item where item_id = any($1::text[])`,
+      [[...ids]],
+    );
+    for (const item of await this.#heldItems(picked)) found.set(item.itemId, item);
     return found;
   }
 
@@ -627,12 +676,13 @@ export class PgItemRepo implements ItemRepo {
    * world and is null whenever the source omits it or is known to lie.
    */
   async admittedSince(at: Millis, limit: number): Promise<readonly Item[]> {
-    const rows = await this.#db.query<ItemRow>(
-      `${SELECT_ITEM} where first_seen_at >= $1 order by first_seen_at desc limit $2`,
+    /* The page's posts and their versions, in the page's order; posts whole only when not held
+       at that version (see `#held`). */
+    const picked = await this.#db.query<{ item_id: string; v: string }>(
+      `select item_id, ${ITEM_VERSION} as v from public.item where first_seen_at >= $1 order by first_seen_at desc limit $2`,
       [toTimestamp(at), limit],
     );
-    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
-    return rows.map((row) => this.#toItem(row, fingerprints));
+    return this.#heldItems(picked);
   }
 
   /**

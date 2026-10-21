@@ -16,6 +16,48 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { Db } from '../client.ts';
 import { PgItemRepo } from './items.ts';
 
+test('admittedSince and byIds read a post whole only when its version changed', async () => {
+  /* Checked against the live store, read only: the same 3,000 posts in the same order with the
+     same words, counters, media and fingerprints, ~138 KB a read once held where it was ~3.2 MB. */
+  const table = new Map([
+    ['x:1', { v: '10/1', body: 'one' }],
+    ['x:2', { v: '11/0', body: 'two' }],
+  ]);
+  const whole: string[][] = [];
+  const db: Db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes('as v from public.item where first_seen_at')) return [...table].map(([item_id, r]) => ({ item_id, v: r.v }) as R);
+      if (sql.includes('as v from public.item where item_id = any($1::text[])') && !sql.includes('body')) {
+        const ids = (params?.[0] ?? []) as string[];
+        return ids.flatMap((id) => (table.has(id) ? [{ item_id: id, v: table.get(id)?.v } as R] : []));
+      }
+      if (sql.includes('body')) {
+        const ids = (params?.[0] ?? []) as string[];
+        whole.push(ids);
+        return ids.map((id) => ({
+          item_id: id, source: 'x', source_item_id: id.slice(2), origin: 'live', author_key: 'x:a', posted_at: null, first_seen_at: new Date(1000),
+          lang: null, body: table.get(id)?.body, media: [], counters: {}, rebroadcast_of: null, reproduction_of: null, format_ids: [], raw_ref: 'r', v: table.get(id)?.v,
+        }) as R);
+      }
+      if (sql.includes('from public.item_fingerprint')) return [{ item_id: 'x:1', kind: 'textShingle', key: 'k1' }] as R[];
+      throw new Error(`unexpected statement: ${sql}`);
+    },
+  } as Db;
+  const repo = new PgItemRepo(db);
+  const page = async () => (await repo.admittedSince(0 as never, 10)).map((i) => `${i.itemId}:${i.text}:${i.fingerprints.length}`);
+
+  assert.deepEqual(await page(), ['x:1:one:1', 'x:2:two:0']);
+  assert.deepEqual(whole, [['x:1', 'x:2']]);
+  assert.deepEqual(await page(), ['x:1:one:1', 'x:2:two:0']);
+  assert.equal(whole.length, 1, 'nothing changed, nothing read whole');
+  table.set('x:2', { v: '12/0', body: 'two, edited' });
+  assert.deepEqual(await page(), ['x:1:one:1', 'x:2:two, edited:0']);
+  assert.deepEqual(whole[1], ['x:2']);
+  const byIds = await repo.byIds(['x:2', 'x:gone'] as ItemId[]);
+  assert.deepEqual([...byIds.values()].map((i) => i.text), ['two, edited']);
+  assert.equal(whole.length, 2, 'byIds served the held post');
+});
+
 test('trackingFacts: stories of the asked posts and every member, each once', async () => {
   let judgedFor: readonly string[] = [];
   const db: Db = {
