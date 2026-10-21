@@ -3613,6 +3613,31 @@ export interface LanguageDropPolicy {
 }
 
 /**
+ * ★ INVITE-ONLY ACCESS (services/social invites.ts, 0120). Every member holds `perMember`
+ * single-use codes; someone with none joins the waitlist; the owner lets the next people in and
+ * makes partner codes that work many times up to a cap. Everyone who had signed in before 0120
+ * kept their access. Numbers only: who is a member is a row, never a setting.
+ */
+export interface InvitePolicy {
+  /** Single-use codes every member holds, before any the owner gives everyone on top. */
+  readonly perMember: number;
+  /** Characters in a member's code, from an alphabet with no look-alikes (no 0, O, 1, I, L). */
+  readonly codeLength: number;
+  /** A partner code's cap when the owner names none. */
+  readonly partnerDefaultUses: number;
+  /** The most one partner code may be used: a slip of the finger does not open the doors. */
+  readonly partnerMaxUses: number;
+  /** The most the owner lets in from the waitlist in one tap. */
+  readonly maxLetIn: number;
+  /** The most extra codes the owner gives everyone in one tap. */
+  readonly maxGive: number;
+  /** Rows on the owner's top inviters list. */
+  readonly topInviters: number;
+  /** People a member sees under "Joined with your codes", newest first. */
+  readonly joinedShown: number;
+}
+
+/**
  * ★ WHO THE OWNER IS. Owner-only controls (the "Not a meme" / "Is a meme" buttons, feedback on coin
  * matches and names, "Add missed posts") and owner-only alerts go to a signed-in person whose
  * wallet or X handle is listed here — never anyone else, whatever the app shows them.
@@ -4616,6 +4641,8 @@ export interface Policy {
   readonly wallet: WalletPolicy;
   readonly social: SocialPolicy;
   readonly owner: OwnerPolicy;
+  /** Invite-only access: members' codes, partner codes and the waitlist. */
+  readonly invites: InvitePolicy;
   readonly learning: LearningPolicy;
   readonly notify: NotifyPolicy;
   readonly rank: RankPolicy;
@@ -6025,6 +6052,19 @@ const POLICY_V1: Policy = {
   owner: {
     wallets: ['A1e82D9Lw4irgKMpXRpJbvLw8c7xCCyA42NdcxzKvvdL'],
     xHandles: ['hawabuilds'],
+  },
+
+  invites: {
+    /* The coordinator's defaults for the owner, 2026-10-21: three each, a partner code for a
+       hundred people, and caps on what one tap of the owner's can do. */
+    perMember: 3,
+    codeLength: 8,
+    partnerDefaultUses: 100,
+    partnerMaxUses: 10_000,
+    maxLetIn: 500,
+    maxGive: 10,
+    topInviters: 10,
+    joinedShown: 100,
   },
 
   learning: {
