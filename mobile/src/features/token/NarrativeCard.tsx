@@ -24,7 +24,7 @@ export function NarrativeCard({ story, coinAddress }: { story: Story; coinAddres
   return (
     <a className={styles['card']} href={hrefFor({ screen: 'story', storyId: story.id })} aria-label={`Open the ${f.title} narrative`}>
       <span className={styles['pic']}>
-        <Thumb url={story.thumbUrl} size={48} radius={12} />
+        <Thumb url={story.thumbUrl} file={story.thumbFile} size={48} radius={12} />
       </span>
       <span className={styles['text']}>
         <b className={styles['title']}>{f.title}</b>

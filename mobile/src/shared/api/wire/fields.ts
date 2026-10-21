@@ -52,6 +52,8 @@ export const STORY_FIELDS = [
   'title',
   'summary',
   'thumbUrl',
+  /* Our stored copy of that picture, by file name (services/read post-pics.ts, 0119). */
+  'thumbFile',
   'reach',
   'reachDelta24h',
   'spark',
@@ -95,6 +97,7 @@ export const RISING_POST_FIELDS = [
   'permalink',
   'excerpt',
   'thumbUrl',
+  'thumbFile',
   'thumbIsVideo',
   'postedAt',
   'reach',

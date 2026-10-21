@@ -15,6 +15,7 @@
 
 import { instant, known, pending, pendingInstant, type Instant, type Measured, type PendingReason } from '../format/measure.ts';
 import { assertNoInternalVocabulary, decodeRisingPost, WireShapeError } from './decode.ts';
+import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { RisingPost } from './wire/rising.ts';
 
@@ -28,6 +29,8 @@ export interface SheetMedia {
   readonly kind: 'video' | 'image';
   /** The picture, or the video's still. */
   readonly posterUrl: string;
+  /** Our storage's copy of it, by file name (the sheet's size is loaded first); null when there is none yet. */
+  readonly posterFile: string | null;
   /** The video's own file, when the source serves one that plays in the app; null otherwise. */
   readonly playUrl: string | null;
   readonly width: number | null;
@@ -66,7 +69,7 @@ export interface PostSheetData {
   /** The narrative the post is in, with how many posts its page lists (null from an older server). */
   readonly narrative: { readonly storyId: string; readonly title: string | null; readonly posts: number | null } | null;
   /** The "Part of a story" card: only for a narrative the board lists now, with its picture. Null otherwise. */
-  readonly storyCard: { readonly storyId: string; readonly title: string | null; readonly posts: number | null; readonly thumbUrl: string | null } | null;
+  readonly storyCard: { readonly storyId: string; readonly title: string | null; readonly posts: number | null; readonly thumbUrl: string | null; readonly thumbFile: string | null } | null;
   /** The name the coins share, for "Top Goliath coin by MC" and "Goliath coins". */
   readonly coinName: string | null;
   readonly sourcesMissing: number;
@@ -116,6 +119,7 @@ function mediaOf(v: unknown): SheetMedia | null {
   return {
     kind: o['kind'] === 'video' ? 'video' : 'image',
     posterUrl,
+    posterFile: postPicFile(o['posterFile']),
     playUrl: https(o['playUrl']),
     width: num(o['width']),
     height: num(o['height']),
@@ -177,7 +181,7 @@ export function decodePostSheet(raw: unknown, path = '$'): PostSheetData {
     storyCard: (() => {
       const c = typeof o['storyCard'] === 'object' && o['storyCard'] !== null ? (o['storyCard'] as Record<string, unknown>) : null;
       const id = text(c?.['storyId']);
-      return id === null ? null : { storyId: id, title: text(c?.['title']), posts: num(c?.['posts']), thumbUrl: https(c?.['thumbUrl']) };
+      return id === null ? null : { storyId: id, title: text(c?.['title']), posts: num(c?.['posts']), thumbUrl: https(c?.['thumbUrl']), thumbFile: postPicFile(c?.['thumbFile']) };
     })(),
     coinName: text(o['coinName']),
     sourcesMissing: num(o['sourcesMissing']) ?? 0,

@@ -310,7 +310,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
     }}>
       <div className={styles['top']}>
         {place !== null ? <span className={styles['place']}>{place}</span> : null}
-        <Thumb url={story.thumbUrl} size={64} radius={16} />
+        <Thumb url={story.thumbUrl} file={story.thumbFile} size={64} radius={16} />
         <div className={styles['text']}>
           <b className={styles['title']}>{story.title}</b>
           <span className={styles['sub']}>

@@ -15,17 +15,25 @@
  * measured 2026-10-21) while the link loads. A caller that resized the link first left nothing to
  * fall back to, and those cards showed the empty tile. How a failure moves along the two, and the
  * one later retry, is usePictureTries.ts.
+ *
+ * ★ OUR STORED COPY BEFORE EITHER (`file`, the reply's `thumbFile`): the source's signed link
+ * expires — a short-video cover about a day after the read — and the server keeps a copy of every
+ * shown post's picture (shared/post-pic.ts says where). A box with no copy tries the two links as
+ * before, so nothing looks different; a box whose link has expired still shows its picture.
  */
 
 import type { Platform } from '../platform.ts';
+import { postPicSources } from '../post-pic.ts';
 import { ImageIcon, PlayIcon } from './icons.tsx';
 import { cardPictureUrl, sizeForBox } from './picture-size.ts';
+import { POST_PIC_BASE } from './post-pic-base.ts';
 import { PlatformBadge } from './PlatformMark.tsx';
 import { usePictureTries } from './usePictureTries.ts';
 import styles from './ui.module.css';
 
 export function Thumb({
   url,
+  file = null,
   size = 48,
   width = size,
   height = size,
@@ -37,6 +45,8 @@ export function Thumb({
   video = false,
 }: {
   url: string | null;
+  /** Our storage's copy of the picture, by file name (the reply's `thumbFile`); null when there is none yet. */
+  file?: string | null;
   size?: number;
   /** A box that is not square: both default to `size`. */
   width?: number;
@@ -51,8 +61,9 @@ export function Thumb({
   /** The picture is a still of a video: a play icon sits on it. */
   video?: boolean;
 }) {
-  /* The host's copy at the box's size first (picture-size.ts), the link as it came if that fails. */
-  const sources = url === null ? [] : [...new Set([cardPictureUrl(url, sizeForBox(Math.max(width, height))), url])];
+  /* Our copy first (post-pic.ts), then the host's copy at the box's size (picture-size.ts), then the link as it came. */
+  const links = url === null ? [] : [cardPictureUrl(url, sizeForBox(Math.max(width, height))), url];
+  const sources = postPicSources(file, links, POST_PIC_BASE, 'card');
   const { src: shown, tryKey, fail } = usePictureTries(sources);
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>

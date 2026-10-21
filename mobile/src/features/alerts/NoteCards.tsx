@@ -67,7 +67,7 @@ export function PostNote({ a, post, now, unread }: { a: Alert; post: RisingPost;
     <a href={linkOf(a.href)} className={`${styles['noteCard']} ${unread ? styles['noteCardUnread'] : ''}`}>
       <Reason a={a} now={now} />
       <div className={styles['cardRow']}>
-        <Thumb url={post.thumbUrl} video={post.thumbIsVideo} size={62} radius={10} platform={platform} platformLabel={post.sourceLabel} />
+        <Thumb url={post.thumbUrl} file={post.thumbFile} video={post.thumbIsVideo} size={62} radius={10} platform={platform} platformLabel={post.sourceLabel} />
         <div className={styles['cardText']}>
           <p className={styles['cardTitle']}>{post.translation?.text ?? post.excerpt}</p>
           <p className={styles['cardMeta']}>

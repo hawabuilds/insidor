@@ -38,6 +38,8 @@ export interface RisingPost {
   readonly permalink: string | null;
   readonly excerpt: string;
   readonly thumbUrl: string | null;
+  /** Our storage's copy of that picture, by file name (the app builds the path); null when there is none yet. */
+  readonly thumbFile: string | null;
   /** The picture is a still of the post's video (an X preview, a TikTok cover): it gets a play icon. */
   readonly thumbIsVideo: boolean;
   readonly postedAt: Instant;

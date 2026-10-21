@@ -48,6 +48,8 @@ export interface Evidence {
   readonly permalink: string;
   readonly excerpt: string;
   readonly thumbUrl: string | null;
+  /** Our storage's copy of that picture, by file name; null when there is none yet. */
+  readonly thumbFile: string | null;
   readonly postedAt: Instant;
   /** Why this post is in the story, in plain English, written by the server. */
   readonly relation: string;
@@ -74,6 +76,8 @@ export interface Story {
   readonly title: string;
   readonly summary: readonly [string, string];
   readonly thumbUrl: string | null;
+  /** Our storage's copy of that picture, by file name; null when there is none yet. */
+  readonly thumbFile: string | null;
 
   readonly reach: Measured;
   /**

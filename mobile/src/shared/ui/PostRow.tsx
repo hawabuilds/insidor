@@ -105,6 +105,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
         {post.thumbUrl !== null || post.thumbIsVideo ? (
           <Thumb
             url={post.thumbUrl}
+            file={post.thumbFile}
             video={post.thumbIsVideo}
             width={84}
             height={98}

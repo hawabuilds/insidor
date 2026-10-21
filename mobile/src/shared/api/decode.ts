@@ -23,6 +23,7 @@
 
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
+import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
@@ -414,6 +415,8 @@ function decodeEvidence(raw: unknown, path: string): Evidence {
     permalink: str(o['permalink'], `${path}.permalink`),
     excerpt: str(o['excerpt'], `${path}.excerpt`),
     thumbUrl: optStr(o['thumbUrl']),
+    /* Our copy's file name (0119); anything but 32 hex characters, or a server before it, is none. */
+    thumbFile: postPicFile(o['thumbFile']),
     postedAt: instantAt(o['postedAt'], `${path}.postedAt`, 'not_reported'),
     relation: str(o['relation'], `${path}.relation`),
   };
@@ -458,6 +461,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     title: str(o.title, `${path}.title`),
     summary: twoLines(o.summary, `${path}.summary`),
     thumbUrl: optStr(o.thumbUrl),
+    thumbFile: postPicFile(o.thumbFile),
     reach: measured(o.reach, `${path}.reach`, 'not_read_yet'),
     reachDelta24h: delta(o.reachDelta24h, `${path}.reachDelta24h`, 'not_read_yet'),
     spark: decodeSpark(o.spark, `${path}.spark`),
@@ -620,6 +624,8 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     permalink: optStr(o.permalink),
     excerpt: str(o.excerpt, `${path}.excerpt`),
     thumbUrl: optStr(o.thumbUrl),
+    /* Our copy of that picture's file name, added by the read service since 0119; else none. */
+    thumbFile: postPicFile(o.thumbFile),
     /* Absent from a row projected before the field existed: no play icon, the picture still shows. */
     thumbIsVideo: o.thumbIsVideo === undefined ? false : bool(o.thumbIsVideo, `${path}.thumbIsVideo`),
     postedAt: instantAt(o.postedAt, `${path}.postedAt`, 'not_reported'),
