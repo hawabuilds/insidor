@@ -100,6 +100,8 @@ const COIN_NAMES = `
 
 export class PgNameExampleRepo {
   readonly #db: Db;
+  /** Example vectors this process holds, by space and post, with the `embedded_at` they were read at. See `all`. */
+  readonly #vectors = new Map<string, Map<string, { readonly at: string; readonly values: Float32Array }>>();
   constructor(db: Db) {
     this.#db = db;
   }
@@ -351,19 +353,31 @@ export class PgNameExampleRepo {
     return new Map(rows.map((r) => [r.item_id, parseVector(r.embedding)] as const));
   }
 
-  /** Every example post with a vector in `space`, all its coin names; empty before 0076. */
+  /**
+   * Every example post with a vector in `space`, all its coin names; empty before 0076.
+   *
+   * ★ THE VECTORS ARE KEPT BY THIS REPO AND READ ONLY WHEN NEW OR RE-EMBEDDED. The runner asks for
+   * every example again whenever `version` moves, which is most passes (a linked coin of the last
+   * day adds a pair), and each answer used to carry every vector as text — 12 KB a post, ~16k posts,
+   * about 200 MB a read and the largest share of the database's egress. The words and coins are
+   * still read whole every time (a flipped `rejected` still shows), each with its vector's
+   * `embedded_at`; only a vector this process does not hold at that `embedded_at` crosses the wire.
+   * `putVectors` stamps a re-embed with a new `embedded_at`, so a changed vector is never served
+   * from the cache. What breaks if changed carelessly: keying the cache by post alone — a re-embedded
+   * post would keep its old vector for the life of the process.
+   */
   async all(space: string): Promise<readonly StoredExample[]> {
-    type Row = { item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[] | null; not_coins: { name: string; ticker: string }[] | null; posted_at: Date | null; embedding: unknown };
+    type Row = { item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[] | null; not_coins: { name: string; ticker: string }[] | null; posted_at: Date | null; embedded_at: string };
     const read = (rejected: boolean) =>
       this.#soft(() =>
         this.#db.query<Row>(
           `select e.item_id, max(e.text) as text, max(e.seen) as seen,
                   jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where ${rejected ? 'not e.rejected' : 'true'}) as coins,
                   ${rejected ? `jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where e.rejected)` : 'null::jsonb'} as not_coins,
-                  min(e.posted_at) as posted_at, v.embedding::text as embedding
+                  min(e.posted_at) as posted_at, v.embedded_at::text as embedded_at
              from internal.name_example e
              join internal.name_example_embedding v on v.item_id = e.item_id and v.space = $1
-            group by e.item_id, v.embedding`,
+            group by e.item_id, v.embedded_at`,
           [space],
         ),
       );
@@ -374,7 +388,30 @@ export class PgNameExampleRepo {
       if (!missingColumn(e)) throw e;
       rows = await read(false);
     }
-    return rows.map((r) => ({ itemId: r.item_id, text: r.text, seen: r.seen, coins: r.coins ?? [], notCoins: r.not_coins ?? [], postedAtMs: ms(r.posted_at), values: parseVector(r.embedding) }));
+    const held = this.#vectors.get(space) ?? new Map<string, { readonly at: string; readonly values: Float32Array }>();
+    const missing = rows.filter((r) => held.get(r.item_id)?.at !== r.embedded_at).map((r) => r.item_id);
+    if (missing.length > 0) {
+      const fetched = await this.#soft(() =>
+        this.#db.query<{ item_id: string; embedding: unknown; embedded_at: string }>(
+          `select item_id, embedding::text as embedding, embedded_at::text as embedded_at
+             from internal.name_example_embedding where space = $1 and item_id = any($2::text[])`,
+          [space, missing],
+        ),
+      );
+      for (const f of fetched) held.set(f.item_id, { at: f.embedded_at, values: parseVector(f.embedding) });
+    }
+    /* Only this read's posts stay held: an example that left the table leaves the cache. */
+    const next = new Map<string, { readonly at: string; readonly values: Float32Array }>();
+    const out: StoredExample[] = [];
+    for (const r of rows) {
+      const v = held.get(r.item_id);
+      /* Its vector row went between the two reads: the post has no vector now, as the join would say. */
+      if (v === undefined) continue;
+      next.set(r.item_id, v);
+      out.push({ itemId: r.item_id, text: r.text, seen: r.seen, coins: r.coins ?? [], notCoins: r.not_coins ?? [], postedAtMs: ms(r.posted_at), values: v.values });
+    }
+    this.#vectors.set(space, next);
+    return out;
   }
 }
 
