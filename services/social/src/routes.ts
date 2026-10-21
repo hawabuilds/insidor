@@ -16,6 +16,7 @@
  *   GET    /leaderboard                this season's standings
  *   GET    /feed, /feed/people          the people you follow's trades and comments, People to follow (activity.ts)
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
+ *   GET    /access, /invites/…, POST /waitlist, /owner/invites   invite-only access (invites.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
@@ -39,7 +40,7 @@
  * picture) so the alert row shows their face and a follow can be followed back.
  */
 
-import { DEFAULT_POLICY, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type InvitePolicy, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
 import type { IdentityCheck, Person } from '@insidor/contracts/ports/people.ts';
 import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints, type RankId, type Standing } from '@insidor/core';
 
@@ -48,7 +49,8 @@ import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
 import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
-import { ownerRoute } from './owner.ts';
+import { inviteRoute, ownerInvitesRoute } from './invites.ts';
+import { ownerRefOf, ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
 export interface Db {
@@ -74,6 +76,8 @@ export interface SocialDeps {
   readonly policy: SocialPolicy;
   /** Who the owner is (policy `owner`). Absent: nobody is, and every /owner route refuses. */
   readonly owner?: OwnerPolicy;
+  /** Invite-only access (policy `invites`); absent, the defaults. */
+  readonly invites?: InvitePolicy;
   /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
   readonly coinCheck?: CoinCheck;
   readonly now: () => number;
@@ -333,6 +337,16 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
   if (m === 'POST' && head === 'post' && id !== undefined && sub === 'reading' && seg.length === 3) return askForReading(deps.db, id, deps.now());
 
   const me = await signedIn(req, deps);
+
+  /* Invite-only access (invites.ts); the owner's numbers and controls are behind the same owner check as every /owner route. */
+  const invites = { db: deps.db, invites: deps.invites ?? DEFAULT_POLICY.invites, ...(deps.owner === undefined ? {} : { owner: deps.owner }) };
+  if (head === 'owner' && id === 'invites' && seg.length === 2) {
+    if (me === null) return SIGN_IN;
+    const ref = ownerRefOf(me, deps.owner);
+    return ref === null ? bad('Only the owner can do this.', 403) : ownerInvitesRoute(m, req.body, ref, invites);
+  }
+  const invited = await inviteRoute(m, seg, req.body, me, invites);
+  if (invited !== null) return invited;
 
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
