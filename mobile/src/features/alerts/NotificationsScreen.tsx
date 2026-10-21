@@ -50,6 +50,7 @@ import { useAlertList } from './list.ts';
 import { Headline, LoadMore, Mark, PullIndicator } from './Parts.tsx';
 import { pullStyle, usePullToRefresh } from './pull.ts';
 import { linkOf } from './split.ts';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './alerts.module.css';
 
 const ASK = { list: 'notifications' } as const;
@@ -88,15 +89,15 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
       <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={styles['page']} style={pullStyle(pull)}>
         <header className={styles['sticky']}>
-          <div className={`${styles['titleRow']} ${styles['titleOnly']}`}>
+          <ScreenHeader className={`${styles['titleRow']} ${styles['titleOnly']}`}>
             <button type="button" className={`${styles['iconButton']} ${styles['backButton']}`} aria-label="Back" onClick={() => goBack({ screen: 'alerts' })}>
               <BackIcon size={22} />
             </button>
-            <h1 className={`${styles['title']} ${styles['titleGrow']}`}>Notifications</h1>
+            <ScreenTitle grow>Notifications</ScreenTitle>
             <button type="button" className={`${styles['iconButton']} ${styles['roundButton']}`} aria-label="Alert settings" onClick={() => setSheet(true)}>
               <GearIcon size={19} />
             </button>
-          </div>
+          </ScreenHeader>
         </header>
 
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}

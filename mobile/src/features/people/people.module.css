@@ -4,6 +4,12 @@
   padding: 12px var(--gutter) var(--tabbar-space);
 }
 
+/* A list with a title row (Leaderboard, Followers): the row is the shared one
+   (shared/ui/screen-header.module.css) and brings its own room above it. A profile keeps .screen's. */
+.titled {
+  padding-top: 0;
+}
+
 .back {
   width: 44px;
   height: 44px;
@@ -197,12 +203,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.title {
-  margin: 6px 0 4px;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
 
 .bioField {
   width: 100%;

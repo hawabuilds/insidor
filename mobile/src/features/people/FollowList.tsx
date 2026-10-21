@@ -6,17 +6,20 @@ import { hrefFor } from '../../shared/route.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankTag } from './RankBadge.tsx';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './people.module.css';
 import { goBack } from '../../shared/nav.ts';
 
 export function FollowList({ profileKey, which }: { profileKey: string; which: 'followers' | 'following' }) {
   const [loaded] = useLoad(`follows:${profileKey}:${which}`, () => fetchFollows(profileKey, which), 'memory');
   return (
-    <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'profile', key: profileKey })}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={styles['title']}>{which === 'followers' ? 'Followers' : 'Following'}</h1>
+    <section className={`${styles['screen']} ${styles['titled']}`}>
+      <ScreenHeader>
+        <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'profile', key: profileKey })}>
+          <BackIcon size={22} />
+        </button>
+        <ScreenTitle>{which === 'followers' ? 'Followers' : 'Following'}</ScreenTitle>
+      </ScreenHeader>
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>This list couldn't be read just now.</p> : null}
       {loaded.state === 'ready' && loaded.value.length === 0 ? <p className={styles['note']}>{which === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}</p> : null}

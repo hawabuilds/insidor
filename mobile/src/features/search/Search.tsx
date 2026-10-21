@@ -25,6 +25,7 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
 import { useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './search.module.css';
 
 /** Typing settles for this long before a search goes out. */
@@ -42,7 +43,9 @@ export function Search() {
 
   return (
     <section className={styles['screen']}>
-      <h1 className={styles['title']}>Search</h1>
+      <ScreenHeader as="header" gutter>
+        <ScreenTitle>Search</ScreenTitle>
+      </ScreenHeader>
       <input
         className={styles['input']}
         type="search"

@@ -1,12 +1,11 @@
+/* No top padding: the title row is the shared one (shared/ui/screen-header.module.css). */
 .screen {
-  padding: 18px var(--gutter) var(--tabbar-space);
+  padding: 0 var(--gutter) var(--tabbar-space);
 }
 
-.title {
-  margin: 8px 0 22px;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+/* 22px under the title's own box, as before (the row's box ends 7px below it). */
+.head {
+  margin-bottom: 15px;
 }
 
 .box {

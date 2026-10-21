@@ -51,6 +51,7 @@ import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoi
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './narratives.module.css';
 
 /** The space between two cards (narratives.module.css .cards had it as its gap). */
@@ -93,11 +94,11 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
 
   return (
     <section className={styles['screen']}>
-      <header className={styles['header']}>
-        <h1>Narratives</h1>
+      <ScreenHeader as="header" gutter className={styles['header']}>
+        <ScreenTitle>Narratives</ScreenTitle>
         {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
         {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
-      </header>
+      </ScreenHeader>
       <div className={feedStyles['sortRow']}>
         <div className={feedStyles['sorts']} role="group" aria-label="Sort">
           {SORTS.map((o) => (

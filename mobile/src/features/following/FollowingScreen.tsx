@@ -46,6 +46,7 @@ import { RankTag } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, siteOf, tradeDetail, whereOf } from './lines.ts';
 import { usePeopleFeed } from './list.ts';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './following.module.css';
 
 const TABS: readonly { readonly key: FeedTab; readonly label: string }[] = [
@@ -83,13 +84,13 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
       <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={alerts['page']} style={pullStyle(pull)}>
         <header className={alerts['sticky']}>
-          <div className={styles['titleRow']}>
-            <h1 className={styles['title']}>Feed</h1>
+          <ScreenHeader className={styles['titleRow']}>
+            <ScreenTitle>Feed</ScreenTitle>
             <a className={styles['bell']} href={hrefFor({ screen: 'notifications' })} aria-label={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}>
               <BellIcon size={20} />
               {unread > 0 ? <span className={styles['dot']} /> : null}
             </a>
-          </div>
+          </ScreenHeader>
           <div className={styles['chips']} role="tablist" aria-label="Feed">
             {TABS.map((t) => (
               <button key={t.key} type="button" role="tab" aria-selected={t.key === tab} className={`${styles['chip']} ${t.key === tab ? styles['chipOn'] : ''}`} onClick={() => setTab(t.key)}>

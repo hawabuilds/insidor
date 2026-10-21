@@ -6,6 +6,7 @@
  * whole rule is that it shows facts.
  */
 
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './soon.module.css';
 
 const COPY = {
@@ -16,7 +17,9 @@ export function ComingSoonScreen({ which }: { which: keyof typeof COPY }) {
   const copy = COPY[which];
   return (
     <section className={styles['screen']}>
-      <h1 className={styles['title']}>{copy.title}</h1>
+      <ScreenHeader className={styles['head']}>
+        <ScreenTitle>{copy.title}</ScreenTitle>
+      </ScreenHeader>
       <div className={styles['box']}>
         <b>Coming soon</b>
         <p>{copy.body}</p>
