@@ -166,7 +166,7 @@ export class PgAssetRepo implements AssetRepo {
            minted_at_conf    = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_conf else public.asset.minted_at_conf end,
            minted_at_bound_s = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_bound_s else public.asset.minted_at_bound_s end
          /*
-          * ★ A PAIRED TOKEN IS NEVER TOUCHED BY A LAUNCH (0121). The launch socket named MSTRx
+          * ★ A PAIRED TOKEN IS NEVER TOUCHED BY A LAUNCH (0122). The launch socket named MSTRx
           * as the coin of every meme launched against it, each frame renaming the row; once the
           * row is known to be what launches are paired against, no later frame may rename it or
           * promote it back to observed.
@@ -206,7 +206,7 @@ export class PgAssetRepo implements AssetRepo {
   }
 
   /**
-   * ★ THESE TOKENS ARE WHAT LAUNCHES ARE PAIRED AGAINST, NOT LAUNCHES (0121): a stablecoin, a
+   * ★ THESE TOKENS ARE WHAT LAUNCHES ARE PAIRED AGAINST, NOT LAUNCHES (0122): a stablecoin, a
    * tokenised stock, any token with no curve of its own. A row the launch socket filed under a
    * meme's name becomes the token as its market names it, with every launch fact it carried
    * cleared (mint time unknown, no creator, link, picture or opening buy — those were the meme's);

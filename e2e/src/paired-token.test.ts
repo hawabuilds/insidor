@@ -1,5 +1,5 @@
 /**
- * ★ A TOKEN LAUNCHES ARE PAIRED AGAINST IS NOT A LAUNCH (0121), against the real schema (PGlite).
+ * ★ A TOKEN LAUNCHES ARE PAIRED AGAINST IS NOT A LAUNCH (0122), against the real schema (PGlite).
  *
  * The launch socket filed MSTRx (a tokenised stock) as the coin of every meme launched against
  * it: the row took each meme's name, and the name index kept the first one forever. This holds

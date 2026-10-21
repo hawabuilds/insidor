@@ -259,7 +259,7 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
             return asset === null ? [] : [asset];
           }),
         ),
-      /* ★ A paired token is marked only when the chain holds no curve for it (0121): a coin
+      /* ★ A paired token is marked only when the chain holds no curve for it (0122): a coin
          paired against another coin is a launch too, and keeps its row. Without a chain endpoint
          nothing can tell the two apart, so nothing is marked. */
       ...(rpcUrl === null
