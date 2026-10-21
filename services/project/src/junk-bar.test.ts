@@ -30,7 +30,8 @@ function fakeDb(opts: { readonly fit?: boolean; readonly table?: unknown; readon
       if (sql.includes('from internal.junk_filter')) return opts.fit === false ? [] : [{ ...FIT, held_out: { table: opts.table ?? TABLE } }];
       if (sql.includes('from internal.post_embedding')) {
         const ids = params?.[0] as string[];
-        return ids.filter((id) => id in VECTORS).map((item_id) => ({ item_id, text: '', embedding: `[${VECTORS[item_id]}]` }));
+        /* One row shape for the words read, the version read and the vector read (store post-vectors.ts). */
+        return ids.filter((id) => id in VECTORS).map((item_id) => ({ item_id, text: '', embedding: `[${VECTORS[item_id]}]`, v: `[${VECTORS[item_id]}]`, at: 'v1' }));
       }
       return [];
     },

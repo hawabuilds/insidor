@@ -33,6 +33,7 @@
  */
 
 import type { Db } from '../client.ts';
+import { heldPostVectors } from './post-vectors.ts';
 
 const UNDEFINED_TABLE = '42P01';
 const UNDEFINED_COLUMN = '42703';
@@ -327,9 +328,9 @@ export class PgNarrativeRepo {
    */
   async vectors(itemIds: readonly string[], space: string, kind: 'post' | 'picture'): Promise<ReadonlyMap<string, Float32Array>> {
     if (itemIds.length === 0) return new Map();
-    const sql = kind === 'post'
-      ? `select item_id, embedding::text as v from internal.post_embedding where item_id = any($1::text[]) and space = $2`
-      : `select distinct on (subject_id) subject_id as item_id, embedding::text as v from internal.image_embedding
+    /* The post table's vectors through the process's held copies (post-vectors.ts): read once per `embedded_at`. */
+    if (kind === 'post') return orEmpty(() => heldPostVectors(this.#db, itemIds, space), new Map<string, Float32Array>());
+    const sql = `select distinct on (subject_id) subject_id as item_id, embedding::text as v from internal.image_embedding
           where subject_kind = 'item' and subject_id = any($1::text[]) and space = $2 order by subject_id, uri`;
     const rows = await orEmpty(() => this.#db.query<{ item_id: string; v: string }>(sql, [[...itemIds], space]), []);
     return new Map(rows.map((r) => [r.item_id, Float32Array.from(JSON.parse(r.v) as number[])] as const));
