@@ -13,8 +13,17 @@
  *      order given — the coins on screen first.
  *   3. If the curve read fails, or there is no chain access, nobody is asked: every coin is
  *      `null`, written as not tradable with nobody named. An aggregator answer that is not
- *      "a route" or "no route" (a rate limit, a timeout) stops the probing for this pass, so a
+ *      "a route" or "no route" (a rate limit, a timeout) is waited out once (`retryAfterMs`) and
+ *      the same coin asked again; a second failure stops the probing for this pass, so a
  *      struggling quote service is not asked forty more times.
+ *
+ * ★ THE PROBES ARE SPACED (`probeGapMs`), NOT SENT BACK TO BACK. Sent back to back, the
+ * aggregator answered five and refused the sixth on every pass (the project service's log on
+ * 2026-10-21: probed=6 unavailable=1, pass after pass, while the refused coin answered first
+ * thing on the next pass), and the first refusal stopped the asking. About 40 coins off their
+ * curve were never asked, written "not tradable, nobody asked", and the cards said "can't be
+ * traded yet" under coins with $25K to $100K of liquidity that the aggregator had routed every
+ * day before. Spaced, a pass asks its bound.
  *
  * What breaks if changed carelessly: reading a failed curve read as `none` would send every coin
  * to the aggregator, and every pump coin there gets "no route" — written as a FACT, not tradable,
@@ -30,12 +39,18 @@ export interface RoutePorts {
   readonly curveStates: ((mints: readonly string[]) => Promise<ReadonlyMap<string, 'open' | 'complete' | 'none'>>) | null;
   /** A small aggregator quote for one mint; resolves on a route, throws otherwise. */
   readonly probe: (mint: string) => Promise<unknown>;
+  /** Waits this long; absent, nothing waits (a test, or a caller that paces itself). */
+  readonly pause?: (ms: number) => Promise<void>;
 }
 
 export interface RouteOptions {
   readonly nowMs: number;
   readonly reuseMs: number;
   readonly maxProbes: number;
+  /** The wait before each probe after the first, so the aggregator's rate limit is not hit. */
+  readonly probeGapMs?: number;
+  /** The wait before asking a coin again after an answer that was not "route" or "no route". */
+  readonly retryAfterMs?: number;
 }
 
 export interface RouteCounts {
@@ -78,6 +93,9 @@ export async function routesFor(
   }
 
   let probing = true;
+  const pause = async (ms: number | undefined): Promise<void> => {
+    if (ports.pause !== undefined && ms !== undefined && ms > 0) await ports.pause(ms);
+  };
   for (const address of addresses) {
     const state = states.get(address);
     if (state === undefined) {
@@ -98,8 +116,14 @@ export async function routesFor(
       settle(address, null);
       continue;
     }
+    if (counts.probed > 0) await pause(opts.probeGapMs);
     counts.probed += 1;
-    const route = await routeAfter(state, () => ports.probe(address));
+    let route = await routeAfter(state, () => ports.probe(address));
+    if (route === 'unavailable') {
+      /* Once more after a wait: a rate limit clears in seconds, and stopping at the first one left the pass's other coins unasked. */
+      await pause(opts.retryAfterMs);
+      route = await routeAfter(state, () => ports.probe(address));
+    }
     if (route === 'unavailable') {
       /* Written as nobody answering, and the probing stops for this pass. */
       probing = false;
