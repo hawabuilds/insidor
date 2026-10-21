@@ -27,10 +27,10 @@ import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeC
 import { readSearch, SEARCH_PAGE } from './search.ts';
 import { readNewLaunches } from './new-pools.ts';
 
-export { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
+export { aggregate, ownSide, pairedWith, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 export { readSearch, SEARCH_PAGE } from './search.ts';
 export { NEW_POOLS_PAGE, readNewLaunches } from './new-pools.ts';
-export type { Candle, Pool, Trade, VolumeCandle } from './read.ts';
+export type { Candle, Pool, PoolToken, Trade, VolumeCandle } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
 /** Trador's six views, plus six hours, which the search and the history pilot read a coin's peak from. */
@@ -49,6 +49,11 @@ const CANDLES: Record<Timeframe, { readonly unit: 'minute' | 'hour' | 'day'; rea
   '1D': { unit: 'day', aggregate: 1, mergeMs: null, keepMs: 600_000 },
 };
 const POOL_KEEP_MS = 120_000;
+/**
+ * Asked with every pool list, in the same one request: each pool's two tokens and its dex by name,
+ * so the token page can say what the coin is paired with and where, at no extra call.
+ */
+const POOL_INCLUDE = 'base_token,quote_token,dex';
 const TRADES_KEEP_MS = 12_000;
 /** The vendor's ceiling, as Trador asks: the chart pans left through all of it without another call. */
 const CANDLE_LIMIT = 1_000;
@@ -194,7 +199,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     },
 
     async history(mint, untilMs, bucketMinutes, limit) {
-      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1`))));
+      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
       if (pool === null) return { pool: null, candles: [] };
       const until = Math.floor(untilMs / 1_000);
       const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/minute?aggregate=${bucketMinutes}&limit=${Math.min(limit, CANDLE_LIMIT)}&before_timestamp=${until}&token=${mint}&currency=usd`);
@@ -202,7 +207,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     },
 
     async coin(mint, timeframe) {
-      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1`))));
+      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
       if (pool === null) return { pool: null, candles: [], trades: [] };
       const spec = CANDLES[timeframe];
       const part = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
