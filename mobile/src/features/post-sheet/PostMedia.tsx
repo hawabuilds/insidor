@@ -27,8 +27,14 @@
  * player sits in the same box, over the cover, and a tap on its own play button starts it with
  * sound (a tap on ours could only start it muted). If that player cannot play, it is the still with "Play on TikTok", as above.
  *
- * ★ NEVER A BLANK BOX. A picture or still that will not load takes the media box away (`onGone`),
- * so the sheet closes up rather than showing an empty frame.
+ * ★ OUR STORED COPY OF THE PICTURE FIRST (`posterFile`, at the sheet's 1080 pixels; shared/post-pic.ts),
+ * then the source's link: the source's signed link expires — a short-video cover about a day after
+ * the read — and the copy does not. The picture or still in use is the same everywhere below: the
+ * box, a video's poster, the TikTok player's cover and the full-screen viewer.
+ *
+ * ★ NEVER A BLANK BOX. A picture or still that will not load moves to the next source, and when
+ * none is left takes the media box away (`onGone`), so the sheet closes up rather than showing an
+ * empty frame.
  *
  * ★ NO REFERRER LEAVES THE APP. The text source's video host answers 403 to a browser whose request
  * names another site as where it came from (measured 2026-10-13: the same mp4 is 200 with no
@@ -49,7 +55,9 @@ import { createPortal } from 'react-dom';
 
 import type { SheetMedia } from '../../shared/api/index.ts';
 import { useDismiss, useSwipeClose } from '../../shared/ui/dismiss.ts';
+import { postPicSources } from '../../shared/post-pic.ts';
 import { CloseIcon } from '../../shared/ui/icons.tsx';
+import { POST_PIC_BASE } from '../../shared/ui/post-pic-base.ts';
 import { TikTokPlayer } from './TikTokPlayer.tsx';
 import { FullIcon, OpenIcon, PauseIcon, PlayFillIcon, SoundOffIcon, SoundOnIcon } from './sheet-icons.tsx';
 import styles from './post-sheet.module.css';
@@ -86,8 +94,13 @@ export interface PostMediaProps {
 /** What the full-screen viewer shows: the picture, or the video from a time, with or without sound. */
 type Full = { readonly kind: 'picture' } | { readonly kind: 'video'; readonly at: number; readonly muted: boolean; readonly loop: boolean };
 
-export function PostMedia({ media, height, onGone, postUrl = null, sourceLabel = null, tiktokId = null }: PostMediaProps) {
+export function PostMedia({ media: given, height, onGone, postUrl = null, sourceLabel = null, tiktokId = null }: PostMediaProps) {
   const [broken, setBroken] = useState(false);
+  /* Our copy, then the link: the picture in use is the first that has not failed. */
+  const pictures = postPicSources(given.posterFile, [given.posterUrl], POST_PIC_BASE, 'sheet');
+  const [failed, setFailed] = useState(0);
+  const media: SheetMedia = { ...given, posterUrl: pictures[Math.min(failed, pictures.length - 1)] ?? given.posterUrl };
+  const pictureFailed = () => (failed + 1 < pictures.length ? setFailed(failed + 1) : onGone());
   const [full, setFull] = useState<Full | null>(null);
   /* Stable, so the TikTok player's message listener is not rebuilt on every render of the sheet. */
   const fail = useCallback(() => setBroken(true), []);
@@ -98,7 +111,7 @@ export function PostMedia({ media, height, onGone, postUrl = null, sourceLabel =
     const out = media.kind === 'video' || media.playUrl !== null ? postUrl : null;
     box = (
       <div className={`${styles['media']} ${own['tappable']}`} style={{ height }} onClick={() => setFull({ kind: 'picture' })}>
-        <img className={styles['mediaImg']} src={media.posterUrl} alt="" onError={onGone} />
+        <img key={media.posterUrl} className={styles['mediaImg']} src={media.posterUrl} alt="" onError={pictureFailed} />
         {out !== null ? (
           <a className={own['out']} href={out} target="_blank" rel="noopener noreferrer" data-no-swipe onClick={(e) => e.stopPropagation()}>
             Play on {sourceLabel ?? 'the source'} <OpenIcon size={14} />

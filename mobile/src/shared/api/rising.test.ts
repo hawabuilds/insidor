@@ -65,6 +65,13 @@ test("the poster's picture decodes when it is an https link; absent or anything 
   assert.equal(decodeRisingPost({ ...POST, authorPictureUrl: 'javascript:alert(1)' }).authorPictureUrl, null);
 });
 
+test('our stored copy of the post picture decodes only as a 32-hex name; absent is none', () => {
+  const file = '0123456789abcdef0123456789abcdef';
+  assert.equal(decodeRisingPost({ ...POST, thumbFile: file }).thumbFile, file);
+  assert.equal(decodeRisingPost(POST).thumbFile, null, 'a server from before the field');
+  assert.equal(decodeRisingPost({ ...POST, thumbFile: '../coin-logos/x' }).thumbFile, null);
+});
+
 test('a score on the wire is refused', () => {
   assert.throws(() => decodeRisingPost({ ...POST, score: 0.9 }), WireLeakError);
 });

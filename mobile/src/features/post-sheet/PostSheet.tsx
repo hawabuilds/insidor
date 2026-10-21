@@ -398,7 +398,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
 function StoryCard({ card, onOpen }: { card: NonNullable<PostSheetData['storyCard']>; onOpen: (storyId: string) => void }) {
   return (
     <button type="button" className={styles['storyCard']} onClick={() => onOpen(card.storyId)}>
-      <Thumb url={card.thumbUrl} size={44} radius={10} />
+      <Thumb url={card.thumbUrl} file={card.thumbFile} size={44} radius={10} />
       <span className={styles['storyCardText']}>
         <span className={styles['storyCardKicker']}>Part of a story</span>
         <span className={styles['storyCardTitle']}>
