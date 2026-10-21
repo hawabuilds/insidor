@@ -308,3 +308,39 @@ test("the creator's opening buy is written once, and a missing field stays missi
   await repo.recordOpenings([]);
   assert.equal(sql, '', 'an empty page writes nothing');
 });
+
+test('mintedBetween reads the selection every time and a coin whole only when its row changed', async () => {
+  /* Two coins in the window; B is corrected between the reads (a new row version). Checked
+     against the live store, read only: the same coins in the same order for 40 stories, and
+     ~17% of the bytes once held. */
+  const table = new Map([
+    ['A', { v: '100', name: 'Alpha' }],
+    ['B', { v: '101', name: 'Beta' }],
+  ]);
+  const whole: string[][] = [];
+  const db: Db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      if (s.includes('xmin::text as v') && s.includes('limit $4')) return [...table].map(([address, r]) => ({ address, v: r.v }) as R);
+      if (s.includes('address = any($2::text[])')) {
+        const asked = (p?.[1] ?? []) as string[];
+        whole.push(asked);
+        return asked.map((address) => ({
+          chain: 'solana', address, asset_key: `solana:${address}`, venue_id: 'v', origin: 'live_stream', minted_at: new Date(1000),
+          minted_at_source: 'stream', minted_at_conf: 'exact', minted_at_bound_s: null, symbol: address, name: table.get(address)?.name ?? null,
+          image_uri: null, decimals: 6, creator: null, declared_social: null, first_seen_at: new Date(1000), v: table.get(address)?.v,
+        }) as R);
+      }
+      throw new Error(`unexpected statement: ${s}`);
+    },
+  };
+  const repo = new PgAssetRepo(db);
+  const read = () => repo.mintedBetween(chainId('solana'), 0 as Millis, 2000 as Millis, 10, 'observed');
+
+  assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta']);
+  assert.deepEqual(whole, [['A', 'B']]);
+  assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta']);
+  assert.equal(whole.length, 1, 'nothing changed, nothing read whole');
+  table.set('B', { v: '205', name: 'Beta (corrected)' });
+  assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta (corrected)']);
+  assert.deepEqual(whole[1], ['B']);
+});

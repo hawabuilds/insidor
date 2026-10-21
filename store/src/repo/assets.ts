@@ -99,8 +99,17 @@ const SELECT_ASSET = `
  */
 const OBSERVED_ORIGINS: readonly string[] = [...OBSERVED_ASSET_ORIGINS];
 
+/** A held row unused this long is dropped (`mintedBetween`'s cache): a story's window stops being asked about once it is decided. */
+const HELD_ASSET_IDLE_MS = 60 * 60_000;
+
 export class PgAssetRepo implements AssetRepo {
   readonly #db: Db;
+  /**
+   * Rows `mintedBetween` has read, by chain and address, with the row version (`xmin`) they were
+   * read at. See `mintedBetween`.
+   */
+  readonly #held = new Map<string, { readonly version: string; readonly asset: Asset; usedAt: number }>();
+  #sweptAt = 0;
 
   constructor(db: Db) {
     this.#db = db;
@@ -451,6 +460,15 @@ export class PgAssetRepo implements AssetRepo {
    * The parameter is required rather than defaulted, for the reason 0016 gives the column
    * itself: a caller that has not decided must fail rather than be handed the answer that
    * quietly deletes a story's coins.
+   *
+   * ★ THE SELECTION IS READ EVERY TIME; THE ROWS ONLY WHEN THEY CHANGED. RESOLVE asks this for
+   * every open story every minute and gets the same few hundred coins back, sixteen columns
+   * each — 600k reads in nine days and the third-largest share of the database's egress. So the
+   * statement below now returns each selected coin's address and row version (`xmin`, which
+   * Postgres changes on every update), in the same order and under the same limit, and only the
+   * coins this repo does not hold at that version are read whole. The answer is the one the
+   * single statement gave, a moment later. What breaks if changed carelessly: dropping the
+   * version from the key — a coin whose mint time or name was corrected would be served stale.
    */
   async mintedBetween(
     chain: ChainId,
@@ -459,8 +477,9 @@ export class PgAssetRepo implements AssetRepo {
     limit: number,
     storyOrigin: StoryOrigin,
   ): Promise<readonly Asset[]> {
-    const rows = await this.#db.query<AssetRow>(
-      `${SELECT_ASSET}
+    const picked = await this.#db.query<{ address: string; v: string }>(
+      `select address, xmin::text as v
+         from public.asset
         where chain = $1
           and minted_at between $2 and $3
           and minted_at_conf <> 'unknown'
@@ -472,7 +491,33 @@ export class PgAssetRepo implements AssetRepo {
          is written to obey, applied to a list that is now computed per call. */
       [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, [...coinOriginsVisibleTo(storyOrigin)]],
     );
-    return rows.map(toAsset);
+    const now = Date.now();
+    const keyOf = (address: string): string => `${chain}\u0000${address}`;
+    const stale = picked.filter((p) => this.#held.get(keyOf(p.address))?.version !== p.v).map((p) => p.address);
+    if (stale.length > 0) {
+      const rows = await this.#db.query<AssetRow & { v: string }>(
+        `select chain, address, asset_key, venue_id, origin, minted_at, minted_at_source,
+                minted_at_conf, minted_at_bound_s, symbol, name, image_uri, decimals, creator,
+                declared_social, first_seen_at, xmin::text as v
+           from public.asset
+          where chain = $1 and address = any($2::text[])`,
+        [chain, stale],
+      );
+      for (const row of rows) this.#held.set(keyOf(row.address), { version: row.v, asset: toAsset(row), usedAt: now });
+    }
+    const out: Asset[] = [];
+    for (const p of picked) {
+      const held = this.#held.get(keyOf(p.address));
+      /* Deleted between the two reads: gone, as a read a moment later would say. */
+      if (held === undefined) continue;
+      held.usedAt = now;
+      out.push(held.asset);
+    }
+    if (now - this.#sweptAt >= HELD_ASSET_IDLE_MS) {
+      this.#sweptAt = now;
+      for (const [k, h] of this.#held) if (now - h.usedAt >= HELD_ASSET_IDLE_MS) this.#held.delete(k);
+    }
+    return out;
   }
 
   /**
