@@ -218,7 +218,31 @@ export function coinEvents(stories: readonly BoardStory[], seen: ReadonlySet<str
 
 /* ── the database around it ───────────────────────────────────────── */
 
-const RISING_SQL = `select item_id as "itemId", payload from public.rising_row where feed_id = 'fyp'`;
+/* The live frame's versions, then the rows not held at theirs, whole (see `risingRows`). */
+const RISING_VERSIONS_SQL = `select item_id as "itemId", xmin::text as v from public.rising_row where feed_id = 'fyp'`;
+const RISING_SQL = `select item_id as "itemId", payload, xmin::text as v from public.rising_row where feed_id = 'fyp' and item_id = any($1::text[])`;
+
+/**
+ * ★ THE LIVE FRAME HELD BY ROW VERSION. This pass runs every half minute and each row's payload is a
+ * whole card (~3.5 KB); the projector rewrites a row every few minutes. So the frame is read as ids
+ * and row versions (`xmin`, new on every rewrite) and only a row not held at its version is read
+ * whole. The answer is the frame a full read gives: the same rows, in the versions' order.
+ */
+const heldRising = new Map<string, { readonly v: string; readonly row: RisingRow }>();
+export async function risingRows(db: Db): Promise<RisingRow[]> {
+  const versions = await db.query<{ itemId: string; v: string }>(RISING_VERSIONS_SQL);
+  const stale = versions.filter((x) => heldRising.get(x.itemId)?.v !== x.v).map((x) => x.itemId);
+  if (stale.length > 0) {
+    for (const { v, ...row } of await db.query<RisingRow & { v: string }>(RISING_SQL, [stale])) heldRising.set(row.itemId, { v, row });
+  }
+  /* Only the frame's rows stay held: a row that left the frame leaves the cache. */
+  const live = new Set(versions.map((x) => x.itemId));
+  for (const k of heldRising.keys()) if (!live.has(k)) heldRising.delete(k);
+  return versions.flatMap((x) => {
+    const held = heldRising.get(x.itemId);
+    return held === undefined ? [] : [held.row];
+  });
+}
 /* The first coin of each For You post's list (0078's grant; before it, none: the line alone). */
 const LISTED_SQL = `select distinct on (subject_id) subject_id as "itemId", address, launched_after_ms as "launchedAfterMs"
                       from public.same_name_coin where subject_kind = 'post' and subject_id = any($1::text[])
@@ -351,7 +375,7 @@ export async function fypCoinProposals(db: Db, rows: readonly RisingRow[], event
 
 /** One pass over the projection. Returns how many alerts were queued. */
 export async function checkPipeline(db: Db, ports: PipelinePorts = {}): Promise<number> {
-  const rising = await db.query<RisingRow>(RISING_SQL);
+  const rising = await risingRows(db);
   const board = (await db.query<{ storyId: string; title: string; promoted: boolean; coins: CoinsJson | string }>(BOARD_SQL)).map((r) => ({
     storyId: r.storyId,
     title: r.title,

@@ -3,7 +3,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { coinEvents, fypCoinEvents, newPromoted, newRising, settledCoins, viewGain, type BoardStory, type RisingRow } from './pipeline.ts';
+import { coinEvents, fypCoinEvents, newPromoted, newRising, risingRows, settledCoins, viewGain, type BoardStory, type RisingRow } from './pipeline.ts';
+import type { Db } from './deliver.ts';
 
 /* Recorded from /rising/fyp and /board/default frames, trimmed to the fields the alerts read. */
 const RISING = [
@@ -99,4 +100,30 @@ test('a watched post whose coin the profile proves later: the line carries it, s
   assert.equal(line?.address, A);
   assert.equal(line?.posterBio, true);
   assert.equal(line?.linksPost, false);
+});
+
+test('the live frame is read as versions, and a row whole only when it was rewritten', async () => {
+  const frame = new Map([
+    ['x:1', { v: '10', label: 'one' }],
+    ['x:2', { v: '11', label: 'two' }],
+  ]);
+  const whole: string[][] = [];
+  const db = {
+    query: async (sql: string, params?: readonly unknown[]) => {
+      if (sql.includes('payload')) {
+        const ids = (params?.[0] ?? []) as string[];
+        whole.push(ids);
+        return ids.map((itemId) => ({ itemId, payload: { sourceLabel: frame.get(itemId)?.label }, v: frame.get(itemId)?.v }));
+      }
+      return [...frame].map(([itemId, r]) => ({ itemId, v: r.v }));
+    },
+  } as unknown as Db;
+  const read = async () => (await risingRows(db)).map((r) => `${r.itemId}:${r.payload.sourceLabel}`);
+  assert.deepEqual(await read(), ['x:1:one', 'x:2:two']);
+  assert.deepEqual(await read(), ['x:1:one', 'x:2:two']);
+  assert.equal(whole.length, 1);
+  frame.set('x:2', { v: '12', label: 'two, rewritten' });
+  frame.delete('x:1');
+  assert.deepEqual(await read(), ['x:2:two, rewritten']);
+  assert.deepEqual(whole[1], ['x:2']);
 });
