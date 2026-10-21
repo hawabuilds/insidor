@@ -23,12 +23,13 @@ import { useLoad } from '../../shared/hooks.ts';
 import { goBack } from '../../shared/nav.ts';
 import type { Route } from '../../shared/route.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
+import { searchedKey } from './searched-key.ts';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
 /** `back`: where Back goes when nothing of ours is under this page; Search, unless the caller knows better. */
 export function SearchedToken({ coinId, note = null, back = { screen: 'search' } }: { coinId: string; note?: string | null; back?: Route }) {
-  const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal), 'phone');
+  const [coin] = useLoad(searchedKey(coinId), (signal) => fetchSearchedCoin(coinId, signal), 'phone');
   return (
     <section className={styles['page']}>
       {coin.state !== 'ready' ? (

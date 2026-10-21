@@ -11,6 +11,9 @@
  * title and in the one note the screen puts under the list (wallet-view.ts gainsNote). SOL has no
  * gain line: it is what coins are paid with, not a coin bought.
  *
+ * Tapping a row opens the coin's page at once on what the row knows (token/searched-key.ts), its
+ * chart filling in after.
+ *
  * What breaks if changed carelessly: the two screens drifting apart, so the same coin reads one
  * way on your Portfolio and another on your profile.
  */
@@ -21,6 +24,7 @@ import { formatUsd } from '../../shared/format/number.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { primeSearchedCoin } from '../token/searched-key.ts';
 import { asOfWords, compactAmount, noPriceReason, profitLine, solValueUsd } from './wallet-view.ts';
 import styles from './portfolio.module.css';
 
@@ -65,7 +69,7 @@ export function HoldingRow({ h, asOf = null, now = 0 }: { h: Holding; asOf?: num
   const priced = h.valueUsd.known;
   const reason = noPriceReason(h.valueUsd);
   return (
-    <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: h.coinId })}>
+    <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: h.coinId })} onClick={() => primeSearchedCoin(h)}>
       <CoinLogo small address={h.address} ticker={h.ticker} imageUrl={h.imageUrl} size={LOGO} />
       <div className={styles['mid']}>
         <div className={styles['symbol']}>{symbol}</div>
