@@ -230,13 +230,33 @@ export class PgObservationRepo implements ObservationRepo {
       }
     }
 
+    /* A concurrent pass may have re-read a post from a later instant while this one waited: such a
+       post is read here directly, not served short. */
+    const short: string[] = [];
     for (const id of ids) {
       const s = this.#held.get(id);
-      if (s === undefined) continue;
+      if (s === undefined || s.from > sinceMs) {
+        short.push(id);
+        continue;
+      }
       s.usedAt = now;
       s.rows.sort((a, b) => a.capturedAt - b.capturedAt);
       const list = s.rows.filter((o) => o.capturedAt >= sinceMs);
       if (list.length > 0) found.set(reBrand<ItemId>(id), list);
+    }
+    if (short.length > 0) {
+      const rows = await this.#db.query<ObservationRow>(
+        `${SELECT_OBSERVATION}
+          where item_id = any($1::text[]) and captured_at >= $2
+          order by item_id, captured_at asc`,
+        [short, toTimestamp(sinceMs)],
+      );
+      for (const row of rows) {
+        const key = reBrand<ItemId>(row.item_id);
+        const list = found.get(key);
+        if (list === undefined) found.set(key, [toObservation(row)]);
+        else list.push(toObservation(row));
+      }
     }
     if (now - this.#sweptAt >= HELD_SERIES_IDLE_MS) {
       this.#sweptAt = now;
