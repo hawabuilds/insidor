@@ -36,7 +36,7 @@ import { createPrepared, type PreparedAnswers } from './prepared.ts';
 import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
-import { createSearch } from './search.ts';
+import { coinHitFromQuote, createSearch } from './search.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
@@ -218,6 +218,7 @@ async function main(): Promise<void> {
           },
   };
 
+  const lookupQuotes = dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS });
   /* The Search tab: our own rows plus two market data sources, searched live (search.ts). */
   const search = createSearch({
     ...deps,
@@ -229,6 +230,16 @@ async function main(): Promise<void> {
     curveProgress: market.curveProgress,
     images: chain === null ? null : (mints) => chain.imageUris(mints),
     market: marketData,
+    /* A held coin we never indexed, opened by its address (search.ts `open`): the keyless pair
+       source says whether anything lists it and where it trades; its picture is its own, from
+       the chain (the header's rule), or none. */
+    lookup: async (address) => {
+      const [quotes, pictures] = await Promise.all([
+        lookupQuotes.quotes([address]),
+        chain === null ? Promise.resolve(new Map<string, string>()) : chain.imageUris([address]).catch(() => new Map<string, string>()),
+      ]);
+      return coinHitFromQuote(address, quotes.get(address), pictures.get(address) ?? null);
+    },
     now: Date.now,
   });
 

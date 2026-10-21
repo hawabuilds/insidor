@@ -23,7 +23,9 @@
  * What breaks if changed carelessly: the per-client limit and the one-minute cache are what keep
  * two free sources answering. A term reaches a source at most once a minute however many people
  * type it, and one client cannot type faster than `perClient` a minute. A coin a search returned
- * may then be opened as a token page for `openableMs`; nothing else widens the market route.
+ * may then be opened as a token page for `openableMs`; so may a coin a token page asked for by its
+ * address that a market source lists (`open`, a held coin we never indexed), under its own limit.
+ * Nothing else widens the market route.
  *
  * GET /post/:id/names and GET /ticker/:symbol/coins live here too (name-ideas.ts): the Create
  * sheet's name chips and whether each ticker is free, searched through the same cache and limit.
@@ -36,6 +38,7 @@
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 import type { SearchPolicy } from '@insidor/contracts/policy.ts';
 import { mergeHits } from '@insidor/core';
+import { CURVE_DEX_IDS, type CoinQuote } from '@insidor/market-dexscreener';
 import type { MarketData } from '@insidor/market-geckoterminal';
 
 import type { Logger } from './log.ts';
@@ -131,8 +134,41 @@ export interface SearchDeps {
   readonly images: ((mints: readonly string[]) => Promise<ReadonlyMap<string, string>>) | null;
   /** Price history, for a matched narrative's peak. Null: the peak is a dash. */
   readonly market: Pick<MarketData, 'coin'> | null;
+  /**
+   * One coin by its address, from a market source: listed somewhere, with its own picture; null
+   * when no source lists it. Throws on an outage. Absent: a coin we never indexed cannot be opened
+   * by its address alone (see `open`).
+   */
+  readonly lookup?: ((address: string) => Promise<CoinSearchHit | null>) | null;
   readonly now: () => number;
 }
+
+/**
+ * A coin looked up by its address, as a hit `open` remembers: what the pair source said of its
+ * deepest pair. Its launch time only for a coin still on its curve, where the pair's creation IS
+ * the launch; a pool's creation is not the coin's, so it is left unknown rather than misdated.
+ * Null when the source does not list it.
+ */
+export function coinHitFromQuote(address: string, q: CoinQuote | undefined, imageUrl: string | null): CoinSearchHit | null {
+  if (q === undefined) return null;
+  const venue = q.pair?.dex != null && CURVE_DEX_IDS.has(q.pair.dex) ? 'curve' : 'pool';
+  return {
+    address,
+    name: q.name,
+    ticker: q.ticker,
+    venue,
+    marketAddress: q.pair?.address ?? null,
+    createdAt: venue === 'curve' ? (q.pair?.createdAt ?? null) : null,
+    marketCapUsd: q.marketCapUsd,
+    imageUrl,
+    source: 'lookup',
+  };
+}
+
+/** A Solana address, as a token page's id carries it. */
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/** Coins opened by address alone, a minute, for everyone together: each is one market source call. */
+export const OPENS_PER_MINUTE = 30;
 
 export interface SearchReply {
   readonly status: number;
@@ -238,6 +274,10 @@ export function createSearch(deps: SearchDeps) {
   const named = new Map<string, { readonly at: number; readonly hits: readonly (readonly CoinSearchHit[])[]; readonly failed: number }>();
   /* Each post's list reply, for `keepMs`, like a search's. */
   const lists = new Map<string, { readonly at: number; readonly reply: SearchReply }>();
+  /* What a lookup by address said, for `keepMs`: listed or not. An outage is not kept. */
+  const looked = new Map<string, { readonly at: number; readonly found: boolean }>();
+  const opens: number[] = [];
+  const opening = new Map<string, Promise<boolean>>();
 
   /** True when this client may search now; records the search when it may. */
   function allow(client: string, now: number): boolean {
@@ -257,6 +297,7 @@ export function createSearch(deps: SearchDeps) {
     for (const [k, v] of calls) if (v.every((t) => now - t >= deps.policy.windowMs)) calls.delete(k);
     for (const [k, v] of named) if (now - v.at >= deps.policy.keepMs) named.delete(k);
     for (const [k, v] of lists) if (now - v.at >= deps.policy.keepMs) lists.delete(k);
+    for (const [k, v] of looked) if (now - v.at >= deps.policy.keepMs) looked.delete(k);
   }
 
   /** The sources' answers for a name: each source's hits, and how many sources failed. */
@@ -623,6 +664,51 @@ export function createSearch(deps: SearchDeps) {
     recent(address: string): CoinSearchHit | null {
       const held = openable.get(address);
       return held !== undefined && deps.now() - held.at < deps.policy.openableMs ? held.hit : null;
+    },
+
+    /**
+     * ★ A COIN SOMEONE HOLDS OPENS, EVEN ONE WE NEVER INDEXED (the owner, 2026-10-21: Laura, in
+     * his Portfolio, would not open: our launch feed had missed it, so it was in neither the
+     * universe nor the name index, and no search had listed it). When a token page asks for a coin
+     * we hold no row of, it is looked up by its address on a market source, once; a coin the
+     * source lists becomes openable exactly as a search hit does (`recent`), with what the source
+     * said about it. Nothing is written: the read service holds no write credential, and adding a
+     * coin to the universe stays the runner's lookup's job.
+     *
+     * Bounded so a page cannot be used to make us fetch arbitrary addresses: only a well-formed
+     * address, each answer kept `keepMs` (listed or not), and at most `OPENS_PER_MINUTE` lookups a
+     * minute for everyone. True when the coin may now be opened.
+     */
+    async open(assetKey: string): Promise<boolean> {
+      const address = assetKey.startsWith('solana:') ? assetKey.slice('solana:'.length) : null;
+      if (address === null || !ADDRESS.test(address)) return false;
+      if (this.recent(address) !== null) return true;
+      if (deps.lookup === undefined || deps.lookup === null) return false;
+      const now = deps.now();
+      sweep(now);
+      const held = looked.get(address);
+      if (held !== undefined) return held.found && this.recent(address) !== null;
+      /* The page asks for its facts and its chart at once: both wait on one lookup. */
+      const running = opening.get(address);
+      if (running !== undefined) return running;
+      while (opens.length > 0 && now - (opens[0] ?? 0) >= deps.policy.windowMs) opens.shift();
+      if (opens.length >= OPENS_PER_MINUTE) return false;
+      opens.push(now);
+      const lookup = deps.lookup;
+      const job = (async () => {
+        let hit: CoinSearchHit | null;
+        try {
+          hit = await lookup(address);
+        } catch (e) {
+          deps.log.info('coin lookup by address unavailable', { err: e instanceof Error ? e.message : String(e) });
+          return false;
+        }
+        looked.set(address, { at: now, found: hit !== null });
+        if (hit !== null) openable.set(address, { at: now, hit });
+        return hit !== null;
+      })().finally(() => opening.delete(address));
+      opening.set(address, job);
+      return job;
     },
 
     /**

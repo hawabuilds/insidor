@@ -494,6 +494,16 @@ async function sources(viewId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
+ * A coin route's reply; when it does not know the coin, the coin is looked up by its address once
+ * (search.ts `open`) and the route asked again. Null: no source lists it either.
+ */
+async function orOpened<T>(assetKey: string, deps: Deps, answer: () => Promise<T | null>): Promise<T | null> {
+  const first = await answer();
+  if (first !== null || deps.search === undefined) return first;
+  return (await deps.search.open(assetKey)) ? answer() : null;
+}
+
+/**
  * The whole router.
  *
  * Every throw below this line — a driver error, a broken projection, a permission
@@ -522,13 +532,15 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const tf = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('tf');
       const search = deps.search;
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
-      return (await coinMarket(param, tf, { ...deps.market, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+      const market = deps.market;
+      return (await orOpened(param, deps, () => coinMarket(param, tf, { ...market, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
     }
 
     if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'about' && deps.about !== undefined) {
       const search = deps.search;
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
-      return (await coinAbout(param, { ...deps.about, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+      const about = deps.about;
+      return (await orOpened(param, deps, () => coinAbout(param, { ...about, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
     }
 
     if (deps.wallet !== undefined && segments.length === 3 && head === 'wallet' && param !== undefined && segments[2] === 'history') {
@@ -552,7 +564,10 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
 
     if (deps.search !== undefined) {
       if (segments.length === 1 && head === 'search') return await deps.search.search(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('q'), client);
-      if (segments.length === 2 && head === 'coin' && param !== undefined) return (await deps.search.facts(param)) ?? NOT_FOUND;
+      if (segments.length === 2 && head === 'coin' && param !== undefined) {
+        const search = deps.search;
+        return (await orOpened(param, deps, () => search.facts(param))) ?? NOT_FOUND;
+      }
       if (segments.length === 2 && head === 'ticker' && param !== undefined) return await deps.search.ticker(param, client);
       /* An unsure feed post's same-named coins: what "See 3 coins" opens (same-name.ts). */
       if (segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'coins') return await deps.search.postCoins(param, client);
