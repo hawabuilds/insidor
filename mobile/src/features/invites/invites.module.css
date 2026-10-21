@@ -1,0 +1,319 @@
+/* Invites: the code box at the door, the waitlist, and the Invites sheet, in the door's own sizes. */
+
+.codeWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.code {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--input);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-align: center;
+  outline: none;
+}
+
+.code::placeholder {
+  color: var(--text-4);
+  font-family: var(--font);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.code:focus {
+  border-color: var(--brand);
+}
+
+.codeOk {
+  border-color: var(--brand);
+}
+
+.codeLine {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.invitedBy {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.invitedBy b {
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+/* "No code? Join the waitlist": a quiet second action under the main one. */
+.quiet {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--overlay-wash);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.signedAs {
+  margin: 6px 0 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.textButton {
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--brand-300);
+  font: inherit;
+  font-weight: 700;
+}
+
+/* The waitlist: your place, large. */
+.place {
+  margin: 28px 0 0;
+  padding: 20px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  text-align: center;
+}
+
+.place b {
+  display: block;
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.place span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.gotCode {
+  margin: 28px 0 10px;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ── the Invites sheet ─────────────────────────────────────────────── */
+
+.sheetBody {
+  padding: 4px 18px 18px;
+}
+
+.lead {
+  margin: 0 0 14px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.section {
+  margin: 22px 0 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.codeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  margin-top: 8px;
+  border-radius: 13px;
+  background: var(--overlay-wash);
+}
+
+.codeText {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.codeUsed .codeText {
+  color: var(--text-4);
+  text-decoration: line-through;
+}
+
+.usedTag {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.iconButton {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-2);
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.personText {
+  flex: 1;
+  min-width: 0;
+}
+
+.personText b,
+.personText span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personText b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.personText span {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.when {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* The owner's numbers: a grid of facts. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fact {
+  padding: 12px;
+  border-radius: 13px;
+  background: var(--overlay-wash);
+}
+
+.fact b {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.fact span {
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.control {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.control input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--input);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+}
+
+.control button,
+.primary {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ownerRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--overlay-wash);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
