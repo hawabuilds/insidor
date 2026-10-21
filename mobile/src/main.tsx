@@ -26,6 +26,7 @@ import { createRoot } from 'react-dom/client';
 /* The port alone (no SDK): the vendor's code arrives later, in wallet-vendor.tsx. */
 import { embeddedWallet } from '@insidor/wallet-embedded/store.ts';
 import { hasEntered } from './features/landing/entered.ts';
+import { takeInviteLink } from './features/invites/invite-code.ts';
 import { afterFirstScreen } from './shared/preload.ts';
 import { listenForNewVersion } from './shared/new-version.ts';
 
@@ -44,6 +45,8 @@ import './shared/ui/tokens.css';
 /* A tapped notification: its screen, with For You under it (features/alerts/push-open.ts). Before the
    first frame, so the router reads the settled address. */
 settleLaunch();
+/* An invite link (insidor.app/i/<CODE>): the code kept for the door, the address put back to the app's own (features/invites/invite-code.ts). */
+takeInviteLink(window.location, (url) => history.replaceState(history.state, '', url));
 /* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
 trackHistory();
 listenForOpens();

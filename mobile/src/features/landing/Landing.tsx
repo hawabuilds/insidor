@@ -15,21 +15,73 @@
  * yet. The iOS app
  * is a label, not a disabled button.
  *
+ * ★ INVITE ONLY (2026-10-21). The code box sits above Join now: a code typed there, or brought by an
+ * invite link (insidor.app/i/<CODE>, features/invites/invite-code.ts), is kept on the phone and
+ * brought to the server once the person has signed in, and the door says who it is from, with
+ * their picture. A member signing in again needs no code. Signed in without access, the same door
+ * asks for the code ("Enter") and offers "No code? Join the waitlist" — still no numbers: the proof
+ * row the brief allowed was left off for the rule above.
+ *
  * This is the only place anyone signs in (shared/sign-in.ts is the gate in front of the app).
  */
 
 import { useState } from 'react';
 
 import { useWallet } from '../../shared/wallet.tsx';
+import { CodeBox, useCodeCheck } from '../invites/CodeBox.tsx';
+import { Avatar } from '../portfolio/Avatar.tsx';
+import { cleanCode, keepCode, pendingCode } from '../invites/invite-code.ts';
+import inv from '../invites/invites.module.css';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { XMark } from '../../shared/ui/icons.tsx';
 import styles from './landing.module.css';
 
-export function Landing({ configured, onEnter }: { configured: boolean; onEnter: () => void }) {
+/** Signed in without access: what the door does with a code, the waitlist, and signing out. */
+export interface InviteDoor {
+  /** The access check could not be made: say so and offer a retry, never a no. */
+  readonly unchecked: boolean;
+  /** Why the code brought on the way in was refused. */
+  readonly refusal: string | null;
+  readonly bring: (code: string) => Promise<string | null>;
+  readonly wait: () => Promise<string | null>;
+  readonly retry: () => void;
+  /** "@handle", or null. */
+  readonly signedInAs: string | null;
+  /** Their own X picture, drawn beside the handle. */
+  readonly picture: string | null;
+  readonly signOut: () => void;
+}
+
+export function Landing({ configured, onEnter, invite = null }: { configured: boolean; onEnter: () => void; invite?: InviteDoor | null }) {
   const { wallet, state } = useWallet();
   const [open, setOpen] = useState(false);
+  const [code, setCode] = useState(() => pendingCode() ?? '');
+  const [problem, setProblem] = useState<string | null>(invite?.refusal ?? null);
+  const [busy, setBusy] = useState(false);
+  const check = useCodeCheck(code);
   /* Sign-in starting, or finishing after the provider hands back: Trador's "Loading", no button. */
-  const waiting = configured && (wallet === null || state.kind === 'unavailable' || state.kind === 'connecting');
+  const waiting = invite === null && configured && (wallet === null || state.kind === 'unavailable' || state.kind === 'connecting');
+  const typed = (v: string) => {
+    setCode(v);
+    setProblem(null);
+  };
+  const enter = async () => {
+    if (invite === null || busy) return;
+    const clean = cleanCode(code);
+    if (clean === null) {
+      setProblem('Type your invite code first.');
+      return;
+    }
+    setBusy(true);
+    setProblem(await invite.bring(clean));
+    setBusy(false);
+  };
+  const toWaitlist = async () => {
+    if (invite === null || busy) return;
+    setBusy(true);
+    setProblem(await invite.wait());
+    setBusy(false);
+  };
 
   return (
     <div className={styles['page']}>
@@ -52,16 +104,50 @@ export function Landing({ configured, onEnter }: { configured: boolean; onEnter:
         </p>
 
         <div className={styles['actions']}>
-          {waiting ? <span className={styles['waiting']}>Loading</span> : (
-            <button type="button" className={styles['join']} onClick={() => (configured ? setOpen(true) : onEnter())}>
+          {configured ? <CodeBox value={code} onChange={typed} check={check} problem={problem} /> : null}
+          {invite !== null ? (
+            <>
+              {invite.unchecked ? <p className={styles['demo']}>We couldn't check your invite just now.</p> : null}
+              {invite.unchecked ? (
+                <button type="button" className={styles['join']} onClick={invite.retry}>
+                  Try again
+                </button>
+              ) : (
+                <button type="button" className={styles['join']} onClick={() => void enter()}>
+                  {busy ? 'Checking' : 'Enter'} <Arrow />
+                </button>
+              )}
+              <button type="button" className={inv['quiet']} onClick={() => void toWaitlist()}>
+                No code? Join the waitlist
+              </button>
+              <p className={inv['signedAs']}>
+                {invite.signedInAs !== null ? <Avatar name={invite.signedInAs.replace(/^@/, '')} seed={invite.signedInAs} src={invite.picture} size={18} /> : null}
+                <span>Signed in{invite.signedInAs !== null ? ` as ${invite.signedInAs}` : ''}</span>
+                <button type="button" className={inv['textButton']} onClick={invite.signOut}>Sign out</button>
+              </p>
+            </>
+          ) : waiting ? <span className={styles['waiting']}>Loading</span> : (
+            <button
+              type="button"
+              className={styles['join']}
+              onClick={() => {
+                if (!configured) return onEnter();
+                /* The code goes with the sign-in: kept here, brought once signed in (features/invites/useAccess.ts). */
+                const clean = cleanCode(code);
+                if (clean !== null) keepCode(clean);
+                setOpen(true);
+              }}
+            >
               Join now <Arrow />
             </button>
           )}
-          <span className={styles['ios']} aria-label="iOS app coming soon">
-            <Apple /> Coming soon
-          </span>
-          {configured && state.kind === 'refused' ? <p className={styles['demo']}>You closed sign-in. Join now to try again.</p> : null}
-          {configured && state.kind === 'failed' ? <p className={styles['demo']}>Sign-in didn't finish. Join now to try again.</p> : null}
+          {invite === null ? (
+            <span className={styles['ios']} aria-label="iOS app coming soon">
+              <Apple /> Coming soon
+            </span>
+          ) : null}
+          {invite === null && configured && state.kind === 'refused' ? <p className={styles['demo']}>You closed sign-in. Join now to try again.</p> : null}
+          {invite === null && configured && state.kind === 'failed' ? <p className={styles['demo']}>Sign-in didn't finish. Join now to try again.</p> : null}
           {!configured ? <p className={styles['demo']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
         </div>
       </div>
@@ -95,7 +181,7 @@ export function Holding() {
 }
 
 /** Insidor's mark: an eye — seeing it first. */
-function Mark() {
+export function Mark() {
   return (
     <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
       <rect width="40" height="40" rx="11" fill="var(--brand)" />

@@ -143,7 +143,7 @@ export async function cardsOf(db: Db, rows: readonly { readonly id: number; read
   if (posts.size === 0) return new Map();
   try {
     const found = await db.query<{ itemId: string; card: unknown }>(
-      `select distinct on (f.item_id) f.item_id as "itemId", (f.payload - 'sheet') || jsonb_build_object('authorPictureUrl', a.picture_url) as card
+      `select distinct on (f.item_id) f.item_id as "itemId", (f.payload - 'sheet') || jsonb_build_object('authorPictureUrl', a.picture_url, 'authorPictureFile', to_jsonb(a) ->> 'picture_copy') as card
          from public.feed_post f left join public.item i on i.item_id = f.item_id left join public.author a on a.author_key = i.author_key
         where f.item_id = any($1::text[]) and f.payload is not null
         order by f.item_id, f.feed_id = 'fyp' desc`,
@@ -155,6 +155,36 @@ export async function cardsOf(db: Db, rows: readonly { readonly id: number; read
     return new Map();
   }
 }
+/**
+ * ★ THE POSTER'S FACE ON EVERY ROW ABOUT A POST (the owner, 2026-10-21: every account shown has its
+ * picture): our stored copy's file name (public.author.picture_copy, 0079) and the source's link,
+ * by alert id, so the phone tries the copy first and the link second, as every For You card does.
+ * The copy's file name is the 32 hex characters 0079 writes, nothing else. `to_jsonb(a)` so a
+ * database without the column answers no copy rather than failing the list.
+ */
+export async function posterFacesOf(db: Db, rows: readonly { readonly id: number; readonly kind: string; readonly subject: string; readonly href: string }[]): Promise<Map<number, { readonly url: string | null; readonly file: string | null }>> {
+  const posts = new Map(rows.flatMap((r) => {
+    const id = postOfRow(r);
+    return id === null ? [] : [[r.id, id] as const];
+  }));
+  if (posts.size === 0) return new Map();
+  try {
+    const found = await db.query<{ itemId: string; url: string | null; file: string | null }>(
+      `select i.item_id as "itemId", a.picture_url as url, to_jsonb(a) ->> 'picture_copy' as file
+         from public.item i join public.author a on a.author_key = i.author_key
+        where i.item_id = any($1::text[])`,
+      [[...new Set(posts.values())]],
+    );
+    const byItem = new Map(found.map((f) => [f.itemId, { url: httpsOrNull(f.url), file: typeof f.file === 'string' && /^[0-9a-f]{32}$/.test(f.file) ? f.file : null }]));
+    return new Map([...posts].flatMap(([alertId, itemId]) => {
+      const face = byItem.get(itemId);
+      return face === undefined || (face.url === null && face.file === null) ? [] : [[alertId, face] as const];
+    }));
+  } catch {
+    return new Map();
+  }
+}
+
 const NARRATIVE_KINDS = ['starred_speed', 'blowing_up', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 /* The site labels the app draws badges for (mobile shared/platform.ts), by the item's source. */
 const SOURCE_LABEL: Readonly<Record<string, string>> = { x: 'X', tiktok: 'TikTok' };
