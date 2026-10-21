@@ -260,14 +260,15 @@ export function App() {
   if (gate === 'holding') return <Holding />;
   const handle = wallet?.identity()?.handle ?? null;
   const signedInAs = handle !== null ? `@${handle}` : null;
+  const picture = wallet?.identity()?.pictureUrl ?? null;
   const signOut = () => void wallet?.disconnect();
-  if (gate === 'waitlist') return <Waitlist place={access.place} bring={access.bring} signedInAs={signedInAs} signOut={signOut} />;
+  if (gate === 'waitlist') return <Waitlist place={access.place} bring={access.bring} signedInAs={signedInAs} picture={picture} signOut={signOut} />;
   if (gate === 'invite' || gate === 'unchecked') {
     return (
       <Landing
         configured={SIGN_IN_CONFIGURED}
         onEnter={() => undefined}
-        invite={{ unchecked: gate === 'unchecked', refusal: access.refusal, bring: access.bring, wait: access.wait, retry: access.retry, signedInAs, signOut }}
+        invite={{ unchecked: gate === 'unchecked', refusal: access.refusal, bring: access.bring, wait: access.wait, retry: access.retry, signedInAs, picture, signOut }}
       />
     );
   }

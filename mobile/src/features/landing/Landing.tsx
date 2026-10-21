@@ -29,6 +29,7 @@ import { useState } from 'react';
 
 import { useWallet } from '../../shared/wallet.tsx';
 import { CodeBox, useCodeCheck } from '../invites/CodeBox.tsx';
+import { Avatar } from '../portfolio/Avatar.tsx';
 import { cleanCode, keepCode, pendingCode } from '../invites/invite-code.ts';
 import inv from '../invites/invites.module.css';
 import { Modal } from '../../shared/ui/Modal.tsx';
@@ -46,6 +47,8 @@ export interface InviteDoor {
   readonly retry: () => void;
   /** "@handle", or null. */
   readonly signedInAs: string | null;
+  /** Their own X picture, drawn beside the handle. */
+  readonly picture: string | null;
   readonly signOut: () => void;
 }
 
@@ -118,6 +121,7 @@ export function Landing({ configured, onEnter, invite = null }: { configured: bo
                 No code? Join the waitlist
               </button>
               <p className={inv['signedAs']}>
+                {invite.signedInAs !== null ? <Avatar name={invite.signedInAs.replace(/^@/, '')} seed={invite.signedInAs} src={invite.picture} size={18} /> : null}
                 <span>Signed in{invite.signedInAs !== null ? ` as ${invite.signedInAs}` : ''}</span>
                 <button type="button" className={inv['textButton']} onClick={invite.signOut}>Sign out</button>
               </p>
