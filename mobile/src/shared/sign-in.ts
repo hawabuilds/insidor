@@ -18,17 +18,29 @@
  *      door's "Join now" walks in to the app, whose screens show only what the services hold —
  *      empty states where there is nothing, never sample data.
  *
+ *   3. ★ SIGNED IN IS NOT LET IN (invite-only, 2026-10-21). A first sign-in waits a moment
+ *      (`holding`) while the social service says whether this person has access; with it, the app;
+ *      without it, the door with the code box (`invite`) or their place on the waitlist
+ *      (`waitlist`); when the service could not be asked, the door says so and offers a retry
+ *      (`unchecked`), never a no. A browser that was let in before (`entered`) goes straight in,
+ *      as in rule 1: access is never taken back, and everyone signed in before invites kept it.
+ *
  * What breaks if changed carelessly: `connecting` while the sign-in window is open must stay on
  * the door — the person is mid sign-in, and the door is where they will come back to.
  */
 
 import type { WalletState } from '@insidor/contracts/ports/wallet.ts';
 
-export type Gate = 'app' | 'landing' | 'holding';
+export type Gate = 'app' | 'landing' | 'holding' | 'invite' | 'waitlist' | 'unchecked';
 
-export function gateFor(r: { readonly configured: boolean; readonly state: WalletState; readonly entered: boolean }): Gate {
+/** What the social service said about this sign-in: not asked yet, in, out, out and waiting, or could not be asked. */
+export type Access = 'unknown' | 'in' | 'out' | 'waiting' | 'unchecked';
+
+const BY_ACCESS: Readonly<Record<Access, Gate>> = { unknown: 'holding', in: 'app', out: 'invite', waiting: 'waitlist', unchecked: 'unchecked' };
+
+export function gateFor(r: { readonly configured: boolean; readonly state: WalletState; readonly entered: boolean; readonly access?: Access }): Gate {
   if (!r.configured) return r.entered ? 'app' : 'landing';
-  if (r.state.kind === 'connected' || r.state.kind === 'wrong-network') return 'app';
+  if (r.state.kind === 'connected' || r.state.kind === 'wrong-network') return r.entered ? 'app' : BY_ACCESS[r.access ?? 'unknown'];
   if (r.entered && (r.state.kind === 'unavailable' || r.state.kind === 'connecting')) return 'app';
   return 'landing';
 }
