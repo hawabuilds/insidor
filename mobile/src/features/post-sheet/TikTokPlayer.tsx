@@ -21,6 +21,10 @@
  * or a page that says nothing within `SILENT_WAIT_MS`, calls `onFail`, and PostMedia shows the
  * cover with "Play on TikTok".
  *
+ * ★ A PAGE NOT ON SCREEN HAS NO PLAYER. The sheet stays open on a page kept behind for Back
+ * (App.tsx); its frame is taken out while that page is hidden, so nothing plays unseen, and the
+ * cover shows until a fresh player has drawn itself when the page is back.
+ *
  * What breaks if changed carelessly: adding `allow-top-navigation` or `allow-popups` lets a tap in
  * the player leave the app; dropping `allow-same-origin` stops it playing. Putting our own play
  * button in front again (any tap outside the frame) brings back the silent video.
@@ -28,6 +32,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { playerSays, playerUrl, RETRIES, SILENT_WAIT_MS } from './tiktok-player.ts';
 import styles from './post-sheet.module.css';
 import own from './post-media.module.css';
@@ -36,7 +41,9 @@ export function TikTokPlayer({ id, posterUrl, height, onFail }: { id: string; po
   const frame = useRef<HTMLIFrameElement>(null);
   /* Each reload is a new frame (its `key`), so the player starts clean with the cookie it now has. */
   const [attempt, setAttempt] = useState(0);
+  const active = useScreenActive();
   useEffect(() => {
+    if (!active) return;
     let heard = false;
     let played = false;
     const onMessage = (e: MessageEvent) => {
@@ -59,12 +66,12 @@ export function TikTokPlayer({ id, posterUrl, height, onFail }: { id: string; po
       window.removeEventListener('message', onMessage);
       clearTimeout(t);
     };
-  }, [id, attempt, onFail]);
+  }, [id, attempt, onFail, active]);
   return (
     <div className={styles['media']} style={{ height }} data-no-swipe>
       {/* The cover, under the frame: what shows until the player has drawn itself. */}
       <img className={`${styles['mediaImg']} ${own['under']}`} src={posterUrl} alt="" />
-      <iframe
+      {active ? <iframe
         key={attempt}
         ref={frame}
         className={own['frame']}
@@ -73,7 +80,7 @@ export function TikTokPlayer({ id, posterUrl, height, onFail }: { id: string; po
         sandbox="allow-scripts allow-same-origin allow-presentation"
         allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
         allowFullScreen
-      />
+      /> : null}
     </div>
   );
 }
