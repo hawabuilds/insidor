@@ -569,22 +569,35 @@ export class PgItemRepo implements ItemRepo {
       if (row.catch_all) catchAll.add(row.item_id);
     }
 
-    const members = await this.#db.query<{ story_id: string; item_id: string; member_id: string }>(
-      `select m.story_id, m.item_id, all_m.item_id as member_id
-         from public.story_member m
-         join public.story s on s.story_id = m.story_id
-         join public.story_member all_m on all_m.story_id = m.story_id
-        where m.item_id = any($1::text[]) and s.state = 'promoted' and s.merged_into is null`,
+    /* ★ EACH STORY'S MEMBERS ONCE, NOT ONCE PER ASKED POST IN IT. This was one join of the asked
+       posts to every member of their stories: a story with 40 asked posts and 200 members came back
+       as 8,000 rows, ~90k a pass and the largest row count the database served. Now the asked posts'
+       stories (`own`) and every member of those stories (`member`) come back as two row kinds of
+       one statement — the same pairs, without the product. */
+    const members = await this.#db.query<{ kind: 'own' | 'member'; story_id: string; item_id: string }>(
+      `with own as (
+         select m.story_id, m.item_id
+           from public.story_member m
+           join public.story s on s.story_id = m.story_id
+          where m.item_id = any($1::text[]) and s.state = 'promoted' and s.merged_into is null)
+       select 'own' as kind, story_id, item_id from own
+       union all
+       select 'member' as kind, all_m.story_id, all_m.item_id
+         from public.story_member all_m
+        where all_m.story_id in (select story_id from own)`,
       [ids],
     );
     for (const row of members) {
-      const stories = storiesOf.get(row.item_id) ?? [];
-      if (!stories.includes(row.story_id)) storiesOf.set(row.item_id, [...stories, row.story_id]);
-      const list = membersOf.get(row.story_id) ?? [];
-      if (!list.includes(row.member_id)) membersOf.set(row.story_id, [...list, row.member_id]);
+      if (row.kind === 'own') {
+        const stories = storiesOf.get(row.item_id) ?? [];
+        if (!stories.includes(row.story_id)) storiesOf.set(row.item_id, [...stories, row.story_id]);
+      } else {
+        const list = membersOf.get(row.story_id) ?? [];
+        if (!list.includes(row.item_id)) membersOf.set(row.story_id, [...list, row.item_id]);
+      }
     }
 
-    const everyone = [...new Set([...ids, ...members.map((m) => m.member_id)])];
+    const everyone = [...new Set([...ids, ...members.filter((m) => m.kind === 'member').map((m) => m.item_id)])];
     const answers = await this.#db.query<{ item_id: string; coinable: boolean; confidence: number; looked_at: TrackingJudgement['lookedAt']; proposed_name: string | null }>(
       `select distinct on (item_id) item_id, coinable, confidence, looked_at, proposed_name
          from internal.post_judgement
