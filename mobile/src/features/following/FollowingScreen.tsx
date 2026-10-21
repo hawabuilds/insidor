@@ -230,6 +230,7 @@ function CommentRow({ c, now }: { c: FeedComment; now: number }) {
           {where.coin !== null ? <CoinLogo small address={where.coin.mint} ticker={where.coin.symbol ?? where.coin.name} imageUrl={where.coin.imageUrl} size={18} /> : null}
           {c.on.kind === 'post' ? <PostPicture c={c} /> : null}
           {c.on.kind === 'story' ? <Thumb url={c.on.pictureUrl} size={18} radius={5} /> : null}
+          {c.on.kind === 'post' && c.on.author !== null ? <Avatar name={c.on.author.replace(/^@/, '')} seed={c.on.author} src={c.on.authorPictureUrl ?? null} file={c.on.authorPictureFile ?? null} size={16} /> : null}
           <span>{where.label}</span>
         </a>
         <p className={styles['body']}>{c.body}</p>

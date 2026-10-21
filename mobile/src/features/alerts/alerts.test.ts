@@ -54,6 +54,13 @@ test("a rising post's face is Trador's up arrow", () => {
   assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, []), { kind: 'rising', label: 'Rising post' });
 });
 
+test("★ a post's row carries its poster's stored copy and link, the copy tried first", () => {
+  const file = 'b'.repeat(32);
+  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null, picture: 'https://p.example/a.jpg', pictureFile: file }, []), { kind: 'rising', label: 'Rising post', picture: 'https://p.example/a.jpg', pictureFile: file });
+  assert.deepEqual(markOf({ kind: 'blowing_up', rank: null, symbol: null, picture: null, pictureFile: file }, []), { kind: 'rising', label: 'Rising fast', pictureFile: file }, 'a copy alone is enough');
+  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null, pictureFile: '../x' }, []), { kind: 'rising', label: 'Rising post' }, 'only a real file name steers the path');
+});
+
 test("a follow or a reply shows the person's monogram, as Trador shows the person", () => {
   assert.deepEqual(markOf({ kind: 'follow', rank: null, symbol: null, href: '/#/u/jonas', title: 'New follower' }, []), { kind: 'person', name: 'jonas' });
   assert.deepEqual(markOf({ kind: 'reply', rank: null, symbol: null, href: '/#/story/s1', title: 'maya replied' }, []), { kind: 'person', name: 'maya' });

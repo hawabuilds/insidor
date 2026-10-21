@@ -121,9 +121,13 @@ test('★ the Feed shows the people you follow: their landed trades unless they 
     `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at) values ('fyp', 'tiktok:77', now(), now(), $1::jsonb, now())`,
     [JSON.stringify({ id: 'tiktok:77', thumbUrl: 'https://example.test/cover.jpg', thumbIsVideo: true, sourceLabel: 'TikTok', authorLabel: '@ferryfan' })],
   );
+  await db.query(`insert into public.author (author_key, source, source_author_id, handle, picture_url, picture_copy) values ('tiktok:a77', 'tiktok', 'a77', 'ferryfan', 'https://example.test/ferryfan.jpg', $1)`, ['c'.repeat(32)]);
+  await db.query(`insert into public.item (item_id, source, source_item_id, author_key, first_seen_at, raw_ref, origin) values ('tiktok:77', 'tiktok', '77', 'tiktok:a77', now(), 'r', 'observed') on conflict (item_id) do update set author_key = excluded.author_key`);
   await db.query(`insert into people.comment (author_id, subject_kind, subject_id, body) values ($1, 'post', 'tiktok:77', 'that horn')`, [friend.userId]);
-  const onPost = ((await as(me)('GET', '/feed')).body['items'] as (Item & { on?: On })[])[0]!;
+  const onPost = ((await as(me)('GET', '/feed')).body['items'] as (Item & { on?: On & { authorPictureFile: string | null; authorPictureUrl: string | null } })[])[0]!;
   assert.deepEqual(onPost.on && [onPost.on.kind, onPost.on.pictureUrl, onPost.on.video, onPost.on.site, onPost.on.author], ['post', 'https://example.test/cover.jpg', true, 'TikTok', '@ferryfan']);
+  /* ★ "Post by @ferryfan" carries @ferryfan's face: our stored copy, then the link. */
+  assert.deepEqual(onPost.on && [onPost.on.authorPictureFile, onPost.on.authorPictureUrl], ['c'.repeat(32), 'https://example.test/ferryfan.jpg']);
 
   /* Turned off again, the trades go with it. */
   await as(friend)('PUT', '/me', { tradesPublic: false });
