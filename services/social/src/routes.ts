@@ -4,7 +4,7 @@
  * database (e2e/src/social.test.ts) and stand-ins for the sign-in provider and the chain.
  *
  *   GET    /me                         my profile and standing (signed in)
- *   POST   /me                         bring my profile up to date from my sign-in
+ *   POST   /me { pictureUrl? }         bring my profile up to date from my sign-in (and my X picture, xPictureOf)
  *   PUT    /me { bio } or { tradesPublic }   my bio, or "Show my trades to followers"
  *   GET    /profile/:key               by handle or id: profile, rank card, counts, recent comments
  *   GET    /profile/:key/followers     and /following
@@ -143,7 +143,7 @@ export async function syncProfile(db: Db, p: Person): Promise<void> {
   if (handle !== null) await db.query('update people.profile set handle = null where handle = $1 and user_id <> $2', [handle, p.userId]);
   await db.query(
     `insert into people.profile (user_id, handle, name, picture_url, wallet) values ($1, $2, $3, $4, $5)
-     on conflict (user_id) do update set handle = excluded.handle, name = excluded.name, picture_url = excluded.picture_url,
+     on conflict (user_id) do update set handle = excluded.handle, name = excluded.name, picture_url = coalesce(excluded.picture_url, people.profile.picture_url),
        wallet = coalesce(excluded.wallet, people.profile.wallet), updated_at = now()`,
     [p.userId, handle, p.name, p.pictureUrl, wallet],
   );
@@ -162,6 +162,21 @@ async function signedIn(req: Request, deps: SocialDeps): Promise<Person | null> 
     synced.set(person.userId, deps.now());
   }
   return person;
+}
+
+/**
+ * A profile picture the app sent for its own signed-in person: kept only when it is X's own picture
+ * host, so the one thing a request may say about itself can only ever be an X avatar, on the
+ * sender's own profile. Anything else is null and the profile keeps what it had.
+ */
+export function xPictureOf(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 500) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && u.hostname === 'pbs.twimg.com' && u.pathname.startsWith('/profile_images/') ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function profileBy(db: Db, key: string): Promise<ProfileRow | null> {
@@ -333,6 +348,10 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
     if (m === 'POST') {
       await syncProfile(deps.db, me);
       synced.set(me.userId, deps.now());
+      /* Their own X picture, as the sign-in window showed it to the app, when the signed token
+         carried none (see xPictureOf): every @handle on screen is drawn with its picture. */
+      const sent = me.pictureUrl === null ? xPictureOf((req.body as { pictureUrl?: unknown } | null)?.pictureUrl) : null;
+      if (sent !== null) await deps.db.query('update people.profile set picture_url = $2, updated_at = now() where user_id = $1', [me.userId, sent]);
     }
     if (m === 'PUT' && typeof (req.body as { tradesPublic?: unknown } | null)?.tradesPublic === 'boolean') {
       await deps.db.query('update people.profile set trades_public = $2, updated_at = now() where user_id = $1', [me.userId, (req.body as { tradesPublic: boolean }).tradesPublic]);

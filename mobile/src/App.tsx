@@ -217,9 +217,10 @@ export function App() {
   /* Who is asking, for the social and alert services: the sign-in's signed token, read when sent. */
   useEffect(() => setTokenSource(() => wallet?.sessionToken() ?? null), [wallet]);
   /* Signed in: the profile is brought up to date from the sign-in, once per session. */
+  const myPicture = signedIn ? (wallet?.identity()?.pictureUrl ?? null) : null;
   useEffect(() => {
-    if (signedIn) void syncMe().catch(() => undefined);
-  }, [signedIn]);
+    if (signedIn) void syncMe(myPicture).catch(() => undefined);
+  }, [signedIn, myPicture]);
   /* This phone's notifications, made sure of on every launch: a phone that allowed them is saved
      again, so a save that failed once heals itself (features/alerts/push.ts). No prompt is shown. */
   useEffect(() => {

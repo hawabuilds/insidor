@@ -79,7 +79,8 @@ export const notifyCall = notify;
  * Open to signed-out viewers. Whether a reading is taken is the server's call; nothing waits on it.
  */
 export const askForReading = async (postId: string): Promise<void> => void (await social('POST', `/post/${encodeURIComponent(postId)}/reading`));
-export const syncMe = async (): Promise<ProfileCard> => (await social('POST', '/me')) as ProfileCard;
+/** Brings the profile up to date; `pictureUrl` is the sign-in's X picture, kept by the server only when it is X's own picture host. */
+export const syncMe = async (pictureUrl: string | null = null): Promise<ProfileCard> => (await social('POST', '/me', pictureUrl === null ? undefined : { pictureUrl })) as ProfileCard;
 export const fetchMe = async (): Promise<ProfileCard> => (await social('GET', '/me')) as ProfileCard;
 export const saveBio = async (bio: string): Promise<ProfileCard> => (await social('PUT', '/me', { bio })) as ProfileCard;
 export const fetchProfile = async (key: string): Promise<{ profile: ProfileCard; comments: readonly Comment[] }> => {
