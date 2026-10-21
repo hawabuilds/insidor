@@ -69,6 +69,15 @@ const DEFAULT_BASE_URL = 'https://api.dexscreener.com';
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * The aggregator's pace (trade-route.ts says why): sent back to back it answered five quotes and
+ * refused the sixth on every pass. One every 1.2 s keeps a pass under 50 a minute, so the bound
+ * of 40 takes about 50 s, on the first pass of each reuse window only; a refusal is waited out
+ * for 5 s and asked once more. Not policy: how fast this vendor may be asked, not a product rule.
+ */
+const PROBE_GAP_MS = 1_200;
+const PROBE_RETRY_AFTER_MS = 5_000;
+
 /** The trade service's own ceiling on one aggregator quote (services/trade/src/main.ts). */
 const ROUTER_TIMEOUT_MS = 8_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
@@ -196,6 +205,7 @@ async function main(): Promise<void> {
       keyOf,
       {
         curveStates: rpcUrl === null ? null : (mints) => curveStates(rpcUrl, mints),
+        pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         probe: (mint) =>
           router.quote({ inputMint: NATIVE, outputMint: mint, amount: probeLamports, slippageBps: DEFAULT_POLICY.trade.defaultSlippageBps }),
       },
@@ -203,6 +213,8 @@ async function main(): Promise<void> {
         nowMs: now(),
         reuseMs: DEFAULT_POLICY.market.poolRouteReuseMs,
         maxProbes: DEFAULT_POLICY.market.maxPoolProbesPerPass,
+        probeGapMs: PROBE_GAP_MS,
+        retryAfterMs: PROBE_RETRY_AFTER_MS,
       },
     );
 

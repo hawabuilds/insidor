@@ -77,11 +77,41 @@ test('the probe bound leaves the rest not asked, in the order given', async () =
   assert.deepEqual(p.asked, ['A', 'B']);
 });
 
-test('a rate limit is not "no route", and stops the asking for this pass', async () => {
+test('a rate limit is not "no route"; asked once more after a wait, a second refusal stops the asking for this pass', async () => {
   const p = ports({ A: 'none', B: 'none' }, { A: 'rate limited', B: 'route' });
-  const { routes, counts } = await routesFor(['A', 'B'], new Map(), keyOf, p, { ...OPTS, maxProbes: 10 });
+  const waits: number[] = [];
+  const paced: RoutePorts = { curveStates: p.curveStates, probe: p.probe, pause: async (ms) => { waits.push(ms); } };
+  const { routes, counts } = await routesFor(['A', 'B'], new Map(), keyOf, paced, { ...OPTS, maxProbes: 10, probeGapMs: 1_000, retryAfterMs: 5_000 });
   assert.equal(routes.get('A'), null);
   assert.equal(routes.get('B'), null);
   assert.equal(counts.unavailable, 1);
-  assert.deepEqual(p.asked, ['A']);
+  assert.deepEqual(p.asked, ['A', 'A']);
+  assert.deepEqual(waits, [5_000]);
+});
+
+test('★ the probes are spaced, and a rate limit that clears is waited out: the pass asks its whole bound (2026-10-21: five answered, the sixth refused, the rest never asked)', async () => {
+  const asked: string[] = [];
+  const waits: number[] = [];
+  let unpaced = 0;
+  /* An aggregator that refuses a sixth request in a row sent without a long wait, like the live one. */
+  const p: RoutePorts = {
+    curveStates: async (mints) => new Map(mints.map((m) => [m, 'complete' as const])),
+    probe: async (mint) => {
+      asked.push(mint);
+      unpaced += 1;
+      if (unpaced > 5) throw new Error('aggregator unavailable at quote: rate limited; try again in a moment');
+      return {};
+    },
+    pause: async (ms) => {
+      waits.push(ms);
+      if (ms >= 5_000) unpaced = 0;
+    },
+  };
+  const coins = Array.from({ length: 12 }, (_, i) => `C${i}`);
+  const { routes, counts } = await routesFor(coins, new Map(), keyOf, p, { ...OPTS, maxProbes: 40, probeGapMs: 1_000, retryAfterMs: 5_000 });
+  assert.equal(counts.pool, 12, 'every coin answered');
+  assert.equal(counts.notAsked, 0);
+  assert.equal(routes.get('C11'), 'pool');
+  assert.equal(waits.filter((w) => w === 1_000).length, 11, 'a gap before every probe after the first');
+  assert.equal(asked.length, 14, 'two refusals, each asked again once');
 });

@@ -23,7 +23,7 @@
  */
 
 import type { Platform } from '../platform.ts';
-import { postPicSources } from '../post-pic.ts';
+import { postPicSources, type PictureRef } from '../post-pic.ts';
 import { ImageIcon, PlayIcon } from './icons.tsx';
 import { cardPictureUrl, sizeForBox } from './picture-size.ts';
 import { POST_PIC_BASE } from './post-pic-base.ts';
@@ -43,6 +43,7 @@ export function Thumb({
   round = false,
   letter = null,
   video = false,
+  more = [],
 }: {
   url: string | null;
   /** Our storage's copy of the picture, by file name (the reply's `thumbFile`); null when there is none yet. */
@@ -60,10 +61,13 @@ export function Thumb({
   letter?: string | null;
   /** The picture is a still of a video: a play icon sits on it. */
   video?: boolean;
+  /** Further pictures of the same thing, tried in order after this one fails (a narrative's posts': storyPictures in post-pic.ts). */
+  more?: readonly PictureRef[];
 }) {
-  /* Our copy first (post-pic.ts), then the host's copy at the box's size (picture-size.ts), then the link as it came. */
-  const links = url === null ? [] : [cardPictureUrl(url, sizeForBox(Math.max(width, height))), url];
-  const sources = postPicSources(file, links, POST_PIC_BASE, 'card');
+  /* Our copy first (post-pic.ts), then the host's copy at the box's size (picture-size.ts), then the link as it came; then each of `more` the same way. */
+  const box = sizeForBox(Math.max(width, height));
+  const each = (u: string | null, f: string | null) => postPicSources(f, u === null ? [] : [cardPictureUrl(u, box), u], POST_PIC_BASE, 'card');
+  const sources = [...new Set([...each(url, file), ...more.flatMap((p) => each(p.url, p.file))])];
   const { src: shown, tryKey, fail } = usePictureTries(sources);
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>

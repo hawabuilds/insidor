@@ -26,6 +26,9 @@
  * A follow row carries Trador's "Follow back" when you do not follow that person yet; once you
  * tap it, it says "Following" (a follow you had already returned shows neither, as in Trador). It sits inside the row's link, so its tap is stopped from opening
  * their profile.
+ *
+ * ★ A FAILED READ KEEPS WHAT WAS READ (list.ts, keep.ts): the list read last opens the screen and stays
+ * when a read fails, and the read is asked again quietly; the error line is only for nothing to show.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
@@ -53,7 +56,7 @@ const ASK = { list: 'notifications' } as const;
 
 export function NotificationsScreen({ settings, onSeen }: { settings: boolean; onSeen: () => void }) {
   const now = useNow();
-  const { list, refresh, loadMore, loadingMore } = useAlertList(ASK, 'notifications');
+  const { list, fresh, refresh, loadMore, loadingMore } = useAlertList(ASK, 'notifications');
   const [sheet, setSheet] = useState(settings);
   /* Before any effect (the sheet's history entry is added in one): the address becomes the list's. */
   useLayoutEffect(() => {
@@ -70,11 +73,12 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
   if (opened.current === null && list.state === 'ready') opened.current = { line: list.value.seenAt, ids: new Set(list.value.alerts.filter((a) => a.unread).map((a) => a.id)) };
   const isNew = (a: { id: number; at: number }): boolean => (opened.current === null ? false : opened.current.line !== null ? a.at > opened.current.line : opened.current.ids.has(a.id));
   const marked = useRef(false);
+  /* Marked read only once a read has landed: the list kept from last time (list.ts) may lack what came since. */
   useEffect(() => {
-    if (list.state !== 'ready' || marked.current) return;
+    if (list.state !== 'ready' || !fresh || marked.current) return;
     marked.current = true;
     void markAlertsSeen().then(onSeen, () => undefined);
-  }, [list.state, onSeen]);
+  }, [list.state, fresh, onSeen]);
 
   const closeSheet = () => setSheet(false);
   const items = list.state === 'ready' ? list.value.alerts : [];
@@ -96,7 +100,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
         </header>
 
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
-        {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications. Pull down to try again.</p> : null}
+        {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications just now. Trying again.</p> : null}
         {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>First coins on what you saved or starred, posts blowing up, your coins, and people following or replying to you land here.</p> : null}
         {grouped(items, now).map((g) => (
           <section key={g.section}>

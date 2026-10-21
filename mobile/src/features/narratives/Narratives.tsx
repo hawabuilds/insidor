@@ -301,9 +301,11 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
   const coin = storyCoinState(story);
   const right = view === undefined ? hourGainText(story) : viewsText(story);
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
-  const gainLine = view !== undefined && gained !== null ? gainedLine(gained, view.span) : null;
   const speeds = view?.sort === 'trending' ? speedsOf(story) : null;
   const speed = speeds === null ? null : speedLine(speeds);
+  /* Trending filled from the last hour's gains (core narrativeTrendingIds) when too few have speeds: such a card says its gain, the reason it is listed. */
+  const hourGain = view?.sort === 'trending' && speeds === null ? hourGainText(story) : null;
+  const gainLine = view !== undefined && gained !== null ? gainedLine(gained, view.span) : hourGain !== null && hourGain !== '+0' && !hourGain.startsWith('-') ? { text: `${hourGain} last hour`, up: true } : null;
   return (
     <article className={styles['card']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
       if (e.key === 'Enter') onOpen();
