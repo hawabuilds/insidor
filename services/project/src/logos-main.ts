@@ -2,7 +2,9 @@
  * THE COIN-LOGO MIRROR, run once: find the coins the app shows whose logo is not in our storage
  * yet (only those: coin-logos.ts says which), copy each one's picture there, record
  * the outcome and, for a coin left as a letter, why; then copy the profile pictures of the posters
- * on the feeds the same way (poster-pics.ts); exit. Scheduled every two minutes by
+ * on the feeds the same way (poster-pics.ts), and the pictures of the posts on For You, Popular,
+ * the scroll and the narratives at the two sizes the app draws (post-pics.ts); exit. Scheduled
+ * every two minutes by
  * tools/railway-start.mjs beside the board's projector.
  *
  * ★ WHY HERE AND NOT IN THE READ SERVICE. Copying into storage needs the storage service key,
@@ -22,12 +24,16 @@
 
 import { dexscreenerProfiles } from '@insidor/market-dexscreener';
 import { coinLogoStore } from '@insidor/storage-supabase/coin-logo.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { postPicStore } from '@insidor/storage-supabase/post-pic.ts';
 import { posterPicStore } from '@insidor/storage-supabase/poster-pic.ts';
 import { asDb, createPool, DB_ROLE } from '@insidor/store';
 import { launchpadPicture, metadataPicture, pictureUrls } from '@insidor/venue-solana-pumpfun';
 
 import { MAX_LOGO_BYTES, mirrorPass } from './coin-logos.ts';
 import { logoSizes } from './logo-sizes.ts';
+import { postPicSizes } from './post-pic-sizes.ts';
+import { postPicPass } from './post-pics.ts';
 import { MAX_POSTER_BYTES, posterPass } from './poster-pics.ts';
 
 /** One market call is abandoned after this long. */
@@ -83,6 +89,24 @@ async function main(): Promise<void> {
       log,
     });
     console.log(JSON.stringify({ level: 'info', msg: 'poster pictures copied', ...posters }));
+    /* Then the shown posts' own pictures (post-pics.ts), while their signed links still load. */
+    const policy = DEFAULT_POLICY.postPictures;
+    const pictures = postPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: policy.maxBytes });
+    const picturesStarted = Date.now();
+    const posts = await postPicPass({
+      db: asDb(pool),
+      policy,
+      nowMs: picturesStarted,
+      elapsedMs: () => Date.now() - picturesStarted,
+      /* The name is recorded only once both copies are written, so no reply names a half-written pair. */
+      copy: async (file, link) => {
+        const { card, sheet } = await postPicSizes((await pictures.download(link)).bytes, policy);
+        await pictures.put(file, sheet, 'sheet');
+        await pictures.put(file, card, 'card');
+      },
+      log,
+    });
+    console.log(JSON.stringify({ level: 'info', msg: 'post pictures copied', ...posts }));
   } finally {
     await pool.end();
   }
