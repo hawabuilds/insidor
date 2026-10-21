@@ -1,4 +1,4 @@
--- 0121_paired_token_origin.sql
+-- 0122_paired_token_origin.sql
 --
 -- A TOKEN WE MET ONLY AS WHAT A LAUNCH WAS PAIRED AGAINST IS NOT A LAUNCH: the asset origin
 -- 'paired_token'.

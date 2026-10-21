@@ -5,7 +5,7 @@
  * socket put a launch's PAIRED token (a tokenised stock such as MSTRx, or USDC) where the new
  * coin's address belongs, beside the new coin's name: MSTRx stood in public.asset as "LAURA" and
  * in the name index as "Junior USD*" (its first sighting, kept forever by 0037), and the meme
- * Laura (Cg9z…pump) had no row. The socket and the listing are fixed (stream.ts, 0121); this
+ * Laura (Cg9z…pump) had no row. The socket and the listing are fixed (stream.ts, 0122); this
  * repairs what they already wrote.
  *
  * WHAT IT DOES, per suspect (a launch row whose address is SOL/USDC/USDT/USD1, or carries the
@@ -32,7 +32,7 @@
  *      index row.
  *
  * DRY RUN BY DEFAULT: the database is read inside a READ ONLY transaction and nothing is written;
- * the plan is printed. `--yes` writes it in one transaction, and only once 0121 is applied (the
+ * the plan is printed. `--yes` writes it in one transaction, and only once 0122 is applied (the
  * origin CHECK must allow `paired_token`), refusing otherwise. `--pages` is how many pool pages
  * per token are read (20 pools a page; default 2, at most 10). Measured 21 Oct on the free API: a
  * stock's first pages are its large listed pools, so the memes launched against it sit deeper
@@ -245,7 +245,7 @@ try {
     console.log('\nDry run: nothing written. Pass --yes to write.');
   } else {
     const [check] = await db.query<{ def: string }>("select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'origin_is_a_known_kind' and conrelid = 'public.asset'::regclass");
-    if (!(check?.def ?? '').includes('paired_token')) throw new Error("refused: 0121 is not applied here (the origin CHECK does not allow 'paired_token'); deploy it first");
+    if (!(check?.def ?? '').includes('paired_token')) throw new Error("refused: 0122 is not applied here (the origin CHECK does not allow 'paired_token'); deploy it first");
     const assets = new PgAssetRepo(db);
     const now = Date.now() as Millis;
     const changed = await assets.markPaired(CHAIN, VENUE, confirmed, now);

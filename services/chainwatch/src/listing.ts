@@ -44,7 +44,7 @@
  * (a stablecoin, a tokenised stock such as MSTRx, another coin), and the launch socket filed such
  * tokens as the coins launched against them: MSTRx stood in our store as "LAURA". The listing
  * names each launch's paired token beside it, so a pass hands the ones it has not settled yet to
- * `markPaired`, which marks those with no curve of their own (0121) — a coin paired against another
+ * `markPaired`, which marks those with no curve of their own (0122) — a coin paired against another
  * coin keeps its row, because that coin was launched too. A token marked, or found to be a coin, is
  * not asked about again by this process; one that could not be checked is asked next pass.
  *
