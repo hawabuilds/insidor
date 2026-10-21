@@ -266,8 +266,9 @@ export class PgItemRepo implements ItemRepo {
        With `notJunkSkipped`, a post the junk filter kept from the judge (internal.junk_skip, 0091) is
        left out, or it would be scored again every pass and crowd the page. Only set by the scorer
        while the filter is on and a fit was read from 0091, so the table is known to exist. */
-    const rows = await this.#db.query<ItemRow>(
-      `${SELECT_ITEM}
+    /* Ids and versions under the page's own filter and order; posts whole only when not held (`#held`). */
+    const picked = await this.#db.query<{ item_id: string; v: string }>(
+      `select item_id, ${ITEM_VERSION} as v from public.item
         where origin = 'observed'
           and first_seen_at >= $1
           and ((exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id and ($4::text is null or f.lane = $4))
@@ -281,8 +282,7 @@ export class PgItemRepo implements ItemRepo {
         limit $2`,
       [toTimestamp(at), limit, minReach, lane],
     );
-    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
-    return rows.map((row) => this.#toItem(row, fingerprints));
+    return this.#heldItems(picked);
   }
 
   /**
