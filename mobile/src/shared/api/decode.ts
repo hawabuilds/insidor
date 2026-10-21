@@ -29,7 +29,7 @@ import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } fr
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
-import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
+import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
@@ -787,6 +787,22 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
     candles,
     trades,
     curveProgress: o['curveProgress'] === null || o['curveProgress'] === undefined ? null : measured(o['curveProgress'], `${path}.curveProgress`, 'not_reported'),
+    pair: marketPair(o['pair'], `${path}.pair`),
+    coin: o['coin'] === null || o['coin'] === undefined ? null : { ticker: optStr(obj(o['coin'], `${path}.coin`)['ticker']), name: optStr(obj(o['coin'], `${path}.coin`)['name']) },
+  };
+}
+
+/** The chart's pool. Absent (an older read service) is null, the same as "trades nowhere we can see". */
+function marketPair(v: unknown, path: string): MarketPair | null {
+  if (v === null || v === undefined) return null;
+  const o = obj(v, path);
+  const t = o['token'] === null || o['token'] === undefined ? null : obj(o['token'], `${path}.token`);
+  const address = t === null ? null : optStr(t['address']);
+  const venue = o['venue'] === null || o['venue'] === undefined ? {} : obj(o['venue'], `${path}.venue`);
+  return {
+    token: t === null || address === null ? null : { address, ticker: optStr(t['ticker']), name: optStr(t['name']), imageUrl: httpsOrNull(t['imageUrl']), stock: t['stock'] === true },
+    venue: { name: optStr(venue['name']), launchpad: venue['launchpad'] === true, url: httpsOrNull(venue['url']) },
+    liquidityUsd: measured(o['liquidityUsd'], `${path}.liquidityUsd`, 'not_reported'),
   };
 }
 

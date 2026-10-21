@@ -12,7 +12,8 @@
  * ★ TWO WHOLE TRADES ABOVE BUY AND SELL ON A 390 BY 844 PHONE (the owner, 2026-10-17). The top half,
  * down to and including the interval row, is as it was; the card is 68px, the filter sits in the
  * tabs row, a trade is one 33px line, and the Buy and Sell bar is slimmer. Growing any of them
- * pushes the second trade under the bar.
+ * pushes the second trade under the bar. (The pair and venue chips now read the chart's pool, at
+ * the same height; see below.)
  *
  * ★ ONE BODY FOR BOTH WAYS IN. A coin opened from a narrative (TokenPage) and one opened from
  * Search (SearchedToken) are the same page, as Trador's one AssetPage is for every coin: they
@@ -29,8 +30,14 @@
  * Choose coin and the For You card show for that coin. Until anything is read, the header holds a
  * small placeholder where the number goes, never "$0" or an empty space.
  *
- * What breaks if changed carelessly: liquidity is the coin's own read when known, else the market
- * profile's; an absent one is a dash with its reason, and only once the profile has answered.
+ * ★ THE PAIR AND THE LIQUIDITY ARE THE CHART'S POOL'S (the owner, 2026-10-21, the one change to the
+ * top half since): the pair chip names the token the pool pairs the coin with (MSTRx for Laura,
+ * tagged "Stock"), the venue chip the pool's dex when that says something new, and "Liq" the pool's
+ * depth. A SOL-paired coin on the launchpad looks as it did. See pair-view.ts.
+ *
+ * What breaks if changed carelessly: liquidity is the chart's pool's when read, else the coin's own
+ * read, else the market profile's; an absent one is a dash with its reason, and only once the
+ * profile has answered.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -56,6 +63,7 @@ import type { TapeFilter } from './trades-view.ts';
 import { ViralPost } from './ViralPost.tsx';
 import { NarrativeCard } from './NarrativeCard.tsx';
 import { narrativeIdFor } from './coin-narrative.ts';
+import { pairChip, pairFrom, poolLiquidity, venueChip, type PairChip, type PairRead } from './pair-view.ts';
 
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
@@ -138,7 +146,13 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const cap = useCoinCap(facts.address, servedCap(facts, about), false, facts.price);
   /* Nothing read yet, from either source: a placeholder where the number goes. */
   const capWaiting = !cap.known && (loaded.state === 'loading' || aboutLoad.state === 'loading');
-  const liquidity: Measured | 'loading' = facts.liquidityUsd?.known === true ? facts.liquidityUsd : about !== null ? (about.liquidityUsd.known ? about.liquidityUsd : (facts.liquidityUsd ?? about.liquidityUsd)) : aboutLoad.state === 'loading' ? 'loading' : (facts.liquidityUsd ?? { known: false, pending: 'unreadable' });
+  /* The chart's pool (pair-view.ts): kept from the last read, so switching timeframe does not unknow it. */
+  const [pair, setPair] = useState<PairRead>('unread');
+  useEffect(() => setPair((kept) => pairFrom(market, kept)), [market]);
+  const pairShown = pairChip(pair);
+  const venueShown = venueChip(pair, facts.venueLabel, facts.address);
+  const served: Measured | 'loading' = facts.liquidityUsd?.known === true ? facts.liquidityUsd : about !== null ? (about.liquidityUsd.known ? about.liquidityUsd : (facts.liquidityUsd ?? about.liquidityUsd)) : aboutLoad.state === 'loading' ? 'loading' : (facts.liquidityUsd ?? { known: false, pending: 'unreadable' });
+  const liquidity = poolLiquidity(pair, served);
 
   const copy = async () => {
     try {
@@ -167,9 +181,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       </div>
 
       <div className={styles['chips']}>
-        <span className={styles['pair']} title="Priced in SOL">SOL</span>
-        <a className={styles['chip']} href={`https://pump.fun/coin/${facts.address}`} target="_blank" rel="noopener noreferrer" title={`Open ${ticker} on ${facts.venueLabel}`}>
-          {facts.venueLabel}
+        <PairTag chip={pairShown} />
+        <a className={styles['chip']} href={venueShown.url} target="_blank" rel="noopener noreferrer" title={`Open ${ticker} on ${venueShown.label}`}>
+          {venueShown.label}
         </a>
         {chips.map((c) => (
           <span key={c} className={`${styles['chip']} ${styles['chipBrand']}`}>{c}</span>
@@ -210,7 +224,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       <div className={styles['panel']}>
         {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} /> : null}
         {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? tickerText(facts.ticker) : 'this coin'} about={ticker} /> : null}
-        {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} /> : null}
+        {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
       </div>
 
       <TradeBar mint={facts.address} ticker={ticker} priceUsd={latestPrice(market) ?? facts.price} off={offBar} />
@@ -219,7 +233,26 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 }
 
 /**
- * Trador's CurveProgress: how far along the launchpad's curve, the bar and its percentage side by
+ * What the coin is priced in: "SOL" as Trador's PairTicker, or the token its pool pairs it with,
+ * with that token's picture and, for a tokenised stock, a "Stock" tag. Before the first read, a
+ * quiet bar holds the place: the page does not yet know, so it does not say.
+ */
+function PairTag({ chip }: { chip: PairChip }) {
+  if (chip.kind === 'unread') return <span className={styles['pair']} aria-label="reading"><span className={styles['pairWait']} /></span>;
+  if (chip.kind === 'sol') return <span className={styles['pair']} title="Priced in SOL">SOL</span>;
+  return (
+    <>
+      <span className={`${styles['pair']} ${styles['pairToken']}`} title={`Priced in ${chip.ticker}`}>
+        <CoinLogo address={chip.address} ticker={chip.ticker} imageUrl={chip.imageUrl} size={14} small />
+        {chip.ticker}
+      </span>
+      {chip.stock ? <span className={`${styles['pair']} ${styles['pairStock']}`}>Stock</span> : null}
+    </>
+  );
+}
+
+/**
+ * Trador's CurveProgress:how far along the launchpad's curve, the bar and its percentage side by
  * side (length alone is a comparison, the question is absolute). Green from halfway, as Trador's.
  */
 export function CurveProgress({ pct }: { pct: number }) {

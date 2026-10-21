@@ -33,6 +33,26 @@ export interface MarketTrade {
   readonly maker: string | null;
 }
 
+/** The token on the other side of the chart's pool, as the market names it. */
+export interface PairToken {
+  readonly address: string;
+  readonly ticker: string | null;
+  readonly name: string | null;
+  readonly imageUrl: string | null;
+  /** A tokenised stock (an xStock such as MSTRx), as its name and symbol both say. */
+  readonly stock: boolean;
+}
+
+/** The pool the chart is drawn from: what the coin is paired with, where, and how deep. */
+export interface MarketPair {
+  /** Null when the market did not name the other side. */
+  readonly token: PairToken | null;
+  /** The dex by its own name ("PumpSwap", "Meteora"); `launchpad` when it is the launchpad's own. */
+  readonly venue: { readonly name: string | null; readonly launchpad: boolean; readonly url: string | null };
+  /** The pool's liquidity in dollars; on the launchpad curve, not reported. */
+  readonly liquidityUsd: Measured;
+}
+
 export type CoinMarket =
   | {
       readonly kind: 'read';
@@ -44,5 +64,9 @@ export type CoinMarket =
       readonly trades: readonly MarketTrade[] | null;
       /** 0..1 while on the curve; null when it is not on one. */
       readonly curveProgress: Measured | null;
+      /** The chart's pool; null when the coin trades nowhere we can see. */
+      readonly pair: MarketPair | null;
+      /** The coin's own ticker and name as that pool lists them; null when it did not say. */
+      readonly coin: { readonly ticker: string | null; readonly name: string | null } | null;
     }
   | { readonly kind: 'unavailable'; readonly timeframe: MarketTimeframe };
