@@ -6,8 +6,10 @@
  *   new       newest first by when we found its first post, all time, dead ones included
  *   trending  one list, right now: core rank/narrative-sorts.ts `narrativeTrending` over each live
  *             narrative's speeds (its posts' For You speeds added up, written on its page by the
- *             projector), risers by how many times faster, filled when fewer than 5. Dead ones and
- *             pages whose speeds were made `freshMs` ago or more are not on it
+ *             projector), risers by how many times faster, filled when fewer than 5: first with
+ *             the others over the floor, then with the fresh pages' measured last-hour gains
+ *             (`narrativeTrendingIds`, for when readings are too thin for speeds). Dead ones and
+ *             pages made `freshMs` ago or more are not on it
  *   today     views gained over the last 24 hours, the posts' gains added up (the page's
  *   week      `viewsGainedDay` / `viewsGainedWeek`); a page that does not say is left off, never 0
  *   viewed    every narrative by its views, dead ones included (Most viewed, All)
@@ -29,7 +31,7 @@
  */
 
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts';
-import { narrativeTrending, type NarrativeSpeeds } from '@insidor/core';
+import { narrativeTrendingIds, type NarrativeSpeeds } from '@insidor/core';
 
 import { rankScale } from './post-sorts.ts';
 import type { Db, Row } from './queries.ts';
@@ -95,6 +97,7 @@ export const LIST_NEW_SQL = `select payload from public.story_view
 export const LIST_NUMBERS_SQL = `select story_id, dead, projected_at, views_total,
        payload -> 'viewsPerMinute' as speeds,
        payload #>> '{viewsGainedDay,v}' as day, payload #>> '{viewsGainedWeek,v}' as week,
+       payload #>> '{viewsGained1h,v}' as hour,
        payload -> 'evidence' @> '[{"sourceLabel":"X"}]' as on_x,
        payload -> 'evidence' @> '[{"sourceLabel":"TikTok"}]' as on_tiktok,
        ${NO_COIN_YET} as no_coin
@@ -109,6 +112,8 @@ export interface NumbersRow {
   readonly speeds: NarrativeSpeeds | null;
   readonly day: number | null;
   readonly week: number | null;
+  /** Views gained in the last hour, as the page measured it; null when it did not. */
+  readonly hour: number | null;
   readonly on: ReadonlySet<Site>;
   readonly noCoin: boolean;
 }
@@ -134,15 +139,17 @@ export function numbersOf(r: Row): NumbersRow | null {
   const on = new Set<Site>();
   if (r['on_x'] === true) on.add('x');
   if (r['on_tiktok'] === true) on.add('tiktok');
-  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), on, noCoin: r['no_coin'] === true };
+  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), hour: num(r['hour']), on, noCoin: r['no_coin'] === true };
 }
 
 /** The list for a ranked sort, in order: ids only. */
 export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY, noCoin = false): readonly string[] {
   const mine = rows.filter((r) => (on === null || r.on.has(on)) && (!noCoin || r.noCoin));
   if (sort === 'trending') {
-    const live = mine.flatMap((r) => (r.dead || r.speeds === null ? [] : [{ id: r.id, speeds: r.speeds, fresh: r.projectedMs !== null && nowMs - r.projectedMs < policy.rising.forYouSorts.freshMs }]));
-    return narrativeTrending(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy).map((x) => x.id);
+    const fresh = (r: NumbersRow): boolean => r.projectedMs !== null && nowMs - r.projectedMs < policy.rising.forYouSorts.freshMs;
+    const live = mine.flatMap((r) => (r.dead || r.speeds === null ? [] : [{ id: r.id, speeds: r.speeds, fresh: fresh(r) }]));
+    const gains = mine.flatMap((r) => (r.dead ? [] : [{ id: r.id, gained: r.hour, fresh: fresh(r) }]));
+    return narrativeTrendingIds(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy, gains);
   }
   const key = (r: NumbersRow): number | null => (sort === 'today' ? r.day : r.week);
   return mine

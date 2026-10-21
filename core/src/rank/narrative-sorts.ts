@@ -94,3 +94,39 @@ export function narrativeTrending(rows: readonly TrendingNarrative[], scaleOf: (
   const fill = over.filter((x) => !taken.has(x.id)).sort(cmp);
   return [...risers, ...fill].slice(0, Math.max(r.fillTo, risers.length));
 }
+
+/** A narrative's views gained over the last hour, as its page says it (`viewsGained1h`), for the fill. */
+export interface HourGain {
+  readonly id: string;
+  /** Measured views gained in the last hour; null when the page did not measure it. */
+  readonly gained: number | null;
+  /** Its page was made under `freshMs` ago. */
+  readonly fresh: boolean;
+}
+
+/**
+ * ★ TRENDING NEVER EMPTY FOR WANT OF A HALF-HOURLY READING. The speeds need a reading in the last
+ * 30 minutes AND in the hour before, a mark gap under 20 minutes, of the same posts. When re-reads
+ * are paused (the X re-read day spent, as on 2026-10-21 from midday) or a post leaves For You, its
+ * readings thin out and its narrative has no speeds: that day 2 of 638 live narratives had any,
+ * both under the floor, and the tab said "Nothing is speeding up right now" while 19 fresh
+ * narratives had measured last-hour gains of 5K to 587K views.
+ *
+ * So the fill (fewer than `fillBelow` risers, filled to `fillTo`) runs in two steps: first the
+ * others over the floor by ratio (`narrativeTrending`), then, still short, the fresh narratives
+ * with a measured gain in the last hour, the most first, ties by id. Each card says its own facts
+ * (its gain in the last hour), so a filled card never claims to be speeding up. An unmeasured or
+ * zero gain is not a gain: such a narrative stays off, never ranked as 0.
+ */
+export function narrativeTrendingIds(rows: readonly TrendingNarrative[], scaleOf: (source: string) => number, policy: Policy, hourGains: readonly HourGain[] = []): readonly string[] {
+  const r = policy.rising.forYouSorts.risers;
+  const ranked = narrativeTrending(rows, scaleOf, policy).map((x) => x.id);
+  const risers = rows.filter((x) => x.fresh && floorSpeed(x.speeds, scaleOf) >= r.floorPerMin && x.speeds.now >= r.minRatio * x.speeds.before).length;
+  if (risers >= r.fillBelow || ranked.length >= r.fillTo) return ranked;
+  const taken = new Set(ranked);
+  const more = hourGains
+    .filter((g): g is HourGain & { gained: number } => g.fresh && g.gained !== null && g.gained > 0 && !taken.has(g.id))
+    .sort((a, b) => b.gained - a.gained || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((g) => g.id);
+  return [...ranked, ...more].slice(0, r.fillTo);
+}
