@@ -46,8 +46,17 @@ const SELECT_OBSERVATION = `
     from public.observation
 `;
 
+/** A held series unused this long is dropped: a post leaves every stage's page within the hour. */
+const HELD_SERIES_IDLE_MS = 30 * 60_000;
+
 export class PgObservationRepo implements ObservationRepo {
   readonly #db: Db;
+  /**
+   * Series `seriesForItems` has read, by post: every reading at or after `from` as of the last
+   * catch-up, and the newest reading's instant. See `seriesForItems`.
+   */
+  readonly #held = new Map<string, { readonly from: number; readonly rows: Observation[]; newestMs: number; usedAt: number }>();
+  #sweptAt = 0;
 
   constructor(db: Db) {
     this.#db = db;
@@ -161,19 +170,77 @@ export class PgObservationRepo implements ObservationRepo {
   ): Promise<ReadonlyMap<ItemId, readonly Observation[]>> {
     const found = new Map<ItemId, Observation[]>();
     if (itemIds.length === 0) return found;
+    const ids = [...new Set(itemIds.map(String))];
+    const now = Date.now();
 
-    const rows = await this.#db.query<ObservationRow>(
-      `${SELECT_OBSERVATION}
-        where item_id = any($1::text[]) and captured_at >= $2
-        order by item_id, captured_at asc`,
-      [[...itemIds], toTimestamp(sinceMs)],
-    );
+    /* ★ HELD SERIES, CAUGHT UP RATHER THAN RE-READ. TRACK, DETECT and the sorters ask for the same
+       posts' week of readings every pass — ~5,000 rows a read, 350M rows in nine days, almost all
+       of them returned the pass before. A series held from at or before `sinceMs` is brought up to
+       date with the readings after its newest, then its count inside the window is checked
+       against the table's: readings are append only, so equal counts mean the same rows, and a
+       post whose count differs (a late reading, or post-slim's delete) is read whole again. */
+    const covered = ids.filter((id) => {
+      const s = this.#held.get(id);
+      return s !== undefined && s.from <= sinceMs;
+    });
+    const coveredSet = new Set(covered);
+    const reread = new Set(ids.filter((id) => !coveredSet.has(id)));
+    if (covered.length > 0) {
+      const newer = await this.#db.query<ObservationRow>(
+        `select o.item_id, o.kind, o.captured_at, o.value, o.fidelity_kind, o.fidelity_digits,
+                o.observed_at, o.lag_ms, o.rate_per_min, o.censored,
+                o.rate_over_ms, o.rate_level, o.rate_last_level
+           from unnest($1::text[], $2::float8[]) as w(item_id, after_ms)
+           join public.observation o on o.item_id = w.item_id and o.captured_at > to_timestamp(w.after_ms / 1000.0)
+          order by o.item_id, o.captured_at asc`,
+        [covered, covered.map((id) => this.#held.get(id)?.newestMs ?? 0)],
+      );
+      for (const row of newer) {
+        const s = this.#held.get(row.item_id);
+        if (s === undefined) continue;
+        const o = toObservation(row);
+        const at = s.rows.findIndex((x) => x.capturedAt === o.capturedAt && x.kind === o.kind);
+        if (at >= 0) s.rows[at] = o;
+        else s.rows.push(o);
+        if (o.capturedAt > s.newestMs) s.newestMs = o.capturedAt;
+      }
+      const counts = await this.#db.query<{ item_id: string; n: number }>(
+        `select item_id, count(*)::int as n from public.observation
+          where item_id = any($1::text[]) and captured_at >= $2 group by item_id`,
+        [covered, toTimestamp(sinceMs)],
+      );
+      const counted = new Map(counts.map((c) => [c.item_id, Number(c.n)] as const));
+      for (const id of covered) {
+        const s = this.#held.get(id);
+        const mine = s === undefined ? -1 : s.rows.reduce((n, o) => n + (o.capturedAt >= sinceMs ? 1 : 0), 0);
+        if (mine !== (counted.get(id) ?? 0)) reread.add(id);
+      }
+    }
+    if (reread.size > 0) {
+      const rows = await this.#db.query<ObservationRow>(
+        `${SELECT_OBSERVATION}
+          where item_id = any($1::text[]) and captured_at >= $2
+          order by item_id, captured_at asc`,
+        [[...reread], toTimestamp(sinceMs)],
+      );
+      const fresh = new Map<string, Observation[]>([...reread].map((id) => [id, []] as const));
+      for (const row of rows) fresh.get(row.item_id)?.push(toObservation(row));
+      for (const [id, list] of fresh) {
+        this.#held.set(id, { from: sinceMs, rows: list, newestMs: list.reduce((m, o) => Math.max(m, o.capturedAt), sinceMs), usedAt: now });
+      }
+    }
 
-    for (const row of rows) {
-      const key = reBrand<ItemId>(row.item_id);
-      const list = found.get(key);
-      if (list === undefined) found.set(key, [toObservation(row)]);
-      else list.push(toObservation(row));
+    for (const id of ids) {
+      const s = this.#held.get(id);
+      if (s === undefined) continue;
+      s.usedAt = now;
+      s.rows.sort((a, b) => a.capturedAt - b.capturedAt);
+      const list = s.rows.filter((o) => o.capturedAt >= sinceMs);
+      if (list.length > 0) found.set(reBrand<ItemId>(id), list);
+    }
+    if (now - this.#sweptAt >= HELD_SERIES_IDLE_MS) {
+      this.#sweptAt = now;
+      for (const [k, s] of this.#held) if (now - s.usedAt >= HELD_SERIES_IDLE_MS) this.#held.delete(k);
     }
     return found;
   }
