@@ -63,7 +63,7 @@ import type { TapeFilter } from './trades-view.ts';
 import { ViralPost } from './ViralPost.tsx';
 import { NarrativeCard } from './NarrativeCard.tsx';
 import { narrativeIdFor } from './coin-narrative.ts';
-import { pairChip, pairFrom, poolLiquidity, venueChip, type PairChip, type PairRead } from './pair-view.ts';
+import { pairChip, pairFrom, poolLiquidity, shownName, venueChip, type CoinListing, type PairChip, type PairRead } from './pair-view.ts';
 
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
@@ -112,7 +112,6 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const toast = useToast();
   const { state: walletState } = useWallet();
   const account = walletState.kind === 'connected' ? walletState.account : null;
-  const ticker = facts.ticker ?? '—';
   const [tf, setTf] = useState<MarketTimeframe>(() =>
     defaultTimeframe({ onCurve: facts.venue === 'curve', launchedAt: facts.launchedAt.known ? facts.launchedAt.at : null, now: Date.now() }),
   );
@@ -153,6 +152,13 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const venueShown = venueChip(pair, facts.venueLabel, facts.address);
   const served: Measured | 'loading' = facts.liquidityUsd?.known === true ? facts.liquidityUsd : about !== null ? (about.liquidityUsd.known ? about.liquidityUsd : (facts.liquidityUsd ?? about.liquidityUsd)) : aboutLoad.state === 'loading' ? 'loading' : (facts.liquidityUsd ?? { known: false, pending: 'unreadable' });
   const liquidity = poolLiquidity(pair, served);
+  /* The coin's name as its market lists it, over our name index's (pair-view.ts `shownName`). */
+  const [listed, setListed] = useState<CoinListing | null>(null);
+  useEffect(() => {
+    if (market?.kind === 'read' && market.coin !== null) setListed(market.coin);
+  }, [market]);
+  const named = shownName(listed, facts.ticker, facts.name);
+  const ticker = named.ticker ?? '—';
 
   const copy = async () => {
     try {
@@ -171,10 +177,10 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       {notice}
 
       <div className={styles['head']}>
-        <CoinLogo address={facts.address} ticker={facts.ticker ?? facts.name} imageUrl={facts.imageUrl} size={44} />
+        <CoinLogo address={facts.address} ticker={named.ticker ?? named.name} imageUrl={facts.imageUrl} size={44} />
         <div className={styles['headText']}>
           <h1>{ticker}</h1>
-          <div className={styles['name']}>{facts.name ?? ''}</div>
+          <div className={styles['name']}>{named.name ?? ''}</div>
         </div>
         {/* The coin's own links, aligned to the logo as Trador aligns them; none, no row. */}
         {about !== null ? <SocialRow links={about.links} /> : null}
@@ -223,7 +229,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       <div className={styles['panel']}>
         {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} /> : null}
-        {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? tickerText(facts.ticker) : 'this coin'} about={ticker} /> : null}
+        {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={named.ticker !== null ? tickerText(named.ticker) : 'this coin'} about={ticker} /> : null}
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
       </div>
 

@@ -11,6 +11,8 @@
  * pool's own dex name shows only when it says something new: a coin paired with another token, or
  * a pool off the launchpad (Meteora, Raydium).
  *
+ * The coin's own name follows the same pool: `shownName` puts the market's listing over our index's.
+ *
  * What breaks if changed carelessly: before the first market read the page cannot know the pair,
  * so `pair` is `'unread'` and the chip holds its place without a claim. Showing "SOL" there would
  * print a false fact for Laura for the moment it takes to read.
@@ -59,4 +61,17 @@ export function venueChip(pair: PairRead, launchpadLabel: string, address: strin
 export function poolLiquidity(pair: PairRead, otherwise: Measured | 'loading'): Measured | 'loading' {
   if (pair !== 'unread' && pair !== null && pair.liquidityUsd.known) return pair.liquidityUsd;
   return otherwise;
+}
+
+/** The coin's own ticker and name as its market lists them. */
+export type CoinListing = { readonly ticker: string | null; readonly name: string | null };
+
+/**
+ * The coin's ticker and name on the page: the market's listing over what the page was opened with,
+ * field by field, whenever the market gave one. What the page was opened with can come from our name
+ * index (public.coin_name), which keeps a coin's first sighting forever and holds some tokens under
+ * another launch's name: MSTRx is in it as "Junior USD*".
+ */
+export function shownName(listed: CoinListing | null, ticker: string | null, name: string | null): CoinListing {
+  return { ticker: listed?.ticker ?? ticker, name: listed?.name ?? name };
 }

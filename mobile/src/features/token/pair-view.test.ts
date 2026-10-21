@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { decodeCoinMarket } from '../../shared/api/decode.ts';
 import type { MarketPair } from '../../shared/api/index.ts';
-import { pairChip, pairFrom, poolLiquidity, SOL_MINT, venueChip } from './pair-view.ts';
+import { pairChip, pairFrom, poolLiquidity, shownName, SOL_MINT, venueChip } from './pair-view.ts';
 
 const LAURA = 'Cg9zDsrNUzkm7cUgrXyv5TaKpbH5dpnr4E7pFAZYpump';
 const MSTRX = 'XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ';
@@ -64,4 +64,10 @@ test('the wire: the pair is read whole; a link that is not https is no link; an 
   assert.deepEqual(m.coin, { ticker: 'Laura', name: 'Forever Laura' });
   const old = decodeCoinMarket({ kind: 'read', timeframe: '1h', venue: 'pool', candles: [], trades: [], curveProgress: null });
   assert.ok(old.kind === 'read' && old.pair === null && old.coin === null);
+});
+
+test('★ the market\'s own name wins over a stale index name: MSTRx, not "Junior USD*"', () => {
+  assert.deepEqual(shownName({ ticker: 'MSTRx', name: 'MicroStrategy xStock' }, 'USD*-J', 'Junior USD*'), { ticker: 'MSTRx', name: 'MicroStrategy xStock' });
+  assert.deepEqual(shownName({ ticker: 'Laura', name: null }, 'Laura', 'Forever Laura'), { ticker: 'Laura', name: 'Forever Laura' }, 'field by field');
+  assert.deepEqual(shownName(null, 'Laura', null), { ticker: 'Laura', name: null }, 'no listing yet: what the page was opened with');
 });

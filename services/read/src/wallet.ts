@@ -217,8 +217,10 @@ export function createWallet(deps: WalletDeps) {
       return {
         coinId: `solana:${t.mint}`,
         address: t.mint,
-        ticker: name?.ticker ?? q?.ticker ?? null,
-        name: name?.name ?? q?.name ?? null,
+        /* The market's name first: the name index keeps a first sighting forever, and holds some
+           tokens under another launch's name (MSTRx as "Junior USD*"). It only fills a gap. */
+        ticker: q?.ticker ?? name?.ticker ?? null,
+        name: q?.name ?? name?.name ?? null,
         imageUrl: null as string | null,
         amount: t.amount,
         decimals: t.decimals,
