@@ -16,6 +16,9 @@
  *      content-addressed (shared/coin-logo.ts);
  *   4. Trador's fallback: the ticker's first letter in a circle, on a colour fixed by the address.
  *      Every launchpad coin has a picture, so a letter means every source above failed.
+ *      Not at once: every source is tried once more a few seconds later, with the page on screen
+ *      and online, before the letter is final (usePictureTries.ts), so a load cut off by the app
+ *      going to the background does not leave a letter on a tab that stays open.
  *
  * ★ "SLOW" IS JUDGED ONLY ON SCREEN. The pictures load lazily, so one below the fold has not
  * started; the timer checks the picture is in view before handing over, and the last source is
@@ -32,9 +35,10 @@
  * (tokens.css rule 1), and a coin's disc beside its price must not read as a signal.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { logoGradient, logoLetter, logoSources } from '../coin-logo.ts';
+import { usePictureTries } from './usePictureTries.ts';
 
 const BASE = ((import.meta.env?.['VITE_COIN_LOGO_BASE'] as string | undefined) ?? '').replace(/\/+$/, '');
 /** A picture still loading in view after this long hands over to the next source. */
@@ -51,8 +55,7 @@ export function CoinLogo({ address, ticker, imageUrl = null, size, small = false
   small?: boolean;
 }) {
   const sources = logoSources(address, imageUrl, BASE, small);
-  const [failed, setFailed] = useState<readonly string[]>([]);
-  const shown = sources.find((s) => !failed.includes(s)) ?? null;
+  const { src: shown, tryKey, fail } = usePictureTries(sources);
   const last = shown !== null && sources.indexOf(shown) === sources.length - 1;
   const img = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
@@ -63,15 +66,16 @@ export function CoinLogo({ address, ticker, imageUrl = null, size, small = false
       if (el === null || el.complete) return;
       const r = el.getBoundingClientRect();
       const inView = r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
-      if (inView) setFailed((f) => (f.includes(shown) ? f : [...f, shown]));
+      if (inView) fail(shown);
       else timer = window.setTimeout(check, SLOW_MS);
     };
     timer = window.setTimeout(check, SLOW_MS);
     return () => window.clearTimeout(timer);
-  }, [shown, last]);
+  }, [shown, last, tryKey]);
   if (shown !== null) {
     return (
       <img
+        key={tryKey}
         ref={img}
         src={shown}
         alt=""
@@ -79,7 +83,7 @@ export function CoinLogo({ address, ticker, imageUrl = null, size, small = false
         height={size}
         loading="lazy"
         decoding="async"
-        onError={() => setFailed((f) => [...f, shown])}
+        onError={() => fail(shown)}
         style={{ width: size, height: size, minWidth: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--card)' }}
       />
     );

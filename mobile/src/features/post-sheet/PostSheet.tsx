@@ -433,7 +433,7 @@ function topLine(main: SheetCoin, shared: string | null): string {
 
 /** The poster's picture (our copy, else the source's link), or the first letter of their name when there is none or none will load. */
 function Avatar({ file, url, letter }: { file: string | null; url: string | null; letter: string }) {
-  const { src, onError } = usePosterPic(file, url);
-  if (src !== null) return <img key={src} className={styles['avatarImg']} src={src} alt="" onError={onError} />;
+  const { src, tryKey, onError } = usePosterPic(file, url);
+  if (src !== null) return <img key={tryKey} className={styles['avatarImg']} src={src} alt="" onError={onError} />;
   return <span className={styles['avatarLetter']} aria-hidden="true">{(letter.trim()[0] ?? '?').toUpperCase()}</span>;
 }

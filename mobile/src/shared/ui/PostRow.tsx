@@ -7,7 +7,8 @@
  * built, kept that way on purpose: the owner asked for the old look back.
  * A post with no picture or video has no thumbnail box at all, so its words use the card's full
  * width; a card with media is unchanged. The picture is asked for at the card's size
- * (picture-size.ts), never the full posted size: a long feed decodes hundreds of them.
+ * (picture-size.ts, inside Thumb, which falls back to the link as it came), never the full posted
+ * size: a long feed decodes hundreds of them.
  *
  * A post written in another language shows its English, with "Translated from <language>" and
  * "Show original" under it (shared/ui/Translated.tsx); a tap there swaps the words and never opens
@@ -63,7 +64,6 @@ import { usePosterPic } from './usePosterPic.ts';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
 import { TranslatedLine, useShownWords } from './Translated.tsx';
-import { cardPictureUrl } from './picture-size.ts';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
 
@@ -104,7 +104,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
         {/* A post with no picture or video has no thumbnail box: its words take the card's width. */}
         {post.thumbUrl !== null || post.thumbIsVideo ? (
           <Thumb
-            url={post.thumbUrl === null ? null : cardPictureUrl(post.thumbUrl)}
+            url={post.thumbUrl}
             video={post.thumbIsVideo}
             width={84}
             height={98}
@@ -179,8 +179,8 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
  * picture stored or none of them will load.
  */
 function PosterPic({ file, url, label }: { file: string | null; url: string | null; label: string }) {
-  const { src, onError } = usePosterPic(file, url);
-  if (src !== null) return <img className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
+  const { src, tryKey, onError } = usePosterPic(file, url);
+  if (src !== null) return <img key={tryKey} className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
   return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
 }
 
