@@ -11,10 +11,16 @@
  * when someone opens a token page. Projecting candles and trades for every coin every minute
  * would cost a hundred calls to show one.
  *
- * ★ ONLY FOR A COIN WE ALREADY HOLD, OR ONE A SEARCH JUST RETURNED. An address nobody indexed and
- * no search of ours listed is a 404, so this route can never be used to make us fetch an
- * arbitrary address; a search result stays openable for `search.openableMs` (search.ts). And every answer is kept (see the adapter), so
- * a crowd on one coin costs one call.
+ * ★ ONLY FOR A COIN WE ALREADY HOLD, ONE A SEARCH JUST RETURNED, OR ONE A MARKET SOURCE LISTS. An
+ * address nobody indexed is looked up once by its address (search.ts `open`, for a coin someone
+ * holds that our launch feed missed) under its own small limit; one no source lists is a 404, so
+ * this route can never be used to make us fetch candles for an arbitrary address. A search result
+ * or a looked-up coin stays openable for `search.openableMs` (search.ts). And every answer is kept
+ * (see the adapter), so a crowd on one coin costs one call.
+ *
+ * ★ THE CHART IS THE POOL THE COIN TRADES IN, WHATEVER IT IS PAIRED WITH. The adapter picks the
+ * coin's deepest pool and asks for its candles in dollars for this coin's side, so a coin paired
+ * with another coin (Laura with MSTRx) draws like one paired with SOL.
  *
  * What breaks if changed carelessly: an outage is not an empty market. A source that failed
  * answers `{ kind: 'unavailable' }`, which the page shows as a dash with a reason — never as a

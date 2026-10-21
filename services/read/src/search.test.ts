@@ -8,7 +8,7 @@ import { SILENT } from './log.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
 import { SAME_NAME_SQL } from './same-name.ts';
-import { ASSET_SEARCH_SQL, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
+import { ASSET_SEARCH_SQL, coinHitFromQuote, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
 
 const POLICY = DEFAULT_POLICY.search;
 
@@ -34,7 +34,7 @@ const STORY_ROW: Row = {
   },
 };
 
-function harness(opts: { sources?: readonly NamedSearch[]; rows?: Partial<Record<string, readonly Row[]>>; curve?: (a: string) => Promise<number | null> } = {}) {
+function harness(opts: { sources?: readonly NamedSearch[]; rows?: Partial<Record<string, readonly Row[]>>; curve?: (a: string) => Promise<number | null>; lookup?: (a: string) => Promise<CoinSearchHit | null> } = {}) {
   let now = 10_000;
   const queries: string[] = [];
   const db = {
@@ -51,6 +51,7 @@ function harness(opts: { sources?: readonly NamedSearch[]; rows?: Partial<Record
     curveProgress: opts.curve ?? null,
     images: async (mints) => new Map(mints.filter((m) => m === 'A').map((m) => [m, 'https://ipfs.io/ipfs/a'])),
     market: { coin: async () => ({ pool: null, candles: [{ t: 1, o: 1, h: 0.004, l: 1, c: 1 }], trades: [] }) } as never,
+    ...(opts.lookup === undefined ? {} : { lookup: opts.lookup }),
     now: () => now,
   });
   return { search, queries, tick: (ms: number) => { now += ms; } };
@@ -160,6 +161,61 @@ test('★ a coin a search returned opens as a token page for a while; an address
   assert.equal((await handle('GET', '/coin/solana%3AQ/market?tf=1h', deps)).status, 404);
   h.tick(POLICY.openableMs);
   assert.equal((await handle('GET', '/coin/solana%3AA/market?tf=1h', deps)).status, 404);
+});
+
+const LAURA = 'Cg9zDsrNUzkm7cUgrXyv5TaKpbH5dpnr4E7pFAZYpump';
+
+test('★ a held coin we never indexed opens by its address once a market source lists it; one nobody lists is still a 404', async () => {
+  const asked: string[] = [];
+  let down = false;
+  const lookup = async (a: string) => {
+    asked.push(a);
+    if (down) throw new Error('responded 429');
+    return a === LAURA ? hit({ address: LAURA, name: 'Forever Laura', ticker: 'Laura', venue: 'pool', marketAddress: 'Fv44ZP4nZa45cT7Vv2UaQ8o5jNdrZzjuE3jvT1jPYVDK', createdAt: null, source: 'lookup' }) : null;
+  };
+  const h = harness({ lookup });
+  const pools: string[] = [];
+  const deps = {
+    db: { query: async () => [] as Row[] },
+    log: SILENT,
+    search: h.search,
+    market: { market: { coin: async (m: string) => { pools.push(m); return { pool: { address: 'Fv44', dex: 'pumpswap', reserveUsd: 18_000 }, candles: [{ t: 1, o: 1, h: 1, l: 1, c: 1 }], trades: [] }; } } as never, curveProgress: null },
+  };
+  /* The page asks for its facts and its chart at once: both answer, from one lookup. */
+  const [facts, market] = await Promise.all([handle('GET', `/coin/solana%3A${LAURA}`, deps), handle('GET', `/coin/solana%3A${LAURA}/market?tf=1h`, deps)]);
+  assert.equal(facts.status, 200);
+  assert.equal(body(facts).ticker, 'Laura');
+  assert.equal(body(facts).venue, 'pool');
+  assert.equal(market.status, 200);
+  assert.equal(body(market).venue, 'pool', 'the chart is the pool it actually trades in');
+  assert.deepEqual(pools, [LAURA]);
+  assert.deepEqual(asked, [LAURA]);
+
+  /* Unlisted anywhere: a 404, and the answer is kept, so asking again costs no call. */
+  const NOBODY = 'So11111111111111111111111111111111111111113';
+  assert.equal((await handle('GET', `/coin/solana%3A${NOBODY}`, deps)).status, 404);
+  assert.equal((await handle('GET', `/coin/solana%3A${NOBODY}/market?tf=1h`, deps)).status, 404);
+  assert.deepEqual(asked, [LAURA, NOBODY]);
+  /* Not an address at all: never looked up. */
+  assert.equal((await handle('GET', '/coin/solana%3Anot-an-address', deps)).status, 404);
+  assert.equal(asked.length, 2);
+
+  /* An outage is not remembered as "not listed": the next ask tries again. */
+  h.tick(POLICY.openableMs);
+  down = true;
+  assert.equal((await handle('GET', `/coin/solana%3A${LAURA}`, deps)).status, 404);
+  down = false;
+  assert.equal((await handle('GET', `/coin/solana%3A${LAURA}`, deps)).status, 200);
+});
+
+test('a looked-up coin: its deepest pair\'s venue, and a launch time only where the pair\'s creation is the launch', () => {
+  const q = { name: 'Forever Laura', ticker: 'Laura', priceUsd: null, priceSol: null, marketCapUsd: null, liquidityUsd: null, change: { h1: null, h6: null, h24: null }, bonded: true };
+  const pool = coinHitFromQuote(LAURA, { ...q, pair: { address: 'Fv44', dex: 'pumpswap', createdAt: 1_792_498_067_000 } }, 'https://ipfs.io/ipfs/l');
+  assert.deepEqual(pool, { address: LAURA, name: 'Forever Laura', ticker: 'Laura', venue: 'pool', marketAddress: 'Fv44', createdAt: null, marketCapUsd: null, imageUrl: 'https://ipfs.io/ipfs/l', source: 'lookup' });
+  const curve = coinHitFromQuote(LAURA, { ...q, pair: { address: 'curve', dex: 'pumpfun', createdAt: 5 } }, null);
+  assert.equal(curve?.venue, 'curve');
+  assert.equal(curve?.createdAt, 5);
+  assert.equal(coinHitFromQuote(LAURA, undefined, null), null, 'not listed');
 });
 
 test('the ticker check counts the coins we have seen with it, and nothing more', async () => {
