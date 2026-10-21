@@ -21,8 +21,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(var(--safe-top) + 10px) var(--gutter) 0 12px;
-  height: calc(var(--safe-top) + 54px);
+  /* #root already leaves the status bar's room (--safe-top); adding it here too put Back a whole
+     status bar too low in the home-screen app (the shared ScreenHeader rule). */
+  padding: 10px var(--gutter) 0 12px;
+  height: 54px;
 }
 
 .back {
