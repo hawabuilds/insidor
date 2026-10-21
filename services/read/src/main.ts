@@ -25,6 +25,7 @@ import { dexscreenerProfiles, dexscreenerQuotes, dexscreenerSearch, type CoinPro
 import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { geckoterminalHolders, keyHeaders } from '@insidor/market-geckoterminal/holders.ts';
+import { geckoterminalTokenPrices } from '@insidor/market-geckoterminal/prices.ts';
 import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 
 import { loadReadConfig } from './config.ts';
@@ -238,6 +239,16 @@ async function main(): Promise<void> {
     policy: DEFAULT_POLICY.wallet,
     reader: rpcUrl === null ? null : portfolioReader({ rpcUrl, parseUrl: cfg.parseUrl, fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }),
     quotes: dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }),
+    /* What the pair source cannot price — a coin paired only with another coin — priced from
+       every pool it trades in, on its own small budget (holding-prices.ts). */
+    tokenPrices: geckoterminalTokenPrices({
+      plan: cfg.marketData.plan,
+      baseUrl: cfg.marketData.baseUrl,
+      headers: keyHeaders(cfg.marketData.plan, cfg.marketData.apiKey),
+      fetch: globalThis.fetch,
+      timeoutMs: MARKET_TIMEOUT_MS,
+      now: Date.now,
+    }),
     images: chain === null ? null : (mints) => chain.imageUris(mints),
     creatorFees: rpcUrl === null ? null : (creator) => unclaimedCreatorFees(rpcUrl, creator),
     now: Date.now,

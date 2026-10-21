@@ -59,12 +59,28 @@ export function dexscreenerStandings(config: { readonly baseUrl: string; readonl
   };
 }
 
-/** A coin's price now, in dollars and in SOL, and how it moved. Every number may be missing. */
+/** Wrapped SOL: the one quote token whose "native" price is a price in SOL. */
+export const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
+
+/**
+ * A coin's price now, in dollars and in SOL, and how it moved. Every number may be missing.
+ *
+ * ★ THE SOURCE'S "NATIVE" PRICE IS IN THE PAIR'S QUOTE TOKEN, WHICH IS NOT ALWAYS SOL. A coin
+ * paired with USDC, or with another coin (Laura with MSTRx, 2026-10-20), has a native price in
+ * that token, and for a coin-quoted pair the source gives no dollar price at all. So `priceSol`
+ * is set only for a SOL pair, and `quote` carries the pair's quote token and the price in it, for
+ * a caller to convert through that token's own dollar price.
+ */
 export interface CoinQuote {
   readonly name: string | null;
   readonly ticker: string | null;
   readonly priceUsd: number | null;
+  /** Only from a pair quoted in SOL; null for any other pair, never another token's price. */
   readonly priceSol: number | null;
+  /** The deepest pair's quote token and the coin's price in it; absent when the reply did not say. */
+  readonly quote?: { readonly address: string; readonly price: number | null };
+  /** The deepest pair itself: its address, its dex and when it was created. */
+  readonly pair?: { readonly address: string | null; readonly dex: string | null; readonly createdAt: number | null };
   readonly marketCapUsd: number | null;
   /** The deepest pool's liquidity in dollars; null when the reply did not say. */
   readonly liquidityUsd: number | null;
@@ -92,13 +108,17 @@ export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
     const held = best.get(address);
     if (held !== undefined && held.liquidity >= liquidity) continue;
     const change = rec(r.priceChange);
+    const quoteAddress = str(rec(r.quoteToken).address);
+    const native = numText(r.priceNative);
     best.set(address, {
       liquidity,
       quote: {
         name: str(rec(r.baseToken).name),
         ticker: str(rec(r.baseToken).symbol),
         priceUsd: numText(r.priceUsd),
-        priceSol: numText(r.priceNative),
+        priceSol: quoteAddress === WRAPPED_SOL ? native : null,
+        ...(quoteAddress === null ? {} : { quote: { address: quoteAddress, price: native } }),
+        pair: { address: str(r.pairAddress), dex, createdAt: num(r.pairCreatedAt) },
         marketCapUsd: num(r.marketCap) ?? num(r.fdv),
         liquidityUsd: liquidity >= 0 ? liquidity : null,
         change: { h1: num(change.h1), h6: num(change.h6), h24: num(change.h24) },

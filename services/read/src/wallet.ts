@@ -23,6 +23,12 @@
  * minus SOL paid) and then converted at today's SOL price, `usd` null when that is unknown. The
  * screen says so under the list.
  *
+ * ★ EVERY HOLDING ANY MARKET PRICES HAS DOLLARS (2026-10-21). Prices come from every source we
+ * use, in order, a coin paired with another coin converted through that coin's price
+ * (holding-prices.ts); a coin is "Unpriced" only when nothing prices it, said as `no_market`,
+ * or when a source did not answer, said as `not_read_yet`. A coin's SOL price is its dollar
+ * price over SOL's, never a pair's price in some other token.
+ *
  * ★ A NARRATIVE ONLY ON A CONFIDENT MATCH. A coin shows the narrative whose page names it as its
  * one coin (`kind: 'one'`); "several", "unsure" and "none" show nothing.
  *
@@ -41,6 +47,7 @@ import type { WalletPolicy } from '@insidor/contracts/policy.ts';
 import { NATIVE, positionsFrom, profitOf, type Balances, type Profit, type Trade } from '@insidor/chain-portfolio';
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
+import { createHoldingPrices } from './holding-prices.ts';
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
 
@@ -102,6 +109,10 @@ const RANGES = ['1h', '6h', '24h'] as const;
 type Range = (typeof RANGES)[number];
 /** Coins asked about for prices at most: a wallet sent a thousand airdrops is not priced a thousand times. */
 const PRICED_AT_MOST = 300;
+/** Addresses a pair-source call takes, when the source does not say. */
+const PAIR_BATCH = 30;
+/** One coin's price is kept this long across wallet reads (holding-prices.ts): brief, a wallet is live. */
+const PRICE_KEEP_MS = 30_000;
 
 export interface WalletDeps {
   readonly db: Db;
@@ -110,7 +121,10 @@ export interface WalletDeps {
   readonly reader: {
     balances(owner: string): Promise<Balances>;
   } | null;
-  readonly quotes: { quotes(addresses: readonly string[]): Promise<ReadonlyMap<string, CoinQuote>> };
+  /** The keyless pair source: holdings' prices first, and created coins' market caps. */
+  readonly quotes: { readonly batch?: number; quotes(addresses: readonly string[]): Promise<ReadonlyMap<string, CoinQuote>> };
+  /** The on-chain token price source, for what the pair source cannot price (holding-prices.ts). Absent: none. */
+  readonly tokenPrices?: { prices(addresses: readonly string[]): Promise<ReadonlyMap<string, number>> } | null;
   readonly images: ((mints: readonly string[]) => Promise<ReadonlyMap<string, string>>) | null;
   readonly creatorFees: ((creator: string) => Promise<bigint>) | null;
   readonly now: () => number;
@@ -145,6 +159,13 @@ export function profitWire(profit: Profit, solUsd: number | null, historyRead: b
 export function createWallet(deps: WalletDeps) {
   const kept = new Map<string, { at: number; reply: { status: number; body: string } }>();
   const calls = new Map<string, number[]>();
+  const pricer = createHoldingPrices({
+    pairs: { batch: deps.quotes.batch ?? PAIR_BATCH, quotes: (a) => deps.quotes.quotes(a) },
+    tokenPrices: deps.tokenPrices ?? null,
+    log: deps.log,
+    now: deps.now,
+    keepMs: PRICE_KEEP_MS,
+  });
 
   async function read(address: string, range: Range): Promise<{ status: number; body: string }> {
     if (deps.reader === null) return json(200, { kind: 'unavailable', why: 'not_reported' });
@@ -158,13 +179,9 @@ export function createWallet(deps: WalletDeps) {
 
     const mints = balances.tokens.map((t) => t.mint);
     const priced = mints.slice(0, PRICED_AT_MOST);
-    let quotes: ReadonlyMap<string, CoinQuote> = new Map();
-    try {
-      quotes = await deps.quotes.quotes([NATIVE, ...priced]);
-    } catch (e) {
-      deps.log.info('wallet prices unavailable', { err: e instanceof Error ? e.message : String(e) });
-    }
-    const solUsd = quotes.get(NATIVE)?.priceUsd ?? null;
+    /* Every source we use, a coin paired with another coin converted through it (holding-prices.ts). */
+    const prices = await pricer.prices([NATIVE, ...priced]);
+    const solUsd = prices.get(NATIVE)?.priceUsd ?? null;
     const sol = units(balances.lamports, 9);
 
     /* Cost basis: this wallet's landed trades in Insidor. A failed read is said, never a zero. */
@@ -186,11 +203,14 @@ export function createWallet(deps: WalletDeps) {
     const nameOf = new Map(names.map((r: Row) => [str(r['address']) ?? '', { name: str(r['name']), ticker: str(r['ticker']) }]));
 
     const holdings = balances.tokens.map((t) => {
-      const q = quotes.get(t.mint);
+      const p = prices.get(t.mint);
+      const q = p?.quote ?? undefined;
       const held = units(t.amount, t.decimals);
-      const valueUsd = q?.priceUsd == null ? null : held * q.priceUsd;
-      const valueSol = q?.priceSol == null ? null : held * q.priceSol;
+      const valueUsd = p?.priceUsd == null ? null : held * p.priceUsd;
+      const valueSol = p?.priceSol == null ? null : held * p.priceSol;
       const change = q === undefined ? null : range === '1h' ? q.change.h1 : range === '6h' ? q.change.h6 : q.change.h24;
+      /* No price anywhere: no market prices it, or a source did not answer (a coin past the priced cap is not read). */
+      const why = p === undefined ? 'not_read_yet' : p.why;
       const profit: Profit = profitOf(held, valueSol, positions.get(t.mint));
       const narrative = narrativeOf.get(t.mint);
       const name = nameOf.get(t.mint);
@@ -202,8 +222,8 @@ export function createWallet(deps: WalletDeps) {
         imageUrl: null as string | null,
         amount: t.amount,
         decimals: t.decimals,
-        priceUsd: measured(q?.priceUsd, q === undefined ? 'no_market' : 'not_reported'),
-        valueUsd: measured(valueUsd, q === undefined ? 'no_market' : 'not_reported'),
+        priceUsd: measured(p?.priceUsd, why),
+        valueUsd: measured(valueUsd, why),
         change: measured(change, q === undefined ? 'no_market' : 'not_reported'),
         profit: profitWire(profit, solUsd, historyRead),
         story: narrative !== undefined && narrative.storyId !== null && narrative.title !== null ? { storyId: narrative.storyId, title: narrative.title } : null,

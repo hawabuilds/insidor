@@ -36,3 +36,15 @@ test('a coin\'s price in dollars and in SOL, and its moves; a move the source di
   assert.equal(q.get(ASKED[1])?.change.h1, null, 'NAPS has no 1-hour change in this reply');
   assert.equal(q.has(ASKED[2]), false);
 });
+
+test('★ a pair quoted in another coin has no SOL price: its native price is in that coin, carried with the coin\'s address', async () => {
+  const { LAURA, LAURA_REPLY, MSTRX } = await import('./__fixtures__/quotes.ts');
+  const q = readQuotes(LAURA_REPLY);
+  const laura = q.get(LAURA);
+  assert.equal(laura?.priceUsd, null, 'the source gives this pair no dollar price');
+  assert.equal(laura?.priceSol, null, 'a price in MSTRx is never read as a price in SOL');
+  assert.deepEqual(laura?.quote, { address: MSTRX, price: 0.0000002712 });
+  assert.deepEqual(laura?.pair, { address: 'Fv44ZP4nZa45cT7Vv2UaQ8o5jNdrZzjuE3jvT1jPYVDK', dex: 'pumpswap', createdAt: 1792498067000 });
+  assert.equal(q.get(MSTRX)?.priceUsd, 146.61);
+  assert.equal(q.get(MSTRX)?.priceSol, null, 'a USDC pair is not a SOL pair either');
+});
