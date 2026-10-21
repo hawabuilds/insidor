@@ -9,14 +9,19 @@
  * A video's preview picture (`video`) carries a small play icon in its centre, so a still of a
  * video is not mistaken for a photo. The icon is drawn only over a picture that loaded: on the
  * empty tile it would claim a video we cannot show any of.
+ *
+ * ★ PASS THE LINK AS IT CAME, NEVER A RESIZED ONE. The picture host's copy at the box's size is
+ * tried first and the link itself second; a few of its PNGs have no copy at a named size (404,
+ * measured 2026-10-21) while the link loads. A caller that resized the link first left nothing to
+ * fall back to, and those cards showed the empty tile. How a failure moves along the two, and the
+ * one later retry, is usePictureTries.ts.
  */
-
-import { useState } from 'react';
 
 import type { Platform } from '../platform.ts';
 import { ImageIcon, PlayIcon } from './icons.tsx';
 import { cardPictureUrl, sizeForBox } from './picture-size.ts';
 import { PlatformBadge } from './PlatformMark.tsx';
+import { usePictureTries } from './usePictureTries.ts';
 import styles from './ui.module.css';
 
 export function Thumb({
@@ -46,14 +51,13 @@ export function Thumb({
   /** The picture is a still of a video: a play icon sits on it. */
   video?: boolean;
 }) {
-  const [failed, setFailed] = useState<readonly string[]>([]);
   /* The host's copy at the box's size first (picture-size.ts), the link as it came if that fails. */
   const sources = url === null ? [] : [...new Set([cardPictureUrl(url, sizeForBox(Math.max(width, height))), url])];
-  const shown = sources.find((s) => !failed.includes(s)) ?? null;
+  const { src: shown, tryKey, fail } = usePictureTries(sources);
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>
       {shown !== null ? (
-        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={shown} alt="" width={width} height={height} loading="lazy" decoding="async" onError={() => setFailed((f) => [...f, shown])} />
+        <img key={tryKey} className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={shown} alt="" width={width} height={height} loading="lazy" decoding="async" onError={() => fail(shown)} />
       ) : (
         <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }}>
           {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(Math.min(width, height) * 0.42)} />}

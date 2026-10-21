@@ -9,18 +9,18 @@
  *
  * What breaks if changed carelessly: the failed list is per picture, not a single flag. With one
  * flag, a copy that is missing (the bucket answers 400) would drop straight to the letter and the
- * source's link — which still loads for a day — would never be tried.
+ * source's link — which still loads for a day — would never be tried. The order is walked by
+ * usePictureTries.ts, as every card picture is: the next at once, one retry round later, and
+ * `tryKey` must be the `<img>`'s key so that round really asks again.
  */
 
-import { useState } from 'react';
-
 import { posterPicBase, posterPicSources } from '../poster-pic.ts';
+import { usePictureTries } from './usePictureTries.ts';
 
 const env = import.meta.env as Record<string, string | undefined> | undefined;
 const BASE = posterPicBase(env?.['VITE_POSTER_PIC_BASE'], env?.['VITE_COIN_LOGO_BASE']);
 
-export function usePosterPic(file: string | null, link: string | null): { readonly src: string | null; readonly onError: () => void } {
-  const [failed, setFailed] = useState<readonly string[]>([]);
-  const src = posterPicSources(file, link, BASE).find((s) => !failed.includes(s)) ?? null;
-  return { src, onError: () => setFailed((f) => (src === null || f.includes(src) ? f : [...f, src])) };
+export function usePosterPic(file: string | null, link: string | null): { readonly src: string | null; readonly tryKey: string; readonly onError: () => void } {
+  const { src, tryKey, fail } = usePictureTries(posterPicSources(file, link, BASE));
+  return { src, tryKey, onError: () => (src === null ? undefined : fail(src)) };
 }
