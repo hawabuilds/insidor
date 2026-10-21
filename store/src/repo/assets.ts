@@ -109,6 +109,8 @@ export class PgAssetRepo implements AssetRepo {
    * read at. See `mintedBetween`.
    */
   readonly #held = new Map<string, { readonly version: string; readonly asset: Asset; usedAt: number }>();
+  /** Each window `mintedBetween` answered, under the digest of its selection. See there. */
+  readonly #windows = new Map<string, { readonly digest: string; readonly assets: readonly Asset[]; usedAt: number }>();
   #sweptAt = 0;
 
   constructor(db: Db) {
@@ -477,21 +479,41 @@ export class PgAssetRepo implements AssetRepo {
     limit: number,
     storyOrigin: StoryOrigin,
   ): Promise<readonly Asset[]> {
-    const picked = await this.#db.query<{ address: string; v: string }>(
-      `select address, xmin::text as v
+    const SELECTION = `select address, xmin::text as v
          from public.asset
         where chain = $1
           and minted_at between $2 and $3
           and minted_at_conf <> 'unknown'
           and origin = any($5::text[])
         order by minted_at asc
-        limit $4`,
-      /* Spread into a mutable array because it is about to be a bound parameter and
-         nothing here interpolates a value into SQL — the same rule the constant above
-         is written to obey, applied to a list that is now computed per call. */
-      [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, [...coinOriginsVisibleTo(storyOrigin)]],
-    );
+        limit $4`;
+    /* Spread into a mutable array because it is about to be a bound parameter and
+       nothing here interpolates a value into SQL — the same rule the constant above
+       is written to obey, applied to a list that is now computed per call. */
+    const params = [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, [...coinOriginsVisibleTo(storyOrigin)]];
     const now = Date.now();
+
+    /* ★ AN UNCHANGED WINDOW COSTS ONE ROW. A story's window is asked about every minute and,
+       once it holds `limit` coins, its selection rarely moves. So the selection is first asked
+       for as one digest of its coins and their row versions; equal to the digest this window was
+       last answered under, the held answer is the answer. Any coin added, dropped or updated
+       changes the digest and the window is read as below. */
+    const windowKey = JSON.stringify([chain, fromMs, toMs, limit, params[4]]);
+    const [digest] = await this.#db.query<{ d: string | null; n: number }>(
+      `select md5(string_agg(s.address || ':' || s.v, ',' order by s.address)) as d, count(*)::int as n from (${SELECTION}) s`,
+      params,
+    );
+    const known = this.#windows.get(windowKey);
+    if (known !== undefined && digest !== undefined && known.digest === `${digest.n}/${digest.d ?? ''}`) {
+      known.usedAt = now;
+      for (const a of known.assets) {
+        const held = this.#held.get(`${chain}\u0000${a.ref.address}`);
+        if (held !== undefined) held.usedAt = now;
+      }
+      return known.assets;
+    }
+
+    const picked = await this.#db.query<{ address: string; v: string }>(SELECTION, params);
     const keyOf = (address: string): string => `${chain}\u0000${address}`;
     const stale = picked.filter((p) => this.#held.get(keyOf(p.address))?.version !== p.v).map((p) => p.address);
     if (stale.length > 0) {
@@ -513,9 +535,13 @@ export class PgAssetRepo implements AssetRepo {
       held.usedAt = now;
       out.push(held.asset);
     }
+    /* Held under the digest read first: a change between the two reads is caught next time. */
+    if (digest !== undefined && out.length === picked.length) this.#windows.set(windowKey, { digest: `${digest.n}/${digest.d ?? ''}`, assets: out, usedAt: now });
+    else this.#windows.delete(windowKey);
     if (now - this.#sweptAt >= HELD_ASSET_IDLE_MS) {
       this.#sweptAt = now;
       for (const [k, h] of this.#held) if (now - h.usedAt >= HELD_ASSET_IDLE_MS) this.#held.delete(k);
+      for (const [k, w] of this.#windows) if (now - w.usedAt >= HELD_ASSET_IDLE_MS) this.#windows.delete(k);
     }
     return out;
   }
