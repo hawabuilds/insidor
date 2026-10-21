@@ -259,6 +259,23 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
             return asset === null ? [] : [asset];
           }),
         ),
+      /* ★ A paired token is marked only when the chain holds no curve for it (0121): a coin
+         paired against another coin is a launch too, and keeps its row. Without a chain endpoint
+         nothing can tell the two apart, so nothing is marked. */
+      ...(rpcUrl === null
+        ? {}
+        : {
+            markPaired: async (tokens: readonly { address: string; symbol: string | null; name: string | null }[], seenAt: Millis) => {
+              const held = await assets.pairedAddresses(CHAIN, tokens.map((t) => t.address));
+              const open = tokens.filter((t) => !held.has(t.address));
+              if (open.length === 0) return { marked: [], settled: [...held], calls: 0 };
+              const { places, calls } = await curvePlaces({ rpcUrl, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, open.map((t) => t.address));
+              const noCurve = open.filter((t) => places.get(t.address) === 'no_curve');
+              const coins = open.filter((t) => places.get(t.address) === 'curve' || places.get(t.address) === 'graduated');
+              const marked = await assets.markPaired(CHAIN, VENUE_ID, noCurve, seenAt);
+              return { marked, settled: [...held, ...noCurve.map((t) => t.address), ...coins.map((t) => t.address)], calls };
+            },
+          }),
       now: () => Date.now() as Millis,
       note: (msg, fields) => listingLog.warn(msg, fields),
     },

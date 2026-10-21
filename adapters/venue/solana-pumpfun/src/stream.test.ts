@@ -17,8 +17,10 @@ import assert from 'node:assert/strict';
 
 import { chainId, venueId } from '@insidor/contracts/ids.ts';
 
+import { curveAddress } from './curve-rpc.ts';
 import {
   createMintStream,
+  notTheLaunchedCoin,
   toStreamMintEvent,
   type MintStreamOptions,
   type StreamHandlers,
@@ -306,6 +308,63 @@ test('an empty name is null rather than an empty string', () => {
   assert.ok(event !== null);
   assert.equal(event.asset.name, null);
   assert.equal(event.asset.symbol, null, 'a zero-width space is not a ticker');
+});
+
+/* ── the launched coin is the new mint, never the token it is priced in ───── */
+
+/** Laura (the meme) and MSTRx (the MicroStrategy xStock it was launched against), as on 16 Oct 2026. */
+const LAURA = 'Cg9zDsrNUzkm7cUgrXyv5TaKpbH5dpnr4E7pFAZYpump';
+const MSTRX = 'XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ';
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+test('a SOL launch whose frame names its own curve decodes as that coin', () => {
+  const event = toStreamMintEvent(JSON.parse(frame({ bondingCurveKey: curveAddress(MINT) })), CTX, T0);
+  assert.ok(event !== null);
+  assert.equal(event.asset.ref.address, MINT);
+  assert.equal(notTheLaunchedCoin(JSON.parse(frame({ bondingCurveKey: curveAddress(MINT) }))), null);
+});
+
+test('★ a stock-paired launch whose frame names the stock as the mint is dropped, never filed under the stock', () => {
+  /* The shape our store recorded for Laura: the stock's address, the meme's name, no opening buy,
+     the cap of an untouched curve — and the curve of the coin actually launched. */
+  const stockPaired = JSON.parse(frame({
+    mint: MSTRX,
+    bondingCurveKey: curveAddress(LAURA),
+    name: 'LAURA',
+    symbol: 'LAURA',
+    initialBuy: 0,
+    solAmount: 0,
+    marketCapSol: 27.958_993_476_234_856,
+  }));
+  assert.equal(toStreamMintEvent(stockPaired, CTX, T0), null);
+  assert.match(notTheLaunchedCoin(stockPaired) ?? '', /curve/);
+  // The same launch, named by its own mint, is the coin.
+  const right = toStreamMintEvent({ ...stockPaired, mint: LAURA }, CTX, T0);
+  assert.equal(right?.asset.ref.address, LAURA);
+  assert.equal(right?.asset.name, 'LAURA');
+});
+
+test('a famous quote token named as the coin is dropped even when the frame names no curve', () => {
+  assert.equal(toStreamMintEvent(JSON.parse(frame({ mint: USDC })), CTX, T0), null);
+  assert.equal(toStreamMintEvent(JSON.parse(frame({ mint: 'So11111111111111111111111111111111111111112' })), CTX, T0), null);
+  assert.ok(notTheLaunchedCoin(JSON.parse(frame({ mint: USDC }))) !== null);
+});
+
+test('a curve field that is not an address is not the curve of the mint', () => {
+  assert.equal(toStreamMintEvent(JSON.parse(frame({ bondingCurveKey: 'not a key' })), CTX, T0), null);
+});
+
+test('the stream says when it drops a launch frame for naming the wrong coin', () => {
+  const r = rig();
+  r.stream.start();
+  r.connect();
+  r.deliver(frame({ mint: MSTRX, bondingCurveKey: curveAddress(LAURA), symbol: 'LAURA' }));
+  r.deliver(frame({ bondingCurveKey: curveAddress(MINT) }));
+  const page = r.stream.drain(10);
+  assert.deepEqual(page.events.map((e) => e.asset.ref.address), [MINT]);
+  const note = r.notes.find((n) => n.msg.startsWith('launch frame dropped'));
+  assert.ok(note !== undefined);
+  assert.equal(note.fields['mint'], MSTRX);
 });
 
 /* ── the buffer ─────────────────────────────────────────────────────────── */

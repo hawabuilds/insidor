@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import type { Millis } from '@insidor/contracts';
 import type { CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
-import { createListing, type ChainDetails, type ListingDeps } from './listing.ts';
+import { createListing, type ChainDetails, type ListedLaunch, type ListingDeps } from './listing.ts';
 
 const NOW = 1_800_000_000_000;
 /** A cap no test but the cap's own reaches. */
@@ -24,12 +24,12 @@ interface Rig {
   readonly pagesAsked: number[];
   readonly added: { address: string; details: ChainDetails | null }[];
   readonly notes: string[];
-  pages: CoinSearchHit[][];
+  pages: ListedLaunch[][];
   held: Set<string>;
   detailsFail: boolean;
 }
 
-function rig(pages: CoinSearchHit[][]): Rig {
+function rig(pages: ListedLaunch[][]): Rig {
   const r: Rig = {
     pages,
     held: new Set(),
@@ -240,4 +240,47 @@ test('★ a pass ahead of the day\'s even pace is held, and reads again once the
   now += 30_000;
   assert.equal((await listing.pass()).held, null);
   assert.deepEqual(r.pagesAsked, [1, 1]);
+});
+
+/* ── tokens launches are paired against ─────────────────────────────────── */
+
+const MSTRX = { address: 'XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ', symbol: 'MSTRx', name: 'MicroStrategy xStock' };
+const LAURA = { address: 'Cg9zDsrNUzkm7cUgrXyv5TaKpbH5dpnr4E7pFAZYpump', symbol: 'Laura', name: 'Laura' };
+
+test('★ a launch paired against a stock adds the coin, and the stock is marked as not a launch, once', async () => {
+  const lauracat = { ...hit('lauracat', 5), pairedWith: LAURA };
+  const laura = { ...hit(LAURA.address, 10), pairedWith: MSTRX };
+  const sol = { ...hit('solcoin', 15), pairedWith: null };
+  const r = rig([[lauracat, laura, sol]]);
+  const asked: string[][] = [];
+  /* The chain: MSTRx has no curve; Laura, a coin another coin is paired against, has one. */
+  (r.deps as { markPaired: ListingDeps['markPaired'] }).markPaired = async (tokens) => {
+    asked.push(tokens.map((t) => t.address));
+    const noCurve = tokens.filter((t) => t.address === MSTRX.address).map((t) => t.address);
+    return { marked: noCurve, settled: tokens.map((t) => t.address), calls: 1 };
+  };
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, ...CREDITS });
+  const res = await listing.pass();
+  assert.deepEqual(r.added.map((a) => a.address).sort(), [LAURA.address, 'lauracat', 'solcoin'], 'every launch is its own coin');
+  assert.deepEqual(asked, [[LAURA.address, MSTRX.address]], 'only the paired tokens are asked about; a SOL launch adds none');
+  assert.equal(res.pairedMarked, 1);
+  assert.equal(res.credits, 2, 'the paired check is counted against the day like any chain read');
+  await listing.pass();
+  assert.equal(asked.length, 1, 'a settled token is not asked about again');
+});
+
+test('a paired check that fails never fails the pass, and is asked again next pass', async () => {
+  const r = rig([[{ ...hit(LAURA.address, 5), pairedWith: MSTRX }]]);
+  let calls = 0;
+  (r.deps as { markPaired: ListingDeps['markPaired'] }).markPaired = async () => {
+    calls += 1;
+    throw new Error('rpc responded 429');
+  };
+  const listing = createListing(r.deps, { pagesPerPass: 1, maxAgeMs: 1_800_000, ...CREDITS });
+  const res = await listing.pass();
+  assert.equal(res.added, 1);
+  assert.equal(res.pairedMarked, 0);
+  assert.ok(r.notes.some((n) => n.startsWith('paired tokens could not be checked')));
+  await listing.pass();
+  assert.equal(calls, 2);
 });

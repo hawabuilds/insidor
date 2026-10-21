@@ -135,9 +135,24 @@ export const ASSET_ORIGINS = [
    * whole bug rebuilt inside the mechanism meant to fix it.
    */
   'unrecorded',
+  /**
+   * ★ A REAL TOKEN WE MET ONLY AS WHAT A LAUNCH WAS PRICED IN, NEVER A LAUNCH ITSELF: a
+   * stablecoin, a tokenised stock (MSTRx, NVDAx…), any token with no curve of its own on the
+   * venue. The launch socket filed such tokens as the coins launched against them (MSTRx under
+   * "LAURA"); this value is what the row becomes once that is known (0121).
+   *
+   * Not observed, so every surface asserting a launch excludes it by the allowlist below, with
+   * no edit anywhere. And it is final: the store never lets a later launch frame rename it or
+   * promote it back (repo/assets.ts), because the next coin launched against MSTRx would
+   * otherwise file MSTRx under its name again.
+   */
+  'paired_token',
 ] as const;
 
 export type AssetOrigin = (typeof ASSET_ORIGINS)[number];
+
+/** The origin a token takes once it is known to be what launches are paired against, not a launch. */
+export const PAIRED_TOKEN_ORIGIN: AssetOrigin = 'paired_token';
 
 /**
  * The origins that are a CLAIM ABOUT THE WORLD — the ones a surface may present as
