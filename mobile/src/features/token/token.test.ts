@@ -65,7 +65,7 @@ test("Trador's first view: 1m for a coin on its curve or under a day old, 1h oth
 test('an empty chart says why: loading, unread, or too little history for the view', () => {
   assert.equal(chartNote('loading', null, '1h'), 'Loading price history.');
   assert.equal(chartNote('ready', { kind: 'unavailable', timeframe: '1h' }, '1h'), 'Price history could not be read just now.');
-  assert.equal(chartNote('ready', { kind: 'read', timeframe: '4h', venue: 'pool', candles: [], trades: [], curveProgress: null }, '4h'), 'Not enough history for 4h');
+  assert.equal(chartNote('ready', { kind: 'read', timeframe: '4h', venue: 'pool', candles: [], trades: [], curveProgress: null, pair: null, coin: null }, '4h'), 'Not enough history for 4h');
 });
 
 test('★ a sample market: the same chart every time, and trades with no transaction that could be looked up', () => {

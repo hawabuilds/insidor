@@ -60,7 +60,7 @@ test('★ two pills that would overlap go on two rows, never hidden', () => {
 test('★ the market move is hidden until the coin has enough trades, and is price against price an interval back', () => {
   const candles = Array.from({ length: 20 }, (_, i) => ({ t: NOW - (20 - i) * M, o: 1, h: 1, l: 1, c: 1 + i / 100 }));
   const trades = (n: number) => Array.from({ length: n }, () => ({ tx: null, side: 'buy' as const, tokenAmount: { known: false as const, pending: 'not_reported' as const }, usd: { known: false as const, pending: 'not_reported' as const }, priceUsd: { known: false as const, pending: 'not_reported' as const }, at: { known: false as const, pending: 'not_reported' as const }, maker: null }));
-  const market = (n: number): CoinMarket => ({ kind: 'read', timeframe: '1m', venue: 'pool', candles, trades: trades(n), curveProgress: null });
+  const market = (n: number): CoinMarket => ({ kind: 'read', timeframe: '1m', venue: 'pool', candles, trades: trades(n), curveProgress: null, pair: null, coin: null });
   assert.equal(mcChange(market(MIN_TRADES - 1), '5m'), null);
   const p = mcChange(market(MIN_TRADES), '5m');
   assert.ok(p !== null && Math.abs(p - ((1.19 / 1.14 - 1) * 100)) < 1e-9);

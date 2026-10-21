@@ -32,6 +32,7 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { ChevronIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { pairChip, type PairRead } from './pair-view.ts';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import styles from './info.module.css';
 
@@ -59,8 +60,10 @@ export function standing(market: CoinMarket | null, venue: 'curve' | 'pool' | nu
 const dated = (at: number): string =>
   new Date(at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export function InfoPanel({ facts, market, about, tradable, now, insidor = null }: {
+export function InfoPanel({ facts, market, about, tradable, now, insidor = null, pair = 'unread' }: {
   facts: TokenFacts;
+  /** The chart's pool (pair-view.ts): what the coin is priced in, and its depth when read. */
+  pair?: PairRead;
   market: CoinMarket | null;
   /** Null while it loads or when it could not be read: its numbers are then dashes. */
   about: CoinAbout | null;
@@ -72,7 +75,9 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null 
 }) {
   const toast = useToast();
   const unread: Measured = { known: false, pending: about === null ? 'not_read_yet' : 'not_reported' };
-  const liquidity = facts.liquidityUsd?.known === true ? facts.liquidityUsd : (about?.liquidityUsd ?? unread);
+  const liquidity = pair !== 'unread' && pair !== null && pair.liquidityUsd.known ? pair.liquidityUsd : facts.liquidityUsd?.known === true ? facts.liquidityUsd : (about?.liquidityUsd ?? unread);
+  const chip = pairChip(pair);
+  const pricedIn = chip.kind === 'token' ? chip.ticker : chip.kind === 'sol' ? 'SOL' : null;
   const volume = about?.volume24hUsd ?? unread;
   const served = servedCap(facts, about);
   const cap = useCoinCap(facts.address, served.known || about !== null ? served : unread, false, facts.price);
@@ -99,7 +104,7 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null 
         <Stat label="Market cap"><Value r={formatUsd(cap)} /></Stat>
         <Stat label="Price"><Value r={formatPrice(price)} /></Stat>
         <Stat label="Holders"><Value r={formatCount(about?.holders ?? unread)} /></Stat>
-        <Stat label="Priced in">SOL</Stat>
+        <Stat label="Priced in">{pricedIn ?? <Value r={pendingRendered('not_read_yet')} />}</Stat>
         <Stat label="Vol / liq">{turnover === null ? <Value r={pendingRendered('not_reported')} /> : <Value r={turnover} />}</Stat>
         <Stat label="24h change" tone={change.direction}>
           {change.direction === 'up' ? '▲ ' : change.direction === 'down' ? '▼ ' : ''}
@@ -108,7 +113,7 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null 
       </dl>
 
       <div className={styles['rows']}>
-        <Row label="Pair"><b>{ticker} / SOL</b></Row>
+        <Row label="Pair">{pricedIn === null ? <Value r={pendingRendered('not_read_yet')} /> : <b>{ticker} / {pricedIn}</b>}</Row>
         <Row label="Launchpad">
           <a className={styles['strong']} href={`https://pump.fun/coin/${facts.address}`} target="_blank" rel="noopener noreferrer">
             {facts.venueLabel} <ExternalIcon size={13} />

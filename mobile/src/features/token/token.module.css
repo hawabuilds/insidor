@@ -101,6 +101,29 @@
   letter-spacing: 0.03em;
 }
 
+/* Paired with another token: its picture before its ticker, the same height as "SOL". */
+.pairToken {
+  gap: 4px;
+  padding: 2px 7px 2px 3px;
+  color: var(--text-1);
+  letter-spacing: 0;
+}
+
+/* A tokenised stock: a fact about the pair, in the brand's quiet wash. */
+.pairStock {
+  background: var(--brand-wash);
+  color: var(--brand-300);
+}
+
+/* Before the first market read: the chip's place, without a claim. */
+.pairWait {
+  display: inline-block;
+  width: 20px;
+  height: 10.5px;
+  border-radius: 3px;
+  background: var(--hover);
+}
+
 .chip {
   padding: 4px 8px;
   border-radius: 8px;
