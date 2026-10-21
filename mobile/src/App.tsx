@@ -12,8 +12,14 @@
  * scratch"). A bottom tab's screen is drawn the first time it is opened and then only hidden when
  * left, never unmounted, so coming back shows it at once, as it was, at the scroll position it was
  * left at; it reads again in the background (shared/hooks.ts useLoad). A hidden tab is told it is
- * not on screen (shared/screen-active.ts) and polls nothing. Every other screen (a story, a coin
- * page, a profile) is drawn fresh as before and starts at its top.
+ * not on screen (shared/screen-active.ts) and polls nothing.
+ *
+ * ★ BACK FINDS THE PAGE AS IT WAS LEFT (the owner, 2026-10-21: "when i press back on any page on the
+ * app i want to see previous page and it not be reset"). Every other screen (a story, a coin page, a
+ * profile) is drawn per history entry and kept drawn, hidden, while its entry is behind the one on
+ * screen (shared/kept-pages.ts): Back shows the very same page, its chart window, tab, loaded posts
+ * and any sheet left open, and it reads again in place. The window's scroll is kept per entry
+ * (shared/entry-scroll.ts). A NEW visit is a new entry: it is drawn fresh and starts at its top.
  *
  * ★ SIGN IN ONCE, AT THE DOOR. Every address is behind one gate (shared/sign-in.ts): signed in,
  * the app; signed out, the front door, with the address kept so signing in lands on it; a
@@ -42,11 +48,13 @@ import { useAccess } from './features/invites/useAccess.ts';
 import { Waitlist } from './features/invites/Waitlist.tsx';
 import { SIGN_IN_CONFIGURED, gateFor } from './shared/sign-in.ts';
 import { useWallet } from './shared/wallet.tsx';
-import { tabOf, type Route } from './shared/route.ts';
-import { useRoute } from './shared/useRoute.ts';
+import { hrefFor, tabOf, type Route } from './shared/route.ts';
+import { usePlace, type Place } from './shared/useRoute.ts';
+import { arrive, type KeptPage } from './shared/kept-pages.ts';
+import { noteInner, noteWindow, restoreInner, showEntry } from './shared/entry-scroll.ts';
 import { noticeFor } from './shared/story-source.ts';
 import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
-import { ScreenActive } from './shared/screen-active.ts';
+import { ScreenActive, ShownEntry } from './shared/screen-active.ts';
 import { preloadWhenQuiet } from './shared/preload.ts';
 import { later } from './shared/ui/later.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
@@ -106,7 +114,7 @@ type ScreenProps = { route: Route; create: (from: CreateFrom) => void; unread: n
  * The kept tabs, each drawn from its first visit and hidden (display: none) when another screen is
  * showing; `display: contents` on the one showing, so the wrapper changes no layout.
  */
-function KeptTabs({ shown, ...props }: ScreenProps & { shown: KeptTab | null }) {
+function KeptTabs({ shown, entry, ...props }: ScreenProps & { shown: KeptTab | null; entry: string }) {
   const [opened, setOpened] = useState<readonly KeptTab[]>(() => (shown === null ? [] : [shown]));
   if (shown !== null && !opened.includes(shown)) setOpened([...opened, shown]);
   return (
@@ -114,9 +122,11 @@ function KeptTabs({ shown, ...props }: ScreenProps & { shown: KeptTab | null }) 
       {KEPT_TABS.filter((t) => opened.includes(t)).map((t) => (
         <div key={t} style={{ display: t === shown ? 'contents' : 'none' }}>
           <ScreenActive.Provider value={t === shown}>
-            <Suspense fallback={null}>
-              <Screen {...props} route={t === shown ? props.route : { screen: t }} />
-            </Suspense>
+            <ShownEntry.Provider value={t === shown ? entry : null}>
+              <Suspense fallback={null}>
+                <Screen {...props} route={t === shown ? props.route : { screen: t }} />
+              </Suspense>
+            </ShownEntry.Provider>
           </ScreenActive.Provider>
         </div>
       ))}
@@ -125,24 +135,75 @@ function KeptTabs({ shown, ...props }: ScreenProps & { shown: KeptTab | null }) 
 }
 
 /**
- * Where each kept tab was scrolled to, so coming back lands there; any other screen starts at its
- * top. Read on every scroll while the tab is showing and put back before the first paint of a return.
+ * The pages behind the one on screen, each drawn at its own history entry and kept, hidden, while
+ * that entry is still behind us (shared/kept-pages.ts), so Back shows it exactly as it was left.
+ * The bottom tabs are KeptTabs' and never here.
  */
-function useScrollPerTab(shown: KeptTab | null, route: Route): void {
-  const at = useRef(new Map<KeptTab, number>());
-  const current = useRef<KeptTab | null>(shown);
+function KeptPages({ place, page, ...props }: ScreenProps & { place: Place; page: boolean }) {
+  const here: KeptPage<Route> = { id: place.id, at: place.at, route: place.route, href: hrefFor(place.route) };
+  const [pages, setPages] = useState<readonly KeptPage<Route>[]>(() => arrive([], here, page));
+  const next = arrive(pages, here, page);
+  if (next !== pages) setPages(next);
+  return (
+    <>
+      {next.map((p) => {
+        const on = page && p.id === place.id;
+        return (
+          <div key={p.id} style={{ display: on ? 'contents' : 'none' }}>
+            <ScreenActive.Provider value={on}>
+              <ShownEntry.Provider value={on ? p.id : null}>
+                <Suspense fallback={null}>
+                  <Screen {...props} route={p.route} />
+                </Suspense>
+              </ShownEntry.Provider>
+            </ScreenActive.Provider>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Where each visit was scrolled to, by history entry (shared/entry-scroll.ts): Back lands where it
+ * left, a new visit to a page starts at its top, a new visit to a bottom tab where that tab was
+ * left. Put back before the first paint of the arrival; a page not yet tall enough for its spot
+ * (pictures and measured rows can settle its height a frame late) is tried once more on the next
+ * frame, unless the person has moved it.
+ * Inner scrollers (a chip row, a list in a sheet) are put back too.
+ */
+function useScrollPerEntry(place: Place, shown: KeptTab | null): void {
   useEffect(() => {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-    const onScroll = () => {
-      if (current.current !== null) at.current.set(current.current, window.scrollY);
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      if (t instanceof Element && t !== document.documentElement && t !== document.body) noteInner(t);
+      else noteWindow(window.scrollY);
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
   }, []);
   useLayoutEffect(() => {
-    current.current = shown;
-    window.scrollTo(0, shown === null ? 0 : (at.current.get(shown) ?? 0));
-  }, [shown, route]);
+    const y = showEntry(place.id, shown);
+    window.scrollTo(0, y);
+    restoreInner();
+    /* Only a page too short for its spot yet (still drawing) is tried again; one that got there is left alone. */
+    if (Math.abs(window.scrollY - y) < 1) return;
+    let moved = false;
+    const touched = () => {
+      moved = true;
+    };
+    window.addEventListener('touchstart', touched, { passive: true });
+    window.addEventListener('wheel', touched, { passive: true });
+    const frame = requestAnimationFrame(() => {
+      if (!moved && Math.abs(window.scrollY - y) >= 1) window.scrollTo(0, y);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('touchstart', touched);
+      window.removeEventListener('wheel', touched);
+    };
+  }, [place.id, place.hash]);
 }
 
 function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps): ReactNode {
@@ -197,7 +258,8 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps
 }
 
 export function App() {
-  const route = useRoute();
+  const place = usePlace();
+  const route = place.route;
   const { wallet, state } = useWallet();
   const [entered, setEntered] = useState(hasEntered);
   const signedIn = state.kind === 'connected';
@@ -253,7 +315,7 @@ export function App() {
   const keptTab = keptTabOf(route);
   /* The other screens' code and the chart library, fetched once the app is quiet. */
   useEffect(() => preloadWhenQuiet(Object.values(SCREENS).map((x) => x.load)), []);
-  useScrollPerTab(keptTab, route);
+  useScrollPerEntry(place, keptTab);
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
   const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access });
@@ -286,12 +348,8 @@ export function App() {
   return (
     <ComingSoonProvider>
       <main>
-        <KeptTabs shown={keptTab} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
-        {keptTab === null ? (
-          <Suspense fallback={null}>
-            <Screen route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
-          </Suspense>
-        ) : null}
+        <KeptTabs shown={keptTab} entry={place.id} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
+        <KeptPages place={place} page={keptTab === null} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />

@@ -33,6 +33,7 @@ import { listenForNewVersion } from './shared/new-version.ts';
 import { App } from './App.tsx';
 import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
 import { trackHistory } from './shared/nav.ts';
+import { noteBeforeMoves } from './shared/entry-scroll.ts';
 import { holdZoom } from './shared/viewport.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
@@ -47,6 +48,8 @@ import './shared/ui/tokens.css';
 settleLaunch();
 /* An invite link (insidor.app/i/<CODE>): the code kept for the door, the address put back to the app's own (features/invites/invite-code.ts). */
 takeInviteLink(window.location, (url) => history.replaceState(history.state, '', url));
+/* The scroll of the screen being left, noted as the address changes and before nav.ts moves on (shared/entry-scroll.ts). */
+noteBeforeMoves();
 /* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
 trackHistory();
 listenForOpens();
