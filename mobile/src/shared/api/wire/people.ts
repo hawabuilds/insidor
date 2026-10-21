@@ -73,6 +73,8 @@ export interface Alert {
   readonly season: number | null;
   /** The face for the row: the person's or the poster's picture (https); null or absent when there is none. */
   readonly picture?: string | null;
+  /** A row about a post: our stored copy of its poster's picture, by file name, tried before `picture`. */
+  readonly pictureFile?: string | null;
   /** The coin the alert is about, by address, for its logo; null or absent when it is about no coin. */
   readonly coin?: string | null;
   /** A follow's follower, and whether you already follow them back; null or absent on other rows. */

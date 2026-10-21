@@ -19,6 +19,7 @@ import type { Alert, RankId } from '../../shared/api/people.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { BellIcon } from '../../shared/ui/icons.tsx';
+import { usePosterPic } from '../../shared/ui/usePosterPic.ts';
 import { RankBadge } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { badgeText } from './group.ts';
@@ -37,7 +38,7 @@ export function Mark({ a }: { a: Alert }) {
   if (m.kind === 'person') return <Avatar name={m.name} seed={m.name} src={m.picture ?? null} size={40} />;
   if (m.kind === 'rising') {
     const arrow = <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
-    return m.picture !== undefined ? <Picture src={m.picture} fallback={arrow} /> : arrow;
+    return m.picture !== undefined || m.pictureFile !== undefined ? <Picture file={m.pictureFile ?? null} src={m.picture ?? null} fallback={arrow} /> : arrow;
   }
   if (m.kind === 'useful') return <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
   if (m.kind === 'money') return <span className={styles['face']} role="img" aria-label={m.label}>$</span>;
@@ -45,11 +46,11 @@ export function Mark({ a }: { a: Alert }) {
   return <span className={styles['face']}><BellIcon size={18} /></span>;
 }
 
-/** A 40px round picture; when it fails to load, the row's own fallback face instead of a broken image. */
-function Picture({ src, fallback }: { src: string; fallback: ReactNode }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <>{fallback}</>;
-  return <img src={src} alt="" width={40} height={40} loading="lazy" decoding="async" className={styles['picture']} onError={() => setFailed(true)} />;
+/** A 40px round picture, our stored copy first, then the link (usePosterPic); the row's own fallback face when every one fails. */
+function Picture({ file, src, fallback }: { file: string | null; src: string | null; fallback: ReactNode }) {
+  const pic = usePosterPic(file, src);
+  if (pic.src === null) return <>{fallback}</>;
+  return <img key={pic.tryKey} src={pic.src} alt="" width={40} height={40} loading="lazy" decoding="async" className={styles['picture']} onError={pic.onError} />;
 }
 
 /** The alert's title with its ticker bold, as Trador writes "<b>FERRY</b> graduated", and "<b>3 people</b> found your comment useful". */

@@ -58,6 +58,9 @@ export interface FeedComment {
     readonly site: string | null;
     /** The post's author, "@handle". */
     readonly author: string | null;
+    /** The author's face: our stored copy's file name and the source's link (absent from an older service). */
+    readonly authorPictureFile?: string | null;
+    readonly authorPictureUrl?: string | null;
   };
 }
 
