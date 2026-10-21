@@ -14,11 +14,26 @@
 
 import { arr, num, rec, str } from '@insidor/vendor-kit';
 
+/** One side of a pool, as the reply's `included` tokens name it. */
+export interface PoolToken {
+  readonly address: string;
+  readonly symbol: string | null;
+  readonly name: string | null;
+  /** Https only; the vendor's "missing" placeholder is no picture. */
+  readonly imageUrl: string | null;
+}
+
 export interface Pool {
   readonly address: string;
   /** The vendor's dex id: `pump-fun` is a launchpad curve; anything else is a listed pool. */
   readonly dex: string;
+  /** Both sides' dollar value together, as the vendor reports it; null when it did not say. */
   readonly reserveUsd: number | null;
+  /** The dex's own name ("PumpSwap", "Meteora"); null when the reply did not include it. */
+  readonly dexName?: string | null;
+  /** The pool's two sides. Null when the reply did not include that token. */
+  readonly base?: PoolToken | null;
+  readonly quote?: PoolToken | null;
 }
 
 export interface Candle {
@@ -42,13 +57,59 @@ export interface Trade {
   readonly maker: string | null;
 }
 
+const httpsOnly = (v: string | null): string | null => (v !== null && v.startsWith('https://') ? v : null);
+
+/**
+ * A coin's pools, each with its two sides and its dex's name when the request asked for them
+ * (`include=base_token,quote_token,dex`). A side the reply did not include is null, never guessed
+ * from the pool's display name.
+ */
 export function readPools(raw: unknown): readonly Pool[] {
+  const tokens = new Map<string, PoolToken>();
+  const dexNames = new Map<string, string>();
+  for (const i of arr(rec(raw).included)) {
+    const r = rec(i);
+    const id = str(r.id);
+    const a = rec(r.attributes);
+    if (id === null) continue;
+    if (str(r.type) === 'dex') {
+      const name = str(a.name);
+      if (name !== null) dexNames.set(id, name);
+    } else if (str(r.type) === 'token') {
+      const address = str(a.address);
+      if (address !== null) tokens.set(id, { address, symbol: str(a.symbol), name: str(a.name), imageUrl: httpsOnly(str(a.image_url)) });
+    }
+  }
   return arr(rec(raw).data).flatMap((p) => {
     const a = rec(rec(p).attributes);
+    const rel = rec(rec(p).relationships);
     const address = str(a.address);
-    const dex = str(rec(rec(rec(rec(p).relationships).dex).data).id);
-    return address === null || dex === null ? [] : [{ address, dex, reserveUsd: num(a.reserve_in_usd) }];
+    const dex = str(rec(rec(rel.dex).data).id);
+    const side = (key: string): PoolToken | null => {
+      const id = str(rec(rec(rel[key]).data).id);
+      return id === null ? null : (tokens.get(id) ?? null);
+    };
+    return address === null || dex === null
+      ? []
+      : [{ address, dex, reserveUsd: num(a.reserve_in_usd), dexName: dexNames.get(dex) ?? null, base: side('base_token'), quote: side('quote_token') }];
   });
+}
+
+/**
+ * The token a pool pairs `mint` with: the quote side when the coin is the base, the base side when
+ * the coin is the quote. Null when the reply did not include it, or the pool does not hold `mint`.
+ */
+export function pairedWith(pool: Pool, mint: string): PoolToken | null {
+  if (pool.base?.address === mint) return pool.quote ?? null;
+  if (pool.quote?.address === mint) return pool.base ?? null;
+  return null;
+}
+
+/** The coin's own side of a pool, as the market lists it; null when not included. */
+export function ownSide(pool: Pool, mint: string): PoolToken | null {
+  if (pool.base?.address === mint) return pool.base;
+  if (pool.quote?.address === mint) return pool.quote;
+  return null;
 }
 
 /**

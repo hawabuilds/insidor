@@ -8,7 +8,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CURVE_MINT, OHLCV_5M, POOLS, TRADES } from './__fixtures__/replies.ts';
-import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
+import { LAURA_MINT, MSTRX_MINT, PAIRED_POOLS } from './__fixtures__/paired-pools.ts';
+import { aggregate, ownSide, pairedWith, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 
 test('★ a graduated coin trades in its deepest listed pool, not its old curve', () => {
   const pools = readPools(POOLS);
@@ -53,4 +54,30 @@ test('candles with volume keep the dollar volume, oldest first; a row without it
   for (let i = 1; i < candles.length; i++) assert.ok((candles[i]?.t ?? 0) > (candles[i - 1]?.t ?? 0));
   const short = readVolumeCandles({ data: { attributes: { ohlcv_list: [[1_791_709_500, 1, 1, 1, 0.5]] } } });
   assert.deepEqual(short, [{ t: 1_791_709_500_000, c: 0.5, v: null }]);
+});
+
+test('★ a pool names both its tokens and its dex: Laura trades against MSTRx on PumpSwap', () => {
+  const pools = readPools(PAIRED_POOLS);
+  const main = primaryPool(pools);
+  assert.equal(main?.dex, 'pumpswap');
+  assert.equal(main?.dexName, 'PumpSwap');
+  assert.equal(main?.reserveUsd, 17471.8487);
+  const other = main === null ? null : pairedWith(main, LAURA_MINT);
+  assert.equal(other?.address, MSTRX_MINT);
+  assert.equal(other?.symbol, 'MSTRx');
+  assert.equal(other?.name, 'MicroStrategy xStock');
+  assert.ok(other?.imageUrl?.startsWith('https://'));
+  assert.equal(main === null ? null : ownSide(main, LAURA_MINT)?.symbol, 'Laura');
+});
+
+test('a coin on the quote side is paired with the base; a pool without it pairs it with nothing', () => {
+  const curve = readPools(PAIRED_POOLS).find((p) => p.dex === 'pump-fun');
+  assert.ok(curve !== undefined);
+  assert.equal(pairedWith(curve, LAURA_MINT)?.symbol, 'LAURACAT');
+  assert.equal(pairedWith(curve, 'SomeOtherMint'), null);
+});
+
+test('a reply without included tokens leaves both sides unknown, never guessed from the pool name', () => {
+  const pools = readPools(POOLS);
+  assert.ok(pools.every((p) => p.base === null && p.quote === null && p.dexName === null));
 });
