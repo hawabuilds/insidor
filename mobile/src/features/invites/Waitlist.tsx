@@ -17,16 +17,19 @@ import { useState } from 'react';
 
 import { Mark } from '../landing/Landing.tsx';
 import landing from '../landing/landing.module.css';
+import { Avatar } from '../portfolio/Avatar.tsx';
 import { CodeBox, useCodeCheck } from './CodeBox.tsx';
 import { cleanCode } from './invite-code.ts';
 import styles from './invites.module.css';
 
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 
-export function Waitlist({ place, bring, signedInAs, signOut }: {
+export function Waitlist({ place, bring, signedInAs, picture, signOut }: {
   readonly place: { readonly position: number; readonly joinedAt: number } | null;
   readonly bring: (code: string) => Promise<string | null>;
   readonly signedInAs: string | null;
+  /** Their own X picture, drawn beside the handle. */
+  readonly picture: string | null;
   readonly signOut: () => void;
 }) {
   const [code, setCode] = useState('');
@@ -78,6 +81,7 @@ export function Waitlist({ place, bring, signedInAs, signOut }: {
             {busy ? 'Checking' : 'Enter'}
           </button>
           <p className={styles['signedAs']}>
+            {signedInAs !== null ? <Avatar name={signedInAs.replace(/^@/, '')} seed={signedInAs} src={picture} size={18} /> : null}
             <span>Signed in{signedInAs !== null ? ` as ${signedInAs}` : ''}</span>
             <button type="button" className={styles['textButton']} onClick={signOut}>Sign out</button>
           </p>
