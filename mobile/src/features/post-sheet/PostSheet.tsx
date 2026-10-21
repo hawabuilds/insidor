@@ -131,10 +131,10 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const clearNote = useCallback(() => setNote(null), []);
 
   const data = loaded.state === 'ready' ? loaded.value : null;
-  /* Leaving for another screen: the sheet closes, then the address changes (dismiss.ts steps over
-     the sheet's history entry, so back from that screen comes straight here). */
+  /* Leaving for another screen: the sheet stays open on the page it was opened over, which stays
+     drawn behind (App.tsx, shared/ui/dismiss.ts), so Back from that screen finds this sheet as it
+     was, on the same view (the owner, 2026-10-21: Back must not reset the page it returns to). */
   const go = (href: string) => {
-    onClose();
     window.location.hash = href;
   };
   /* A coin's page, always (coin-opening.ts): the post's proven coin with its narrative around it,
