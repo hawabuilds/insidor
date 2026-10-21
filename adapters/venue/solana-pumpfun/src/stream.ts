@@ -74,6 +74,7 @@ import type { AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
 import type { MintEvent } from '@insidor/contracts/ports/venue.ts';
 import { num, rec, str } from '@insidor/vendor-kit';
 
+import { curveAddress } from './curve-rpc.ts';
 import { boundedText, httpsUri, mintAddress } from './hostile.ts';
 import { mintTime } from './mint-time.ts';
 import type { MintTimeOptions } from './mint-time.ts';
@@ -102,6 +103,57 @@ const TX_TYPE_CREATE = 'create';
  * which is a coin we do not have rather than a coin we have wrong.
  */
 const POOL = 'pump';
+
+/**
+ * ★ TOKENS A LAUNCH IS PRICED IN, WHICH ARE NEVER THE LAUNCHED COIN.
+ *
+ * The launchpad now lets a coin's curve be priced in a token other than SOL — a stablecoin, a
+ * tokenised stock (MSTRx, NVDAx, TSLAx, SPYx…), another coin. For such a launch the relay put the
+ * QUOTE token's address in `mint`, beside the new coin's own name: measured 21 Oct 2026, our
+ * store held MSTRx under "LAURA" (and, by its first sighting, "Junior USD*"), USDC under an empty
+ * name, and seventeen tokenised stocks under the names of memes launched against them — while the
+ * memes themselves (Laura is Cg9z…pump) had no row at all. Every launch against one stock then
+ * landed on the same row, renaming it each time.
+ *
+ * Two checks, each sufficient on its own, and a frame failing either is dropped (the launch
+ * listing, which reads each pool's base token, still adds the real coin a few minutes later):
+ *   - the frame's curve, when it names one, must be the curve of the mint it names. A coin's curve
+ *     is the program address derived from ("bonding-curve", mint); a quote token has no curve of
+ *     its own, so a frame naming the new coin's curve and the quote's address cannot agree.
+ *   - the mint must not be one of the quotes below, which are old, famous and never launched here.
+ * Tokenised stocks and coins used as quotes are not listed: there are too many and they change.
+ * The curve check catches them, and the listing marks every quote it sees (services/chainwatch).
+ */
+const NEVER_LAUNCHED: ReadonlySet<string> = new Set([
+  // SOL, as the all-zero key and as wrapped SOL.
+  '11111111111111111111111111111111',
+  'So11111111111111111111111111111111111111112',
+  // USDC, USDT, USD1.
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  'USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB',
+]);
+
+/**
+ * Why this create frame's `mint` cannot be the coin it launched, or null when nothing says so.
+ * Exported so the stream can say what it dropped; the decoder's answer is null either way.
+ */
+export function notTheLaunchedCoin(raw: unknown): string | null {
+  const r = rec(raw);
+  const mint = mintAddress(r.mint);
+  if (mint === null) return null;
+  if (NEVER_LAUNCHED.has(mint)) return 'the frame names a quote token as the coin';
+  if (r.bondingCurveKey === undefined || r.bondingCurveKey === null) return null;
+  const named = mintAddress(r.bondingCurveKey);
+  let own: string | null;
+  try {
+    own = curveAddress(mint);
+  } catch {
+    own = null;
+  }
+  if (named === null || own === null || named !== own) return 'the frame\'s curve is not the curve of the mint it names';
+  return null;
+}
 
 /* ── what a hostile string is allowed to be ─────────────────────────────── */
 
@@ -338,6 +390,8 @@ export function toStreamMintEvent(
 
   const address = mintAddress(r.mint);
   if (address === null) return null;
+  // A quote token named as the coin (see NEVER_LAUNCHED): a coin we do not have, never a coin we have wrong.
+  if (notTheLaunchedCoin(r) !== null) return null;
 
   const ref: AssetRef = { chain: ctx.chain, address };
   const mintedAt = mintTime(
@@ -652,8 +706,13 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
     }
 
     try {
-      const event = toStreamMintEvent(JSON.parse(data), ctx, seenAt);
+      const frame: unknown = JSON.parse(data);
+      const event = toStreamMintEvent(frame, ctx, seenAt);
       if (event !== null) accept(event);
+      else if (str(rec(frame).txType) === TX_TYPE_CREATE && str(rec(frame).pool) === POOL) {
+        const why = notTheLaunchedCoin(frame);
+        if (why !== null) opts.note({ msg: 'launch frame dropped: its mint is not the launched coin', fields: { why, mint: boundedText(rec(frame).mint, ADDRESS_MAX), symbol: boundedText(rec(frame).symbol, SYMBOL_MAX) } });
+      }
     } catch (e) {
       // ★ One malformed frame must never end the socket. Unparseable JSON, a
       // payload shape nobody expected, an address that got past the shape check:
