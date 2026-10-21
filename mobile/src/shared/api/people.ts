@@ -28,6 +28,8 @@ let tokenSource: () => string | null = () => null;
 export function setTokenSource(source: () => string | null): void {
   tokenSource = source;
 }
+/** The session token as it stands, for a screen that keeps what it read per person (features/alerts keep.ts). Never sent anywhere by that caller. */
+export const sessionToken = (): string | null => tokenSource();
 
 export class PeopleError extends Error {
   readonly status: number;
