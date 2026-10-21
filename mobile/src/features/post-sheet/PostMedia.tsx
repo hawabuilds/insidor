@@ -43,6 +43,10 @@
  * file sets the page's policy to `same-origin` when it loads, before any video can ask: our own
  * /api calls keep theirs, and nothing sent to another site names the app.
  *
+ * ★ NOTHING PLAYS FROM A PAGE THAT IS NOT ON SCREEN. A sheet stays open on the page behind when a
+ * coin or narrative is opened from it (App.tsx keeps that page drawn, hidden, for Back); a video or
+ * GIF there pauses while it is hidden, and the GIF loops again when the page is back.
+ *
  * What breaks if changed carelessly: the referrer policy above — without it every X video is a
  * 403 and every post shows "Play on X". `playsInline` and `muted` at the start. Without them an iPhone
  * opens its own full-screen player on the first tap and refuses to start sound it was not asked for.
@@ -54,6 +58,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { createPortal } from 'react-dom';
 
 import type { SheetMedia } from '../../shared/api/index.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { useDismiss, useSwipeClose } from '../../shared/ui/dismiss.ts';
 import { postPicSources } from '../../shared/post-pic.ts';
 import { CloseIcon } from '../../shared/ui/icons.tsx';
@@ -187,6 +192,13 @@ function Loop({ media, height, onBroken, onFull }: { media: SheetMedia; height: 
     if (v !== null && v.paused) void v.play().catch((e: unknown) => unplayable(v, e) && onBroken());
     onFull();
   };
+  const active = useScreenActive();
+  useEffect(() => {
+    const v = video.current;
+    if (v === null) return;
+    if (!active) v.pause();
+    else if (v.paused) void v.play().catch(() => undefined);
+  }, [active]);
   return (
     <div className={`${styles['media']} ${own['tappable']}`} style={{ height }}>
       <video
@@ -212,6 +224,10 @@ function Player({ media, height, onBroken, onFull }: { media: SheetMedia; height
   const [muted, setMuted] = useState(true);
   const [time, setTime] = useState(0);
   const [total, setTotal] = useState(media.durationMs === null ? 0 : media.durationMs / 1000);
+  const active = useScreenActive();
+  useEffect(() => {
+    if (!active) video.current?.pause();
+  }, [active]);
 
   useEffect(() => {
     const v = video.current;

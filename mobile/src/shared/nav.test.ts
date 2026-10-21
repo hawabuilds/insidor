@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { backStep, entryState } from './nav.ts';
+import { backStep, entryIdOf, entryState } from './nav.ts';
 
 test('★ the entry the app opened on has nothing of ours under it: Back goes to the parent', () => {
   assert.equal(backStep(0), 'fallback');
@@ -18,4 +18,14 @@ test('an entry past the first goes back through history, to where they came from
 
 test('a hand-pushed entry carries its number', () => {
   assert.deepEqual(entryState(2), { insidorAt: 2 });
+});
+
+test('an entry id is read from the state only when it is one of ours', () => {
+  assert.equal(entryIdOf({ insidorAt: 1, insidorEntry: 'k1.2' }), 'k1.2');
+  /* A sheet's entry copies its page's state, so it names the same page. */
+  assert.equal(entryIdOf({ insidorAt: 1, insidorEntry: 'k1.2', insidorLayer: 1 }), 'k1.2');
+  assert.equal(entryIdOf({ insidorAt: 1 }), null);
+  assert.equal(entryIdOf({ insidorEntry: '' }), null);
+  assert.equal(entryIdOf({ insidorEntry: 3 }), null);
+  assert.equal(entryIdOf(null), null);
 });
