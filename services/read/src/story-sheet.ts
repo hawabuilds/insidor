@@ -25,6 +25,7 @@
  */
 
 import type { Db, Row } from './queries.ts';
+import { withPictureFiles } from './post-pics.ts';
 import { withTranslations } from './translations.ts';
 
 /** The most posts one narrative's sheet carries. */
@@ -133,8 +134,14 @@ async function members(db: Db, storyId: string, only: readonly string[] | null =
 
 /** One listed post as the sheet sends it: its feed card (translated), readings and when it went up. */
 async function membersOut(db: Db, rows: readonly Row[]) {
-  /* The English of each post written in another language, as the feed shows it (translations.ts). */
-  const cards = await withTranslations(db, rows.map((r) => r['post'] ?? null).filter((p) => p !== null));
+  /* The English of each post written in another language, as the feed shows it (translations.ts),
+     and our copy of its picture (post-pics.ts): the two reads sent at once, then put together. */
+  const posts = rows.map((r) => r['post'] ?? null).filter((p) => p !== null);
+  const [translated, pictured] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts)]);
+  const cards = translated.map((p, i) => {
+    const file = rec(pictured[i])['thumbFile'];
+    return typeof file === 'string' ? { ...rec(p), thumbFile: file } : p;
+  });
   const byId = new Map(cards.map((p) => [str(rec(p)['id']) ?? '', p] as const));
   return rows.flatMap((r) => {
     const itemId = str(r['item_id']);
