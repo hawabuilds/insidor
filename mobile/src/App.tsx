@@ -18,7 +18,8 @@
  * ★ SIGN IN ONCE, AT THE DOOR. Every address is behind one gate (shared/sign-in.ts): signed in,
  * the app; signed out, the front door, with the address kept so signing in lands on it; a
  * returning person, a moment's hold while their session comes back. No screen inside asks anyone
- * to sign in.
+ * to sign in. Signed in is not let in: a first sign-in is asked about access (features/invites
+ * useAccess.ts) and, without it, sees the door's code box or their place on the waitlist.
  */
 
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -37,6 +38,8 @@ import { NOT_PROVEN } from './features/token/coin-opening.ts';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { Holding, Landing } from './features/landing/Landing.tsx';
 import { forgetEntered, hasEntered, markEntered } from './features/landing/entered.ts';
+import { useAccess } from './features/invites/useAccess.ts';
+import { Waitlist } from './features/invites/Waitlist.tsx';
 import { SIGN_IN_CONFIGURED, gateFor } from './shared/sign-in.ts';
 import { useWallet } from './shared/wallet.tsx';
 import { tabOf, type Route } from './shared/route.ts';
@@ -198,8 +201,10 @@ export function App() {
   const { wallet, state } = useWallet();
   const [entered, setEntered] = useState(hasEntered);
   const signedIn = state.kind === 'connected';
-  /* Once signed in, this browser is held rather than shown the door while its session comes back. */
-  if (signedIn && !entered) {
+  /* Signed in on a browser never let in before: does this person have access (invite only)? */
+  const access = useAccess(signedIn, entered);
+  /* Once let in, this browser is held rather than shown the door while its session comes back. */
+  if (signedIn && !entered && access.access === 'in') {
     markEntered();
     setEntered(true);
   }
@@ -217,9 +222,10 @@ export function App() {
   /* Who is asking, for the social and alert services: the sign-in's signed token, read when sent. */
   useEffect(() => setTokenSource(() => wallet?.sessionToken() ?? null), [wallet]);
   /* Signed in: the profile is brought up to date from the sign-in, once per session. */
+  const myPicture = signedIn ? (wallet?.identity()?.pictureUrl ?? null) : null;
   useEffect(() => {
-    if (signedIn) void syncMe().catch(() => undefined);
-  }, [signedIn]);
+    if (signedIn) void syncMe(myPicture).catch(() => undefined);
+  }, [signedIn, myPicture]);
   /* This phone's notifications, made sure of on every launch: a phone that allowed them is saved
      again, so a save that failed once heals itself (features/alerts/push.ts). No prompt is shown. */
   useEffect(() => {
@@ -250,8 +256,22 @@ export function App() {
   useScrollPerTab(keptTab, route);
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
-  const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered });
+  const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access });
   if (gate === 'holding') return <Holding />;
+  const handle = wallet?.identity()?.handle ?? null;
+  const signedInAs = handle !== null ? `@${handle}` : null;
+  const picture = wallet?.identity()?.pictureUrl ?? null;
+  const signOut = () => void wallet?.disconnect();
+  if (gate === 'waitlist') return <Waitlist place={access.place} bring={access.bring} signedInAs={signedInAs} picture={picture} signOut={signOut} />;
+  if (gate === 'invite' || gate === 'unchecked') {
+    return (
+      <Landing
+        configured={SIGN_IN_CONFIGURED}
+        onEnter={() => undefined}
+        invite={{ unchecked: gate === 'unchecked', refusal: access.refusal, bring: access.bring, wait: access.wait, retry: access.retry, signedInAs, picture, signOut }}
+      />
+    );
+  }
   if (gate === 'landing') {
     return (
       <Landing

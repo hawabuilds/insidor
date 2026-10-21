@@ -4,7 +4,7 @@
  * database (e2e/src/social.test.ts) and stand-ins for the sign-in provider and the chain.
  *
  *   GET    /me                         my profile and standing (signed in)
- *   POST   /me                         bring my profile up to date from my sign-in
+ *   POST   /me { pictureUrl? }         bring my profile up to date from my sign-in (and my X picture, xPictureOf)
  *   PUT    /me { bio } or { tradesPublic }   my bio, or "Show my trades to followers"
  *   GET    /profile/:key               by handle or id: profile, rank card, counts, recent comments
  *   GET    /profile/:key/followers     and /following
@@ -16,6 +16,7 @@
  *   GET    /leaderboard                this season's standings
  *   GET    /feed, /feed/people          the people you follow's trades and comments, People to follow (activity.ts)
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
+ *   GET    /access, /invites/…, POST /waitlist, /owner/invites   invite-only access (invites.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
@@ -39,7 +40,7 @@
  * picture) so the alert row shows their face and a follow can be followed back.
  */
 
-import { DEFAULT_POLICY, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type InvitePolicy, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
 import type { IdentityCheck, Person } from '@insidor/contracts/ports/people.ts';
 import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints, type RankId, type Standing } from '@insidor/core';
 
@@ -48,7 +49,8 @@ import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
 import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
-import { ownerRoute } from './owner.ts';
+import { inviteRoute, ownerInvitesRoute } from './invites.ts';
+import { ownerRefOf, ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
 export interface Db {
@@ -74,6 +76,8 @@ export interface SocialDeps {
   readonly policy: SocialPolicy;
   /** Who the owner is (policy `owner`). Absent: nobody is, and every /owner route refuses. */
   readonly owner?: OwnerPolicy;
+  /** Invite-only access (policy `invites`); absent, the defaults. */
+  readonly invites?: InvitePolicy;
   /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
   readonly coinCheck?: CoinCheck;
   readonly now: () => number;
@@ -143,7 +147,7 @@ export async function syncProfile(db: Db, p: Person): Promise<void> {
   if (handle !== null) await db.query('update people.profile set handle = null where handle = $1 and user_id <> $2', [handle, p.userId]);
   await db.query(
     `insert into people.profile (user_id, handle, name, picture_url, wallet) values ($1, $2, $3, $4, $5)
-     on conflict (user_id) do update set handle = excluded.handle, name = excluded.name, picture_url = excluded.picture_url,
+     on conflict (user_id) do update set handle = excluded.handle, name = excluded.name, picture_url = coalesce(excluded.picture_url, people.profile.picture_url),
        wallet = coalesce(excluded.wallet, people.profile.wallet), updated_at = now()`,
     [p.userId, handle, p.name, p.pictureUrl, wallet],
   );
@@ -162,6 +166,21 @@ async function signedIn(req: Request, deps: SocialDeps): Promise<Person | null> 
     synced.set(person.userId, deps.now());
   }
   return person;
+}
+
+/**
+ * A profile picture the app sent for its own signed-in person: kept only when it is X's own picture
+ * host, so the one thing a request may say about itself can only ever be an X avatar, on the
+ * sender's own profile. Anything else is null and the profile keeps what it had.
+ */
+export function xPictureOf(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 500) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && u.hostname === 'pbs.twimg.com' && u.pathname.startsWith('/profile_images/') ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function profileBy(db: Db, key: string): Promise<ProfileRow | null> {
@@ -319,6 +338,16 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
 
   const me = await signedIn(req, deps);
 
+  /* Invite-only access (invites.ts); the owner's numbers and controls are behind the same owner check as every /owner route. */
+  const invites = { db: deps.db, invites: deps.invites ?? DEFAULT_POLICY.invites, ...(deps.owner === undefined ? {} : { owner: deps.owner }) };
+  if (head === 'owner' && id === 'invites' && seg.length === 2) {
+    if (me === null) return SIGN_IN;
+    const ref = ownerRefOf(me, deps.owner);
+    return ref === null ? bad('Only the owner can do this.', 403) : ownerInvitesRoute(m, req.body, ref, invites);
+  }
+  const invited = await inviteRoute(m, seg, req.body, me, invites);
+  if (invited !== null) return invited;
+
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
   const activity = await activityRoute(m, seg, url.searchParams, me, deps, async (ids) => {
@@ -333,6 +362,10 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
     if (m === 'POST') {
       await syncProfile(deps.db, me);
       synced.set(me.userId, deps.now());
+      /* Their own X picture, as the sign-in window showed it to the app, when the signed token
+         carried none (see xPictureOf): every @handle on screen is drawn with its picture. */
+      const sent = me.pictureUrl === null ? xPictureOf((req.body as { pictureUrl?: unknown } | null)?.pictureUrl) : null;
+      if (sent !== null) await deps.db.query('update people.profile set picture_url = $2, updated_at = now() where user_id = $1', [me.userId, sent]);
     }
     if (m === 'PUT' && typeof (req.body as { tradesPublic?: unknown } | null)?.tradesPublic === 'boolean') {
       await deps.db.query('update people.profile set trades_public = $2, updated_at = now() where user_id = $1', [me.userId, (req.body as { tradesPublic: boolean }).tradesPublic]);

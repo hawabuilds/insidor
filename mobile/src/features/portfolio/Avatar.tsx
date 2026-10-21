@@ -1,9 +1,14 @@
 /**
  * A round picture, or a monogram on a colour chosen from a stable seed — Trador's Avatar. A
  * picture that fails to load falls back to the monogram, never a broken image.
+ *
+ * ★ EVERY @HANDLE IS DRAWN WITH ITS PICTURE (the owner, 2026-10-21). The pictures are walked by the
+ * shared fallback (shared/ui/usePosterPic.ts over usePictureTries): our stored copy first when the
+ * row has one (`file`, a poster's copy), then the link, one retry round later, and the monogram
+ * only when every source has failed or there is none.
  */
 
-import { useState } from 'react';
+import { usePosterPic } from '../../shared/ui/usePosterPic.ts';
 
 const GRADIENTS = [
   'linear-gradient(135deg,#9945FF,#5D22A1)',
@@ -20,10 +25,10 @@ function gradientFor(seed: string): string {
   return GRADIENTS[hash % GRADIENTS.length] ?? GRADIENTS[0] ?? '';
 }
 
-export function Avatar({ name, seed, src, size }: { name: string | null; seed: string; src: string | null; size: number }) {
-  const [failed, setFailed] = useState<string | null>(null);
-  if (src !== null && src !== failed) {
-    return <img src={src} alt="" width={size} height={size} onError={() => setFailed(src)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
+export function Avatar({ name, seed, src, file = null, size }: { name: string | null; seed: string; src: string | null; file?: string | null; size: number }) {
+  const pic = usePosterPic(file, src);
+  if (pic.src !== null) {
+    return <img key={pic.tryKey} src={pic.src} alt="" width={size} height={size} loading="lazy" decoding="async" onError={pic.onError} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
   }
   return (
     <span aria-hidden="true" style={{ width: size, height: size, minWidth: size, background: gradientFor(seed), borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800, fontSize: Math.round(size * 0.4) }}>

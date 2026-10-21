@@ -1,58 +1,55 @@
 /**
- * THE PROFILE MENU — Trador's settings menu (`SettingsMenu.tsx`), top right of the Portfolio tab: a
- * gear that opens a small panel anchored under it, closed by a tap outside or Escape.
+ * THE PROFILE MENU — Trador's settings menu (`SettingsMenu.tsx`), condensed as Trador's is (the
+ * owner, 2026-10-21): top right of the Portfolio tab, a gear that opens a 286px panel anchored under
+ * it, closed by a tap outside or Escape. One short panel, one row per thing; what used to be a
+ * row each now sits in the sheet its row opens (menu-rows.ts lists it all, and its test holds that
+ * nothing was removed, only grouped).
  *
- * What it holds, row by row against Trador's:
+ *   header           your picture, name and @handle; a tap opens your profile, the pencil edits it
+ *   the wallet card  "Your Insidor wallet", the green Active pill, the address, copy and Solscan
+ *   Wallets          a sheet: Export private key, Import a wallet, Link a wallet to view, the linked
+ *                    wallets (MenuSheets.tsx). The key is only ever shown in the wallet provider's
+ *                    own window; our code never sees, stores or logs one
+ *   Invites          the green "N joined" pill; a sheet of my codes and who joined with them
+ *                    (features/invites/InvitesSheet.tsx)
+ *   Settings         a sheet: Show my trades to followers, Notifications
+ *   Leaderboard, How Insidor works   links, as before
+ *   Owner tools      the owner only: Add missed posts, the invite numbers and controls
+ *   Sign out         in red; it returns to the front door (shared/sign-in.ts)
  *
- *   who you are            kept: the name, and the @handle for X; for Google the name and
- *                          "Signed in", as Trador says it — a Google email is never shown
- *   the wallet card        kept: "Your Insidor wallet", the address, copy, and a chain explorer
- *   export private key     kept: the wallet provider's own secure window; the key is drawn on the
- *                          provider's domain and never reaches our code (wallet port, showKeyExport)
- *   import a wallet        kept (#/import): a warning, then the key from a box straight into the
- *                          provider's SDK (@insidor/wallet-embedded KeyImport), never our servers
- *   link a wallet          ours (#/wallets): Phantom joined through the provider's window, view only
- *   notifications          kept: the Feed settings (#/feed/settings)
- *   leaderboard, profile   ours: the season's ranks, and your own profile
- *   edit profile           kept: Trador's Edit profile; it opens your profile, where the bio is edited
- *   show my trades         kept: Trador's "Public Stonkfolio" switch, here "Show my trades to
- *                          followers" (on by default, as Trador's): one switch for the Feed and
- *                          whether others see your portfolio. Read when the menu first opens,
- *                          flipped at once and put back if the save fails
- *   learn the basics       kept, as How Insidor works (#/learn)
- *   add missed posts       ours, the owner only: a sheet of its own (features/missed/MissedPosts.tsx),
- *                          drawn outside the panel so closing the menu does not close it
- *   referrals, public page not ported: Insidor has neither
- *   sign out               kept, in red; it returns to the front door (shared/sign-in.ts)
+ * Every sheet is drawn outside the panel, so closing the menu does not close what it opened.
  *
  * What breaks if changed carelessly: the outside-tap listener is on `pointerdown`, not `click`,
  * so the tap that closes the menu is not also a tap on whatever is under it.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { saveTradesPublic } from '../../shared/api/following.ts';
-import { fetchMe } from '../../shared/api/people.ts';
-import { useToast } from '../../shared/ui/ComingSoon.tsx';
-
+import { fetchMyInvites } from '../../shared/api/invites.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { BellIcon, CapIcon, CopyIcon, ExternalIcon, GearIcon, LockIcon, LogoutIcon, PlusIcon, TrophyIcon, UserIcon, WalletIcon } from '../../shared/ui/icons.tsx';
+import { CapIcon, ChevronIcon, CopyIcon, ExternalIcon, GearIcon, LogoutIcon, PlusIcon, TrophyIcon, WalletIcon } from '../../shared/ui/icons.tsx';
+import { InvitesSheet } from '../invites/InvitesSheet.tsx';
+import { OwnerToolsSheet } from '../invites/OwnerTools.tsx';
 import { MissedPostsSheet } from '../missed/MissedPosts.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
+import { Avatar } from './Avatar.tsx';
+import { SettingsSheet, WalletsSheet, shortAddress } from './MenuSheets.tsx';
+import { joinedPill, menuRows, type MenuRow } from './menu-rows.ts';
 import styles from './profile-menu.module.css';
 
-/** "86xCnP…2MMY": six and four, as Trador's wallet card shows it. */
-const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 6)}…${a.slice(-4)}`);
+type Open = 'wallets' | 'invites' | 'settings' | 'owner' | 'missed' | null;
 
-export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profileKey, linked, leave }: {
+export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportKey, profileKey, linked, leave }: {
   name: string;
-  /** "@handle", or "Signed in". */
-  subtitle: string;
+  /** The X handle without "@"; null for a sign-in without one. */
+  handle: string | null;
+  /** Your X picture; null draws your initial. */
+  pictureUrl: string | null;
   address: string;
   onCopy: () => void;
   /** Opens the provider's key export window; null where there is none to open. */
   exportKey: (() => void) | null;
-  /** This person's profile (handle or id); null in the demo. */
+  /** This person's profile (handle or id); null in the demo or while a session comes back. */
   profileKey: string | null;
   /** Outside wallets joined for viewing. */
   linked: readonly string[];
@@ -60,9 +57,12 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
   leave: { readonly label: string; readonly run: () => void };
 }) {
   const [open, setOpen] = useState(false);
-  const [missed, setMissed] = useState(false);
+  const [sheet, setSheet] = useState<Open>(null);
+  const [joined, setJoined] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
   const owner = useIsOwner();
   const root = useRef<HTMLDivElement>(null);
+  const member = profileKey !== null;
 
   useEffect(() => {
     if (!open) return;
@@ -80,6 +80,68 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
     };
   }, [open]);
 
+  /* The Invites row's "N joined", read each time the menu opens; nothing is drawn until it is. */
+  useEffect(() => {
+    if (!open || !member) return;
+    let live = true;
+    fetchMyInvites().then((m) => live && setJoined(m.joined.length), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [open, member]);
+  const onRead = useCallback((n: number) => setJoined(n), []);
+
+  const then = (next: Open) => () => {
+    setOpen(false);
+    setSheet(next);
+  };
+  const copy = () => {
+    onCopy();
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_600);
+  };
+  const pill = joinedPill(joined);
+
+  const row = (r: MenuRow) => {
+    switch (r) {
+      case 'wallets':
+        return <Row key={r} icon={<WalletIcon size={16} />} label="Wallets" onClick={then('wallets')} more />;
+      case 'invites':
+        return <Row key={r} icon={<InvitesIcon />} label="Invites" onClick={then('invites')} more pill={pill} />;
+      case 'settings':
+        return <Row key={r} icon={<GearIcon size={16} />} label="Settings" onClick={then('settings')} more />;
+      case 'leaderboard':
+        return (
+          <a key={r} className={styles['row']} role="menuitem" href={hrefFor({ screen: 'leaderboard' })} onClick={() => setOpen(false)}>
+            <TrophyIcon size={16} /> <span className={styles['rowLabel']}>Leaderboard</span>
+          </a>
+        );
+      case 'learn':
+        return (
+          <a key={r} className={styles['row']} role="menuitem" href={hrefFor({ screen: 'learn' })} onClick={() => setOpen(false)}>
+            <CapIcon size={16} /> <span className={styles['rowLabel']}>How Insidor works</span>
+          </a>
+        );
+      case 'owner':
+        return <Row key={r} icon={<PlusIcon size={16} />} label="Owner tools" onClick={then('owner')} more />;
+      case 'leave':
+        return (
+          <button
+            key={r}
+            type="button"
+            role="menuitem"
+            className={`${styles['row']} ${styles['leave']}`}
+            onClick={() => {
+              setOpen(false);
+              leave.run();
+            }}
+          >
+            <LogoutIcon size={16} /> <span className={styles['rowLabel']}>{leave.label}</span>
+          </button>
+        );
+    }
+  };
+
   return (
     <div ref={root} className={styles['root']}>
       <button type="button" className={`${styles['gear']} ${open ? styles['gearOn'] : ''}`} aria-label="Profile and settings" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -89,8 +151,28 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
       {open ? (
         <div className={styles['panel']} role="menu" aria-label="Profile and settings">
           <div className={styles['head']}>
-            <b>{name}</b>
-            <span>{subtitle}</span>
+            {member ? (
+              <a className={styles['who']} href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)} aria-label="Your profile">
+                <Avatar name={name} seed={handle ?? address} src={pictureUrl} size={36} />
+                <span className={styles['whoText']}>
+                  <b>{name}</b>
+                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                </span>
+              </a>
+            ) : (
+              <span className={styles['who']}>
+                <Avatar name={name} seed={handle ?? address} src={pictureUrl} size={36} />
+                <span className={styles['whoText']}>
+                  <b>{name}</b>
+                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                </span>
+              </span>
+            )}
+            {member ? (
+              <a className={styles['edit']} href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)} aria-label="Edit profile">
+                <PenIcon />
+              </a>
+            ) : null}
           </div>
 
           <div className={styles['card']}>
@@ -99,90 +181,31 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
             </div>
             <p>Holds what you buy here, and is what your portfolio counts.</p>
             <div className={styles['address']}>
-              <span>{shortAddress(address)}</span>
-              <button type="button" aria-label="Copy wallet address" onClick={onCopy}><CopyIcon size={14} /></button>
+              <span>{copied ? 'Copied' : shortAddress(address)}</span>
+              <button type="button" aria-label="Copy wallet address" onClick={copy}><CopyIcon size={14} /></button>
               <a href={`https://solscan.io/account/${address}`} target="_blank" rel="noreferrer" aria-label="Open the wallet on Solscan"><ExternalIcon size={14} /></a>
             </div>
           </div>
 
-          {linked.map((l) => (
-            <div key={l} className={styles['card']}>
-              <div className={styles['cardTitle']}>Linked wallet</div>
-              <p>View only: Insidor reads it from the chain and never holds its key.</p>
-              <div className={styles['address']}>
-                <span>{shortAddress(l)}</span>
-                <a href={`https://solscan.io/account/${l}`} target="_blank" rel="noreferrer" aria-label="Open the linked wallet on Solscan"><ExternalIcon size={14} /></a>
-              </div>
-            </div>
-          ))}
-
-          {profileKey !== null ? (
-            <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)}>
-              <UserIcon size={16} /> Your profile
-            </a>
-          ) : null}
-          {profileKey !== null ? (
-            <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)}>
-              <PenIcon /> Edit profile
-            </a>
-          ) : null}
-          {exportKey !== null ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={styles['row']}
-              onClick={() => {
-                setOpen(false);
-                exportKey();
-              }}
-            >
-              <LockIcon size={16} /> Export private key
-            </button>
-          ) : null}
-          <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'import' })} onClick={() => setOpen(false)}>
-            <WalletIcon size={16} /> Import a wallet
-          </a>
-          <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'wallets' })} onClick={() => setOpen(false)}>
-            <WalletIcon size={16} /> Link a wallet to view
-          </a>
-          {profileKey !== null ? <ShareTrades /> : null}
-          <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'alert-settings' })} onClick={() => setOpen(false)}>
-            <BellIcon size={16} /> Notifications
-          </a>
-          <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'leaderboard' })} onClick={() => setOpen(false)}>
-            <TrophyIcon size={16} /> Leaderboard
-          </a>
-          <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'learn' })} onClick={() => setOpen(false)}>
-            <CapIcon size={16} /> How Insidor works
-          </a>
-          {owner ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={styles['row']}
-              onClick={() => {
-                setOpen(false);
-                setMissed(true);
-              }}
-            >
-              <PlusIcon size={16} /> Add missed posts
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className={`${styles['row']} ${styles['leave']}`}
-            onClick={() => {
-              setOpen(false);
-              leave.run();
-            }}
-          >
-            <LogoutIcon size={16} /> {leave.label}
-          </button>
+          <div className={styles['rows']}>{menuRows({ owner, member, canExport: exportKey !== null }).map(row)}</div>
         </div>
       ) : null}
-      {missed ? <MissedPostsSheet onClose={() => setMissed(false)} /> : null}
+      {sheet === 'wallets' ? <WalletsSheet onClose={() => setSheet(null)} exportKey={exportKey} linked={linked} /> : null}
+      {sheet === 'invites' ? <InvitesSheet onClose={() => setSheet(null)} onRead={onRead} /> : null}
+      {sheet === 'settings' ? <SettingsSheet onClose={() => setSheet(null)} member={member} /> : null}
+      {sheet === 'owner' ? <OwnerToolsSheet onClose={() => setSheet(null)} onMissed={() => setSheet('missed')} /> : null}
+      {sheet === 'missed' ? <MissedPostsSheet onClose={() => setSheet(null)} /> : null}
     </div>
+  );
+}
+
+function Row({ icon, label, onClick, more = false, pill = null }: { icon: React.ReactNode; label: string; onClick: () => void; more?: boolean; pill?: string | null }) {
+  return (
+    <button type="button" role="menuitem" className={styles['row']} onClick={onClick}>
+      {icon} <span className={styles['rowLabel']}>{label}</span>
+      {pill !== null ? <span className={styles['active']}>{pill}</span> : null}
+      {more ? <span className={styles['more']}><ChevronIcon size={14} /></span> : null}
+    </button>
   );
 }
 
@@ -195,46 +218,12 @@ function PenIcon() {
   );
 }
 
-/**
- * "Show my trades to followers" as a toggle row. Its state is read from your profile when the menu
- * first opens; until then the switch is drawn neither on nor off, and a read that fails says so
- * rather than guessing. Flipped at once and put back if the save fails, so the switch never says
- * something the server did not agree to.
- */
-function ShareTrades() {
-  const toast = useToast();
-  const [on, setOn] = useState<boolean | 'loading' | 'unread'>('loading');
-  useEffect(() => {
-    let live = true;
-    fetchMe().then(
-      (me) => live && setOn(typeof me.tradesPublic === 'boolean' ? me.tradesPublic : 'unread'),
-      () => live && setOn('unread'),
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
-  const flip = async () => {
-    if (typeof on !== 'boolean') return;
-    const next = !on;
-    setOn(next);
-    try {
-      await saveTradesPublic(next);
-    } catch (e) {
-      setOn(!next);
-      toast("Couldn't save", e instanceof Error ? e.message : '');
-    }
-  };
-  const known = typeof on === 'boolean';
+function InvitesIcon() {
   return (
-    <button type="button" role="menuitemcheckbox" aria-checked={known ? on : 'mixed'} className={`${styles['row']} ${styles['switchRow']}`} onClick={() => void flip()}>
-      <span className={styles['switchText']}>
-        <b>Show my trades to followers</b>
-        <small>
-          {on === 'loading' ? '—' : on === 'unread' ? "— couldn't be read just now" : on ? 'Your trades and portfolio show to others' : 'Hidden from others, your portfolio included'}
-        </small>
-      </span>
-      <span className={`${styles['toggle']} ${on === true ? styles['toggleOn'] : ''} ${known ? '' : styles['toggleUnknown']}`}><i /></span>
-    </button>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M19 8v6M22 11h-6" />
+    </svg>
   );
 }

@@ -190,6 +190,9 @@ interface PostFacts {
   readonly video: boolean;
   readonly site: string | null;
   readonly author: string | null;
+  /** The author's picture: our stored copy's file name (0079) and the source's link. */
+  readonly authorPictureFile: string | null;
+  readonly authorPictureUrl: string | null;
 }
 
 /**
@@ -202,12 +205,15 @@ async function postsOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise<M
   const found = new Map<string, PostFacts>();
   if (ids.length === 0) return found;
   const posts = await deps.db.query<PostFacts>(
-    `select distinct on (item_id) item_id as "itemId", payload ->> 'thumbUrl' as "thumbUrl",
-            coalesce((payload ->> 'thumbIsVideo')::boolean, false) as video,
-            payload ->> 'sourceLabel' as site, payload ->> 'authorLabel' as author
-       from public.feed_post
-      where item_id = any($1::text[]) and payload is not null
-      order by item_id, payload_at desc nulls last`,
+    `select distinct on (f.item_id) f.item_id as "itemId", f.payload ->> 'thumbUrl' as "thumbUrl",
+            coalesce((f.payload ->> 'thumbIsVideo')::boolean, false) as video,
+            f.payload ->> 'sourceLabel' as site, f.payload ->> 'authorLabel' as author,
+            to_jsonb(a) ->> 'picture_copy' as "authorPictureFile", to_jsonb(a) ->> 'picture_url' as "authorPictureUrl"
+       from public.feed_post f
+       left join public.item i on i.item_id = f.item_id
+       left join public.author a on a.author_key = i.author_key
+      where f.item_id = any($1::text[]) and f.payload is not null
+      order by f.item_id, f.payload_at desc nulls last`,
     [ids],
   );
   for (const p of posts) found.set(p.itemId, p);
@@ -294,6 +300,9 @@ function onOf(c: CommentRow, storyId: string | null, coin: CoinFacts | null, sto
     video: post?.video ?? false,
     site: post?.site ?? null,
     author: post?.author ?? null,
+    /* "Post by @handle" is drawn with the author's face (the owner, 2026-10-21): copy first, then the link. */
+    authorPictureFile: post !== null && typeof post.authorPictureFile === 'string' && /^[0-9a-f]{32}$/.test(post.authorPictureFile) ? post.authorPictureFile : null,
+    authorPictureUrl: post !== null && typeof post.authorPictureUrl === 'string' && post.authorPictureUrl.startsWith('https://') ? post.authorPictureUrl : null,
   };
 }
 

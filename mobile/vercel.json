@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/i/:code",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/read/:path*",
       "destination": "https://read-production-a6c0.up.railway.app/:path*"
     },

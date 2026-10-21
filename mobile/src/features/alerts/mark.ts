@@ -19,18 +19,21 @@
  * no symbol; a coin before the bell because most rows are coins.
  */
 
-export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string; readonly picture?: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string; readonly picture?: string } | { readonly kind: 'useful'; readonly label: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
+export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string; readonly picture?: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string; readonly picture?: string; readonly pictureFile?: string } | { readonly kind: 'useful'; readonly label: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
 
-export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string; readonly title?: string; readonly picture?: string | null; readonly coin?: string | null }, ranks: readonly string[]): MarkKind {
+export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string; readonly title?: string; readonly picture?: string | null; readonly pictureFile?: string | null; readonly coin?: string | null }, ranks: readonly string[]): MarkKind {
   const picture = typeof a.picture === 'string' && a.picture.startsWith('https://') ? a.picture : null;
+  /* Our stored copy of a poster's face (32 hex characters), tried before the link. */
+  const file = typeof a.pictureFile === 'string' && /^[0-9a-f]{32}$/.test(a.pictureFile) ? a.pictureFile : null;
+  const face = (label: string): MarkKind => (picture === null && file === null ? { kind: 'rising', label } : { kind: 'rising', label, ...(picture === null ? {} : { picture }), ...(file === null ? {} : { pictureFile: file }) });
   if (a.rank !== null && ranks.includes(a.rank)) return { kind: 'rank', rank: a.rank };
   if (a.kind === 'supplier_warning') return { kind: 'money', label: 'Supplier spend' };
   if (a.kind === 'supplier_account') return { kind: 'money', label: 'Supplier account' };
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
   if (a.kind === 'comment_useful') return { kind: 'useful', label: 'Found useful' };
-  if (a.kind === 'rising_post') return picture === null ? { kind: 'rising', label: 'Rising post' } : { kind: 'rising', label: 'Rising post', picture };
+  if (a.kind === 'rising_post') return face('Rising post');
   /* A post blowing up, or a big account's post in a narrative you star: the poster's face, else the up arrow. */
-  if (a.kind === 'blowing_up' || a.kind === 'starred_big_account') return picture === null ? { kind: 'rising', label: 'Rising fast' } : { kind: 'rising', label: 'Rising fast', picture };
+  if (a.kind === 'blowing_up' || a.kind === 'starred_big_account') return face('Rising fast');
   const person = personOf(a);
   if (person !== null) return picture === null ? { kind: 'person', name: person } : { kind: 'person', name: person, picture };
   if (a.symbol !== null && a.symbol !== '') {
