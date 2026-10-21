@@ -133,12 +133,15 @@ export function pickOrder(posts: readonly BlowingPick[], narratives: readonly Bl
 /* ── the database around it ───────────────────────────────────────── */
 
 /* For You's live cards from the last two hours: Trending now needs 90 minutes of readings at most. */
+const LIVE_CARDS = `f.feed_id = 'fyp' and f.withdrawn_at is null and f.payload is not null and f.payload_at >= now() - interval '2 hours'`;
+/* The cards' versions (see `liveCards`), then the cards not held at theirs, whole. */
+const VERSIONS_SQL = `select f.item_id as "itemId", f.xmin::text as v from public.feed_post f where ${LIVE_CARDS}`;
 const POSTS_SQL = `
 select f.item_id as "itemId", i.source, coalesce(f.payload #> '{sheet,counts}', f.payload #> '{sheet,views}') as readings,
        f.payload #>> '{postedAt,at}' as "postedMs", f.payload -> 'coins' as coins, f.payload ->> 'authorLabel' as author,
-       f.payload ->> 'excerpt' as excerpt, (f.payload #>> '{reach,v}')::float8 as views, f.payload ->> 'thumbUrl' as image
+       f.payload ->> 'excerpt' as excerpt, (f.payload #>> '{reach,v}')::float8 as views, f.payload ->> 'thumbUrl' as image, f.xmin::text as v
   from public.feed_post f left join public.item i on i.item_id = f.item_id
- where f.feed_id = 'fyp' and f.withdrawn_at is null and f.payload is not null and f.payload_at >= now() - interval '2 hours'`;
+ where ${LIVE_CARDS} and f.item_id = any($1::text[])`;
 
 const NARRATIVES_SQL = `
 select story_id as "storyId", coalesce(payload ->> 'title', '') as title, (payload #>> '{firstSeenAt,at}')::float8 as "firstSeenMs", dead,
@@ -157,8 +160,43 @@ const readingsOf = (raw: unknown): SortReading[] => {
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const https = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) && v.length <= 2_000 ? v : null);
 
+type RiserRow = { itemId: string; source: string | null; readings: unknown; postedMs: string | null; coins: unknown; author: string | null; excerpt: string | null; views: number | null; image: string | null };
+
+/**
+ * ★ CARDS HELD BY ROW VERSION. This pass runs every minute and each For You card's payload (its
+ * readings sheet above all, ~1.7 KB a card, ~1,400 cards) used to cross the wire every time — the
+ * largest share of this service's egress — while the projector rewrites a card about every twenty
+ * minutes. So the live cards are read as ids and row versions (`xmin`, new on every rewrite), and only
+ * a card not held at its version is read whole. A card that left the window leaves the answer.
+ */
+const heldCards = new Map<string, { readonly v: string; readonly row: RiserRow; usedAt: number }>();
+let heldSweptAt = 0;
+const HELD_CARD_IDLE_MS = 3 * 3_600_000;
+
+async function liveCards(db: Db): Promise<RiserRow[]> {
+  const now = Date.now();
+  const versions = await db.query<{ itemId: string; v: string }>(VERSIONS_SQL);
+  const stale = versions.filter((x) => heldCards.get(x.itemId)?.v !== x.v).map((x) => x.itemId);
+  if (stale.length > 0) {
+    const rows = await db.query<RiserRow & { v: string }>(POSTS_SQL, [stale]);
+    for (const { v, ...row } of rows) heldCards.set(row.itemId, { v, row, usedAt: now });
+  }
+  const out: RiserRow[] = [];
+  for (const x of versions) {
+    const held = heldCards.get(x.itemId);
+    if (held === undefined) continue;
+    held.usedAt = now;
+    out.push(held.row);
+  }
+  if (now - heldSweptAt >= HELD_CARD_IDLE_MS) {
+    heldSweptAt = now;
+    for (const [k, h] of heldCards) if (now - h.usedAt >= HELD_CARD_IDLE_MS) heldCards.delete(k);
+  }
+  return out;
+}
+
 export async function readRiserPosts(db: Db): Promise<RiserPost[]> {
-  const rows = await db.query<{ itemId: string; source: string | null; readings: unknown; postedMs: string | null; coins: unknown; author: string | null; excerpt: string | null; views: number | null; image: string | null }>(POSTS_SQL);
+  const rows = await liveCards(db);
   let listed = new Set<string>();
   try {
     listed = new Set((await db.query<{ id: string }>(`select distinct subject_id as id from public.same_name_coin where subject_kind = 'post' and subject_id = any($1::text[])`, [rows.map((r) => r.itemId)])).map((r) => r.id));
