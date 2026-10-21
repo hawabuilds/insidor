@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { narrativeSpeeds, narrativeTrending, type NarrativeSpeeds } from './narrative-sorts.ts';
+import { narrativeSpeeds, narrativeTrending, narrativeTrendingIds, type NarrativeSpeeds } from './narrative-sorts.ts';
 
 const MIN = 60_000;
 const NOW = 1_000 * 60 * MIN;
@@ -56,4 +56,25 @@ test('a short video meets the floor in scaled views', () => {
   const rows = [row('t', 2000, 100, true, 'video')];
   assert.deepEqual(narrativeTrending(rows, (s) => (s === 'video' ? 12.5 : 1), DEFAULT_POLICY), []);
   assert.equal(narrativeTrending(rows, one, DEFAULT_POLICY).length, 1);
+});
+
+test('★ still short after the floor fill: the fresh narratives with a measured last-hour gain, the most first (2026-10-21: 2 of 638 had speeds, the list was empty)', () => {
+  const rows = [row('a', 1000, 500), row('c', 100, 10)];
+  const gains = [
+    { id: 'g1', gained: 586_867, fresh: true },
+    { id: 'g2', gained: 210_220, fresh: true },
+    { id: 'a', gained: 9_999_999, fresh: true },
+    { id: 'stale', gained: 900_000, fresh: false },
+    { id: 'unread', gained: null, fresh: true },
+    { id: 'zero', gained: 0, fresh: true },
+  ];
+  assert.deepEqual(narrativeTrendingIds(rows, one, DEFAULT_POLICY, gains), ['a', 'g1', 'g2'], 'a riser keeps its place, once; stale, unmeasured and zero gains stay off');
+  assert.deepEqual(narrativeTrendingIds([], one, DEFAULT_POLICY, gains), ['a', 'g1', 'g2'], 'no speeds at all: the gains alone');
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: `n${String(i).padStart(2, '0')}`, gained: 1_000 + i, fresh: true }));
+  assert.equal(narrativeTrendingIds([], one, DEFAULT_POLICY, many).length, DEFAULT_POLICY.rising.forYouSorts.risers.fillTo, 'filled to 10, no further');
+});
+
+test('five risers or more: the list is the risers alone, no gain fill', () => {
+  const rows = [row('a', 1000, 500), row('b', 900, 300), row('f', 600, 300), row('g', 800, 400), row('h', 700, 350)];
+  assert.deepEqual(narrativeTrendingIds(rows, one, DEFAULT_POLICY, [{ id: 'x', gained: 5_000_000, fresh: true }]), ['b', 'a', 'g', 'h', 'f']);
 });

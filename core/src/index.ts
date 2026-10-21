@@ -148,8 +148,8 @@ export type { VelocityRank } from './track/velocity.ts';
  */
 export { gainIn as sortGainIn, runsOf as sortRunsOf, sortOrder, sortPlace, riserPlace, riserSpeeds, trendFloor, trendingList, viewedPlace } from './rank/post-sorts.ts';
 export type { GainRun, PostSortBy, SortGroup, SortPlace, SortReading } from './rank/post-sorts.ts';
-export { floorSpeed, narrativeSpeeds, narrativeTrending } from './rank/narrative-sorts.ts';
-export type { NarrativePostReadings, NarrativeSpeeds, TrendingNarrative } from './rank/narrative-sorts.ts';
+export { floorSpeed, narrativeSpeeds, narrativeTrending, narrativeTrendingIds } from './rank/narrative-sorts.ts';
+export type { HourGain, NarrativePostReadings, NarrativeSpeeds, TrendingNarrative } from './rank/narrative-sorts.ts';
 
 /**
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass

@@ -50,6 +50,20 @@ test('Trending: risers by ratio; dead, stale and unmeasured narratives are not o
   assert.deepEqual(rankNarratives(rows, 'trending', null, NOW), ['b', 'a']);
 });
 
+test('★ Trending with too few speeds is filled from the fresh pages\' last-hour gains (2026-10-21: empty while 19 had one)', () => {
+  const rows = nums([
+    row('a', { speeds: speeds(1000, 500), hour: '20' }),
+    row('big', { hour: '586867' }),
+    row('mid', { hour: '48254' }),
+    row('dead', { dead: true, hour: '900000' }),
+    row('stale', { projected_at: new Date(NOW - 40 * MIN), hour: '900000' }),
+    row('unread'),
+    row('flat', { hour: '0' }),
+  ]);
+  assert.deepEqual(rankNarratives(rows, 'trending', null, NOW), ['a', 'big', 'mid']);
+  assert.deepEqual(rankNarratives(rows, 'trending', 'tiktok', NOW), [], 'the site filter holds for the fill too');
+});
+
 test('Today and Week: by the gain, a narrative that does not say is left off, never 0', () => {
   const rows = nums([row('a', { day: '500', week: '9000' }), row('b', { day: '800', week: '100' }), row('c'), row('d', { dead: true, day: '50', week: '20000' })]);
   assert.deepEqual(rankNarratives(rows, 'today', null, NOW), ['b', 'a', 'd']);
