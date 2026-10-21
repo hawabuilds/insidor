@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 
 import { decodeAccess, decodeCodeCheck, decodeMyInvites } from '../../shared/api/invites.ts';
 import { cleanCode, codeFromPath, inviteLink, takeInviteLink } from './invite-code.ts';
+import { agoOf } from './when.ts';
+
+test('"joined 3h ago": the largest whole unit, and a future time is just now', () => {
+  const now = 10 * 86_400_000;
+  assert.equal(agoOf(now - 30_000, now), 'just now');
+  assert.equal(agoOf(now - 5 * 60_000, now), '5m ago');
+  assert.equal(agoOf(now - 3 * 3_600_000, now), '3h ago');
+  assert.equal(agoOf(now - 2 * 86_400_000, now), '2d ago');
+  assert.equal(agoOf(now + 60_000, now), 'just now');
+});
 
 test('★ a code is cleaned as the server cleans it', () => {
   assert.equal(cleanCode(' superteam-uk '), 'SUPERTEAMUK');

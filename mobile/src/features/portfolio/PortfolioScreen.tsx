@@ -93,7 +93,8 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         menu={
           <ProfileMenu
             name={who.name ?? who.handle ?? 'Your wallet'}
-            subtitle={who.handle !== null ? `@${who.handle}` : 'Signed in'}
+            handle={who.handle}
+            pictureUrl={who.pictureUrl}
             address={ownAddress ?? who.address}
             onCopy={() => void copy()}
             exportKey={exportKey}

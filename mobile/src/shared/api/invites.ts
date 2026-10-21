@@ -126,5 +126,6 @@ export async function redeemCode(code: string): Promise<{ readonly ok: true } | 
 export const fetchInviteStats = async (): Promise<InviteStats> => decodeStats(await socialCall('GET', '/owner/invites'));
 export const letInNext = async (count: number): Promise<InviteStats> => decodeStats(obj(await socialCall('POST', '/owner/invites', { action: 'let_in', count }))['stats']);
 export const giveEveryone = async (count: number): Promise<InviteStats> => decodeStats(obj(await socialCall('POST', '/owner/invites', { action: 'give', count }))['stats']);
-export const makePartnerCode = async (p: { readonly code: string; readonly label: string; readonly maxUses: number }): Promise<InviteStats> =>
+/** `maxUses` null is the server's usual cap (invites.partnerDefaultUses). */
+export const makePartnerCode = async (p: { readonly code: string; readonly label: string; readonly maxUses: number | null }): Promise<InviteStats> =>
   decodeStats(obj(await socialCall('POST', '/owner/invites', { action: 'partner', ...p }))['stats']);
