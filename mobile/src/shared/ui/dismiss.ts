@@ -12,79 +12,129 @@
  * tap outside) takes its entry back off, so the next back really goes back. No hashchange fires
  * for these entries, so the router never sees them.
  *
- * ★ THE PAGE BEHIND DOES NOT MOVE. The first layer to open notes the scroll position and stops the
- * page scrolling; the last to close puts it back, unless closing it went to another screen.
+ * ★ A LAYER BELONGS TO THE PAGE IT WAS OPENED ON (the page's history entry id, shared/nav.ts; a
+ * layer's own entries copy it). Leaving for another screen from inside a sheet (a coin in the post
+ * sheet) no longer closes the sheet: the page behind stays drawn, hidden (App.tsx), with its sheet
+ * still up, and Back from that screen lands on the sheet's entry and shows it as it was (the owner,
+ * 2026-10-21: Back shows the previous page "and it not be reset"). So depth, Escape and the hold
+ * below count only the layers of the entry on screen; a hidden page's layers wait. A bottom tab is
+ * one screen across many entries: shown at another entry (a tab-bar tap), its old layer closes
+ * (`ShownEntry`), and a Back onto that layer's leftover entry steps over it.
+ *
+ * ★ THE PAGE BEHIND DOES NOT MOVE. While the entry on screen has a layer open, the page is held
+ * still (no scrolling); when the last one closes it is given back at the position kept for that
+ * entry (shared/entry-scroll.ts), which is not noted while held.
  *
  * What breaks if changed carelessly: React mounts every component twice in development, so a layer
  * that pushes on every mount, or pops on every unmount without checking, leaves a stray entry and
  * the next back does nothing. `settle` reconciles history with the open layers after the fact.
+ * Counting another page's layers as this one's makes Back skip or reopen the wrong sheet.
  */
 
-import { useEffect, useRef, type RefObject } from 'react';
+import { useContext, useEffect, useRef, type RefObject } from 'react';
+
+import { entryIdOf } from '../nav.ts';
+import { savedFor, setHeld } from '../entry-scroll.ts';
+import { ShownEntry } from '../screen-active.ts';
 
 interface Layer {
+  /** The history entry of the page it was opened on. */
+  readonly entry: string | null;
   readonly depth: number;
   readonly close: () => void;
   readonly escape: () => boolean;
 }
 
 const stack: Layer[] = [];
-let held: { readonly y: number; readonly href: string; readonly overflow: string } | null = null;
+let held: { readonly y: number; readonly entry: string | null; readonly overflow: string } | null = null;
 let listening = false;
 
+const stateNow = (): unknown => (typeof history === 'undefined' ? null : history.state);
 const depthNow = (): number => {
-  const s: unknown = typeof history === 'undefined' ? null : history.state;
+  const s = stateNow();
   const d = s !== null && typeof s === 'object' ? (s as { insidorLayer?: unknown }).insidorLayer : undefined;
   return typeof d === 'number' ? d : 0;
 };
+const entryNow = (): string | null => entryIdOf(stateNow());
 
-function hold(): void {
-  if (held !== null) return;
-  const root = document.documentElement;
-  held = { y: window.scrollY, href: location.href, overflow: root.style.overflow };
-  root.style.overflow = 'hidden';
+/** The open layers of `entry`, bottom first. */
+const layersOf = (entry: string | null): Layer[] => stack.filter((l) => l.entry === entry);
+
+/**
+ * Which of `layers` (one entry's, bottom first) close on landing at layer depth `d`, top first, and
+ * how many leftover history entries to step back over (a layer that closed while its page was not
+ * on screen). Pure, for the tests.
+ */
+export function onLanding<T extends { readonly depth: number }>(layers: readonly T[], d: number): { readonly close: readonly T[]; readonly stepOver: number } {
+  const close = layers.filter((l) => l.depth > d).reverse();
+  const left = layers.length - close.length;
+  return { close, stepOver: d > left ? d - left : 0 };
 }
 
-function release(): void {
-  if (held === null || stack.length > 0) return;
+/** Hold the page while the entry on screen has a layer open; give it back when it has none. */
+function sync(): void {
+  const entry = entryNow();
+  const open = layersOf(entry).length > 0;
+  if (open && held !== null && held.entry !== entry) giveBack(false);
+  if (open && held === null) {
+    const root = document.documentElement;
+    held = { y: window.scrollY, entry, overflow: root.style.overflow };
+    root.style.overflow = 'hidden';
+    setHeld(true);
+  } else if (!open && held !== null) {
+    giveBack(held.entry === entry);
+  }
+}
+
+function giveBack(here: boolean): void {
+  if (held === null) return;
   const h = held;
   held = null;
+  setHeld(false);
   document.documentElement.style.overflow = h.overflow;
-  if (location.href !== h.href) return;
-  window.scrollTo(0, h.y);
+  /* Left for another page: that page's own position is the shell's to set (App.tsx). */
+  if (!here) return;
+  const y = (h.entry === null ? undefined : savedFor(h.entry)) ?? h.y;
+  window.scrollTo(0, y);
   /* A history step can restore its own idea of the scroll a frame later; ours wins. */
   requestAnimationFrame(() => {
-    if (location.href === h.href) window.scrollTo(0, h.y);
+    if (entryNow() === h.entry && held === null) window.scrollTo(0, y);
   });
 }
 
 /**
- * After layers change: take off history entries no open layer owns any more. Only where the layer
- * left us: if closing it went to another screen and the browser carried the layer's number onto
- * that screen's entry (iPhone Safari does, for `location.replace('#…')`), stepping back would undo
- * the move and reopen what was just closed, so the number is wiped from the entry instead.
+ * After a layer closes: take off history entries no open layer owns any more, when we are still on
+ * its page. Closed while its page was not on screen (a tab's sheet closed by showing the tab at a new
+ * entry, a hidden page dropped), its entries stay behind us and a Back onto one steps over it.
  */
-function settle(at: string): void {
+function settle(layer: Layer, at: string): void {
   setTimeout(() => {
-    const extra = depthNow() - stack.length;
-    if (extra > 0 && location.href === at) history.go(-extra);
-    else if (extra > 0) history.replaceState({ ...(history.state as object | null), insidorLayer: stack.length }, '');
-    release();
+    if (entryNow() === layer.entry) {
+      const extra = depthNow() - layersOf(layer.entry).length;
+      if (extra > 0 && location.href === at) history.go(-extra);
+      else if (extra > 0) history.replaceState({ ...(history.state as object | null), insidorLayer: layersOf(layer.entry).length }, '');
+    }
+    sync();
   }, 0);
 }
 
 function onPop(): void {
-  const d = depthNow();
-  /* Close every layer deeper than the entry we landed on, top first. */
-  while (stack.length > 0 && (stack[stack.length - 1]?.depth ?? 0) > d) stack.pop()?.close();
-  /* An entry left behind by a layer that closed by going to another screen: step over it. */
-  if (d > stack.length) history.go(-(d - stack.length));
-  release();
+  const { close, stepOver } = onLanding(layersOf(entryNow()), depthNow());
+  /* Close every layer of this page deeper than the entry we landed on, top first. */
+  for (const l of close) {
+    const i = stack.indexOf(l);
+    if (i >= 0) stack.splice(i, 1);
+    l.close();
+  }
+  /* An entry left behind by a layer that closed while its page was away: step over it. */
+  if (stepOver > 0) history.go(-stepOver);
+  sync();
 }
 
 function onKey(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return;
-  const top = stack[stack.length - 1];
+  const mine = layersOf(entryNow());
+  const top = mine[mine.length - 1];
   if (top !== undefined && top.escape()) top.close();
 }
 
@@ -92,6 +142,8 @@ function listen(): void {
   if (listening) return;
   listening = true;
   window.addEventListener('popstate', onPop);
+  /* A move to another screen (a link from inside a sheet) gives the page back to that screen. */
+  window.addEventListener('hashchange', sync);
   window.addEventListener('keydown', onKey);
 }
 
@@ -104,22 +156,31 @@ export function useDismiss(onClose: () => void, opts: { readonly escape?: boolea
   close.current = onClose;
   const escape = useRef(opts.escape ?? true);
   escape.current = opts.escape ?? true;
+  const opened = useRef<string | null | undefined>(undefined);
+  const shownAt = useContext(ShownEntry);
 
   useEffect(() => {
     listen();
-    const depth = stack.length + 1;
-    if (stack.length === 0) hold();
+    const entry = entryNow();
+    opened.current = entry;
+    const depth = layersOf(entry).length + 1;
     /* Remounted in place (development's double mount): the entry is already there. */
     if (depthNow() < depth) history.pushState({ ...(history.state as object | null), insidorLayer: depth }, '');
     const href = location.href;
-    const layer: Layer = { depth, close: () => close.current(), escape: () => escape.current };
+    const layer: Layer = { entry, depth, close: () => close.current(), escape: () => escape.current };
     stack.push(layer);
+    sync();
     return () => {
-      const at = stack.indexOf(layer);
-      if (at >= 0) stack.splice(at, 1);
-      settle(href);
+      const i = stack.indexOf(layer);
+      if (i >= 0) stack.splice(i, 1);
+      settle(layer, href);
     };
   }, []);
+
+  /* A kept bottom tab shown at another entry than the one this layer opened on: it closes. */
+  useEffect(() => {
+    if (shownAt !== null && opened.current !== undefined && shownAt !== opened.current) close.current();
+  }, [shownAt]);
 }
 
 /**

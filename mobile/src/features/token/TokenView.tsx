@@ -69,6 +69,7 @@ export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { goBack } from '../../shared/nav.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import type { Route } from '../../shared/route.ts';
 
 type Panel = 'trades' | 'comments' | 'info';
@@ -120,10 +121,13 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const tape = tapeFilterFor(pickedTape, account);
   const tabs = useRef<HTMLDivElement>(null);
   const [loaded, reload] = useLoad(`market:${facts.coinId}:${tf}`, (signal) => fetchCoinMarket(facts.coinId, tf, signal), 'memory');
+  /* Kept behind another page for Back (App.tsx), the page polls nothing; back on screen it reads at once. */
+  const active = useScreenActive();
   useEffect(() => {
+    if (!active) return;
     const timer = setInterval(reload, MARKET_POLL_MS);
     return () => clearInterval(timer);
-  }, [reload]);
+  }, [reload, active]);
   const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
   /* Every read's price goes to the shared store, so every screen showing this coin agrees. */
   useEffect(() => {
