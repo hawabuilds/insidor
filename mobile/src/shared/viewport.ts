@@ -1,0 +1,42 @@
+/**
+ * THE PAGE NEVER ZOOMS ITSELF ON AN IPHONE, so the tab bar stays at the bottom while the page
+ * scrolls.
+ *
+ * ★ THE CAUSE (the owner, 2026-10-21: "the navigation bar sometimes moves when I scroll and I have
+ * to close and reopen"). iPhone Safari zooms the page in when a text box whose letters are smaller
+ * than 16px takes focus — the comment box (13px), Create's fields (12 to 14px), Send's (15px) —
+ * and does not zoom back out when it loses focus. A zoomed page is wider than the screen, so a
+ * scroll pans the screen across it, and the tab bar, fixed to the page's own box rather than to
+ * the glass, slides with it. It stays that way until a pinch back out, which nobody thinks to do,
+ * or until the app is closed. The home-screen app has no address bar to give it away. The bounce
+ * at either end was a separate cause, already stopped (tokens.css, `overscroll-behavior-y`).
+ *
+ * ★ THE FIX IS IN THE VIEWPORT, NOT THE FIELDS. `maximum-scale=1` stops that automatic zoom, and
+ * iPhone Safari still lets a person pinch to zoom on purpose (it ignores the limit for pinching).
+ * Raising every field to 16px would have done the same by changing how the sheets look, the Buy
+ * and Sell ticket included, which must not change. Only on iPhone and iPad: elsewhere the limit
+ * would also stop a person zooming, and nothing else zooms on focus.
+ *
+ * What breaks if changed carelessly: `user-scalable=no`, or the limit for every browser, takes
+ * zoom away from people who need it. And the rest of the viewport line (`viewport-fit=cover`)
+ * must be kept: the tab bar's safe-area margin and the status-bar strip depend on it.
+ */
+
+/** iPhone, iPad or iPod in any browser: every one of them is WebKit and zooms on focus. */
+export function zoomsOnFocus(ua: string, touch: boolean): boolean {
+  /* iPadOS reports a Mac user agent; a touch screen is what gives it away. */
+  return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && touch);
+}
+
+/** The viewport line with the zoom limit added; unchanged when it already has one. */
+export function withoutFocusZoom(content: string): string {
+  if (/maximum-scale\s*=/.test(content)) return content;
+  return content.trim() === '' ? 'maximum-scale=1' : `${content.trim().replace(/,\s*$/, '')}, maximum-scale=1`;
+}
+
+/** Before the first frame: on an iPhone or iPad, the page's viewport gets the limit. */
+export function holdZoom(): void {
+  if (typeof document === 'undefined' || !zoomsOnFocus(navigator.userAgent, 'ontouchend' in document)) return;
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (meta !== null) meta.content = withoutFocusZoom(meta.content);
+}
