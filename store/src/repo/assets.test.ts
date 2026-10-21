@@ -318,9 +318,14 @@ test('mintedBetween reads the selection every time and a coin whole only when it
     ['B', { v: '101', name: 'Beta' }],
   ]);
   const whole: string[][] = [];
+  let selections = 0;
   const db: Db = {
     query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
-      if (s.includes('xmin::text as v') && s.includes('limit $4')) return [...table].map(([address, r]) => ({ address, v: r.v }) as R);
+      if (s.includes('md5(string_agg')) return [{ d: [...table].map(([a, r]) => `${a}:${r.v}`).join(','), n: table.size } as R];
+      if (s.includes('xmin::text as v') && s.includes('limit $4')) {
+        selections += 1;
+        return [...table].map(([address, r]) => ({ address, v: r.v }) as R);
+      }
       if (s.includes('address = any($2::text[])')) {
         const asked = (p?.[1] ?? []) as string[];
         whole.push(asked);
@@ -340,7 +345,13 @@ test('mintedBetween reads the selection every time and a coin whole only when it
   assert.deepEqual(whole, [['A', 'B']]);
   assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta']);
   assert.equal(whole.length, 1, 'nothing changed, nothing read whole');
+  assert.equal(selections, 1, 'an unchanged window is answered from its digest alone');
   table.set('B', { v: '205', name: 'Beta (corrected)' });
   assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta (corrected)']);
   assert.deepEqual(whole[1], ['B']);
+  assert.equal(selections, 2);
+  /* A new coin in the window: the digest moves, the selection is read, only the new coin whole. */
+  table.set('C', { v: '300', name: 'Gamma' });
+  assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta (corrected)', 'Gamma']);
+  assert.deepEqual(whole[2], ['C']);
 });
