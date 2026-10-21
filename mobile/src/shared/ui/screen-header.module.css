@@ -1,0 +1,55 @@
+/*
+ * THE ONE PLACE A SCREEN'S TITLE ROW IS PUT. Every bottom tab (For You, Narratives, Search, Feed,
+ * Portfolio) and every page opened from them that has a title row draws its top row with these
+ * two classes, through ScreenHeader.tsx.
+ *
+ * Why it exists separately: each screen used to place its own heading, and they drifted (the
+ * owner, 2026-10-21: "some much lower and some much higher"). Narratives and the Feed added the
+ * status-bar inset a second time on top of the one `#root` already adds, Search and the Back
+ * pages added none of their own spacing scheme, and the sizes ran 19px to 30px. In the
+ * home-screen app the headings landed anywhere from 67px to 134px down on the same phone.
+ *
+ * ★ THE STATUS BAR IS ROOM `#root` ALREADY KEEPS (tokens.css, padding-top: var(--safe-top)), so
+ * nothing here adds it again. A sticky header that holds this row sticks at `top: var(--safe-top)`
+ * for the same reason, so the row sits at the same height stuck or not. Adding the inset here
+ * as well is exactly the bug this file removes.
+ *
+ * ★ THE ROW IS A FIXED BOX: 16px of room, then 48px (the Portfolio's avatar, the tallest thing
+ * any row holds), its contents centred. A screen keeps its own controls in the row (the bell,
+ * the gear, Back, Live) and its own gap between them; it must not give the row a height, a top
+ * padding or a top margin of its own, or that screen's heading leaves the line again.
+ */
+
+.head {
+  box-sizing: content-box;
+  height: 48px;
+  padding-top: 16px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* For a screen whose container has no side padding of its own (For You, Narratives, Search). */
+.gutter {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* The page title: one face for every screen. Colour is the screen's own (Narratives' is warmer). */
+.title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A title that takes the row's middle, pushing the controls after it to the right edge. */
+.grow {
+  flex: 1;
+}

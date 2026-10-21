@@ -11,13 +11,17 @@
   padding: 0 var(--gutter) var(--tabbar-space);
 }
 
-/* Trador's StickyPageHeader: the safe area plus 26px, opaque, a soft shadow under it. */
+/* Trador's StickyPageHeader: opaque, a soft shadow under it. It sticks under the status bar
+   (`#root` keeps that room and body::before paints it), not at the very top with the inset as
+   padding: that added the inset twice before scrolling, so the Feed's title sat a whole status
+   bar lower than every other tab's. The title row inside is the shared one
+   (shared/ui/screen-header.module.css). */
 .sticky {
   position: sticky;
-  top: 0;
+  top: var(--safe-top);
   z-index: 20;
   margin: 0 calc(-1 * var(--gutter));
-  padding: calc(26px + var(--safe-top)) var(--gutter) 0;
+  padding: 0 var(--gutter);
   background: var(--bg);
   box-shadow: 0 8px 24px -20px rgb(0 0 0 / 68%);
 }
@@ -37,19 +41,6 @@
 /* Notifications' Back, flush with the page edge like every other Back; the title takes the middle. */
 .backButton {
   margin-left: -10px;
-  color: var(--text-1);
-}
-
-.titleGrow {
-  flex: 1;
-  min-width: 0;
-}
-
-.title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
   color: var(--text-1);
 }
 

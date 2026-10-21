@@ -8,20 +8,12 @@
  * so "bought" and "sold" use them and nothing else on the row does.
  */
 
-/* The title row: "Feed" at 24px, the round bell at its right with a purple dot when something is unread. */
+/* The title row is the shared one (shared/ui/screen-header.module.css): "Feed" in the same place and face as
+   every tab, the round bell at its right with a purple dot when something is unread. The chips
+   start 15px under the title, as they did. */
 .titleRow {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text-1);
+  margin-bottom: 8px;
 }
 
 .bell {

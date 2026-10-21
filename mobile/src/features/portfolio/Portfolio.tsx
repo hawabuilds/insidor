@@ -32,6 +32,7 @@ import { BalanceChart } from './BalanceChart.tsx';
 import type { BalancePoint } from './balance-points.ts';
 import { Holdings } from './HoldingRow.tsx';
 import { asOfWords, gainsNote, rangeLine } from './wallet-view.ts';
+import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './portfolio.module.css';
 
 export type ChartRange = '1d' | '1w' | '1m' | 'all';
@@ -84,7 +85,7 @@ export function Portfolio({
   return (
     <div className={styles['page']}>
       <header className={styles['header']}>
-        <div className={styles['who']}>
+        <ScreenHeader className={styles['who']}>
           <Avatar name={who.name ?? who.handle} seed={who.address} src={who.pictureUrl} size={48} />
           <div className={styles['whoText']}>
             <h1 className={styles['name']}>{who.name ?? who.handle ?? 'Portfolio'}</h1>
@@ -92,7 +93,7 @@ export function Portfolio({
           </div>
           {buttons}
           {menu}
-        </div>
+        </ScreenHeader>
 
         <div className={styles['value']}>
           <div className={styles['big']}>

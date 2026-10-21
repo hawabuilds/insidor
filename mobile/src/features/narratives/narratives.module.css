@@ -9,24 +9,15 @@
   padding-bottom: calc(var(--tabbar-space) + 8px);
 }
 
+/* The title row is the shared one (shared/ui/screen-header.module.css): its place and the title's face are
+   set there, the same as every tab. Here only "Live" at its right end. */
 .header {
-  display: flex;
-  align-items: flex-end;
   justify-content: space-between;
-  padding: calc(var(--safe-top) + 40px) var(--gutter) 0;
 }
 
 .live {
-  padding-bottom: 6px;
   color: #8b8794;
   font-size: 14px;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
 }
 
 .empty {

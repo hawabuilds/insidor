@@ -10,6 +10,7 @@ import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankBadge } from './RankBadge.tsx';
 import { RANK_NAME } from './rank.ts';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './people.module.css';
 import { goBack } from '../../shared/nav.ts';
 
@@ -18,11 +19,13 @@ const endsOn = (ms: number) => new Date(ms - 1).toLocaleDateString('en-GB', { da
 export function Leaderboard() {
   const [loaded] = useLoad('leaderboard', () => fetchLeaderboard(), 'memory');
   return (
-    <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={styles['title']}>Leaderboard</h1>
+    <section className={`${styles['screen']} ${styles['titled']}`}>
+      <ScreenHeader>
+        <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
+          <BackIcon size={22} />
+        </button>
+        <ScreenTitle>Leaderboard</ScreenTitle>
+      </ScreenHeader>
       {loaded.state === 'ready' ? <p className={styles['note']}>Season {loaded.value.season.id}, ends {endsOn(loaded.value.season.endsAt)}. Rep comes from holders liking your comments.</p> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>The leaderboard couldn't be read just now.</p> : null}

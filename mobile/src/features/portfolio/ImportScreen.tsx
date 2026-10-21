@@ -15,6 +15,7 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import box from './wallet.module.css';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import { goBack } from '../../shared/nav.ts';
 
 export function ImportScreen() {
@@ -25,10 +26,12 @@ export function ImportScreen() {
 
   return (
     <section className={box['page']}>
-      <button type="button" className={box['back']} aria-label="Back" onClick={() => goBack({ screen: 'wallets' })}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={box['title']}>Import a wallet</h1>
+      <ScreenHeader>
+        <button type="button" className={box['back']} aria-label="Back" onClick={() => goBack({ screen: 'wallets' })}>
+          <BackIcon size={22} />
+        </button>
+        <ScreenTitle>Import a wallet</ScreenTitle>
+      </ScreenHeader>
       <div className={box['warning']} role="note">
         <b>Read this first</b>
         <ul>

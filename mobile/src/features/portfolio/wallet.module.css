@@ -52,8 +52,9 @@
 }
 
 /* The Wallets and Import screens. */
+/* No top padding: Back and the title are the shared title row (shared/ui/screen-header.module.css). */
 .page {
-  padding: 12px var(--gutter) var(--tabbar-space);
+  padding: 0 var(--gutter) var(--tabbar-space);
 }
 
 .back {
@@ -65,12 +66,6 @@
   color: var(--text-1);
 }
 
-.title {
-  margin: 6px 0 8px;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
 
 .lead {
   margin: 0 0 14px;

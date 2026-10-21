@@ -15,6 +15,7 @@ import { BackIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import styles from './portfolio.module.css';
 import box from './wallet.module.css';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import { goBack } from '../../shared/nav.ts';
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -38,10 +39,12 @@ export function WalletsScreen() {
 
   return (
     <section className={box['page']}>
-      <button type="button" className={box['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={box['title']}>Your wallets</h1>
+      <ScreenHeader>
+        <button type="button" className={box['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
+          <BackIcon size={22} />
+        </button>
+        <ScreenTitle>Your wallets</ScreenTitle>
+      </ScreenHeader>
       <p className={box['lead']}>Link Phantom or another Solana wallet to see it here. It stays view only: Insidor reads it from the chain and never gets its key. Trading only ever uses your Insidor wallet.</p>
 
       {signedIn ? (

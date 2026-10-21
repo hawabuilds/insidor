@@ -1,19 +1,14 @@
+/* No top padding: the title row is the shared one (shared/ui/screen-header.module.css). */
 .screen {
-  padding: 18px 0 var(--tabbar-space);
-}
-
-.title {
-  margin: 8px var(--gutter) 16px;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  padding: 0 0 var(--tabbar-space);
 }
 
 .input {
   display: block;
   box-sizing: border-box;
   width: calc(100% - 2 * var(--gutter));
-  margin: 0 var(--gutter) 12px;
+  /* 16px under the title's own box, as before the shared row (whose box ends 7px below it). */
+  margin: 9px var(--gutter) 12px;
   padding: 13px 16px;
   border: 1px solid var(--border);
   border-radius: var(--r-control);

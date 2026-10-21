@@ -11,6 +11,7 @@
  */
 
 import { BackIcon } from '../../shared/ui/icons.tsx';
+import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './learn.module.css';
 import { goBack } from '../../shared/nav.ts';
 
@@ -48,10 +49,12 @@ const PARTS: readonly { readonly title: string; readonly body: readonly string[]
 export function Learn() {
   return (
     <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={styles['title']}>How Insidor works</h1>
+      <ScreenHeader className={styles['head']}>
+        <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
+          <BackIcon size={22} />
+        </button>
+        <ScreenTitle>How Insidor works</ScreenTitle>
+      </ScreenHeader>
       {PARTS.map((part) => (
         <div key={part.title} className={styles['part']}>
           <h2>{part.title}</h2>
