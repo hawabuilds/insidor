@@ -5,8 +5,9 @@
  * HOLDINGS: SOL first, then one short row per coin (HoldingRow.tsx, shared with a profile).
  * Followers, your bio and Edit profile live on your profile, reached from the gear.
  *
- * ★ FACTS, AND A DASH FOR WHAT WE DO NOT KNOW. A coin no market prices says "Unpriced" (it is not
- * worth zero); a coin with no gain shows "—", and the one note under the list says why ("Gains
+ * ★ FACTS, AND A DASH FOR WHAT WE DO NOT KNOW. A coin no market prices is a dash with a short
+ * reason (it is not worth zero); a worth or total from the last price this phone saw says how old
+ * it is ("as of 5m ago"), and a wallet that could not be read now shows its last read, said so; a coin with no gain shows "—", and the one note under the list says why ("Gains
  * count coins bought in Insidor."); coins past the list are counted, never dropped silently.
  *
  * ★ GAINS ARE FROM BUYS MADE IN INSIDOR, IN SOL, SHOWN AT TODAY'S SOL PRICE (services/read
@@ -30,7 +31,7 @@ import { Avatar } from './Avatar.tsx';
 import { BalanceChart } from './BalanceChart.tsx';
 import type { BalancePoint } from './balance-points.ts';
 import { Holdings } from './HoldingRow.tsx';
-import { gainsNote, rangeLine } from './wallet-view.ts';
+import { asOfWords, gainsNote, rangeLine } from './wallet-view.ts';
 import styles from './portfolio.module.css';
 
 export type ChartRange = '1d' | '1w' | '1m' | 'all';
@@ -57,10 +58,15 @@ export interface WhoAmI {
 }
 
 export function Portfolio({
-  who, data, points, range, onRange, scrubbed, onScrub, buttons, notice, menu,
+  who, data, asOf = null, unread = false, now = 0, points, range, onRange, scrubbed, onScrub, buttons, notice, menu,
 }: {
   who: WhoAmI;
   data: PortfolioData | null;
+  /** Where the shown dollars lean on a last price, and when it was read (wallet-view.ts steadyWallet). */
+  asOf?: { readonly total: number | null; readonly holdings: ReadonlyMap<string, number> } | null;
+  /** True when `data` is the last read because this one failed. */
+  unread?: boolean;
+  now?: number;
   /** The chart's points, live total last; null while they load. */
   points: readonly BalancePoint[] | null;
   range: ChartRange;
@@ -98,6 +104,9 @@ export function Portfolio({
           ) : move !== null ? (
             <div className={`${styles['moveLine']} ${move.tone === 'down' ? styles['downInline'] : styles['upInline']}`}>{move.text}</div>
           ) : null}
+          {scrubbed === null && read !== null && asOf?.total != null ? (
+            <div className={styles['moveLine']}>{unread ? `Couldn't read your wallet just now. Worth ${asOfWords(asOf.total, now)}` : `Worth ${asOfWords(asOf.total, now)}`}</div>
+          ) : null}
         </div>
 
         <div className={styles['controls']}>
@@ -131,7 +140,7 @@ export function Portfolio({
         <p className={styles['empty']}>— what this wallet holds could not be read just now.</p>
       ) : (
         <>
-          <Holdings data={data} />
+          <Holdings data={data} asOf={asOf} now={now} />
           {data.holdings.length === 0 ? (
             <div className={styles['nothing']}>
               <b>No coins yet</b>

@@ -15,10 +15,11 @@
  * build with TRADING on, never as a disabled button.
  */
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import { useLoad } from '../../shared/hooks.ts';
+import { useLoad, useNow } from '../../shared/hooks.ts';
+import { keep, kept } from '../../shared/kept-reads.ts';
 import { LINKED_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
@@ -29,6 +30,7 @@ import { forgetEntered } from '../landing/entered.ts';
 import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { withLive, type BalancePoint } from './balance-points.ts';
+import { notePrices, steadyWallet, type LastPrices, type SteadyWallet } from './wallet-view.ts';
 import { ReceiveSheet } from './ReceiveSheet.tsx';
 import { SendSheet } from './SendSheet.tsx';
 import styles from './portfolio.module.css';
@@ -56,7 +58,18 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
   const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
   const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
-  const portfolio: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
+  const now = useNow();
+  const read: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
+  /* Each fresh read's prices are kept on the phone, and the last read with a total too, so a read
+     that lacks a price — or fails outright — shows the last known dollars with their age. */
+  const freshRead = data.state === 'ready' && data.stale !== true ? data.value : null;
+  useEffect(() => {
+    if (freshRead === null || freshRead.kind !== 'read') return;
+    keep(pricesKey(who.address), notePrices(kept<LastPrices>(pricesKey(who.address))?.value ?? null, freshRead, Date.now()), true);
+    if (freshRead.totalUsd.known) keep(lastReadKey(who.address), freshRead, true);
+  }, [freshRead, who.address]);
+  const shown = shownWallet(read, data.state === 'ready' && data.stale === true, who.address, now);
+  const portfolio: PortfolioData | null = shown?.data ?? read;
   const live = portfolio?.kind === 'read' && portfolio.totalUsd.known ? portfolio.totalUsd.amount : null;
   const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());
   const holdings: readonly Holding[] = portfolio?.kind === 'read' ? portfolio.holdings : [];
@@ -83,6 +96,9 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
       <Portfolio
         who={who}
         data={portfolio}
+        asOf={shown?.asOf ?? null}
+        unread={shown?.unread ?? false}
+        now={now}
         points={points}
         range={range}
         onRange={setRange}
@@ -107,6 +123,32 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
       {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}
     </>
   );
+}
+
+/* The phone's two keys for a wallet's last known dollars (shared/kept-reads.ts): each coin's last
+   price, and the last read that had a total. Named for the wallet, never shared with another read. */
+const pricesKey = (address: string): string => `wallet-prices:${address}`;
+const lastReadKey = (address: string): string => `wallet-last-read:${address}`;
+
+/**
+ * The wallet as the screen shows it (wallet-view.ts steadyWallet): the read with its missing
+ * dollars filled from their last price; while the read is the phone's kept one from an earlier
+ * visit, its total says how old it is; and when the read failed, the last read that had a total,
+ * said to be unread now. Null with nothing to show yet.
+ */
+function shownWallet(read: PortfolioData | null, stale: boolean, address: string, now: number): (SteadyWallet & { readonly unread: boolean }) | null {
+  const last = kept<LastPrices>(pricesKey(address))?.value ?? null;
+  if (read?.kind === 'read') {
+    const s = steadyWallet(read, last, now);
+    const keptAt = stale ? (kept(`wallet:${address}`)?.at ?? null) : null;
+    const total = keptAt === null ? s.asOf.total : Math.min(keptAt, s.asOf.total ?? keptAt);
+    return { ...s, asOf: { total, holdings: s.asOf.holdings }, unread: false };
+  }
+  if (read?.kind !== 'unavailable') return null;
+  const good = kept<PortfolioData>(lastReadKey(address));
+  if (good === undefined || good.value.kind !== 'read') return null;
+  const s = steadyWallet(good.value, last, now);
+  return { data: s.data, asOf: { total: Math.min(good.at, s.asOf.total ?? good.at), holdings: s.asOf.holdings }, unread: true };
 }
 
 function QrGlyph() {

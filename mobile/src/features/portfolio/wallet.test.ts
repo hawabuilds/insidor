@@ -113,3 +113,63 @@ test('★ signed out, the Portfolio says sign in — never a stand-in wallet', a
   assert.match(signedOut, /Sign in to see your portfolio/);
   assert.ok(!/fetchPortfolio\(|<Loaded/.test(signedOut), 'no wallet is read or drawn signed out');
 });
+
+/* ── the last known dollars (the owner, 2026-10-21: "i should see the dollar value of my holdings at all times") ── */
+
+const LAURA = 'Cg9zDsrNUzkm7cUgrXyv5TaKpbH5dpnr4E7pFAZYpump';
+const holding = (address: string, amount: string, value: number | null, why = 'not_read_yet'): any => ({
+  coinId: `solana:${address}`, address, ticker: 'Laura', name: null, imageUrl: null, amount, decimals: 6,
+  priceUsd: value === null ? { known: false, pending: why } : { known: true, amount: value / (Number(amount) / 1e6) },
+  valueUsd: value === null ? { known: false, pending: why } : { known: true, amount: value },
+  change: { known: false, pending: 'not_reported' }, profit: { kind: 'none', why: 'not_bought_here' }, story: null,
+});
+const wallet = (holdings: any[], totalUsd: number | null, totalSol: number | null): any => ({
+  kind: 'read', address: 'W', range: '24h', solBalance: { known: true, amount: 0.5 },
+  totalUsd: totalUsd === null ? { known: false, pending: 'no_market' } : { known: true, amount: totalUsd },
+  totalSol: totalSol === null ? { known: false, pending: 'no_market' } : { known: true, amount: totalSol },
+  holdings, notShown: 0, unpriced: holdings.filter((h) => !h.valueUsd.known).length, created: { unclaimedFeesSol: { known: false, pending: 'not_reported' }, coins: [] },
+});
+
+test('★ a coin this read could not price shows its last price, with its age, and the total counts it and says so', async () => {
+  const { notePrices, steadyWallet, asOfWords } = await import('./wallet-view.ts');
+  /* Laura priced: 1,000,000 coins worth $40; SOL at $100 (0.5 SOL = $50). */
+  const first = wallet([holding(LAURA, '1000000000000', 40)], 90, 0.9);
+  const last = notePrices(null, first, 1_000);
+  assert.deepEqual(last.coins[LAURA], { usd: 0.00004, at: 1_000 });
+  assert.deepEqual(last.sol, { usd: 100, at: 1_000 });
+  /* Five minutes on, this read lost Laura's price; the holding grew to 2,000,000. */
+  const now = 1_000 + 5 * 60_000;
+  const second = wallet([holding(LAURA, '2000000000000', null)], 50, 0.5);
+  const s = steadyWallet(second, notePrices(last, second, now), now);
+  const h = s.data.holdings[0]!;
+  assert.equal(h.valueUsd.known && h.valueUsd.amount, 80, 'today\'s amount at the last price');
+  assert.equal(s.asOf.holdings.get(LAURA), 1_000);
+  assert.equal(s.data.totalUsd.known && s.data.totalUsd.amount, 130);
+  assert.ok(s.data.totalSol.known && Math.abs(s.data.totalSol.amount - 1.3) < 1e-12);
+  assert.equal(s.asOf.total, 1_000);
+  assert.equal(s.data.unpriced, 0);
+  assert.equal(asOfWords(1_000, now), 'as of 5m ago');
+});
+
+test('★ no SOL price in this read: the total is at SOL\'s last price and says when; no last price at all stays a dash', async () => {
+  const { notePrices, steadyWallet } = await import('./wallet-view.ts');
+  const last = notePrices(null, wallet([holding(LAURA, '1000000000000', 40)], 90, 0.9), 1_000);
+  const s = steadyWallet(wallet([holding(LAURA, '1000000000000', 40)], null, null), last, 2_000);
+  assert.equal(s.data.totalUsd.known && s.data.totalUsd.amount, 90);
+  assert.equal(s.asOf.total, 1_000);
+  assert.equal(s.asOf.holdings.size, 0, 'Laura was priced in this read');
+
+  const none = steadyWallet(wallet([holding('NEVER', '1000000', null, 'no_market')], 50, 0.5), last, 2_000);
+  assert.equal(none.data.holdings[0]!.valueUsd.known, false, 'never priced: a dash, never zero');
+  assert.equal(none.data.totalUsd.known && none.data.totalUsd.amount, 50);
+  assert.equal(none.asOf.total, null);
+  /* A last price older than a day is not shown. */
+  const old = steadyWallet(wallet([holding(LAURA, '1000000000000', null)], 50, 0.5), last, 1_000 + 24 * 60 * 60_000);
+  assert.equal(old.data.holdings[0]!.valueUsd.known, false);
+});
+
+test('a holding with no price at all says why in a few words: no market, or not read just now', async () => {
+  const { noPriceReason } = await import('./wallet-view.ts');
+  assert.equal(noPriceReason({ known: false, pending: 'no_market' }).text, 'No market price');
+  assert.equal(noPriceReason({ known: false, pending: 'not_read_yet' }).text, 'Price not read');
+});
