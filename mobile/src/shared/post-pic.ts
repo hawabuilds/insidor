@@ -50,3 +50,44 @@ export function postPicSources(file: string | null | undefined, links: readonly 
 export function postPicFile(v: unknown): string | null {
   return typeof v === 'string' && FILE.test(v) ? v : null;
 }
+
+/** One picture as a reply names it: the source's link and our copy's file name, either may be missing. */
+export interface PictureRef {
+  readonly url: string | null;
+  readonly file: string | null;
+}
+
+/**
+ * A signed link the source has said is past its end: the short-video host writes the end into the
+ * link (`x-expires`, seconds) and answers 403 after it. Such a link is not tried at all, so a box
+ * whose picture has run out moves to its next picture at once instead of after a failed request.
+ * A link that names no end is never judged expired.
+ */
+export function linkExpired(url: string, nowMs: number): boolean {
+  const m = /[?&]x-expires=(\d{9,11})(?:&|$)/.exec(url);
+  return m !== null && Number(m[1]) * 1000 <= nowMs;
+}
+
+/**
+ * A narrative's picture and then its posts' pictures, in order, for a box that must show the
+ * narrative (the token page's narrative card). The narrative's own picture IS one of its posts'
+ * pictures (its lead post's), so a later post's picture is the same narrative's, not a borrowed
+ * one. Each keeps our copy (`file`); an expired link is dropped but its copy kept; the same
+ * picture twice is tried once; at most `limit` pictures, so a narrative of 250 posts whose
+ * pictures all fail costs a few requests, not 250.
+ */
+export function storyPictures(own: PictureRef, posts: readonly PictureRef[], nowMs: number, limit = 4): readonly PictureRef[] {
+  const seen = new Set<string>();
+  const out: PictureRef[] = [];
+  for (const p of [own, ...posts]) {
+    const url = p.url !== null && !linkExpired(p.url, nowMs) ? p.url : null;
+    const file = postPicFile(p.file);
+    if (url === null && file === null) continue;
+    const key = `${file ?? ''}|${url ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ url, file });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
