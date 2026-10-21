@@ -284,6 +284,8 @@ test("★ 'unrecorded' is written by the backfill and by nothing else in the rep
      those directories is still caught. */
   const allowed = new Set([
     join(repo, 'store', 'migrations', '0013_asset_origin.sql'),
+    /* Re-states the CHECK whole to add 'paired_token'; it writes no row. */
+    join(repo, 'store', 'migrations', '0121_paired_token_origin.sql'),
     join(repo, 'contracts', 'src', 'asset.ts'),
     join(repo, 'store', 'src', 'migrations.test.ts'),
   ]);
@@ -343,7 +345,8 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0010_market.sql'), 'market_cap_basis')].sort(), [
     ...MARKET_CAP_BASES,
   ].sort());
-  assert.deepEqual([...checkedValues(read('0013_asset_origin.sql'), 'origin')].sort(), [
+  /* 0121 replaced 0013's CHECK when 'paired_token' was added, so 0121 holds the list. */
+  assert.deepEqual([...checkedValues(read('0121_paired_token_origin.sql'), 'origin')].sort(), [
     ...ASSET_ORIGINS,
   ].sort());
   /* The story's own origin, which is a SHORTER list than the asset's and must stay one: the

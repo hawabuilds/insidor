@@ -25,11 +25,12 @@ import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-se
 
 import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles, type Candle, type Pool, type Trade, type VolumeCandle } from './read.ts';
 import { readSearch, SEARCH_PAGE } from './search.ts';
-import { readNewLaunches } from './new-pools.ts';
+import { readNewLaunches, type NewLaunch } from './new-pools.ts';
 
 export { aggregate, ownSide, pairedWith, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 export { readSearch, SEARCH_PAGE } from './search.ts';
 export { NEW_POOLS_PAGE, readNewLaunches } from './new-pools.ts';
+export type { NewLaunch, PairedToken } from './new-pools.ts';
 export type { Candle, Pool, PoolToken, Trade, VolumeCandle } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
@@ -107,10 +108,11 @@ export interface MarketData extends CoinSearch {
   launchpadPools(venue: 'curve' | 'pool', page: number): Promise<readonly CoinSearchHit[]>;
   /**
    * One page of the chain's newest pools, kept to launches on the launchpad's curve, newest
-   * first, each named from its token. Not kept: a listing read for what is new must be new.
+   * first, each named from its token, with the token it is paired against when that is not SOL.
+   * Not kept: a listing read for what is new must be new.
    * Pages run 1..`LISTING_PAGES`; past that the vendor has nothing older to give.
    */
-  newLaunches(page: number): Promise<readonly CoinSearchHit[]>;
+  newLaunches(page: number): Promise<readonly NewLaunch[]>;
   /**
    * The coin's candles in its primary pool, with their dollar volume, ending before `untilMs`:
    * at most `limit` buckets of `bucketMinutes`. What the runner measures an older coin's trading
@@ -195,7 +197,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
 
     async newLaunches(page) {
       if (!Number.isInteger(page) || page < 1 || page > LISTING_PAGES) throw new RangeError(`page must be 1..${LISTING_PAGES}`);
-      return readNewLaunches(await get(`/networks/solana/new_pools?page=${page}&include=base_token`));
+      return readNewLaunches(await get(`/networks/solana/new_pools?page=${page}&include=base_token,quote_token`));
     },
 
     async history(mint, untilMs, bucketMinutes, limit) {

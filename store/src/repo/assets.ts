@@ -17,7 +17,7 @@
  */
 
 import type { Millis } from '@insidor/contracts';
-import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
+import { OBSERVED_ASSET_ORIGINS, PAIRED_TOKEN_ORIGIN } from '@insidor/contracts/asset.ts';
 import type { Asset, AssetOrigin, MintTime } from '@insidor/contracts/asset.ts';
 import { parseAssetKey } from '@insidor/contracts/ids.ts';
 import type { AssetKey, AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
@@ -164,7 +164,14 @@ export class PgAssetRepo implements AssetRepo {
            minted_at         = case when $16::int > ${EXISTING_RANK} then excluded.minted_at else public.asset.minted_at end,
            minted_at_source  = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_source else public.asset.minted_at_source end,
            minted_at_conf    = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_conf else public.asset.minted_at_conf end,
-           minted_at_bound_s = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_bound_s else public.asset.minted_at_bound_s end`,
+           minted_at_bound_s = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_bound_s else public.asset.minted_at_bound_s end
+         /*
+          * ★ A PAIRED TOKEN IS NEVER TOUCHED BY A LAUNCH (0121). The launch socket named MSTRx
+          * as the coin of every meme launched against it, each frame renaming the row; once the
+          * row is known to be what launches are paired against, no later frame may rename it or
+          * promote it back to observed.
+          */
+         where public.asset.origin <> $19`,
         [
           asset.ref.chain,
           asset.ref.address,
@@ -191,10 +198,71 @@ export class PgAssetRepo implements AssetRepo {
              says where it goes. */
           asset.origin,
           OBSERVED_ORIGINS,
+          PAIRED_TOKEN_ORIGIN,
         ],
       );
     }
     return assets.length;
+  }
+
+  /**
+   * ★ THESE TOKENS ARE WHAT LAUNCHES ARE PAIRED AGAINST, NOT LAUNCHES (0121): a stablecoin, a
+   * tokenised stock, any token with no curve of its own. A row the launch socket filed under a
+   * meme's name becomes the token as its market names it, with every launch fact it carried
+   * cleared (mint time unknown, no creator, link, picture or opening buy — those were the meme's);
+   * a token we did not hold gets that row, so a later frame naming it lands on a row it cannot
+   * change. The name index (0037) keeps a first sighting forever and its trigger only adds, so a
+   * meme's name it holds for one of these is corrected here, and the launch time is cleared: the
+   * token was never launched here.
+   *
+   * @returns the addresses whose row changed (newly held, or turned from a launch).
+   */
+  async markPaired(
+    chain: ChainId,
+    venue: VenueId,
+    tokens: readonly { readonly address: string; readonly symbol: string | null; readonly name: string | null }[],
+    seenAt: Millis,
+  ): Promise<readonly string[]> {
+    if (tokens.length === 0) return [];
+    const rows = await this.#db.query<{ address: string }>(
+      `insert into public.asset (
+         chain, address, asset_key, venue_id, origin,
+         minted_at, minted_at_source, minted_at_conf, minted_at_bound_s,
+         symbol, name, image_uri, decimals, creator, declared_social, first_seen_at
+       )
+       select $1, t.address, $1 || ':' || t.address, $2, $3,
+              null, 'none', 'unknown', null,
+              t.symbol, t.name, null, null, null, '{}'::jsonb, $7
+         from unnest($4::text[], $5::text[], $6::text[]) as t(address, symbol, name)
+       on conflict (chain, address) do update set
+         origin = excluded.origin,
+         symbol = coalesce(excluded.symbol, public.asset.symbol),
+         name = coalesce(excluded.name, public.asset.name),
+         minted_at = null, minted_at_source = 'none', minted_at_conf = 'unknown', minted_at_bound_s = null,
+         image_uri = null, creator = null, declared_social = '{}'::jsonb,
+         creator_buy_tokens = null, creator_buy_sol = null, launch_mcap_sol = null
+       where public.asset.origin <> excluded.origin
+       returning address`,
+      [chain, venue, PAIRED_TOKEN_ORIGIN, tokens.map((t) => t.address), tokens.map((t) => t.symbol), tokens.map((t) => t.name), toTimestamp(seenAt)],
+    );
+    await this.#db.query(
+      `update public.coin_name n set
+         name = coalesce(left(t.name, 64), n.name), ticker = coalesce(left(t.symbol, 32), n.ticker), launched_at = null
+         from unnest($1::text[], $2::text[], $3::text[]) as t(address, symbol, name)
+        where n.address = t.address`,
+      [tokens.map((t) => t.address), tokens.map((t) => t.symbol), tokens.map((t) => t.name)],
+    );
+    return rows.map((r) => r.address);
+  }
+
+  /** Which of these addresses on this chain are already held as paired tokens. */
+  async pairedAddresses(chain: ChainId, addresses: readonly string[]): Promise<ReadonlySet<string>> {
+    if (addresses.length === 0) return new Set();
+    const rows = await this.#db.query<{ address: string }>(
+      'select address from public.asset where chain = $1 and address = any($2::text[]) and origin = $3',
+      [chain, [...addresses], PAIRED_TOKEN_ORIGIN],
+    );
+    return new Set(rows.map((r) => r.address));
   }
 
   /**
@@ -223,6 +291,7 @@ export class PgAssetRepo implements AssetRepo {
        from unnest($1::text[], $2::text[], $3::numeric[], $4::numeric[], $5::numeric[])
          as r(chain, address, tokens, sol, mcap)
        where a.chain = r.chain and a.address = r.address
+         and a.origin <> $6
          and (a.creator_buy_tokens is null or a.creator_buy_sol is null or a.launch_mcap_sol is null)`,
       [
         rows.map((r) => r.ref.chain),
@@ -230,6 +299,7 @@ export class PgAssetRepo implements AssetRepo {
         rows.map((r) => r.creatorBuyTokens),
         rows.map((r) => r.creatorBuySol),
         rows.map((r) => r.launchMcapSol),
+        PAIRED_TOKEN_ORIGIN,
       ],
     );
   }

@@ -40,6 +40,14 @@
  * ★ A CHAIN READ THAT FAILS DOES NOT STOP THE ADD. The coin is added with the listing's own name
  * and ticker and no metadata link, which costs it a picture; leaving it out would cost us the coin.
  *
+ * ★ A TOKEN LAUNCHES ARE PAIRED AGAINST IS NEVER A LAUNCH. A curve can be priced in another token
+ * (a stablecoin, a tokenised stock such as MSTRx, another coin), and the launch socket filed such
+ * tokens as the coins launched against them: MSTRx stood in our store as "LAURA". The listing
+ * names each launch's paired token beside it, so a pass hands the ones it has not settled yet to
+ * `markPaired`, which marks those with no curve of their own (0121) — a coin paired against another
+ * coin keeps its row, because that coin was launched too. A token marked, or found to be a coin, is
+ * not asked about again by this process; one that could not be checked is asked next pass.
+ *
  * Everything that touches a network or the database is injected, so the tests drive a pass with
  * plain functions. This file names no vendor, venue or chain: wiring.ts does.
  *
@@ -58,9 +66,25 @@ export interface ChainDetails {
   readonly uri: string;
 }
 
+/** A token a launch is paired against, other than the chain's own coin. */
+export interface PairedToken {
+  readonly address: string;
+  readonly symbol: string | null;
+  readonly name: string | null;
+}
+
+/** A listed launch: the coin, and the token it is paired against when that is not the chain's own coin. */
+export type ListedLaunch = CoinSearchHit & { readonly pairedWith?: PairedToken | null };
+
 export interface ListingDeps {
   /** One page of the newest launches on the curve, newest first. Throws when the source could not answer. */
-  page(n: number): Promise<readonly CoinSearchHit[]>;
+  page(n: number): Promise<readonly ListedLaunch[]>;
+  /**
+   * Mark these paired tokens as not launches where they have no curve of their own. `settled` is
+   * every one answered (marked, already marked, or a coin); `calls` the chain reads it took.
+   * Throws when it could not be asked. Absent: paired tokens are not looked at.
+   */
+  markPaired?(tokens: readonly PairedToken[], seenAt: Millis): Promise<{ readonly marked: readonly string[]; readonly settled: readonly string[]; readonly calls: number }>;
   /** The coins among these we already hold. */
   known(addresses: readonly string[]): Promise<ReadonlySet<string>>;
   /** The chain's own details for these coins; a coin it does not know is missing. Throws when it could not be asked. */
@@ -103,6 +127,8 @@ export interface ListingPassResult {
   readonly held: 'cap' | 'pace' | null;
   /** A page after the first was refused: what the earlier pages listed is added, the place is kept. */
   readonly refused: string | null;
+  /** Paired tokens this pass marked as not launches. */
+  readonly pairedMarked: number;
 }
 
 export interface Listing {
@@ -119,9 +145,46 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
   /** The listing pages asked on the UTC day `day` (refused ones too), and whether their cap was said. */
   const asked = { day: '', pages: 0, capSaid: false };
 
+  /** Paired tokens this process has settled: marked, or found to be coins. Never asked about again. */
+  const settledPaired = new Set<string>();
+
   const nothing = (extra: Partial<ListingPassResult>): ListingPassResult => ({
-    listed: 0, fresh: 0, added: 0, withoutDetails: 0, pagesRead: 0, behind: false, credits: 0, held: null, refused: null, ...extra,
+    listed: 0, fresh: 0, added: 0, withoutDetails: 0, pagesRead: 0, behind: false, credits: 0, held: null, refused: null, pairedMarked: 0, ...extra,
   });
+
+  /** The day's credit spend: a day's first spend resets it. False when `cost` would pass the cap. */
+  const spendCredits = (nowMs: number, cost: number): boolean => {
+    const day = new Date(nowMs).toISOString().slice(0, 10);
+    if (spend.day !== day) Object.assign(spend, { day, credits: 0, capSaid: false });
+    if (spend.credits + cost > opts.dayCapCredits) return false;
+    spend.credits += cost;
+    return true;
+  };
+
+  /**
+   * The paired tokens on these pages that are not settled yet, marked where they have no curve.
+   * Never fails the pass: a token that could not be checked is asked again next pass.
+   */
+  const settlePaired = async (listed: Iterable<ListedLaunch>, nowMs: number): Promise<{ marked: number; credits: number }> => {
+    if (deps.markPaired === undefined) return { marked: 0, credits: 0 };
+    const open = new Map<string, PairedToken>();
+    for (const h of listed) {
+      const p = h.pairedWith;
+      if (p !== null && p !== undefined && !settledPaired.has(p.address) && p.address !== h.address) open.set(p.address, p);
+    }
+    if (open.size === 0) return { marked: 0, credits: 0 };
+    const cost = Math.ceil(open.size / Math.max(1, opts.accountsPerCall)) * opts.creditsPerCall;
+    if (!spendCredits(nowMs, cost)) return { marked: 0, credits: 0 };
+    try {
+      const r = await deps.markPaired([...open.values()], nowMs as Millis);
+      for (const a of r.settled) settledPaired.add(a);
+      if (r.marked.length > 0) deps.note('launch listing: tokens launches are paired against were marked as not launches', { marked: r.marked });
+      return { marked: r.marked.length, credits: cost };
+    } catch (e) {
+      deps.note('paired tokens could not be checked; asked again next pass', { err: e instanceof Error ? e.message : String(e), tokens: open.size });
+      return { marked: 0, credits: cost };
+    }
+  };
 
   return {
     async pass() {
@@ -141,7 +204,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
       }
       if (asked.pages >= (opts.dayCapPages * (startMs % DAY_MS)) / DAY_MS + opts.paceSlackPages) return nothing({ held: 'pace' });
 
-      const listed = new Map<string, CoinSearchHit>();
+      const listed = new Map<string, ListedLaunch>();
       let pagesRead = 0;
       let reached = false;
       let refused: string | null = null;
@@ -149,7 +212,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
 
       for (let n = 1; n <= opts.pagesPerPass && asked.pages < opts.dayCapPages; n += 1) {
         asked.pages += 1;
-        let hits: readonly CoinSearchHit[];
+        let hits: readonly ListedLaunch[];
         try {
           hits = await deps.page(n);
         } catch (e) {
@@ -191,29 +254,27 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
         });
       }
       const nowMs = deps.now();
+      const paired = await settlePaired(listed.values(), nowMs);
       const young = [...listed.values()].filter((h) => h.createdAt !== null && nowMs - h.createdAt <= opts.maxAgeMs);
       const held = await deps.known(young.map((h) => h.address));
       const fresh = young.filter((h) => !held.has(h.address));
       if (fresh.length === 0) {
         if (refused === null) highWater = newest;
-        return nothing({ listed: listed.size, pagesRead, behind, refused });
+        return nothing({ listed: listed.size, pagesRead, behind, refused, credits: paired.credits, pairedMarked: paired.marked });
       }
 
       /* ★ THE DAY'S CREDIT CAP: the chain reads share a key's free day with the trade feed. Past the
          cap a coin is still added, from the listing's own name and ticker, without its link. */
-      const day = new Date(nowMs).toISOString().slice(0, 10);
-      if (spend.day !== day) Object.assign(spend, { day, credits: 0, capSaid: false });
       const cost = Math.ceil(fresh.length / Math.max(1, opts.accountsPerCall)) * opts.creditsPerCall;
       let details: ReadonlyMap<string, ChainDetails> = new Map();
-      let credits = 0;
-      if (spend.credits + cost > opts.dayCapCredits) {
+      let credits = paired.credits;
+      if (!spendCredits(nowMs, cost)) {
         if (!spend.capSaid) {
           spend.capSaid = true;
           deps.note('launch listing: the day\'s chain-read credits are spent; listed launches are added without a metadata link until 00:00 UTC', { credits: spend.credits, capCredits: opts.dayCapCredits });
         }
       } else {
-        spend.credits += cost;
-        credits = cost;
+        credits += cost;
         try {
           details = await deps.details(fresh.map((h) => h.address));
         } catch (e) {
@@ -232,7 +293,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
       if (refused === null) highWater = newest;
       const addedSet = new Set(added);
       const withoutDetails = fresh.filter((h) => addedSet.has(h.address) && !details.has(h.address)).length;
-      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind, credits, held: null, refused };
+      return { listed: listed.size, fresh: fresh.length, added: added.length, withoutDetails, pagesRead, behind, credits, held: null, refused, pairedMarked: paired.marked };
     },
   };
 }
