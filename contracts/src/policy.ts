@@ -4503,6 +4503,39 @@ export interface CoinVectorPolicy {
 }
 
 /**
+ * A shown post's picture, copied into our own storage (services/project post-pics.ts, 0119), so a
+ * card's picture keeps loading after the source's signed link has expired. The short-video
+ * source's covers carry `x-expires`: on 2026-10-21, 297 of the 311 short-video posts on For
+ * You, Popular and the scroll had a cover that no longer loaded.
+ *
+ * Two sizes, WebP, never enlarged: `cardPx` for every list's square (the largest box is 84 points,
+ * three device pixels a point) and `sheetPx` for the post sheet's picture. Measured the same day on
+ * 60 shown pictures: 11 KB and 42 KB on average; 15 KB and 64 KB a short-video cover, 15 KB and 70
+ * KB a text-source picture, 8 KB and 28 KB a text-source video still.
+ */
+export interface PostPicturePolicy {
+  /** Off: nothing is copied; the app uses the source's link as before. */
+  readonly on: boolean;
+  /** Pictures fetched per pass at most (one pass every two minutes, in the logo job). */
+  readonly perPass: number;
+  /** Pictures copied in any 24 hours at most, the backfill included. */
+  readonly perDay: number;
+  /** Pictures fetched at once. */
+  readonly concurrency: number;
+  /** No new picture is started after this much of the pass. */
+  readonly budgetMs: number;
+  /** The largest file fetched; a bigger one is refused and left where it is. */
+  readonly maxBytes: number;
+  /** The longer side of the list copy and of the sheet copy, in pixels. */
+  readonly cardPx: number;
+  readonly sheetPx: number;
+  /** WebP quality of both copies. */
+  readonly quality: number;
+  /** A refused picture (a host that failed, a timeout) is tried again after this long, while its link still loads. */
+  readonly retryAfterMs: number;
+}
+
+/**
  * The database host's disk and bill, as the owner's alerts model them (services/runner
  * disk-alarm.ts). Neither the provisioned disk nor the bill is readable from SQL, so both are
  * modelled from the database's hourly size (internal.disk_sample, 0105) and the host's published
@@ -4605,6 +4638,8 @@ export interface Policy {
   readonly slim: SlimPolicy;
   /** Coin picture vectors: 30 days in the database, the rest in the bucket; an untraded coin's deleted. */
   readonly coinVectors: CoinVectorPolicy;
+  /** Shown posts' pictures copied into our storage, so a card never goes blank when the source's link expires. */
+  readonly postPictures: PostPicturePolicy;
   /** The database host's disk and bill: the owner's alerts when the disk fills or the bill heads over his line. */
   readonly store: StorePolicy;
   /**
@@ -6917,6 +6952,32 @@ const POLICY_V1: Policy = {
       readsPerPass: 100,
       readWithinMs: 21_600_000, // six hours after the hour
     },
+  },
+
+  /* Sized from 2026-10-21's volumes (tools/post-pics.ts status --sample 60): 675 new shown
+     pictures a day over the week before (280 to 1,002), and 3,877 shown pictures whose links still
+     loaded for the one backfill (344 had already expired). 54 KB a picture for both copies on
+     average (79 KB a short-video cover), so ~35 MB a day, ~1 GB a month and ~200 MB for the backfill —
+     inside the plan's 100 GB of files (`store.bill.storageIncludedGb`); over it, $0.0213 a GB-month. */
+  postPictures: {
+    on: true,
+    /* 40 a pass every two minutes is 28,800 a day: a busy hour's ~100 new pictures are copied
+       within a few passes, before any short-video link expires (they are signed for about a day). */
+    perPass: 40,
+    /* Three times the busiest day measured; the backfill reaches it on its first day and finishes
+       the next, the short-video covers (which expire) first. */
+    perDay: 3_000,
+    concurrency: 6,
+    /* The logo job's lane is shared: the logos take about 50 s, the faces at most 30. */
+    budgetMs: 30_000,
+    /* The largest shown picture measured was 0.8 MB; an X picture at full size can reach a few. */
+    maxBytes: 8 * 1024 * 1024,
+    /* 360: the size the cards already ask the X host for (mobile picture-size.ts). 1080: the
+       sheet's picture across a phone at three pixels a point. */
+    cardPx: 360,
+    sheetPx: 1080,
+    quality: 80,
+    retryAfterMs: 21_600_000, // six hours
   },
 
   /* The owner, 2026-10-18: let the disk grow past 8 GB, tell me at 80% and when the bill heads over
