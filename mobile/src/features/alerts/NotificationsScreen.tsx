@@ -63,7 +63,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
     if (!settings) return;
     setSheet(true);
     /* Once: development runs this twice, and the second must not touch the sheet's own entry. */
-    if (parseRoute(window.location.hash).screen === 'alert-settings') replaceTo({ screen: 'notifications' });
+    if (parseRoute(window.location.hash).screen === 'alert-settings') replaceTo({ screen: 'notifications' }, { sameVisit: true });
   }, [settings]);
   const { pull, refreshing } = usePullToRefresh(refresh);
 
