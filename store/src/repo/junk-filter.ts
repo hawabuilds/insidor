@@ -21,6 +21,7 @@
  */
 
 import type { Db } from '../client.ts';
+import { heldPostVectors } from './post-vectors.ts';
 
 export interface JunkFitRow {
   readonly fittedAt: Date;
@@ -179,11 +180,25 @@ export class PgJunkFilterRepo {
         if (!isMissingTable(e)) throw e;
       }
     };
-    await read(`select e.item_id, coalesce(i.body, l.text) as text, e.embedding::text as embedding
-                  from internal.post_embedding e
-                  left join public.item i on i.item_id = e.item_id
-                  left join internal.label_embedding l on l.item_id = e.item_id and l.space = e.space
-                 where e.item_id = any($1::text[]) and e.space = $2`);
+    /* The runner's own vectors through the process's held copies (post-vectors.ts): the words
+       here, the numbers only when not held at their `embedded_at`. */
+    try {
+      const own = await this.#db.query<{ item_id: string; text: string | null }>(
+        `select e.item_id, coalesce(i.body, l.text) as text
+           from internal.post_embedding e
+           left join public.item i on i.item_id = e.item_id
+           left join internal.label_embedding l on l.item_id = e.item_id and l.space = e.space
+          where e.item_id = any($1::text[]) and e.space = $2`,
+        [[...itemIds], space],
+      );
+      const values = await heldPostVectors(this.#db, own.map((r) => r.item_id), space);
+      for (const r of own) {
+        const v = values.get(r.item_id);
+        if (v !== undefined && !out.has(r.item_id)) out.set(r.item_id, { itemId: r.item_id, text: r.text ?? '', values: v });
+      }
+    } catch (e) {
+      if (!isMissingTable(e)) throw e;
+    }
     await read(`select item_id, text, embedding::text as embedding from internal.label_embedding where item_id = any($1::text[]) and space = $2`);
     return out;
   }
