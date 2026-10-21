@@ -44,7 +44,8 @@ before(async () => {
 const route = (over: Partial<Parameters<typeof createWallet>[0]> = {}) => createWallet({
   db, log: SILENT, policy: DEFAULT_POLICY.wallet,
   reader: { balances: async () => balances },
-  quotes: { quotes: async (addrs) => new Map(addrs.map((a) => [a, { name: null, ticker: null, priceUsd: 2, priceSol: 0.01, marketCapUsd: 9_000, liquidityUsd: null, change: { h1: 1, h6: null, h24: -3 }, bonded: false }])) },
+  /* SOL at $200, every coin at $2: 0.01 SOL each, as a SOL pair says. */
+  quotes: { quotes: async (addrs) => new Map(addrs.map((a) => [a, { name: null, ticker: null, priceUsd: a.startsWith('So111') ? 200 : 2, priceSol: 0.01, marketCapUsd: 9_000, liquidityUsd: null, change: { h1: 1, h6: null, h24: -3 }, bonded: false }])) },
   images: null,
   creatorFees: async () => 1_500_000_000n,
   now: () => 1_000,
@@ -79,11 +80,11 @@ test('★ the gain is from landed trades in our record, at average cost: in SOL,
   const by = new Map(w.holdings.map((h: any) => [h.address, h.profit]));
   const whole = by.get(WHOLE) as any;
   assert.equal(whole.kind, 'known');
-  /* Worth 0.01 SOL now (1 coin at 0.01), cost 0.002: +0.008 SOL, +400%, $0.016 at SOL's $2. */
+  /* Worth 0.01 SOL now (1 coin at 0.01), cost 0.002: +0.008 SOL, +400%, $1.60 at SOL's $200. */
   assert.ok(Math.abs(whole.sol - 0.008) < 1e-12);
   assert.ok(Math.abs(whole.costSol - 0.002) < 1e-12);
   assert.ok(Math.abs(whole.pct - 400) < 1e-9);
-  assert.ok(Math.abs(whole.usd.v - 0.016) < 1e-12);
+  assert.ok(Math.abs(whole.usd.v - 1.6) < 1e-9);
   assert.equal(whole.partial, false);
   const part = by.get(CONFIDENT) as any;
   assert.equal(part.kind, 'known');
