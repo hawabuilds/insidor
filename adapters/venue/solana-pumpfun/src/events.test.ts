@@ -47,6 +47,8 @@ test('★ every trade and launch in the captured logs decodes as the SDK reads i
       assert.equal(t.tokens, Number(d['tokenAmount']!.toString()) / 1e6);
       const quote = key(d['quoteMint']);
       assert.equal(t.solQuoted, quote === '11111111111111111111111111111111');
+      assert.equal(t.quoteMint, quote, 'the quote is carried as the event names it');
+      assert.notEqual(t.mint, t.quoteMint, 'the quote is never the coin');
       if (t.solQuoted) {
         assert.equal(t.sol, Number(d['solAmount']!.toString()) / 1e9);
         const cap = (Number(d['virtualSolReserves']!.toString()) / 1e9) / (Number(d['virtualTokenReserves']!.toString()) / 1e6) * 1e9;
@@ -60,6 +62,11 @@ test('★ every trade and launch in the captured logs decodes as the SDK reads i
     const theirCreates = theirs.filter((e) => e.type === 'create');
     assert.deepEqual(ours.creates.map((c) => c.mint), theirCreates.map((c) => key(c.data['mint'])));
     assert.deepEqual(ours.creates.map((c) => c.creator), theirCreates.map((c) => key(c.data['creator'])));
+    for (const [i, c] of ours.creates.entries()) {
+      const theirQuote = theirCreates[i]!.data['quoteMint'];
+      if (theirQuote !== undefined) assert.equal(c.quoteMint, key(theirQuote));
+      assert.notEqual(c.mint, c.quoteMint, 'a launch\'s coin is its mint, never what it is priced in');
+    }
     creates += ours.creates.length;
   }
   assert.ok(trades >= 20, `fixtures hold real trades (${trades})`);
