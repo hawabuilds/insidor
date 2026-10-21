@@ -48,7 +48,9 @@ export function personFromClaims(claims: Claims): Person | null {
     userId,
     handle: str(x?.['username'])?.replace(/^@/, '') ?? null,
     name: str(x?.['name']) ?? str(google?.['name']) ?? null,
-    pictureUrl: str(x?.['profile_picture_url']),
+    /* The live tokens carried no picture under `profile_picture_url` (all nine profiles had none on
+       21 Oct 2026), so the other spellings the vendor's payloads use are read too. */
+    pictureUrl: str(x?.['profile_picture_url']) ?? str(x?.['profilePictureUrl']) ?? str(x?.['pfp']) ?? str(x?.['profile_picture']),
     wallets,
   };
 }

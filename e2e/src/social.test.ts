@@ -171,3 +171,13 @@ test("★ a holder's like queues Trador's \"N people found your comment useful\"
     [author.userId, String(id), 2, 2, 'FERRY has a horn now'],
   ]);
 });
+
+test('★ a member X picture sent at sign-in is kept, and a later sync without one does not wipe it', async () => {
+  const me = person(41);
+  const { as, db } = await setup(new Set());
+  await as(me)('POST', '/me', { pictureUrl: 'https://pbs.twimg.com/profile_images/9/me.jpg' });
+  await as(me)('POST', '/me');
+  await as(me)('POST', '/me', { pictureUrl: 'https://elsewhere.example/x.jpg' });
+  const [row] = await db.query<{ pictureUrl: string | null }>('select picture_url as "pictureUrl" from people.profile where user_id = $1', [me.userId]);
+  assert.equal(row?.pictureUrl, 'https://pbs.twimg.com/profile_images/9/me.jpg');
+});
