@@ -116,6 +116,17 @@ test('totals, the range\'s move, and the coins this wallet created with its uncl
   assert.deepEqual(w.created.unclaimedFeesSol, { v: 1.5 });
 });
 
+test('★ a holding is named as its market lists it, over a stale name index; the index only fills a gap', async () => {
+  await db.query(`insert into public.coin_name (address, name, ticker) values ($1, 'Junior USD*', 'USD*-J'), ($2, 'Kept Name', 'KEPT') on conflict (address) do nothing`, [UNSURE, WHOLE]);
+  const named = (a: string) => (a === UNSURE ? { name: 'MicroStrategy xStock', ticker: 'MSTRx' } : { name: null, ticker: null });
+  const w = await read(route({ quotes: { quotes: async (addrs) => new Map(addrs.map((a) => [a, { ...named(a), priceUsd: a.startsWith('So111') ? 200 : 2, priceSol: 0.01, marketCapUsd: 9_000, liquidityUsd: null, change: { h1: 1, h6: null, h24: -3 }, bonded: false }])) } }));
+  const byAddress = new Map(w.holdings.map((h: any) => [h.address, h]));
+  assert.equal((byAddress.get(UNSURE) as any).ticker, 'MSTRx');
+  assert.equal((byAddress.get(UNSURE) as any).name, 'MicroStrategy xStock');
+  assert.equal((byAddress.get(WHOLE) as any).ticker, 'KEPT', 'no market name: the index\'s');
+  await db.query(`delete from public.coin_name where address = any($1)`, [[UNSURE, WHOLE]]);
+});
+
 test('★ an outage is said, never an empty wallet', async () => {
   const w = await read(route({ reader: { balances: async () => { throw new Error('429'); } } }));
   assert.deepEqual(w, { kind: 'unavailable', why: 'not_read_yet' });
