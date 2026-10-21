@@ -44,9 +44,19 @@ const cfg = loadNotifyConfig(process.env);
    process's pool adds up against the same pooler, and a request here is short. */
 const POOL_MAX = 3;
 const IDLE_CLIENT_MS = 10_000;
-const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: POOL_MAX, idleTimeoutMillis: IDLE_CLIENT_MS, application_name: 'insidor-notify' });
+const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: POOL_MAX, idleTimeoutMillis: IDLE_CLIENT_MS, application_name: 'insidor-notify', keepAlive: true });
 const db = { query: async <R>(sql: string, params?: readonly unknown[]) => (await pool.query(sql, params as unknown[])).rows as R[] };
 const log = (level: 'info' | 'error', msg: string, f: Record<string, unknown> = {}) => (level === 'error' ? console.error : console.log)(JSON.stringify({ level, msg, ...f }));
+/* ★ A DROPPED IDLE CONNECTION IS LOGGED, NEVER FATAL. When the database's pooler drops a
+   connection this pool holds idle, pg emits 'error' on the pool, and an 'error' event nobody listens
+   for ends the process. On 2026-10-21 at about 12:09 UTC it did, in this service and its twin at once
+   ("Connection terminated unexpectedly", then ELIFECYCLE exit 1), and both were down until Railway
+   restarted them at 12:18: every Notifications open in between said it could not load. The TLS
+   fields in that dump (authorizationError SELF_SIGNED_CERT_IN_CHAIN) are the socket's own record of
+   an unverified certificate, which this connection accepts and had worked under for days; they are
+   not why it dropped. The pool opens a new connection on the next query; a query that was on the
+   dropped one fails alone, as a 500 for that one request. */
+pool.on('error', (e) => log('error', 'idle database connection dropped; the next query opens a new one', { err: e.message.slice(0, 200) }));
 /* The push service's last answer per device, filed by endpoint for devices.ts; each one logged by host. */
 const answers = new Map<string, Answer>();
 const push = webPushSender(cfg.vapid, undefined, (r) => {
