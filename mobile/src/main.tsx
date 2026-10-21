@@ -32,6 +32,7 @@ import { listenForNewVersion } from './shared/new-version.ts';
 import { App } from './App.tsx';
 import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
 import { trackHistory } from './shared/nav.ts';
+import { holdZoom } from './shared/viewport.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
@@ -46,6 +47,9 @@ settleLaunch();
 /* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
 trackHistory();
 listenForOpens();
+/* An iPhone never zooms the page in on a small text box, which left the tab bar sliding with every
+   scroll until the app was closed (shared/viewport.ts). Before the first frame. */
+holdZoom();
 /* iPhone Safari draws a pressed (:active) state only on a page that listens for touches (tokens.css). */
 document.addEventListener('touchstart', () => undefined, { passive: true });
 

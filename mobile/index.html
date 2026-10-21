@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <!-- viewport-fit=cover so the floating tab bar can sit above the home indicator using
-         env(safe-area-inset-bottom) rather than a guessed margin. -->
+         env(safe-area-inset-bottom) rather than a guessed margin. On an iPhone or iPad the
+         page adds maximum-scale=1 before its first frame (src/shared/viewport.ts says why). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <!-- Nothing here is cacheable or indexable: every number is stale within a tick. The
