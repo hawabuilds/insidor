@@ -386,7 +386,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
   const everyMs = DEFAULT_POLICY.assets.launchListing.everyMs;
   let failures = 0;
   let passes = 0;
-  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0, pages: 0, held: 0, refused: 0 };
+  const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0, pages: 0, held: 0, refused: 0, pairedMarked: 0 };
   while (!signal.aborted) {
     const started = Date.now();
     try {
@@ -405,6 +405,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
       totals.withoutDetails += r.withoutDetails;
       totals.credits += r.credits;
       totals.behind += r.behind ? 1 : 0;
+      totals.pairedMarked += r.pairedMarked;
       if (passes % LISTING_SUMMARY_PASSES === 0) {
         log.info('launch listing', { passes: LISTING_SUMMARY_PASSES, ...totals });
         totals.listed = 0;
@@ -415,6 +416,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
         totals.pages = 0;
         totals.held = 0;
         totals.refused = 0;
+        totals.pairedMarked = 0;
       }
     } catch (e) {
       failures += 1;

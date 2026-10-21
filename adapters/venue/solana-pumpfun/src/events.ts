@@ -17,6 +17,11 @@
  *     quoted in other tokens; on those `sol_amount` is 0 and the money is in `quote_amount`. Such a
  *     trade is returned with `solQuoted: false` and NO SOL figures, so a caller cannot sum it as a
  *     zero-SOL buy. An event too short to name its quote is the older layout, which was SOL only.
+ *   - A launch's coin is the event's `mint`, whatever it is priced in. A launch priced in another
+ *     token (a stablecoin, a tokenised stock such as MSTRx, another coin) names that token as its
+ *     quote, and the quote is carried as a fact (`quoteMint`) and never taken for the coin: the
+ *     launch socket did exactly that for months (stream.ts), filing MSTRx under every meme launched
+ *     against it.
  *   - A truncated log (the node cut it) is reported as truncated: what was read before the cut is
  *     returned, but the caller must not treat the list as complete.
  *
@@ -65,6 +70,8 @@ export interface TradeFacts {
   readonly tokens: number;
   /** False: quoted in another token; the SOL fields below are null, never 0. */
   readonly solQuoted: boolean;
+  /** The token the curve is priced in, as the event names it. Null on the older layout, which was SOL only. */
+  readonly quoteMint: string | null;
   readonly sol: number | null;
   /** The cap in SOL right after this trade. Null when not SOL-quoted or the reserves are empty. */
   readonly mcapSol: number | null;
@@ -76,6 +83,12 @@ export interface CreateFacts {
   readonly user: string;
   readonly timestampS: number;
   readonly solQuoted: boolean;
+  /**
+   * The token the new coin's curve is priced in (a stablecoin, a tokenised stock, another coin),
+   * as the launch event names it. Null on the older layout, which was SOL only. A fact about the
+   * launch, and never the launched coin: that is `mint`, always.
+   */
+  readonly quoteMint: string | null;
   readonly mcapSol: number | null;
 }
 
@@ -222,6 +235,7 @@ export function decodeTradeEvent(b: Uint8Array): TradeFacts | null {
     timestampS: Number(ts),
     tokens: Number(tokens) / TOKEN_UNITS_PER_TOKEN,
     solQuoted,
+    quoteMint: quote,
     sol: solQuoted ? Number(sol) / LAMPORTS_PER_SOL : null,
     mcapSol: solQuoted ? capSol(vSol, vTok) : null,
   };
@@ -250,7 +264,7 @@ export function decodeCreateEvent(b: Uint8Array): CreateFacts | null {
     quote = r.key();
   }
   const solQuoted = quote === null || SOL_QUOTES.has(quote);
-  return { mint, creator, user, timestampS: Number(ts), solQuoted, mcapSol: solQuoted && supply === SUPPLY_UNITS ? capSol(vSol, vTok) : null };
+  return { mint, creator, user, timestampS: Number(ts), solQuoted, quoteMint: quote, mcapSol: solQuoted && supply === SUPPLY_UNITS ? capSol(vSol, vTok) : null };
 }
 
 function decodeComplete(b: Uint8Array): string | null {
