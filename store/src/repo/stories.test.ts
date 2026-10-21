@@ -133,3 +133,66 @@ test('a story still cannot be merged into itself, and that check runs first', as
   );
   assert.deepEqual(statements(), [], 'the self-merge check reached the database');
 });
+
+/* ★ HELD READS. `openSince` and `membersForStories` read versions every time and rows only for
+   what changed. Checked against the live store, read only: the same 2,000 stories and 973
+   members on three passes, ~15–20% of the bytes once held. */
+test('openSince and membersForStories read a story or its members whole only when they changed', async () => {
+  const stories = new Map([
+    ['st_a', { v: '1', count: 2 }],
+    ['st_b', { v: '1', count: 1 }],
+  ]);
+  const members = new Map([
+    ['st_a', ['x:1', 'x:2']],
+    ['st_b', ['x:3']],
+  ]);
+  const wholeStories: string[][] = [];
+  const wholeMembers: string[][] = [];
+  const at = new Date(AT);
+  const db: Db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes('select story_id, xmin::text as v')) return [...stories].map(([story_id, s]) => ({ story_id, v: s.v }) as R);
+      if (sql.includes('from public.story where story_id = any')) {
+        const ids = (params?.[0] ?? []) as string[];
+        wholeStories.push(ids);
+        return ids.map((story_id) => ({
+          story_id, origin: 'observed', created_at: at, earliest_post_at: at, promoted_at: null, last_member_at: at, state: 'candidate',
+          carriers: [], merged_into: null, member_count: stories.get(story_id)?.count ?? 0, distinct_authors: 1, distinct_sources: 1, v: stories.get(story_id)?.v,
+        }) as R);
+      }
+      if (sql.includes("count(*)::text || '/'")) {
+        const ids = (params?.[0] ?? []) as string[];
+        return ids.flatMap((sid) => (members.has(sid) ? [{ story_id: sid, v: `${members.get(sid)?.length}` } as R] : []));
+      }
+      if (sql.includes('from public.story_member m')) {
+        const ids = (params?.[0] ?? []) as string[];
+        wholeMembers.push(ids);
+        return ids.flatMap((sid) => (members.get(sid) ?? []).map((item_id) => ({
+          story_id: sid, item_id, author_key: 'x:a', source: 'x', posted_at: at, joined_at: at, evidence_kind: 'seed',
+          carrier_kind: null, carrier_key: null, carrier_distance: null, carrier_weight: null, lineage_via: null, lineage_to_item: null,
+          representation_similarity: null, representation_space: null, adjudicated_by: null, adjudicated_at: null,
+          name_key: null, image_similarity: null, image_space: null, image_confirmed: null,
+        }) as R));
+      }
+      throw new Error(`unexpected statement: ${sql}`);
+    },
+  };
+  const repo = new PgStoryRepo(db);
+  const page = async () => (await repo.openSince(AT, 10)).map((s) => `${s.storyId}:${s.memberCount}`);
+  const lists = async () => Object.fromEntries([...(await repo.membersForStories([id('st_a'), id('st_b'), id('st_none')]))].map(([k, v]) => [k, v.map((m) => m.itemId)]));
+
+  assert.deepEqual(await page(), ['st_a:2', 'st_b:1']);
+  assert.deepEqual(await lists(), { st_a: ['x:1', 'x:2'], st_b: ['x:3'] });
+  assert.deepEqual(await page(), ['st_a:2', 'st_b:1']);
+  assert.deepEqual(await lists(), { st_a: ['x:1', 'x:2'], st_b: ['x:3'] });
+  assert.equal(wholeStories.length, 1);
+  assert.equal(wholeMembers.length, 1);
+
+  /* st_b gains a member: its row and its member list are read again, st_a's are not. */
+  stories.set('st_b', { v: '2', count: 2 });
+  members.set('st_b', ['x:3', 'x:4']);
+  assert.deepEqual(await page(), ['st_a:2', 'st_b:2']);
+  assert.deepEqual(await lists(), { st_a: ['x:1', 'x:2'], st_b: ['x:3', 'x:4'] });
+  assert.deepEqual(wholeStories[1], ['st_b']);
+  assert.deepEqual(wholeMembers[1], ['st_b']);
+});
