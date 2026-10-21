@@ -1572,10 +1572,12 @@ export async function withRuntime<T>(
                   })
                 : null;
             const pictures = { embed, meter, mode: cfg.spend.kind, images: new PgImageEmbeddingRepo(db), log: log.child({ step: 'one-coin' }), now: () => Date.now() as Millis };
+            /* One repo for the process: it mirrors the candidate table and reads only what changed (store `PgOneCoinRepo`). */
+            const oneCoinRepo = new PgOneCoinRepo(db, { mirrorCandidates: true });
             return () =>
               oneCoinPass(
                 {
-                  repo: new PgOneCoinRepo(db),
+                  repo: oneCoinRepo,
                   coinFirstLaunches: (sinceMs, limit, hashVersion) => new PgOneCoinRepo(db).coinFirstLaunches(sinceMs, limit, hashVersion),
                   ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
                   policy,
