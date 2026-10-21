@@ -28,6 +28,7 @@ import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
+import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-pics.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
@@ -225,7 +226,8 @@ async function narratives(viewId: string, deps: Deps): Promise<Reply> {
   const [views, rows] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(NARRATIVES_SQL, [viewId])]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
-  return json(200, { tick: tickNumber(view['tick']), stories: rows.map(payloadOf), provenance: columnOf(view, 'provenance') });
+  /* Each narrative's picture and its posts' with our copy named (post-pics.ts, 0119). */
+  return json(200, { tick: tickNumber(view['tick']), stories: await withPictureFiles(deps.db, rows.map(payloadOf)), provenance: columnOf(view, 'provenance') });
 }
 
 /**
@@ -239,12 +241,12 @@ async function narratives(viewId: string, deps: Deps): Promise<Reply> {
 async function story(storyId: string, deps: Deps): Promise<Reply> {
   const found = await deps.db.query(STORY_SQL, [storyId]);
   const row = found[0];
-  if (row !== undefined) return json(200, payloadOf(row));
+  if (row !== undefined) return json(200, (await withPictureFiles(deps.db, [payloadOf(row)]))[0]);
   /* ★ A merged narrative's old link opens the one it was merged into (0106), never a 404. */
   const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
   if (ready?.['ok'] !== true) return NOT_FOUND;
   const alias = (await deps.db.query(STORY_ALIAS_SQL, [storyId]))[0];
-  return alias === undefined ? NOT_FOUND : json(200, payloadOf(alias));
+  return alias === undefined ? NOT_FOUND : json(200, (await withPictureFiles(deps.db, [payloadOf(alias)]))[0]);
 }
 
 /** The id whose page a narrative link opens: its own, or for a merged one the survivor's (0106). */
@@ -273,7 +275,7 @@ async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promis
   if (ready?.['ok'] !== true) return NOT_FOUND;
   const tick = tickNumber(view['tick']);
   const page = await (deps.narrativeLists ?? createNarrativeLists())(deps.db, tick, ask);
-  return json(200, { tick, stories: page.stories, provenance: columnOf(view, 'provenance'), next: page.next });
+  return json(200, { tick, stories: await withPictureFiles(deps.db, page.stories), provenance: columnOf(view, 'provenance'), next: page.next });
 }
 
 /**
@@ -307,15 +309,16 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
- * A feed's cards with their English (translations.ts) and their narrative (story-tags.ts), the two
- * reads sent at once. Each leaves a card it adds nothing to as the same object, so the two answers
- * are put together card by card.
+ * A feed's cards with their English (translations.ts), their narrative (story-tags.ts) and our copy
+ * of their picture (post-pics.ts), the three reads sent at once. Each leaves a card it adds nothing
+ * to as the same object, so the answers are put together card by card.
  */
 async function withCardAdditions(db: Deps['db'], cards: readonly unknown[]): Promise<readonly unknown[]> {
-  const [translated, tagged] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards)]);
+  const [translated, tagged, files] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards), pictureFiles(db, cards.flatMap(pictureLinks))]);
   return translated.map((card, i) => {
     const tag = tagged[i];
-    return tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
+    const out = tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
+    return withFile(out, files);
   });
 }
 

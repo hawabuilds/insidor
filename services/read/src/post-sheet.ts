@@ -38,6 +38,7 @@ import type { CoinQuote } from '@insidor/market-dexscreener';
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
 import { buildStoryPosts, buildStorySheet } from './story-sheet.ts';
+import { fileOf, pictureFiles } from './post-pics.ts';
 import { withTranslations } from './translations.ts';
 
 /** The post on whichever feed holds it, For You first. */
@@ -268,13 +269,22 @@ export function createPostSheet(deps: PostSheetDeps) {
     if (row === undefined) return json(404, { error: 'not found' });
     /* The post's English when it was written in another language (translations.ts, 0081). */
     /* Sent together: both are read by the post's id alone, and each round trip crosses a sea. */
-    const [translated, storyRows] = await Promise.all([withTranslations(deps.db, [row['payload']]), readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId])]);
-    const payload = rec(translated[0]);
+    /* And our copies of the card's and the media's picture (post-pics.ts, 0119), by the links in hand. */
+    const media = sheetMedia(row['media']);
+    const [translated, storyRows, files] = await Promise.all([
+      withTranslations(deps.db, [row['payload']]),
+      readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId]),
+      pictureFiles(deps.db, [rec(row['payload'])['thumbUrl'], media?.posterUrl].filter((l): l is string => typeof l === 'string')),
+    ]);
+    const thumbFile = fileOf(files, rec(row['payload'])['thumbUrl']);
+    const payload: Row = { ...rec(translated[0]), ...(thumbFile !== undefined ? { thumbFile } : {}) };
     const storyRow = storyRows[0];
     const storyId = str(payload['storyId']) ?? str(storyRow?.['story_id']);
 
     const link = linkedAddresses(payload['coins']);
-    const listed = (await deps.db.query(SHEET_LIST_SQL, [itemId, storyId ?? ''])).flatMap((r) => str(r['address']) ?? []);
+    const storyThumb = https(storyRow?.['thumb_url']);
+    const [listedRows, storyFiles] = await Promise.all([deps.db.query(SHEET_LIST_SQL, [itemId, storyId ?? '']), storyThumb === null ? new Map<string, string>() : pictureFiles(deps.db, [storyThumb])]);
+    const listed = listedRows.flatMap((r) => str(r['address']) ?? []);
     const addresses = [...new Set([...link.addresses, ...listed])].slice(0, SHEET_COINS_MAX);
     const { coins, marketDown } = await coinsFor(addresses, link.proven, rec(rec(payload['coins'])['coin']));
 
@@ -291,12 +301,13 @@ export function createPostSheet(deps: PostSheetDeps) {
         followers: measured(followers, 'not_reported'),
       },
       foundAt: instant(ms(row['first_seen_at']), 'not_reported'),
-      media: sheetMedia(row['media']),
+      /* `posterFile`: our copy of the picture, which the app loads first at the sheet's size. */
+      media: media === null ? null : { ...media, ...(fileOf(files, media.posterUrl) !== undefined ? { posterFile: fileOf(files, media.posterUrl) } : {}) },
       /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
       story: storyId === null ? null : { storyId, title: str(titled?.['title']), posts: num(Number(titled?.['posts'] ?? NaN)) },
       /* The "Part of a story" card: only a narrative the board lists now (public.story_post), with its picture. */
       storyCard: storyRow?.['listed'] === true && str(storyRow['story_id']) !== null
-        ? { storyId: str(storyRow['story_id']), title: str(storyRow['title']), posts: num(Number(storyRow['posts'] ?? NaN)), thumbUrl: https(storyRow['thumb_url']) }
+        ? { storyId: str(storyRow['story_id']), title: str(storyRow['title']), posts: num(Number(storyRow['posts'] ?? NaN)), thumbUrl: storyThumb, ...(fileOf(storyFiles, storyThumb) !== undefined ? { thumbFile: fileOf(storyFiles, storyThumb) } : {}) }
         : null,
       coinName: sharedName(coins),
       sourcesMissing: marketDown ? 1 : 0,

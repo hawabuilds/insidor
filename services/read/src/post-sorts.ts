@@ -85,6 +85,7 @@ import { riserPlace, sortGainIn, sortOrder, sortPlace, sortRunsOf, trendingList,
 import type { Db, Row } from './queries.ts';
 import { RISING_VIEW_SQL } from './queries.ts';
 import { withCurrentMarket } from './feed-page.ts';
+import { withPictureFiles } from './post-pics.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 
@@ -247,7 +248,7 @@ export function createSorts(now: () => number = Date.now, policy: Policy = DEFAU
     const cards = ids.length === 0 ? [] : await db.query(SORT_CARDS_SQL, [ids]);
     const byId = new Map(cards.flatMap((c) => (typeof c['item_id'] === 'string' && c['payload'] != null ? [[c['item_id'], withCurrentMarket(c['payload'], msOf(c['payload_at']), nowMs)] as const] : [])));
     const shown = page.filter((x) => byId.has(x.id));
-    const posts = await withStoryTags(db, await withTranslations(db, shown.map((x) => byId.get(x.id))));
+    const posts = await withPictureFiles(db, await withStoryTags(db, await withTranslations(db, shown.map((x) => byId.get(x.id)))));
     if (legacy) return { tick, by, window, posts, gained: Object.fromEntries(shown.map((x) => [x.id, Math.round(x.gained)])) };
     const end = cursor + page.length;
     const next = end < hit.list.length ? String(end) : null;

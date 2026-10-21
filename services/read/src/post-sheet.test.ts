@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { PICTURE_FILES_SQL } from './post-pics.ts';
 import type { Row } from './queries.ts';
 
 const SILENT = { info: () => undefined, error: () => undefined } as never;
@@ -60,6 +61,21 @@ test('a post no feed holds is a 404, and its narrative is named when it is in on
   assert.equal(JSON.parse((await sheet.sheet('x:1')).body).storyCard, null, 'a story the board does not list gets no card');
   const listed = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' } }, media: [] }], [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath', posts: 12, thumb_url: 'https://p/t.jpg', listed: true }] }));
   assert.deepEqual(JSON.parse((await listed.sheet('x:1')).body).storyCard, { storyId: 'st_1', title: 'Goliath', posts: 12, thumbUrl: 'https://p/t.jpg' });
+});
+
+test('★ our copies of the card\'s, the media\'s and the narrative card\'s pictures are named beside their links', async () => {
+  const F = 'abcdefabcdefabcdefabcdefabcdef01';
+  const cover = 'https://p16.example/obj/c~cover.jpeg?x-expires=1&x-signature=s';
+  const sheet = createPostSheet(deps({
+    [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' }, thumbUrl: cover }, media: [{ kind: 'video', uri: cover, durationMs: 9_000 }] }],
+    [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath', posts: 12, thumb_url: 'https://p/t.jpg', listed: true }],
+    [PICTURE_FILES_SQL]: [{ link_path: 'https://p16.example/obj/c~cover.jpeg', file: F }, { link_path: 'https://p/t.jpg', file: F }],
+  }));
+  const body = JSON.parse((await sheet.sheet('x:1')).body);
+  assert.equal(body.post.thumbFile, F);
+  assert.equal(body.media.posterFile, F);
+  assert.equal(body.media.posterUrl, cover, 'the link is still sent: the app falls back to it');
+  assert.equal(body.storyCard.thumbFile, F);
 });
 
 test('a video is offered to play only with an https mp4 of its own; otherwise its still, and nothing when there is no picture', () => {
