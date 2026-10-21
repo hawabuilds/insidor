@@ -69,19 +69,48 @@ const parseVector = (v: unknown): Float32Array => {
 
 export class PgLabelEmbeddingRepo {
   readonly #db: Db;
+  /** Vectors this repo holds, by space and post, with the `updated_at` they were read at. See `all`. */
+  readonly #vectors = new Map<string, Map<string, { readonly at: string; readonly values: Float32Array }>>();
 
   constructor(db: Db) {
     this.#db = db;
   }
 
-  /** Every labelled post in `space`; empty before 0069. */
+  /**
+   * Every labelled post in `space`; empty before 0069.
+   *
+   * ★ THE LABELS ARE READ WHOLE, THE VECTORS ONLY WHEN THEIR ROW WAS WRITTEN. The precedent
+   * sources ask for every label whenever `version` moves, and each answer carried every vector as
+   * text (~13 KB a post). The words and labels still come back whole, each with its `updated_at`;
+   * a vector is read only when this repo does not hold it at that instant. `put` and `relabel` both
+   * stamp `updated_at`, so a rewritten vector is never served from the cache.
+   */
   async all(space: string): Promise<readonly StoredLabel[]> {
     try {
-      const rows = await this.#db.query<{ item_id: string; label: 'meme' | 'not'; label_kind: LabelKind; text: string; why: string | null; picture: string | null; embedding: unknown }>(
-        'select item_id, label, label_kind, text, why, picture, embedding::text as embedding from internal.label_embedding where space = $1',
+      const rows = await this.#db.query<{ item_id: string; label: 'meme' | 'not'; label_kind: LabelKind; text: string; why: string | null; picture: string | null; updated_at: string }>(
+        'select item_id, label, label_kind, text, why, picture, updated_at::text as updated_at from internal.label_embedding where space = $1',
         [space],
       );
-      return rows.map((r) => ({ itemId: r.item_id, label: r.label, kind: r.label_kind, text: r.text, why: r.why, picture: r.picture, values: parseVector(r.embedding) }));
+      const held = this.#vectors.get(space) ?? new Map<string, { readonly at: string; readonly values: Float32Array }>();
+      const missing = rows.filter((r) => held.get(r.item_id)?.at !== r.updated_at).map((r) => r.item_id);
+      if (missing.length > 0) {
+        const fetched = await this.#db.query<{ item_id: string; embedding: unknown; updated_at: string }>(
+          'select item_id, embedding::text as embedding, updated_at::text as updated_at from internal.label_embedding where space = $1 and item_id = any($2::text[])',
+          [space, missing],
+        );
+        for (const f of fetched) held.set(f.item_id, { at: f.updated_at, values: parseVector(f.embedding) });
+      }
+      /* Only this read's posts stay held: a row that left the table leaves the cache. */
+      const next = new Map<string, { readonly at: string; readonly values: Float32Array }>();
+      const out: StoredLabel[] = [];
+      for (const r of rows) {
+        const v = held.get(r.item_id);
+        if (v === undefined) continue;
+        next.set(r.item_id, v);
+        out.push({ itemId: r.item_id, label: r.label, kind: r.label_kind, text: r.text, why: r.why, picture: r.picture, values: v.values });
+      }
+      this.#vectors.set(space, next);
+      return out;
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
