@@ -103,8 +103,16 @@ const SELECT_MEMBER = `
     join public.item i using (item_id)
 `;
 
+/** A held story or member list unused this long is dropped: a story leaves the open page within the window. */
+const HELD_STORY_IDLE_MS = 60 * 60_000;
+
 export class PgStoryRepo implements StoryRepo {
   readonly #db: Db;
+  /** Stories `openSince` has read, by row version. See `openSince`. */
+  readonly #heldStories = new Map<string, { readonly version: string; readonly story: Story; usedAt: number }>();
+  /** Member lists `membersForStories` has read, by member count and newest join. See there. */
+  readonly #heldMembers = new Map<string, { readonly version: string; readonly members: StoryMember[]; usedAt: number }>();
+  #sweptAt = 0;
 
   constructor(db: Db) {
     this.#db = db;
@@ -253,8 +261,13 @@ export class PgStoryRepo implements StoryRepo {
    * story instead of joining the first.
    */
   async openSince(sinceMs: Millis, limit: number): Promise<readonly Story[]> {
-    const rows = await this.#db.query<StoryRow>(
-      `${SELECT_STORY}
+    /* ★ THE PAGE IS READ EVERY TIME; A STORY WHOLE ONLY WHEN ITS ROW CHANGED. GROUP, QUALIFY and
+       RESOLVE read this page every pass (~1,800 stories, carriers and all) and most rows have not
+       moved since. The page comes back as ids and row versions (`xmin`, new on every update) in
+       the same order under the same limit; only stories not held at that version are read. */
+    const picked = await this.#db.query<{ story_id: string; v: string }>(
+      `select story_id, xmin::text as v
+         from public.story
         where merged_into is null
           and state in ('candidate', 'promoted')
           and last_member_at >= $1
@@ -262,7 +275,25 @@ export class PgStoryRepo implements StoryRepo {
         limit $2`,
       [toTimestamp(sinceMs), limit],
     );
-    return rows.map(toStory);
+    const now = Date.now();
+    const stale = picked.filter((p) => this.#heldStories.get(p.story_id)?.version !== p.v).map((p) => p.story_id);
+    if (stale.length > 0) {
+      const rows = await this.#db.query<StoryRow & { v: string }>(
+        `select story_id, origin, created_at, earliest_post_at, promoted_at, last_member_at, state,
+                carriers, merged_into, member_count, distinct_authors, distinct_sources, xmin::text as v
+           from public.story where story_id = any($1::text[])`,
+        [stale],
+      );
+      for (const row of rows) this.#heldStories.set(row.story_id, { version: row.v, story: toStory(row), usedAt: now });
+    }
+    const out: Story[] = [];
+    for (const p of picked) {
+      const held = this.#heldStories.get(p.story_id);
+      if (held === undefined) continue;
+      held.usedAt = now;
+      out.push(held.story);
+    }
+    return out;
   }
 
   /**
@@ -279,18 +310,45 @@ export class PgStoryRepo implements StoryRepo {
   ): Promise<ReadonlyMap<StoryId, readonly StoryMember[]>> {
     const found = new Map<StoryId, StoryMember[]>();
     if (ids.length === 0) return found;
+    const now = Date.now();
 
-    const rows = await this.#db.query<MemberRow>(
-      `${SELECT_MEMBER}
+    /* ★ A STORY'S MEMBERS ARE READ AGAIN ONLY WHEN THEY CHANGED. GROUP and QUALIFY ask for the
+       same open stories' members every pass (~4,500 rows a read). Members are only ever added
+       (`addMembers` is insert-or-nothing; a row leaves only with its post or story), so a
+       story's member count and newest join say whether the held list is still the table's;
+       only a story whose pair moved is read whole. */
+    const versions = await this.#db.query<{ story_id: string; v: string }>(
+      `select m.story_id, count(*)::text || '/' || max(m.joined_at)::text as v
+         from public.story_member m
+         join public.item i using (item_id)
         where m.story_id = any($1::text[])
-        order by m.story_id, m.joined_at asc`,
-      [[...ids]],
+        group by m.story_id`,
+      [[...new Set(ids)]],
     );
-    for (const row of rows) {
-      const key = reBrand<StoryId>(row.story_id);
-      const list = found.get(key);
-      if (list === undefined) found.set(key, [toMember(row)]);
-      else list.push(toMember(row));
+    const stale = versions.filter((x) => this.#heldMembers.get(x.story_id)?.version !== x.v);
+    if (stale.length > 0) {
+      const rows = await this.#db.query<MemberRow>(
+        `${SELECT_MEMBER}
+          where m.story_id = any($1::text[])
+          order by m.story_id, m.joined_at asc`,
+        [stale.map((x) => x.story_id)],
+      );
+      const lists = new Map<string, StoryMember[]>(stale.map((x) => [x.story_id, []] as const));
+      for (const row of rows) lists.get(row.story_id)?.push(toMember(row));
+      /* The version read first: a member added between the two reads is caught next time. */
+      for (const x of stale) this.#heldMembers.set(x.story_id, { version: x.v, members: lists.get(x.story_id) ?? [], usedAt: now });
+    }
+    /* In story id order, as the single statement returned them. */
+    for (const x of [...versions].sort((a, b) => (a.story_id < b.story_id ? -1 : a.story_id > b.story_id ? 1 : 0))) {
+      const held = this.#heldMembers.get(x.story_id);
+      if (held === undefined || held.members.length === 0) continue;
+      held.usedAt = now;
+      found.set(reBrand<StoryId>(x.story_id), [...held.members]);
+    }
+    if (now - this.#sweptAt >= HELD_STORY_IDLE_MS) {
+      this.#sweptAt = now;
+      for (const [k, h] of this.#heldMembers) if (now - h.usedAt >= HELD_STORY_IDLE_MS) this.#heldMembers.delete(k);
+      for (const [k, h] of this.#heldStories) if (now - h.usedAt >= HELD_STORY_IDLE_MS) this.#heldStories.delete(k);
     }
     return found;
   }
