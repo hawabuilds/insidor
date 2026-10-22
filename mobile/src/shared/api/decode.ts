@@ -1024,7 +1024,17 @@ export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
   const created = arr(c['coins'], `${path}.created.coins`).map((x, i): CreatedCoin => {
     const q = `${path}.created.coins[${i}]`;
     const r = obj(x, q);
-    return { coinId: str(r['coinId'], `${q}.coinId`), address: str(r['address'], `${q}.address`), name: optStr(r['name']), ticker: optStr(r['ticker']), marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported') };
+    return {
+      coinId: str(r['coinId'], `${q}.coinId`),
+      address: str(r['address'], `${q}.address`),
+      name: optStr(r['name']),
+      ticker: optStr(r['ticker']),
+      marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported'),
+      /* An older service sends none of these three: unknown, and not from a catch. */
+      launchedAt: typeof r['launchedAt'] === 'number' && Number.isFinite(r['launchedAt']) ? r['launchedAt'] : null,
+      graduated: typeof r['graduated'] === 'boolean' ? r['graduated'] : null,
+      fromCatch: r['fromCatch'] === true,
+    };
   });
   return {
     kind: 'read',
