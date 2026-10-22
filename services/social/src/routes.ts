@@ -5,7 +5,8 @@
  *
  *   GET    /me                         my profile and standing (signed in)
  *   POST   /me { pictureUrl? }         bring my profile up to date from my sign-in (and my X picture, xPictureOf)
- *   PUT    /me { bio } or { tradesPublic }   my bio, or "Show my trades to followers"
+ *   PUT    /me { name?, bio? } or { tradesPublic }   my name and bio (Edit profile), or "Show my trades to followers"
+ *   POST   /me/picture, /me/banner { image }   my own picture or banner (profile-media.ts); DELETE to clear
  *   GET    /profile/:key               by handle or id: profile, rank card, counts, recent comments
  *   GET    /profile/:key/followers     and /following
  *   POST   /follow/:userId             DELETE the same to unfollow
@@ -47,6 +48,7 @@ import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings
 import { activityRoute } from './activity.ts';
 import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
+import { mediaRoute, typedName, type MediaStore } from './profile-media.ts';
 import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
 import { inviteRoute, ownerInvitesRoute } from './invites.ts';
@@ -80,6 +82,8 @@ export interface SocialDeps {
   readonly invites?: InvitePolicy;
   /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
   readonly coinCheck?: CoinCheck;
+  /** Where uploaded pictures and banners go (profile-media.ts); absent or null, uploads say they are not set up. */
+  readonly media?: MediaStore;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
 }
@@ -133,12 +137,18 @@ interface ProfileRow {
   handle: string | null;
   name: string | null;
   pictureUrl: string | null;
+  /** Their own uploaded picture (0124), tried before `pictureUrl`; null when none. */
+  pictureFile: string | null;
+  bannerFile: string | null;
   bio: string;
   wallet: string | null;
   tradesPublic: boolean;
 }
 
-const PROFILE_COLS = `user_id as "userId", handle, name, picture_url as "pictureUrl", bio, wallet, trades_public as "tradesPublic"`;
+/* The name they typed in Edit profile wins over the sign-in's (0124); the sign-in rewrites `name` only. */
+const PROFILE_COLS = `user_id as "userId", handle, coalesce(display_name, name) as name, picture_url as "pictureUrl", picture_file as "pictureFile", banner_file as "bannerFile", bio, wallet, trades_public as "tradesPublic"`;
+/** A person as a list shows them: with their own picture first when they uploaded one. */
+const personOf = (r: ProfileRow) => ({ userId: r.userId, handle: r.handle, name: r.name, pictureUrl: r.pictureUrl, pictureFile: r.pictureFile });
 
 /** The profile row brought up to date from a signed sign-in. A handle someone else held moves to its new owner. */
 export async function syncProfile(db: Db, p: Person): Promise<void> {
@@ -215,6 +225,10 @@ async function card(deps: SocialDeps, p: ProfileRow, viewer: string | null) {
     handle: p.handle,
     name: p.name,
     pictureUrl: p.pictureUrl,
+    pictureFile: p.pictureFile,
+    bannerFile: p.bannerFile,
+    /* Their X account, for the X button: the sign-in's X handle, which the handle is today. */
+    xHandle: p.handle,
     bio: p.bio,
     /* Trador's visibleWallet: a private portfolio hides the wallet too, since the address is the
        whole portfolio to anyone with an explorer. Its owner always sees their own. */
@@ -281,7 +295,7 @@ const COMMENT_SELECT = `
          c.created_at as at, c.subject_kind || ':' || c.subject_id as subject,
          (select count(*)::int from people.comment_like l where l.comment_id = c.comment_id) as likes,
          exists (select 1 from people.comment_like l where l.comment_id = c.comment_id and l.voter_id = $2) as "likedByMe",
-         p.user_id as "authorId", p.handle, p.name, p.picture_url as "pictureUrl"
+         p.user_id as "authorId", p.handle, coalesce(p.display_name, p.name) as name, p.picture_url as "pictureUrl"
     from people.comment c join people.profile p on p.user_id = c.author_id
    where c.hidden_at is null
      and not exists (select 1 from people.comment_hide h where h.comment_id = c.comment_id and h.user_id = $2)`;
@@ -357,6 +371,11 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
   if (activity !== null) return activity;
   if (head === 'missed' && seg.length === 1) return missedRoute(m, req.body, me, { db: deps.db, owner: deps.owner, learning: DEFAULT_POLICY.learning, ...(deps.coinCheck === undefined ? {} : { coinCheck: deps.coinCheck }) });
 
+  if (head === 'me' && (id === 'picture' || id === 'banner') && seg.length === 2) {
+    if (me === null) return SIGN_IN;
+    return mediaRoute(m, id, req.body, me.userId, { db: deps.db, media: deps.media ?? null });
+  }
+
   if (head === 'me' && seg.length === 1) {
     if (me === null) return SIGN_IN;
     if (m === 'POST') {
@@ -370,10 +389,17 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
     if (m === 'PUT' && typeof (req.body as { tradesPublic?: unknown } | null)?.tradesPublic === 'boolean') {
       await deps.db.query('update people.profile set trades_public = $2, updated_at = now() where user_id = $1', [me.userId, (req.body as { tradesPublic: boolean }).tradesPublic]);
     } else if (m === 'PUT') {
-      const bio = typeof (req.body as { bio?: unknown } | null)?.bio === 'string' ? ((req.body as { bio: string }).bio).trim() : null;
-      if (bio === null || bio.length > P.maxBioChars) return bad(`A bio is up to ${P.maxBioChars} characters.`);
-      if (blockedWord(bio)) return bad("That bio uses a word that isn't allowed here.");
-      await deps.db.query('update people.profile set bio = $2, updated_at = now() where user_id = $1', [me.userId, bio]);
+      const b = (req.body ?? {}) as { bio?: unknown; name?: unknown };
+      if (b.bio === undefined && b.name === undefined) return bad('Nothing to save.');
+      /* Both are checked before either is written, so a refused name does not half-save the sheet. */
+      const bio = b.bio === undefined ? undefined : typeof b.bio === 'string' ? b.bio.trim() : null;
+      if (bio === null || (bio !== undefined && bio.length > P.maxBioChars)) return bad(`A bio is up to ${P.maxBioChars} characters.`);
+      if (bio !== undefined && blockedWord(bio)) return bad("That bio uses a word that isn't allowed here.");
+      const name = b.name === undefined ? undefined : typedName(b.name);
+      if (name === null) return bad('A name is up to 50 characters.');
+      if (name?.name != null && blockedWord(name.name)) return bad("That name uses a word that isn't allowed here.");
+      if (bio !== undefined) await deps.db.query('update people.profile set bio = $2, updated_at = now() where user_id = $1', [me.userId, bio]);
+      if (name !== undefined) await deps.db.query('update people.profile set display_name = $2, updated_at = now() where user_id = $1', [me.userId, name.name]);
     }
     if (m !== 'GET' && m !== 'POST' && m !== 'PUT') return bad('method not allowed', 405);
     const p = await profileBy(deps.db, me.userId);
@@ -391,7 +417,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
         [p.userId],
       );
       const { map } = await seasonStandings(deps, seasonNow(deps.now(), P).id);
-      return json(200, { people: rows.map((r) => ({ userId: r.userId, handle: r.handle, name: r.name, pictureUrl: r.pictureUrl, rank: rankFor(standingOf(map, r.userId), P) })) });
+      return json(200, { people: rows.map((r) => ({ ...personOf(r), rank: rankFor(standingOf(map, r.userId), P) })) });
     }
     const comments = await deps.db.query<CommentRow>(`${COMMENT_SELECT} and c.author_id = $1 order by c.created_at desc limit 30`, [p.userId, me?.userId ?? '']);
     return json(200, { profile: await card(deps, p, me?.userId ?? null), comments: await shaped(deps, comments, me?.userId ?? null) });

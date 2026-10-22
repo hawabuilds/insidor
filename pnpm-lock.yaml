@@ -641,6 +641,9 @@ importers:
       '@insidor/market-geckoterminal':
         specifier: workspace:*
         version: link:../../adapters/market/geckoterminal
+      '@insidor/storage-supabase':
+        specifier: workspace:*
+        version: link:../../adapters/storage/supabase
       '@insidor/venue-solana-pumpfun':
         specifier: workspace:*
         version: link:../../adapters/venue/solana-pumpfun

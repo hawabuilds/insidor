@@ -23,10 +23,15 @@ export interface Request {
 }
 
 const MAX_BODY_BYTES = 16 * 1024;
+/* A picture or banner upload (profile-media.ts) carries the image as a data URL: a 2 MB file is
+   about 2.7 MB of text. Only those two paths are let past the small bound. */
+const MAX_PICTURE_BODY_BYTES = 3 * 1024 * 1024;
+const PICTURE_PATH = /^\/me\/(picture|banner)(\?|$)/;
 
 export const json = (status: number, value: unknown): Reply => ({ status, body: JSON.stringify(value) });
 
 function readBody(req: IncomingMessage): Promise<unknown> {
+  const limit = PICTURE_PATH.test(req.url ?? '') ? MAX_PICTURE_BODY_BYTES : MAX_BODY_BYTES;
   return new Promise((resolve) => {
     if (req.method !== 'POST' && req.method !== 'PUT' && req.method !== 'DELETE') {
       req.resume();
@@ -37,7 +42,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         req.destroy();
         resolve(null);
         return;
