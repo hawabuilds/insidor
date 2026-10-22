@@ -1,11 +1,12 @@
-/* The Narratives tab in the owner's design values of 2026-10-17: page #0B0B0E, cards #111116 with
-   a 1px #1F1E26 border, the chosen chip #241A3A with #E4D6FF text, labels #8B8794, gains #2FD47A,
-   purple #9945FF only for Buy. */
+/* The Narratives tab, on the app's tokens (tokens.css): the owner's design values of 2026-10-17
+   (cards on a hairline, labels grey, gains green, purple only for Buy) now drawn with the approved
+   system's names, so this tab and For You are the same card, the same greys and the same chips
+   rather than two near-identical palettes (#111116 here, #131317 there). */
 
 .screen {
   min-height: 100vh;
-  background: #0b0b0e;
-  color: #f4eeff;
+  background: var(--bg);
+  color: var(--text-1);
   padding-bottom: calc(var(--tabbar-space) + 8px);
 }
 
@@ -16,13 +17,13 @@
 }
 
 .live {
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
 }
 
 .empty {
   padding: 24px var(--gutter);
-  color: #8b8794;
+  color: var(--text-2);
 }
 
 /* A list's next 20: loaded as it comes into view, or on a tap. */
@@ -31,10 +32,10 @@
   margin: 12px auto 0;
   height: 36px;
   padding: 0 16px;
-  border: 1px solid #1f1e26;
+  border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: #111116;
-  color: #e4d6ff;
+  background: var(--card);
+  color: var(--text-1);
   font-size: 14px;
   font-weight: 600;
 }
@@ -49,9 +50,9 @@
 .card {
   display: block;
   padding: 14px;
-  border: 1px solid #1f1e26;
-  border-radius: 18px;
-  background: #111116;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
+  background: var(--card);
   cursor: pointer;
 }
 
@@ -80,7 +81,7 @@
   display: flex;
   gap: 8px;
   margin-top: 3px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -90,7 +91,7 @@
   flex: none;
   width: 18px;
   margin-right: -4px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 15px;
   font-weight: 700;
   text-align: center;
@@ -102,7 +103,7 @@
   flex: none;
   flex-direction: column;
   align-items: flex-end;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -111,23 +112,23 @@
 }
 
 .views {
-  color: #fff;
+  color: var(--text-1);
 }
 
 /* Trending's line under the title, For You's words: green when it is speeding up. */
 .speed {
   display: block;
   margin-top: 3px;
-  color: #8b8794;
-  font-size: 12.5px;
+  color: var(--text-2);
+  font-size: 13px;
 }
 
 .dash {
-  color: #8b8794;
+  color: var(--text-2);
 }
 
 .up {
-  color: #2fd47a;
+  color: var(--up);
 }
 
 .down {
@@ -139,9 +140,8 @@
   align-items: center;
   gap: 8px;
   min-height: 36px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #1f1e26;
+  /* Apart from the story above by space, not a rule: the same as a For You card's foot. */
+  margin-top: 14px;
 }
 
 .ticker {
@@ -154,13 +154,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
 }
 
 .coinNone {
   flex: 1;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
 }
 
@@ -176,11 +176,12 @@
 }
 
 .buy {
-  background: #9945ff;
+  background: var(--brand);
   color: #fff;
 }
 
 .create {
-  background: #16151b;
-  color: #f4eeff;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-1);
 }

@@ -1,18 +1,20 @@
-/* The narrative page and its Edit sheet, in the owner's design values of 2026-10-17: page #0B0B0E,
-   cards #111116 with a 1px #1F1E26 border, secondary buttons #16151B, purple #9945FF only for Buy
-   and main actions, text #F4EEFF, labels #8B8794, gains #2FD47A. The coin bar sits where the token
-   page's Buy and Sell panel sits (trade.module.css .bar), so the page's foot clears both. */
+/* The narrative page and its Edit sheet, on the app's tokens (tokens.css): the owner's design of
+   2026-10-17 (cards on a hairline, labels grey, gains green, purple only for Buy and the main
+   action) drawn with the approved system's names, so this page is the same card and the same
+   greys as For You and the Narratives tab. Posts are apart by space, not rules between them. The
+   coin bar sits where the token page's Buy and Sell panel sits (trade.module.css .bar), so the
+   page's foot clears both; its Buy is the approved 56px main button. */
 
 .page {
   min-height: 100vh;
-  background: #0b0b0e;
-  color: #f4eeff;
-  padding-bottom: calc(var(--tabbar-space) + 110px);
+  background: var(--bg);
+  color: var(--text-1);
+  padding-bottom: calc(var(--tabbar-space) + 118px);
 }
 
 .empty {
   padding: 24px var(--gutter);
-  color: #8b8794;
+  color: var(--text-2);
 }
 
 /* ── top ───────────────────────────────────────────────────────────── */
@@ -32,7 +34,7 @@
   height: 44px;
   display: grid;
   place-items: center;
-  color: #f4eeff;
+  color: var(--text-1);
 }
 
 .topRight {
@@ -46,19 +48,28 @@
   height: 44px;
   display: grid;
   place-items: center;
-  color: #f4eeff;
+  color: var(--text-1);
 }
 
 .starred {
-  color: #b48cff;
+  color: var(--text-1);
+}
+
+/* Edit: a 36px pill drawn, a 44px tap (::after), like every control in the top row. */
+.edit::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
 }
 
 .edit {
-  height: 30px;
-  padding: 0 12px;
+  position: relative;
+  height: 36px;
+  padding: 0 14px;
   border-radius: 999px;
-  background: #16151b;
-  color: #f4eeff;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-1);
   font-size: 15px;
   font-weight: 600;
 }
@@ -91,7 +102,7 @@
   display: flex;
   gap: 8px;
   margin-top: 3px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
   white-space: nowrap;
 }
@@ -111,13 +122,13 @@
 }
 
 .totalL {
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 17px;
 }
 
 .why {
   margin: 4px var(--gutter) 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -127,7 +138,7 @@
   column-gap: 10px;
   row-gap: 2px;
   margin: 10px var(--gutter) 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
   font-weight: 500;
 }
@@ -137,7 +148,7 @@
 }
 
 .up {
-  color: #2fd47a;
+  color: var(--up);
 }
 
 .down {
@@ -145,7 +156,7 @@
 }
 
 .plain {
-  color: #f4eeff;
+  color: var(--text-1);
 }
 
 .chartBox {
@@ -158,24 +169,22 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin: 22px var(--gutter) 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #1f1e26;
+  margin: 24px var(--gutter) 4px;
 }
 
 .postsHead h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 600;
 }
 
 .postsHead span {
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
 }
 
 .posts {
-  --badge-ring: #0b0b0e;
+  --badge-ring: var(--bg);
   padding: 0 var(--gutter);
 }
 
@@ -184,8 +193,7 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 0;
-  border-bottom: 1px solid #1f1e26;
+  padding: 10px 0;
   text-align: left;
   color: inherit;
 }
@@ -206,12 +214,20 @@
 }
 
 .rowBy {
-  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.rowHandle {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #8b8794;
-  font-size: 13px;
 }
 
 .rowNums {
@@ -246,11 +262,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 64px;
+  min-height: 72px;
   padding: 8px 8px 8px 14px;
-  border: 1px solid #1f1e26;
+  border: 1px solid var(--card-line);
   border-radius: 22px;
-  background: rgb(17 17 22 / 94%);
+  background: rgb(19 19 23 / 94%);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow-panel);
@@ -285,7 +301,7 @@
 .barSub {
   display: flex;
   gap: 8px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -296,18 +312,18 @@
   flex: 1;
   min-width: 0;
   padding: 4px 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
 }
 
 .barNone b {
-  color: #f4eeff;
+  color: var(--text-1);
   font-size: 16px;
 }
 
 .allCoins {
   padding: 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
   text-align: left;
 }
@@ -315,12 +331,12 @@
 .buy {
   flex: none;
   min-width: 104px;
-  height: 46px;
-  padding: 0 20px;
-  border-radius: 16px;
-  background: #9945ff;
+  height: var(--button-h);
+  padding: 0 22px;
+  border-radius: var(--r-button);
+  background: var(--brand);
   color: #fff;
-  font-size: 17px;
+  font-size: var(--button-size);
   font-weight: 700;
 }
 
@@ -338,7 +354,7 @@
 
 .editHead span {
   margin-top: 2px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 15px;
 }
 
@@ -348,12 +364,12 @@
   gap: 10px;
   width: 100%;
   padding: 12px 0;
-  color: #8b8794;
+  color: var(--text-2);
   text-align: left;
 }
 
 .editRowButton + .editRowButton {
-  border-top: 1px solid #1f1e26;
+  border-top: 1px solid var(--hairline);
 }
 
 .editRowWords {
@@ -365,7 +381,7 @@
 }
 
 .editRowWords b {
-  color: #f4eeff;
+  color: var(--text-1);
   font-size: 17px;
   font-weight: 700;
 }
@@ -383,8 +399,8 @@
 
 .editLabel {
   margin: 16px 0 0;
-  color: #8b8794;
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -392,7 +408,7 @@
 
 .editNote {
   margin: 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
 }
 
@@ -406,9 +422,9 @@
 .editDanger {
   height: 46px;
   border-radius: 14px;
-  background: #16151b;
-  border: 1px solid #1f1e26;
-  color: #f4eeff;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  color: var(--text-1);
   font-size: 15px;
   font-weight: 600;
 }
@@ -430,15 +446,15 @@
   height: 34px;
   padding: 0 14px;
   border-radius: 10px;
-  background: #16151b;
-  border: 1px solid #1f1e26;
-  color: #f4eeff;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  color: var(--text-1);
   font-size: 14px;
   font-weight: 600;
 }
 
 .editSaved {
-  color: #2fd47a;
+  color: var(--up);
 }
 
 .editBack {
@@ -448,7 +464,7 @@
 }
 
 .editLink {
-  color: #b48cff;
+  color: var(--link);
   font-size: 14px;
   font-weight: 600;
 }
@@ -458,14 +474,14 @@
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid #1f1e26;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .editCheck {
   flex: none;
   width: 20px;
   height: 20px;
-  accent-color: #b48cff;
+  accent-color: var(--text-1);
 }
 
 .editRowText {
@@ -483,9 +499,9 @@
   height: 40px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid #1f1e26;
-  background: #111116;
-  color: #f4eeff;
+  border: 1px solid var(--hairline);
+  background: var(--input);
+  color: var(--text-1);
   font-size: 14px;
 }
 
@@ -493,9 +509,9 @@
 .firstCard {
   margin: 18px 16px 0;
   padding: 12px 14px 0;
-  border: 1px solid #2b2440;
-  border-radius: 18px;
-  background: #151320;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
+  background: var(--card);
 }
 
 .firstCard .posts {
@@ -511,18 +527,18 @@
   flex-wrap: wrap;
   gap: 4px 14px;
   padding-bottom: 12px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
 }
 
 .firstTimes b {
-  color: #b48cff;
+  color: var(--text-1);
   font-weight: 700;
 }
 
 .more {
   padding: 16px 0;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 13px;
   text-align: center;
 }
