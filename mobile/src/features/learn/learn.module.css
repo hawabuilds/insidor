@@ -1,4 +1,6 @@
-/* No top padding: Back and the title are the shared title row (shared/ui/screen-header.module.css). */
+/* How Insidor works: Back and the title are the shared title row (shared/ui/screen-header.module.css),
+   so no top padding here. Each part is the app's one card (#131317 on the #1f1f26 hairline) with a
+   section heading on the one type scale (17 at 600), so this page reads like every other. */
 .screen {
   padding: 0 var(--gutter) var(--tabbar-space);
 }
@@ -20,19 +22,20 @@
 .part {
   padding: 16px 18px;
   margin-bottom: 10px;
+  border: 1px solid var(--card-line);
   border-radius: var(--r-card);
   background: var(--card);
 }
 
 .part h2 {
   margin: 0 0 6px;
-  font-size: 15px;
-  font-weight: 800;
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .part p {
   margin: 6px 0 0;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
 }
