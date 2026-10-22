@@ -1,7 +1,7 @@
 /**
  * THE FRONT DOOR — the approved sign-up's first screens (reports/signup/signup.html): Welcome,
  * Create account (or Log in), and for email the address and the six-digit code. Everything is our
- * own screen: Apple, Google and X leave for the provider's own page and come back, and that page is
+ * own screen: X and Google leave for the provider's own page and come back, and that page is
  * the only screen in sign-up that is not Insidor's (the wallet's headless calls,
  * @insidor/wallet-embedded). A wallet is made on the way in with no screen at all.
  *
@@ -138,37 +138,25 @@ function Welcome({ configured, ready, onJoin, onLogIn }: { configured: boolean; 
 
 function Methods({ mode, onBack, onEmail, onLegal }: { mode: 'join' | 'login'; onBack: () => void; onEmail: () => void; onLegal: (p: LegalPage) => void }) {
   const { wallet, state } = useWallet();
-  const [more, setMore] = useState(false);
   const code = pendingCode();
   const check = useCodeCheck(code ?? '');
   const from = check?.state === 'valid' ? check.from : null;
-  const go = (via: 'apple' | 'x' | 'google') => void wallet?.connect(via);
+  const go = (via: 'x' | 'google') => void wallet?.connect(via);
   return (
     <Frame
       progress={progressOf('methods')}
       onBack={onBack}
       foot={
         <>
-          <Primary onClick={() => go('apple')}>
-            <AppleLogo /> Continue with Apple
-          </Primary>
-          <Secondary onClick={() => go('x')}>
+          <Primary onClick={() => go('x')}>
             <XLogo /> Continue with X
+          </Primary>
+          <Secondary onClick={() => go('google')}>
+            <GoogleLogo /> Continue with Google
           </Secondary>
-          {more ? (
-            <>
-              <Secondary onClick={() => go('google')}>
-                <GoogleLogo /> Continue with Google
-              </Secondary>
-              <Secondary onClick={onEmail}>
-                <MailLogo /> Continue with email
-              </Secondary>
-            </>
-          ) : (
-            <TextLink strong onClick={() => setMore(true)}>
-              More options
-            </TextLink>
-          )}
+          <Secondary onClick={onEmail}>
+            <MailLogo /> Continue with email
+          </Secondary>
           <p className={styles['fine']}>
             You confirm you're 18 or older and agree to the{' '}
             <button type="button" onClick={() => onLegal('terms')}>
@@ -415,14 +403,6 @@ export function Holding() {
 /** Insidor's mark: an eye — seeing it first. */
 export function Mark() {
   return <SignUpMark size={40} />;
-}
-
-function AppleLogo() {
-  return (
-    <svg width="18" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
-      <path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.76-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.65ZM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.67-1.09 1.75-.96 2.79 1.02.08 2.05-.51 2.68-1.27Z" />
-    </svg>
-  );
 }
 
 function XLogo() {

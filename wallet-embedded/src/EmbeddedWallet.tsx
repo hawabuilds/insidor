@@ -66,7 +66,7 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
       appId={appId}
       config={{
         /* Our own sign-in screens use these four; each must be switched on in the vendor's dashboard too. */
-        loginMethods: ['email', 'apple', 'google', 'twitter'],
+        loginMethods: ['email', 'google', 'twitter'],
         /* Made on sign-in with no screen; the vendor's approve window is off (see the header). */
         embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' }, showWalletUIs: false },
         /* Outside wallets are joined for viewing only, through the vendor's own connect window. */
