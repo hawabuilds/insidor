@@ -53,7 +53,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 
@@ -279,7 +279,7 @@
 /* People to follow, in Following's place while you follow nobody. */
 .heading {
   margin: 20px 0 4px;
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
   color: var(--text-1);
 }
@@ -339,7 +339,7 @@
   border-radius: 999px;
   background: var(--brand);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 

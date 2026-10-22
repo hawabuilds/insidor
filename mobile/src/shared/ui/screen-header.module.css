@@ -35,14 +35,15 @@
   padding-right: var(--gutter);
 }
 
-/* The page title: one face for every screen. Colour is the screen's own (Narratives' is warmer). */
+/* The page title: one face for every screen, the type scale's screen title (tokens.css, 28 at 700).
+   Colour is the screen's own. */
 .title {
   margin: 0;
   min-width: 0;
   overflow: hidden;
-  font-size: 28px;
+  font-size: var(--type-screen-title);
   line-height: 34px;
-  font-weight: 800;
+  font-weight: var(--type-screen-title-weight);
   letter-spacing: -0.03em;
   color: inherit;
   text-overflow: ellipsis;

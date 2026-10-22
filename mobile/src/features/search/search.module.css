@@ -27,7 +27,7 @@
 .hint {
   margin: 14px var(--gutter);
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
 }
 
@@ -49,7 +49,7 @@
 /* A section heading on the one type scale (tokens.css): 17 at 600, white. */
 .section {
   margin: 24px var(--gutter) 10px;
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
   color: var(--text-1);
 }
@@ -112,7 +112,7 @@
 .excerpt {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -165,12 +165,12 @@
   border-radius: 8px;
   background: var(--tag-bg);
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
 .cap {
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
   white-space: nowrap;
 }

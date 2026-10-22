@@ -131,11 +131,21 @@
   --button-size: 17px;
   --tap: 44px; /* the smallest thing a thumb is asked to hit: back, close, share, star, bell */
 
-  /* One type scale: screen titles 28/800 (ScreenHeader), section headings 16 to 18 at 600, body
-     14 to 16, captions 12 and never under. */
-  --t-section: 17px;
-  --t-body: 15px;
-  --t-caption: 12px;
+  /* ★ THE ONE TYPE SCALE (the owner, 2026-10-22). Size and weight as a pair; a screen picks a step,
+     it never invents a size. Money, prices, market caps, multiples and percentage changes are set
+     in --font-mono (shared/ui/Num.tsx, Value's `num`). Buttons are --button-* above (56/17/700).
+     Nothing is smaller than --type-caption, outside the coin page's top half and the Buy and Sell
+     pop-ups, which are left as they are. */
+  --type-onboarding: 32px; /* the sign-up screens' question */
+  --type-onboarding-weight: 600;
+  --type-screen-title: 28px; /* ScreenHeader */
+  --type-screen-title-weight: 700;
+  --type-section: 17px; /* section headings and sheet titles */
+  --type-section-weight: 600;
+  --type-body: 15px;
+  --type-body-weight: 400;
+  --type-secondary: 13px; /* bylines, meta lines, notes */
+  --type-caption: 12px; /* the floor */
 }
 
 *,

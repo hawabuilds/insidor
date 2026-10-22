@@ -48,8 +48,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
   letter-spacing: -0.015em;
 }
 
@@ -102,7 +102,7 @@
   vertical-align: -5px;
   background: var(--hover);
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   line-height: 1;
 }
@@ -121,7 +121,7 @@
 }
 
 .viewsN {
-  font-size: 16px;
+  font-size: var(--type-body);
   font-weight: 800;
   letter-spacing: -0.02em;
 }
@@ -132,7 +132,7 @@
 .speed {
   grid-area: sortline;
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: var(--type-secondary);
   font-weight: 700;
 }
 
@@ -145,7 +145,7 @@
 }
 
 .viewsL {
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -154,7 +154,7 @@
 
 .summary {
   margin: 10px 0 0;
-  font-size: 14.5px;
+  font-size: var(--type-body);
   line-height: 1.45;
   color: var(--text-2);
 }
@@ -252,7 +252,7 @@
 /* Why a post's own coin is its coin, as facts, on the line under the ticker (coin-status.ts). */
 .facts {
   display: block;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 400;
   color: var(--text-3);
   margin-top: 2px;
@@ -268,7 +268,7 @@
   border-radius: 999px;
   background: var(--tag-bg);
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   line-height: 16px;
   white-space: nowrap;

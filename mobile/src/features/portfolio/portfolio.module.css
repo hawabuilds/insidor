@@ -84,7 +84,7 @@
 
 .label {
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -155,7 +155,7 @@
   border: 0;
   border-radius: 999px;
   font: inherit;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   line-height: 1;
 }
 
@@ -231,7 +231,7 @@
 
 .symbol {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 800;
   letter-spacing: -0.015em;
   text-overflow: ellipsis;
@@ -244,7 +244,7 @@
   border-radius: 6px;
   background: rgb(255 255 255 / 6%);
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.03em;
   line-height: 1;
@@ -254,7 +254,7 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -282,7 +282,7 @@
 .down,
 .faintSmall {
   margin-top: 3px;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -309,14 +309,14 @@
 .section {
   margin: 24px 0 0;
   color: var(--text-1);
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
 }
 
 .empty {
   padding: 40px 0;
   color: var(--text-2);
-  font-size: 13.5px;
+  font-size: var(--type-secondary);
   text-align: center;
 }
 
@@ -326,7 +326,7 @@
 }
 
 .nothing b {
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .nothing p {
@@ -388,7 +388,7 @@
 .sheetNote {
   margin: 0;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 500;
   line-height: 1.5;
   text-align: center;
@@ -400,7 +400,7 @@
   background: var(--input);
   color: var(--text-1);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--type-secondary);
   line-height: 1.55;
   text-align: center;
   word-break: break-all;
@@ -435,7 +435,7 @@
 .moveLine {
   margin-top: 6px;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -443,7 +443,7 @@
 .holdingsLabel {
   margin: 22px 0 0;
   color: var(--text-1);
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
 }
 

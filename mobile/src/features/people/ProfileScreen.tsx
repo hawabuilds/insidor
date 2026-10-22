@@ -162,7 +162,7 @@ function PublicPortfolio({ wallet, at, self }: { wallet: string; at: string; sel
   const read = data !== null && data.kind === 'read' ? data : null;
   return (
     <section className={styles['folio']}>
-      <div className={styles['folioBig']}>{read === null ? '—' : <Value r={formatUsd(read.totalUsd)} />}</div>
+      <div className={styles['folioBig']}>{read === null ? '—' : <Value r={formatUsd(read.totalUsd)} num />}</div>
       <div className={styles['folioLabel']}>Portfolio value</div>
 
       {data === null ? (

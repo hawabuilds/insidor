@@ -34,6 +34,7 @@ import { Holdings } from './HoldingRow.tsx';
 import { asOfWords, gainsNote, rangeLine } from './wallet-view.ts';
 import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './portfolio.module.css';
+import { Num, Nums } from '../../shared/ui/Num.tsx';
 
 export type ChartRange = '1d' | '1w' | '1m' | 'all';
 
@@ -97,13 +98,13 @@ export function Portfolio({
 
         <div className={styles['value']}>
           <div className={styles['big']}>
-            {scrubbed !== null ? `$${scrubbed.value.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : read === null ? '—' : <Value r={formatUsd(read.totalUsd)} />}
+            {scrubbed !== null ? <Num>{`$${scrubbed.value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`}</Num> : read === null ? '—' : <Value r={formatUsd(read.totalUsd)} num />}
           </div>
           {scrubbed !== null ? (
             /* While scrubbing, the line is the moment pointed at. */
             <div className={styles['moveLine']}>{stamp(scrubbed.t)}</div>
           ) : move !== null ? (
-            <div className={`${styles['moveLine']} ${move.tone === 'down' ? styles['downInline'] : styles['upInline']}`}>{move.text}</div>
+            <div className={`${styles['moveLine']} ${move.tone === 'down' ? styles['downInline'] : styles['upInline']}`}><Nums text={move.text} /></div>
           ) : null}
           {scrubbed === null && read !== null && asOf?.total != null ? (
             <div className={styles['moveLine']}>{unread ? `Couldn't read your wallet just now. Worth ${asOfWords(asOf.total, now)}` : `Worth ${asOfWords(asOf.total, now)}`}</div>
@@ -165,7 +166,7 @@ export function Portfolio({
                     <div className={styles['symbolRow']}><span className={styles['symbol']}>{c.ticker ?? '—'}</span><span className={styles['pair']}>Created on Insidor</span></div>
                     <div className={styles['units']}>Market cap</div>
                   </div>
-                  <div className={styles['right']}><div className={styles['worth']}><Value r={formatUsd(c.marketCapUsd)} /></div></div>
+                  <div className={styles['right']}><div className={styles['worth']}><Value r={formatUsd(c.marketCapUsd)} num /></div></div>
                 </a>
               </li>
             ))}

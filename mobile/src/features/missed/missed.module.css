@@ -67,7 +67,7 @@
 
 .rowHead span {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .link {
@@ -75,7 +75,7 @@
   margin-top: 4px;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -141,7 +141,7 @@
 .readUrl {
   overflow: hidden;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

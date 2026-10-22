@@ -64,6 +64,7 @@ import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import styles from './narrative.module.css';
+import { Num } from '../../shared/ui/Num.tsx';
 
 /* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
    carry hundreds of posts, and each row has a picture. A row's height before it is measured, and
@@ -201,7 +202,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         ) : null}
         {checked !== null && mc !== null ? (
           <span>
-            MC <b className={mc >= 0 ? styles['up'] : styles['down']}>{pctText(mc)}</b>
+            MC <b className={mc >= 0 ? styles['up'] : styles['down']}><Num>{pctText(mc)}</Num></b>
           </span>
         ) : null}
         {first !== null ? (
@@ -358,10 +359,10 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
               <span className={styles['barText']}>
                 <span className={styles['barTop']}>
                   <b>{tickerText(face.ticker ?? face.name ?? face.address.slice(0, 4))}</b>
-                  {face.changePct.known ? <span className={face.changePct.amount >= 0 ? styles['up'] : styles['down']}>{pctText(face.changePct.amount)}</span> : null}
+                  {face.changePct.known ? <Num className={face.changePct.amount >= 0 ? styles['up'] : styles['down']}>{pctText(face.changePct.amount)}</Num> : null}
                 </span>
                 <span className={styles['barSub']}>
-                  {state.kind === 'top' ? <span>Top coin, not checked</span> : cap.known ? <Value r={formatUsd(cap)} /> : null}
+                  {state.kind === 'top' ? <span>Top coin, not checked</span> : cap.known ? <Value r={formatUsd(cap)} num /> : null}
                   {all}
                 </span>
               </span>

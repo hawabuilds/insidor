@@ -20,6 +20,7 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { blockedHow, currentPush, disablePush, permission, pushPlace, turnOnPush, type Permission } from './push.ts';
 import styles from './alerts.module.css';
+import { Num } from '../../shared/ui/Num.tsx';
 
 /* The owner's one push (2026-10-20): only a coin that just launched for a For You post reaches the
    phone, at most Policy.notify.launch.perDay a day. Every other switch decides what is written to Notifications, which is
@@ -213,7 +214,7 @@ function Body({ initial }: { initial: Settings }) {
               <div className={styles['chips']} role="group" aria-label="Multiples that notify you">
                 {s.multiplesOffered.map((m) => (
                   <button key={m} type="button" aria-pressed={p.multiples.includes(m)} className={p.multiples.includes(m) ? styles['chipOn'] : styles['chip']} onClick={() => multiple(m)}>
-                    {m}x
+                    <Num>{`${m}x`}</Num>
                   </button>
                 ))}
               </div>

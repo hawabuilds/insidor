@@ -75,6 +75,7 @@ import { pctText } from './mc-change.ts';
 import { useMcChange } from './useMcChange.ts';
 import { useOpenedPost } from '../owner/useSeen.ts';
 import styles from './post-sheet.module.css';
+import { Num } from '../../shared/ui/Num.tsx';
 
 export interface PostSheetProps {
   /** The feed post's id: `RisingPost.id`, or `AboutPost.postId` on a coin page. */
@@ -324,7 +325,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
               ) : null}
               {proven !== null && mc !== null ? (
                 <span>
-                  MC <b className={mc >= 0 ? styles['upText'] : styles['downText']}>{pctText(mc)}</b>
+                  MC <b className={mc >= 0 ? styles['upText'] : styles['downText']}><Num>{pctText(mc)}</Num></b>
                 </span>
               ) : null}
               {first !== null ? (

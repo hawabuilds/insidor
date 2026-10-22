@@ -47,7 +47,7 @@
 
 .stat dt {
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -147,12 +147,12 @@
 .section {
   margin: 24px 0 0;
   color: var(--text-1);
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
 }
 
 .kicker {
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -189,7 +189,7 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.35;
 }
 
@@ -216,7 +216,7 @@
   display: block;
   margin-top: 8px;
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 

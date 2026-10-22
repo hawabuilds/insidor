@@ -41,7 +41,7 @@
   border-radius: 999px;
   background: var(--card);
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -69,14 +69,14 @@
 
 .handle {
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 
 .bio {
   margin: 12px 0 0;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -85,7 +85,7 @@
   display: flex;
   gap: 16px;
   margin-top: 12px;
-  font-size: 14px;
+  font-size: var(--type-body);
   color: var(--text-3);
 }
 
@@ -109,7 +109,7 @@
   flex: 1;
   height: 40px;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
 }
 
@@ -135,8 +135,8 @@
 
 .cardText b {
   display: block;
-  font-size: 16px;
-  font-weight: 800;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
 }
 
 .cardText span {
@@ -154,7 +154,7 @@
 
 .note {
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
 }
 
@@ -188,7 +188,7 @@
 .position {
   width: 26px;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 800;
   text-align: center;
 }
@@ -202,7 +202,7 @@
 }
 
 .rep {
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -218,7 +218,7 @@
   background: var(--input);
   color: var(--text-1);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--type-body);
   resize: vertical;
 }
 
@@ -310,7 +310,7 @@
   height: 36px;
   padding: 0 16px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 

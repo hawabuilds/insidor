@@ -11,11 +11,13 @@
 import { pendingLabel, type Rendered } from '../format/rendered.ts';
 import styles from './ui.module.css';
 
-export function Value({ r, className }: { r: Rendered; className?: string | undefined }) {
-  if (r.kind === 'value') return <span className={className}>{r.text}</span>;
+/** `num`: a money value, price, market cap, multiple or percentage, set in the number face (Num.tsx). */
+export function Value({ r, className, num = false }: { r: Rendered; className?: string | undefined; num?: boolean }) {
+  const cls = num ? `${styles['num']} ${className ?? ''}` : className;
+  if (r.kind === 'value') return <span className={cls}>{r.text}</span>;
   const why = pendingLabel(r.reason);
   return (
-    <span className={`${className ?? ''} ${styles['pending']}`} title={why} aria-label={why}>
+    <span className={`${cls ?? ''} ${styles['pending']}`} title={why} aria-label={why}>
       {r.text}
     </span>
   );

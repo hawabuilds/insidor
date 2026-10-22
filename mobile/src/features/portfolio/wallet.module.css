@@ -15,7 +15,7 @@
 .note {
   max-width: 32ch;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
   text-align: center;
 }
@@ -78,7 +78,7 @@
 .lead {
   margin: 0 0 14px;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
 }
 
@@ -97,13 +97,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .walletCard span {
   color: var(--text-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
+  font-size: var(--type-secondary);
 }
 
 .walletCard a {
@@ -118,7 +118,7 @@
   padding: 2px 6px;
   border-radius: 999px;
   font-family: inherit;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -168,7 +168,7 @@
   border-radius: 14px;
   border: 1px solid rgb(239 69 74 / 35%);
   background: var(--down-wash);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .warning b {
@@ -191,7 +191,7 @@
   background: var(--input);
   color: var(--text-1);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .keyRow {
@@ -214,6 +214,6 @@
 .signedOut p {
   margin: 8px 0 14px;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: var(--type-body);
   line-height: 1.5;
 }

@@ -99,16 +99,16 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null,
   return (
     <div className={styles['info']}>
       <dl className={styles['stats']}>
-        <Stat label="Liquidity"><Value r={formatUsd(liquidity)} /></Stat>
-        <Stat label="24h volume"><Value r={formatUsd(volume)} /></Stat>
-        <Stat label="Market cap"><Value r={formatUsd(cap)} /></Stat>
-        <Stat label="Price"><Value r={formatPrice(price)} /></Stat>
+        <Stat label="Liquidity"><Value r={formatUsd(liquidity)} num /></Stat>
+        <Stat label="24h volume"><Value r={formatUsd(volume)} num /></Stat>
+        <Stat label="Market cap"><Value r={formatUsd(cap)} num /></Stat>
+        <Stat label="Price"><Value r={formatPrice(price)} num /></Stat>
         <Stat label="Holders"><Value r={formatCount(about?.holders ?? unread)} /></Stat>
         <Stat label="Priced in">{pricedIn ?? <Value r={pendingRendered('not_read_yet')} />}</Stat>
         <Stat label="Vol / liq">{turnover === null ? <Value r={pendingRendered('not_reported')} /> : <Value r={turnover} />}</Stat>
         <Stat label="24h change" tone={change.direction}>
           {change.direction === 'up' ? '▲ ' : change.direction === 'down' ? '▼ ' : ''}
-          <Value r={change.text} />
+          <Value r={change.text} num />
         </Stat>
       </dl>
 

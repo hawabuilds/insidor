@@ -10,7 +10,7 @@
 
 .kicker {
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;

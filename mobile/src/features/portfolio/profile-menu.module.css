@@ -78,7 +78,7 @@
 }
 
 .whoText b {
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 800;
   letter-spacing: -0.01em;
 }
@@ -115,7 +115,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--type-secondary);
   font-weight: 700;
 }
 
@@ -124,14 +124,14 @@
   border-radius: 999px;
   background: var(--tag-bg);
   color: var(--text-1);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
 .card p {
   margin: 2px 0 0;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   line-height: 1.4;
 }
 
@@ -149,7 +149,7 @@
   text-overflow: ellipsis;
   color: var(--text-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 500;
 }
 
@@ -181,7 +181,7 @@
   gap: 8px;
   border-radius: 10px;
   color: var(--text-1);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
   text-align: left;
   text-decoration: none;
@@ -251,7 +251,7 @@
 .sheetSection {
   margin: 16px 2px 4px;
   color: var(--text-1);
-  font-size: var(--t-section);
+  font-size: var(--type-section);
   font-weight: 600;
 }
 
@@ -272,7 +272,7 @@
 
 .switchText b {
   display: block;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
   color: var(--text-1);
 }
@@ -281,7 +281,7 @@
   display: block;
   margin-top: 1px;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   line-height: 1.35;
 }
 
