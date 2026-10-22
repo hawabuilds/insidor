@@ -169,6 +169,13 @@
   overflow: hidden;
   grid-template-rows: minmax(0, 1fr) auto;
   padding-top: 0;
+  /* Clear of the home bar with room to breathe: the spare height goes here and above the buttons,
+     not to the empty top of the cards (the owner, 2026-10-23: "squished at the bottom"). */
+  padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 20px));
+}
+
+.welcome .foot {
+  padding-top: 32px;
 }
 
 .welcomeTop {
@@ -177,17 +184,18 @@
   min-height: 0;
 }
 
-/* The two cards in a column, centred in whatever height is left: only the post picture gives way
+/* The two cards in a column at the foot of whatever height is left (the room above them is the
+   status bar's side of the screen, where empty space reads as calm, not as a gap): only the post picture gives way
    on a short phone (.postPic), so the cards never overlap each other or the wordmark. */
 .hero {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 10px;
   min-height: 0;
   margin: 0 -24px;
-  padding: 16px 28px 0;
+  padding: 12px 28px 0;
 }
 
 .postCard {
@@ -278,7 +286,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 28px;
 }
 
 .wordmark {
