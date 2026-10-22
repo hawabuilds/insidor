@@ -187,8 +187,25 @@ export type SendOutcome =
   | { readonly kind: 'not-sent'; readonly why: string }
   | { readonly kind: 'failed'; readonly code: WalletFailure };
 
-/** The sign-in methods a person can choose on the front door. */
-export type SignInVia = 'x' | 'google';
+/**
+ * The sign-in methods a person can choose on the front door that go through the provider's own
+ * page (Apple, Google, X). Email is not here: it is two steps on our own screens, below.
+ */
+export type SignInVia = 'x' | 'google' | 'apple';
+
+/**
+ * What came of asking for an email sign-in code, as a closed set: the provider's words never
+ * reach a screen. `invalid-email` is an address it would not send to; `too-many` is asking too
+ * often; `unavailable` is a build with no sign-in.
+ */
+export type EmailCodeSent = 'sent' | 'invalid-email' | 'too-many' | 'failed' | 'unavailable';
+
+/**
+ * What came of the code the person typed. `signed-in` means the code was right: the wallet's state
+ * then moves to `connecting` and `connected` as for any sign-in. `wrong-code` may be tried again;
+ * `expired` needs a new code (it timed out, or was tried too often).
+ */
+export type EmailCodeResult = 'signed-in' | 'wrong-code' | 'expired' | 'too-many' | 'failed' | 'unavailable';
 
 /** Who signed in, as their sign-in account shows them. Every field may be missing. */
 export interface WalletIdentity {
@@ -207,6 +224,10 @@ export interface Wallet {
    * the sign-in to go straight to; without it the wallet offers every one it has.
    */
   connect(via?: SignInVia): Promise<WalletState>;
+  /** Email sign-in, step one: send a six-digit code to this address. Never rejects. */
+  sendEmailCode(email: string): Promise<EmailCodeSent>;
+  /** Email sign-in, step two: the code from that email. Never rejects. */
+  signInWithEmailCode(code: string): Promise<EmailCodeResult>;
   /** Drops the connection on our side. Resolves even if the wallet has already gone. */
   disconnect(): Promise<void>;
   /** A signer for the connected account, or null. See the note above. */

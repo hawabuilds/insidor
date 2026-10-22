@@ -15,12 +15,16 @@
  *   - `signer()` is null in this phase: nothing signs until the trade path exists (Phase 5),
  *     and a signer handed out before then is a capability nobody asked for.
  *
+ * Sign-in is ours to draw (the owner, 2026-10-22: no vendor screens): Apple, Google and X leave for
+ * the provider's own page and come back; email is two calls, a code sent and a code typed, each
+ * answered with a closed word (`emailErrorOf`), never the vendor's message.
+ *
  * What breaks if changed carelessly: there is no member here through which key material could
  * pass — no export, no import, no reveal. The vendor offers all three; this package uses none,
  * and a later change that wires one in has put a key one bug away from a log.
  */
 
-import type { LinkOutcome, SendOutcome, SignInVia, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
+import type { EmailCodeResult, EmailCodeSent, LinkOutcome, SendOutcome, SignInVia, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
 
 /** What the vendor's hooks say, reduced to the three facts the port needs. */
 export interface Snapshot {
@@ -38,8 +42,12 @@ export interface Snapshot {
 }
 
 export interface Actions {
-  /** Opens the vendor's sign-in — the chosen method, or all of them. Its outcome arrives through `Bridge.signInEnded`. */
+  /** Leaves for the provider's own sign-in page (Apple, Google, X). Its outcome arrives through `Bridge.signInEnded`, after the page comes back. */
   signIn(via?: SignInVia): void;
+  /** Email sign-in, step one: the vendor sends a code. Throws the vendor's error; `emailErrorOf` reads it. */
+  sendEmailCode(email: string): Promise<void>;
+  /** Email sign-in, step two. Resolves once the vendor accepted the code; throws the vendor's error otherwise. */
+  loginWithEmailCode(code: string): Promise<void>;
   signOut(): Promise<void>;
   /** Opens the vendor's own export window for the embedded wallet. Resolves when it closes; carries nothing back. */
   showExport(): Promise<unknown>;
@@ -52,12 +60,27 @@ export interface Actions {
 /** Sends a signed transaction: the trade service, which broadcasts it. */
 export type Broadcast = (signed: Uint8Array) => Promise<{ readonly ok: true; readonly ref: string } | { readonly ok: false; readonly why: string }>;
 
+/**
+ * A vendor error from the email sign-in, as one of our closed words — read from the vendor's code
+ * field and nothing else, so its message never reaches a screen. Pure, and tested.
+ */
+export function emailErrorOf(e: unknown): 'wrong-code' | 'expired' | 'too-many' | 'invalid-email' | 'failed' {
+  const code = typeof e === 'object' && e !== null ? (e as { privyErrorCode?: unknown }).privyErrorCode : undefined;
+  if (code === 'invalid_credentials') return 'wrong-code';
+  if (code === 'too_many_requests') return 'too-many';
+  if (code === 'invalid_data' || code === 'disallowed_plus_email') return 'invalid-email';
+  if (code === 'missing_or_invalid_token') return 'expired';
+  return 'failed';
+}
+
 /** The vendor's ways of saying the person closed or declined its signing prompt. */
 const DECLINED = /reject|declin|cancel|closed|exited/i;
 
 export interface Bridge {
   snapshot(s: Snapshot): void;
   actions(a: Actions | null): void;
+  /** A sign-in is under way that no tap here started: the provider's page came back and is being finished. */
+  signInPending(): void;
   /** How a sign-in the person started ended: done, closed by them, or an error. */
   signInEnded(outcome: 'done' | 'closed' | 'error'): void;
   /** How joining an outside wallet ended. Only a word: the vendor's account object is not passed on. */
@@ -128,6 +151,31 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
       }
       publish();
     },
+    async sendEmailCode(email: string): Promise<EmailCodeSent> {
+      if (act === null) return 'unavailable';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'invalid-email';
+      try {
+        await act.sendEmailCode(email.trim());
+        return 'sent';
+      } catch (e) {
+        const word = emailErrorOf(e);
+        return word === 'wrong-code' || word === 'expired' ? 'failed' : word;
+      }
+    },
+    async signInWithEmailCode(code: string): Promise<EmailCodeResult> {
+      if (act === null) return 'unavailable';
+      if (!/^\d{6}$/.test(code)) return 'wrong-code';
+      try {
+        await act.loginWithEmailCode(code);
+      } catch (e) {
+        const word = emailErrorOf(e);
+        return word === 'invalid-email' ? 'failed' : word;
+      }
+      /* The code was right: the snapshot that follows says signed in, and the wallet is made. */
+      if (!(snap.signedIn && snap.address !== null)) attempt = 'pending';
+      publish();
+      return 'signed-in';
+    },
     signer: () => null,
     sessionToken: () => (snap.signedIn ? (snap.token ?? null) : null),
     linkedWallets: () => (snap.signedIn ? (snap.linked ?? []) : []),
@@ -192,6 +240,11 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
     },
     actions(a) {
       act = a;
+      publish();
+    },
+    signInPending() {
+      if (snap.signedIn && snap.address !== null) return;
+      attempt = 'pending';
       publish();
     },
     signInEnded(outcome) {
