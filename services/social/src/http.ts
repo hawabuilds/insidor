@@ -28,7 +28,15 @@ const PHOTO_PATH = '/onboarding/picture';
 const MAX_PHOTO_BODY_BYTES = 600 * 1024;
 
 /** How big a body this path may carry: the photo route its photo, every other route a small JSON body. */
-export const bodyLimitFor = (url: string): number => (url.split('?')[0] === PHOTO_PATH ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES);
+
+/* A picture or banner upload (profile-media.ts) carries the image as a data URL: a 2 MB file is
+   about 2.7 MB of text. Only those two paths are let past the small bound. */
+const MAX_PICTURE_BODY_BYTES = 3 * 1024 * 1024;
+const PICTURE_PATH = /^\/me\/(picture|banner)(\?|$)/;
+
+/** How big a body this path may carry: a photo route its photo, every other route a small JSON body. */
+export const bodyLimitFor = (url: string): number =>
+  url.split('?')[0] === PHOTO_PATH ? MAX_PHOTO_BODY_BYTES : PICTURE_PATH.test(url) ? MAX_PICTURE_BODY_BYTES : MAX_BODY_BYTES;
 
 export const json = (status: number, value: unknown): Reply => ({ status, body: JSON.stringify(value) });
 

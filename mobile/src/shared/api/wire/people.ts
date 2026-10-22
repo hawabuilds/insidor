@@ -10,6 +10,8 @@ export interface PersonRef {
   readonly handle: string | null;
   readonly name: string | null;
   readonly pictureUrl: string | null;
+  /** Their own uploaded picture, a file in the faces folder, tried before `pictureUrl`; absent from an older service. */
+  readonly pictureFile?: string | null;
   readonly rank: RankId;
 }
 
@@ -31,6 +33,12 @@ export interface ProfileCard extends Omit<PersonRef, 'rank'> {
   readonly isMe: boolean;
   /** "Show my trades to followers": theirs to see only, so null on anyone else's profile. */
   readonly tradesPublic?: boolean | null;
+  /** Their uploaded banner, a file in the faces folder; null or absent draws the default pattern. */
+  readonly bannerFile?: string | null;
+  /** Their X account's handle, for the X button; null or absent when there is none. */
+  readonly xHandle?: string | null;
+  /** People you follow who follow them: how many, and up to three. Null on your own profile or signed out; absent from an older service. */
+  readonly mutuals?: { readonly count: number; readonly people: readonly Omit<PersonRef, 'rank'>[] } | null;
 }
 
 export interface Comment {

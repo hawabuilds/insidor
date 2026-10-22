@@ -18,6 +18,7 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
+import { decodeCatches, type Catches } from './catches.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodeNarrativesPage, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
@@ -248,7 +249,7 @@ export async function fetchPortfolio(address: string, range: PortfolioRange, sig
 }
 
 /** The balance chart's points for a wallet, oldest first. Empty until the wallet has been read over time. */
-export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '1m' | 'all', signal?: AbortSignal): Promise<readonly { readonly t: number; readonly value: number }[]> {
+export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '1m' | '3m' | 'all', signal?: AbortSignal): Promise<readonly { readonly t: number; readonly value: number }[]> {
   const raw = await read(`/wallet/${encodeURIComponent(address)}/history?range=${range}`, signal);
   const points = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['points'] : null;
   if (!Array.isArray(points)) return [];
@@ -256,6 +257,11 @@ export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '
     const o = typeof p === 'object' && p !== null ? (p as Record<string, unknown>) : {};
     return typeof o['t'] === 'number' && typeof o['value'] === 'number' && Number.isFinite(o['value']) && o['value'] >= 0 ? [{ t: o['t'], value: o['value'] }] : [];
   });
+}
+
+/** A profile's stats strip and its "Early" tags: the wallet's catches (services/read catches.ts). */
+export async function fetchCatches(address: string, signal?: AbortSignal): Promise<Catches> {
+  return decodeCatches(await read(`/wallet/${encodeURIComponent(address)}/catches`, signal));
 }
 
 /** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */

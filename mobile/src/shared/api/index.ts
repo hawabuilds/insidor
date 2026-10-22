@@ -14,6 +14,7 @@ export type { PostSheetData, SheetCoin, SheetMedia, ViewReading } from './post-s
 export type { StoryMember, StorySheet } from './story-sheet.ts';
 export type { BuildResult, Holding as TradeHolding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
 export type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
+export type { Catches, CatchStat, CatchWhy } from './catches.ts';
 export type { NameIdea, OriginGap, SameNameCoin, SameNameCoins, SearchCoin, TickerUse, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
@@ -37,6 +38,7 @@ export {
   previewLaunch,
   buildTransfer,
   fetchPortfolio,
+  fetchCatches,
   fetchWalletHistory,
   fetchHolding,
   fetchSearch,
