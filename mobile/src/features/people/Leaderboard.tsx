@@ -34,7 +34,11 @@ export function Leaderboard() {
         ? loaded.value.rows.map((r) => (
             <a key={r.userId} className={`${styles['row']} ${r.isMe ? styles['me'] : ''}`} href={hrefFor({ screen: 'profile', key: r.handle ?? r.userId })}>
               <span className={styles['position']}>{r.position}</span>
-              <Avatar name={r.name ?? r.handle} seed={r.userId} src={r.pictureUrl} size={40} />
+              {r.isMe ? (
+                <span className={styles['ownRing']}><Avatar name={r.name ?? r.handle} seed={r.userId} src={r.pictureUrl} size={40} /></span>
+              ) : (
+                <Avatar name={r.name ?? r.handle} seed={r.userId} src={r.pictureUrl} size={40} />
+              )}
               <div className={styles['rowText']}>
                 <b>{r.name ?? `@${r.handle ?? 'someone'}`}</b>
                 <span>{RANK_NAME[r.rank]}</span>
