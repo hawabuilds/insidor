@@ -9,10 +9,10 @@
   width: calc(100% - 2 * var(--gutter));
   /* 16px under the title's own box, as before the shared row (whose box ends 7px below it). */
   margin: 9px var(--gutter) 12px;
-  padding: 13px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
-  background: var(--input);
+  padding: 15px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-button);
+  background: var(--card);
   color: var(--text-1);
   font: inherit;
   font-size: 16px;
@@ -20,7 +20,8 @@
 
 .input:focus {
   outline: none;
-  border-color: var(--brand);
+  /* Focus is the approved input's lighter edge, not purple: purple is the main action only. */
+  border-color: var(--select-line);
 }
 
 .hint {
@@ -45,13 +46,12 @@
   margin-right: var(--gutter);
 }
 
+/* A section heading on the one type scale (tokens.css): 17 at 600, white. */
 .section {
-  margin: 22px var(--gutter) 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  margin: 24px var(--gutter) 10px;
+  font-size: var(--t-section);
+  font-weight: 600;
+  color: var(--text-1);
 }
 
 .sectionRow .section {
@@ -61,10 +61,11 @@
 .order {
   display: flex;
   gap: 4px;
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .order button {
+  min-height: 32px;
   padding: 5px 10px;
   border: 0;
   border-radius: var(--r-pill);
@@ -76,8 +77,8 @@
 }
 
 .order button.on {
-  background: var(--card);
-  color: var(--text-1);
+  background: var(--select-bg);
+  color: var(--select-ink);
 }
 
 .row {
@@ -85,7 +86,8 @@
   align-items: center;
   gap: 12px;
   margin: 0 var(--gutter) 8px;
-  padding: 10px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--card-line);
   border-radius: var(--r-card);
   background: var(--card);
   color: inherit;
@@ -122,12 +124,12 @@
   flex-wrap: wrap;
   gap: 4px 12px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .meta b {
   color: var(--text-2);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .live {
@@ -151,7 +153,7 @@
 }
 
 .bonded {
-  color: var(--brand-300);
+  color: var(--text-1);
   font-weight: 700;
 }
 
@@ -160,9 +162,9 @@
   margin-top: 2px;
   padding: 3px 8px;
   border-radius: 8px;
-  background: var(--brand-wash);
-  color: var(--brand-200);
-  font-size: 11.5px;
+  background: var(--select-bg);
+  color: var(--text-2);
+  font-size: var(--t-caption);
   font-weight: 700;
 }
 
@@ -173,7 +175,9 @@
 }
 
 .origin {
-  color: var(--brand-400);
-  font-weight: 700;
-  text-decoration: none;
+  color: var(--link);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
+  text-underline-offset: 2px;
 }
