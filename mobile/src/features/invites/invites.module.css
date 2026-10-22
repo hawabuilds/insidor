@@ -90,7 +90,7 @@
   padding: 6px 4px;
   border: 0;
   background: none;
-  color: var(--brand-300);
+  color: var(--link);
   font: inherit;
   font-weight: 700;
 }
