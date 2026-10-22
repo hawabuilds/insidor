@@ -204,7 +204,7 @@
   font-size: var(--type-secondary);
 }
 
-.reach {
+.who .reach {
   margin-left: auto;
   color: var(--up);
   font-family: var(--font-mono);
