@@ -1,4 +1,6 @@
-/* Trador's settings menu: a gear, and a panel anchored under its right edge. */
+/* Trador's settings menu: a gear, and a panel anchored under its right edge, with the sheets its
+   rows open. On the approved system (tokens.css): every icon button a 44px tap, no text under 12px,
+   tags and the on switch white and grey (green is a price going up, purple the main action). */
 
 .root {
   position: relative;
@@ -7,8 +9,8 @@
 
 /* A round button, the QR button's twin beside it (portfolio.module.css .round). */
 .gear {
-  width: 38px;
-  height: 38px;
+  width: var(--tap);
+  height: var(--tap);
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -89,8 +91,8 @@
 
 /* The pencil: Edit profile. */
 .edit {
-  width: 32px;
-  height: 32px;
+  width: var(--tap);
+  height: var(--tap);
   flex-shrink: 0;
   display: grid;
   place-items: center;
@@ -120,16 +122,16 @@
 .active {
   padding: 2px 6px;
   border-radius: 999px;
-  background: var(--up-wash);
-  color: var(--up);
-  font-size: 10px;
+  background: var(--select-bg);
+  color: var(--text-1);
+  font-size: var(--t-caption);
   font-weight: 700;
 }
 
 .card p {
   margin: 2px 0 0;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--t-caption);
   line-height: 1.4;
 }
 
@@ -147,18 +149,27 @@
   text-overflow: ellipsis;
   color: var(--text-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
+  font-size: var(--t-caption);
   font-weight: 500;
 }
 
+/* Copy and open: 28px drawn, a 44px touch through ::after. */
 .address button,
 .address a {
+  position: relative;
   width: 28px;
   height: 28px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   color: var(--text-2);
+}
+
+.address button::after,
+.address a::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 
 .row {
@@ -238,12 +249,10 @@
 }
 
 .sheetSection {
-  margin: 14px 2px 2px;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  margin: 16px 2px 4px;
+  color: var(--text-1);
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .leave,
@@ -272,7 +281,7 @@
   display: block;
   margin-top: 1px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--t-caption);
   line-height: 1.35;
 }
 
@@ -298,7 +307,11 @@
 }
 
 .toggleOn {
-  background: var(--brand);
+  background: var(--text-1);
+}
+
+.toggleOn i {
+  background: var(--bg);
 }
 
 .toggleOn i {

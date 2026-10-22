@@ -1,3 +1,7 @@
+/* The Send sheet's form (SendSheet.tsx): its kicker, the address and amount fields, the line under
+   them and the explorer link. Separate from the sheet because the sheet is the shared one. On the
+   approved system: the fields are the 17px-cornered input, the link white and underlined. */
+
 .form {
   display: flex;
   flex-direction: column;
@@ -6,7 +10,7 @@
 
 .kicker {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -16,8 +20,8 @@
   box-sizing: border-box;
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-button);
   background: var(--input);
   color: var(--text-1);
   font: inherit;
@@ -32,6 +36,8 @@
 }
 
 .link {
-  color: var(--brand-400);
-  font-weight: 700;
+  color: var(--link);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

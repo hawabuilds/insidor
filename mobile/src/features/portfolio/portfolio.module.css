@@ -1,4 +1,7 @@
-/* Trador's Stonkfolio, in Insidor's tokens: the same sizes, weights and washes. */
+/* Trador's Stonkfolio, in Insidor's tokens: the same sizes, weights and washes, on the approved
+   system's type scale (tokens.css): no text under 12px, section headings 17 at 600 in sentence
+   case rather than 10px capitals, the chosen range on the chosen grey, the QR button a 44px tap.
+   The header's who-you-are row is the profile redesign's and is left as it is. */
 
 .page {
   min-width: 0;
@@ -81,7 +84,7 @@
 
 .label {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -146,12 +149,22 @@
 
 .pill,
 .pillOn {
-  padding: 3px 8px;
+  position: relative;
+  min-height: 26px;
+  padding: 3px 10px;
   border: 0;
   border-radius: 999px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--t-caption);
   line-height: 1;
+}
+
+/* Each range answers a 44px-tall touch: an invisible edge, the look unchanged. */
+.pill::before,
+.pillOn::before {
+  content: '';
+  position: absolute;
+  inset: -9px -1px;
 }
 
 .pill {
@@ -161,10 +174,10 @@
 }
 
 .pillOn {
-  background: var(--input);
-  color: var(--text-1);
-  font-weight: 800;
-  box-shadow: 0 0 0 1px var(--border-subtle);
+  background: var(--select-bg);
+  color: var(--select-ink);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--select-line);
 }
 
 .chart {
@@ -231,8 +244,8 @@
   border-radius: 6px;
   background: rgb(255 255 255 / 6%);
   color: var(--text-2);
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: var(--t-caption);
+  font-weight: 700;
   letter-spacing: 0.03em;
   line-height: 1;
 }
@@ -241,7 +254,7 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -269,7 +282,7 @@
 .down,
 .faintSmall {
   margin-top: 3px;
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 700;
 }
 
@@ -295,11 +308,9 @@
 
 .section {
   margin: 24px 0 0;
-  color: var(--text-3);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--text-1);
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .empty {
@@ -377,7 +388,7 @@
 .sheetNote {
   margin: 0;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 500;
   line-height: 1.5;
   text-align: center;
@@ -409,8 +420,8 @@
 
 /* The QR button: round, the gear's twin. */
 .round {
-  width: 38px;
-  height: 38px;
+  width: var(--tap);
+  height: var(--tap);
   flex-shrink: 0;
   display: grid;
   place-items: center;
@@ -430,12 +441,10 @@
 }
 
 .holdingsLabel {
-  margin: 20px 0 0;
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 22px 0 0;
+  color: var(--text-1);
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .qr {
