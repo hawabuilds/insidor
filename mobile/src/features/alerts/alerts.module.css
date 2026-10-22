@@ -1,7 +1,8 @@
 /*
  * The Feed tab, its Notifications and the Feed settings sheet: Trador's Feed, Notifications and
- * notification settings, measured from its Tailwind classes and written in Insidor's tokens (the
- * same purple, washes and shadows). Kept in one module because the three screens share the
+ * notification settings, measured from its Tailwind classes and written in Insidor's tokens. On
+ * the approved system (tokens.css): the chosen tab, segment, chip and switch, the unread dot and
+ * the bell's count are white and grey, never purple; purple is the screen's one main action. Kept in one module because the three screens share the
  * header, the faces and the rows. What breaks if changed carelessly: the sticky header must stay
  * opaque, or rows scroll visibly through the title.
  */
@@ -60,7 +61,7 @@
   color: var(--text-1);
 }
 
-/* The bell's count: Trador's 18px brand pill at the top right, 9+ past nine. */
+/* The bell's count: Trador's 18px pill at the top right, 9+ past nine, white with dark figures. */
 .count {
   position: absolute;
   top: 4px;
@@ -71,14 +72,14 @@
   display: grid;
   place-items: center;
   border-radius: 9px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 11px;
+  background: var(--text-1);
+  color: var(--bg);
+  font-size: var(--t-caption);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-/* Trador's PanelTabs at md, start: labels together, 24px apart, a 2px brand rule under the current one. */
+/* Trador's PanelTabs at md, start: labels together, 24px apart, a 2px white rule under the current one. */
 .tabs {
   display: flex;
   gap: 24px;
@@ -110,7 +111,7 @@
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
-  background: var(--brand);
+  background: var(--text-1);
 }
 
 .windowRow {
@@ -140,9 +141,8 @@
 }
 
 .segment .segmentOn {
-  background: var(--input);
-  color: var(--text-1);
-  box-shadow: var(--shadow-tab-active);
+  background: var(--select-bg);
+  color: var(--select-ink);
 }
 
 .list {
@@ -151,7 +151,7 @@
   list-style: none;
 }
 
-/* The row's face when it is not a coin or a rank: Trador's brand-wash circle. */
+/* The row's face when it is not a coin or a rank: a grey circle, the monogram's (Avatar.tsx). */
 .face {
   width: 40px;
   height: 40px;
@@ -159,8 +159,8 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--brand-wash);
-  color: var(--brand);
+  background: var(--select-bg);
+  color: var(--text-1);
   font-size: 15px;
   font-weight: 600;
 }
@@ -309,7 +309,8 @@
   background: var(--card);
 }
 
-/* Trador's Follow back on a follow row: a 36px brand pill, centred on the row, in a 44px tap area. */
+/* Trador's Follow back on a follow row: a 36px white pill (the Feed's Follow), centred on the row,
+   in a 44px tap area. */
 .followBack {
   align-self: center;
   flex-shrink: 0;
@@ -324,10 +325,10 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 999px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
+  background: var(--text-1);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .following {
@@ -358,15 +359,13 @@
   color: var(--text-1);
 }
 
-/* Notifications: Trador's group headings and rows. */
+/* Notifications: group headings on the one type scale (section, 17 at 600) and Trador's rows. */
 .section {
   margin: 0;
-  padding: 20px 16px 4px;
-  font-size: 12px;
+  padding: 22px 16px 6px;
+  font-size: var(--t-section);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-1);
 }
 
 .note {
@@ -382,13 +381,14 @@
   background: var(--hover);
 }
 
-/* What is new: a small purple dot on the app's dark rows. */
+/* What is new: a small white dot on the app's dark rows. */
 .note {
   border: 1px solid transparent;
   border-radius: 16px;
 }
 
-/* Unread: the app's own dark look with a small purple dot (the owner, 2026-10-18: the purple card was too loud). */
+/* Unread: the app's own dark look with a small dot (the owner, 2026-10-18: the purple card was too
+   loud); white since the approved system kept purple for the main action. */
 .note.unread {
   position: relative;
 }
@@ -401,14 +401,14 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--text-1);
 }
 
 /* The settings button on Notifications: round. */
 .roundButton {
   border-radius: 999px;
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
 }
 
 .noteText {
@@ -489,6 +489,7 @@
   padding: 14px 16px;
   border-radius: var(--r-card);
   background: var(--card);
+  border: 1px solid var(--card-line);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -509,6 +510,7 @@
   padding: 4px 16px;
   border-radius: var(--r-card);
   background: var(--card);
+  border: 1px solid var(--card-line);
 }
 
 .setRow {
@@ -516,12 +518,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 0;
-}
-
-.setRow + .setRow,
-.set > div + div .setRow {
-  border-top: 1px solid var(--border-subtle);
+  /* Rows apart by space, no rule between them (the approved system). */
+  padding: 14px 0;
 }
 
 .setRow b {
@@ -533,7 +531,7 @@
   display: block;
   margin-top: 2px;
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -558,8 +556,13 @@
   transition: transform 0.15s;
 }
 
+/* On: a white track and a dark knob, as the approved system draws a chosen thing. */
 .switchOn {
-  background: var(--brand);
+  background: var(--text-1);
+}
+
+.switchOn span {
+  background: var(--bg);
 }
 
 .switchOn span {
@@ -588,8 +591,9 @@
 }
 
 .chipOn {
-  background: rgb(153 69 255 / 20%);
-  color: var(--text-1);
+  background: var(--select-bg);
+  color: var(--select-ink);
+  box-shadow: inset 0 0 0 1px var(--select-line);
 }
 
 .stepper {
@@ -654,9 +658,12 @@
 .link {
   display: block;
   padding: 0 0 12px;
-  color: var(--brand);
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--link);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
+  text-underline-offset: 3px;
 }
 
 /* The notifications ask after sign-in (PushAsk.tsx), in the shared sheet: one line of what is sent, then its two buttons full width. */
@@ -685,14 +692,14 @@
 .noteCard {
   display: block;
   padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
   background: var(--card);
   color: var(--text-1);
   text-decoration: none;
 }
 
-/* Unread: the same dark card with a small purple dot, never a purple card. */
+/* Unread: the same dark card with a small white dot, never a purple card. */
 .noteCardUnread {
   position: relative;
 }
@@ -705,7 +712,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--text-1);
 }
 
 .noteCardUnread .reasonAge {
@@ -724,7 +731,7 @@
 
 .reasonIcon {
   display: inline-flex;
-  color: var(--brand);
+  color: var(--text-2);
 }
 
 .reasonText {
@@ -761,10 +768,19 @@
 
 .cardMeta {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text-3);
+}
+
+/* The poster's picture and @handle, one line. */
+.cardWho {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .cardUp {
@@ -778,7 +794,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  font-size: 11px;
+  font-size: var(--t-caption);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-3);
@@ -795,9 +811,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Apart from the post above by space, as a For You card's coin line is. */
   margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border);
   font-size: 14px;
 }
 

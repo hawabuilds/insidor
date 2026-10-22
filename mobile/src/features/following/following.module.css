@@ -9,7 +9,8 @@
  */
 
 /* The title row is the shared one (shared/ui/screen-header.module.css): "Feed" in the same place and face as
-   every tab, the round bell at its right with a purple dot when something is unread. The chips
+   every tab, the round bell at its right (44px, the tap size) with a white dot when something is
+   unread. The chips
    start 15px under the title, as they did. */
 .titleRow {
   justify-content: space-between;
@@ -18,8 +19,8 @@
 
 .bell {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: var(--tap);
+  height: var(--tap);
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -29,16 +30,16 @@
 
 .dot {
   position: absolute;
-  top: 9px;
-  right: 10px;
+  top: 10px;
+  right: 11px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--text-1);
   box-shadow: 0 0 0 2px var(--card);
 }
 
-/* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one #241A3A with #E4D6FF text. */
+/* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one on the chosen grey. */
 .chips {
   display: flex;
   gap: 2px;
@@ -51,14 +52,14 @@
   padding: 0 12px;
   border-radius: 999px;
   background: transparent;
-  color: #8b8794;
-  font-size: 13.5px;
+  color: var(--text-2);
+  font-size: 14px;
   font-weight: 600;
 }
 
 .chipOn {
-  background: #241a3a;
-  color: #e4d6ff;
+  background: var(--select-bg);
+  color: var(--select-ink);
 }
 
 /* Top calls' This week / All time, as For You's window toggle. */
@@ -72,21 +73,21 @@
   display: flex;
   padding: 3px;
   border-radius: 10px;
-  background: #16151c;
+  background: var(--card);
 }
 
 .windows button {
   height: 26px;
   padding: 0 9px;
   border-radius: 7px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 12px;
   font-weight: 700;
 }
 
 .windows .windowOn {
-  background: #2a2733;
-  color: #fff;
+  background: var(--select-bg);
+  color: var(--select-ink);
 }
 
 /* ── Trador's rows: no box, spacing between them ("a feed of boxes reads as a list of adverts") ── */
@@ -278,8 +279,8 @@
 /* People to follow, in Following's place while you follow nobody. */
 .heading {
   margin: 20px 0 4px;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--t-section);
+  font-weight: 600;
   color: var(--text-1);
 }
 
@@ -321,7 +322,8 @@
   color: var(--text-3);
 }
 
-/* Trador's Follow pill: 36px in a 44px tap area. */
+/* Trador's Follow pill: 36px in a 44px tap area. White on a list of people, not purple: a row's
+   Follow is one of many on the screen, and purple is kept for the screen's one main action. */
 .follow {
   flex-shrink: 0;
   height: 44px;
@@ -335,10 +337,10 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 999px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
+  background: var(--text-1);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .follow.on span {
