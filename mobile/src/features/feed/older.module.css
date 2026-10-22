@@ -53,7 +53,7 @@
 
 .facts {
   display: block;
-  font-size: 11px;
+  font-size: var(--t-caption);
   color: var(--text-3);
   margin-top: 2px;
 }
@@ -77,10 +77,10 @@
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 10px 18px;
+  /* Rows are apart by their padding, not a rule between them (the approved system). */
+  padding: 12px 18px;
   background: none;
   border: 0;
-  border-bottom: 1px solid var(--border-subtle);
   color: inherit;
   font: inherit;
   cursor: pointer;

@@ -1,3 +1,7 @@
+/* The Add to Home Screen bar over For You (InstallPrompt.tsx): fixed above the tab bar, the app's
+   icon, two lines and a close. On the approved system (tokens.css): the close is a 44px touch and the
+   Share and Add glyphs in the sentence are white, because purple is the logo and the main action. */
+
 .bar {
   position: fixed;
   left: 50%;
@@ -39,10 +43,11 @@
 .inline {
   display: inline;
   vertical-align: -2px;
-  color: var(--brand-300);
+  color: var(--text-1);
 }
 
 .close {
+  position: relative;
   flex: none;
   width: 28px;
   height: 28px;
@@ -50,4 +55,11 @@
   display: grid;
   place-items: center;
   color: var(--text-3);
+}
+
+/* 28px drawn so the title keeps its one line, a 44px touch. */
+.close::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
