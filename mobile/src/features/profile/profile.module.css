@@ -1,0 +1,668 @@
+/* The approved profile (direction B, the owner, 2026-10-22), on the shared tokens: the type scale's
+   steps only, money in the number face, cards #131317, 44px taps, no lines between rows. Purple is
+   only the main button (Follow), the chart line and the chosen tab's rule (handles-show-pfp). */
+
+.page {
+  min-width: 0;
+  padding-bottom: var(--tabbar-space);
+}
+
+/* ── the banner, full bleed and under the status bar ── */
+
+.banner {
+  position: relative;
+  /* Above the status-bar strip (tokens.css body::before, z 50) while it is at the top, so the banner
+     runs behind the clock; once scrolled away the strip covers the rows again. */
+  z-index: 51;
+  height: calc(132px + var(--safe-top));
+  margin-top: calc(-1 * var(--safe-top));
+  background: var(--card);
+  overflow: visible;
+}
+
+.bannerImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.bannerPattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The round buttons over the banner: 44px, dark glass so they read on any picture. */
+.overTop {
+  position: absolute;
+  top: calc(var(--safe-top) + 8px);
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overTop > .spacer {
+  flex: 1;
+}
+
+.glass {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(10 10 12 / 55%);
+  color: var(--text-1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.avatar {
+  position: absolute;
+  left: var(--gutter);
+  bottom: -40px;
+  border-radius: 50%;
+  /* The page's ground around the picture, so it sits cut out of the banner; not a ring of colour. */
+  box-shadow: 0 0 0 4px var(--bg);
+  background: var(--bg);
+  line-height: 0;
+}
+
+/* ── who ── */
+
+.who {
+  padding: 50px var(--gutter) 0;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--type-screen-title);
+  font-weight: var(--type-screen-title-weight);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The X button: a small round mark inside a 44px tap. */
+.xButton {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin: -6px 0;
+}
+
+.xButton > span {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--tag-bg);
+  color: var(--text-1);
+}
+
+.handle {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--type-body);
+}
+
+.bio {
+  margin: 10px 0 0;
+  color: var(--text-1);
+  font-size: var(--type-body);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.counts {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  font-size: var(--type-body);
+  color: var(--text-3);
+}
+
+.counts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: var(--tap);
+  margin: -10px 0;
+}
+
+.counts b {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.mutuals {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+.faces {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.faces > * + * {
+  margin-left: -6px;
+}
+
+.faces > * {
+  box-shadow: 0 0 0 2px var(--bg);
+  border-radius: 50%;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.actions > * {
+  flex: 1;
+}
+
+.solid,
+.outline {
+  height: var(--tap);
+  border-radius: 999px;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.solid {
+  background: var(--brand);
+  color: #fff;
+}
+
+.outline {
+  background: var(--card);
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--follow-line);
+}
+
+.more {
+  flex: 0 0 var(--tap) !important;
+  width: var(--tap);
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.menuWrap {
+  position: relative;
+  flex: 0 0 var(--tap) !important;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 60;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--card-line);
+  border-radius: 16px;
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+}
+
+.menu button {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border-radius: 10px;
+  text-align: left;
+  font-size: var(--type-body);
+}
+
+/* ── the portfolio (your own only) ── */
+
+.section {
+  margin: 28px var(--gutter) 0;
+}
+
+.label {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  font-weight: 600;
+}
+
+.total {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--type-onboarding);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.move {
+  margin-top: 4px;
+  font-size: var(--type-secondary);
+  color: var(--text-3);
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.chart {
+  height: 120px;
+  margin: 14px calc(-1 * var(--gutter)) 0;
+}
+
+.chartNote {
+  height: 120px;
+  margin-top: 14px;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.ranges {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.range,
+.rangeOn {
+  flex: 1;
+  height: 36px;
+  border-radius: 10px;
+  font-size: var(--type-secondary);
+  font-weight: 600;
+}
+
+.range {
+  color: var(--text-3);
+}
+
+.rangeOn {
+  color: var(--text-1);
+  background: var(--tag-bg);
+}
+
+/* ── the stats strip ── */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 22px var(--gutter) 0;
+  padding: 14px 6px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.stat {
+  min-width: 0;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.statValue {
+  font-family: var(--font-mono);
+  font-size: var(--type-section);
+  font-weight: 600;
+}
+
+.statLabel {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: var(--type-caption);
+}
+
+.statWhy {
+  margin-top: 2px;
+  color: var(--text-4);
+  font-size: var(--type-caption);
+}
+
+/* ── Holdings and Created ── */
+
+.tabs {
+  display: flex;
+  gap: 22px;
+  margin: 26px var(--gutter) 6px;
+}
+
+.tab {
+  position: relative;
+  min-height: var(--tap);
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
+  color: var(--text-3);
+}
+
+.tab span {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.tabOn {
+  color: var(--text-1);
+}
+
+.tabOn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 0 var(--gutter);
+  color: inherit;
+}
+
+.mid {
+  min-width: 0;
+  flex: 1;
+}
+
+.tickerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ticker {
+  overflow: hidden;
+  font-size: var(--type-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  font-family: var(--font-mono);
+}
+
+.subWords {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+.right {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.worth {
+  font-family: var(--font-mono);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.change {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--type-secondary);
+  color: var(--text-3);
+}
+
+.early {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--up-wash);
+  color: var(--up);
+  font-size: var(--type-caption);
+  font-weight: 600;
+}
+
+.tag {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--tag-bg);
+  color: var(--text-2);
+  font-size: var(--type-caption);
+  font-weight: 600;
+}
+
+.capLabel {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--type-caption);
+}
+
+.showAll {
+  display: block;
+  width: calc(100% - 2 * var(--gutter));
+  min-height: var(--tap);
+  margin: 6px var(--gutter) 0;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-1);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.empty {
+  margin: 18px var(--gutter) 0;
+  padding: 22px 18px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  text-align: center;
+}
+
+.empty b {
+  display: block;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.empty p {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  line-height: 1.4;
+}
+
+.foot {
+  margin: 10px var(--gutter) 0;
+  color: var(--text-4);
+  font-size: var(--type-caption);
+}
+
+.skeleton {
+  height: 64px;
+  margin: 0 var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.skeleton::before {
+  content: '';
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--card);
+}
+
+.skeleton::after {
+  content: '';
+  flex: 1;
+  height: 14px;
+  border-radius: 6px;
+  background: var(--card);
+}
+
+.skName {
+  width: 160px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.note {
+  margin: 16px var(--gutter) 0;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+/* ── Edit profile ── */
+
+.editBanner {
+  position: relative;
+  height: 110px;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.pick {
+  min-height: var(--tap);
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sheet-button);
+  color: var(--text-1);
+  font-size: var(--type-secondary);
+  font-weight: 600;
+}
+
+.pickOver {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
+.field {
+  display: block;
+  margin-top: 18px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-control);
+  background: var(--input);
+  color: var(--text-1);
+  font-size: var(--type-body);
+  font-family: inherit;
+  outline: none;
+}
+
+.field textarea {
+  min-height: 96px;
+  resize: none;
+  line-height: 1.4;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--tag-line);
+}
+
+.counter {
+  margin-top: 4px;
+  color: var(--text-4);
+  font-size: var(--type-caption);
+  text-align: right;
+}
+
+.error {
+  margin-top: 12px;
+  color: var(--down);
+  font-size: var(--type-secondary);
+}
+
+.save {
+  width: 100%;
+  height: var(--button-h);
+  border-radius: var(--r-button);
+  background: var(--brand);
+  color: #fff;
+  font-size: var(--button-size);
+  font-weight: 700;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+/* A gain's colour over the grey of its line: green up, red down (price only, tokens.css rule 1). */
+.change.up {
+  color: var(--up);
+}
+
+.change.down {
+  color: var(--down);
+}

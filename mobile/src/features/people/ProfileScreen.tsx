@@ -1,185 +1,159 @@
 /**
- * A PERSON'S PROFILE — Trador's /u/[handle], cut to what a glance needs: back, the picture, name
- * and @handle with Follow / Following at the right (none on your own), their rank as one small
- * pill ("Intern, 0 rep"), the bio, "2 followers  1 following" (each opens its list), then their
- * portfolio: the total with "Portfolio value" under it and HOLDINGS, the same short rows as your
- * own Portfolio (portfolio/HoldingRow.tsx), SOL first. On your own profile, Edit bio sits quietly
- * at the bottom; the switch "Show my trades to followers" is in the Portfolio's gear, as Trador's
- * is ("Hide it from the gear on your Stonkfolio").
+ * A PERSON'S PROFILE, #/u/<handle> — the approved design (direction B, the owner, 2026-10-22).
  *
- * ★ A PRIVATE PORTFOLIO IS SAID, NOT DRAWN EMPTY. The social service withholds the wallet unless
- * "Show my trades to followers" is on (Trador's `portfolio_public`, one switch for the Feed and the
- * profile, on by default as Trador's is); turned off, this says "@handle keeps their portfolio
- * private." Your own is always shown to you. No wallet address is shown: the rows are the facts.
+ * Someone else's: their banner, picture, name with the X button, @handle, bio and counts, the
+ * followers you have in common ("Followed by @a and 4 others", with their pictures), Follow (or
+ * Follow back, or Following) and Share, the ⋯ menu, then their stats strip and their Holdings and
+ * Created. No portfolio total and no chart: what someone holds is listed, what it adds up to is
+ * theirs. Your own, reached here from a link: the same screen as your Portfolio tab
+ * (features/profile/OwnProfile.tsx), with a back button.
  *
- * ★ THE SAME NUMBERS AS YOUR OWN PORTFOLIO, FOR EVERYONE. Trador shows another person's exact gain
- * on each coin, not "in profit / at a loss", and so does this; a coin not bought in Insidor shows
- * "—". The note saying why is on your own Portfolio and your own profile, not on other people's.
+ * ★ A HIDDEN PORTFOLIO IS SAID, NOT DRAWN EMPTY. The social service withholds the wallet unless
+ * "Show my trades" is on (one switch for the Feed and the profile); turned off, the strip's cells
+ * say "Hidden" and the lists say "Hidden by @handle". No wallet address is shown: the rows are the
+ * facts.
  *
- * ★ A PERSON'S OWN NUMBERS ONLY. Rep, rank and counts are about this person and what others did
- * with their comments. Nothing on this screen rates a coin or a post.
+ * ★ A PERSON'S OWN NUMBERS ONLY. Counts, mutuals and catches are about this person's own wallet and
+ * follows; nothing on this screen rates a coin or a post.
+ *
+ * What breaks if changed carelessly: Follow is optimistic and rolls back on a refusal, and the
+ * counts move with it; the button's state comes from profile-words.ts followButton, which the tests
+ * hold, never from a label typed here.
  */
 
 import { useState } from 'react';
 
-import { fetchPortfolio, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import { follow, fetchProfile, saveBio, type ProfileCard } from '../../shared/api/people.ts';
-import { formatUsd } from '../../shared/format/number.ts';
-import { useLoad } from '../../shared/hooks.ts';
+import { fetchCatches, fetchPortfolio, fetchWalletHistory } from '../../shared/api/index.ts';
+import { follow, fetchProfile, type ProfileCard } from '../../shared/api/people.ts';
+import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Value } from '../../shared/ui/Value.tsx';
-import { Avatar } from '../portfolio/Avatar.tsx';
-import { Holdings } from '../portfolio/HoldingRow.tsx';
-import folio from '../portfolio/portfolio.module.css';
-import { gainsNote } from '../portfolio/wallet-view.ts';
-import { RankBadge } from './RankBadge.tsx';
-import { RANK_NAME } from './rank.ts';
-import styles from './people.module.css';
-import { goBack } from '../../shared/nav.ts';
-
-/** The rank as one small pill: its badge, "Intern, 0 rep". */
-export function RankPill({ p }: { p: ProfileCard }) {
-  return (
-    <span className={styles['rankPill']}>
-      <RankBadge rank={p.rank} size={16} />
-      {RANK_NAME[p.rank]}, {p.rep.toLocaleString('en-US')} rep
-    </span>
-  );
-}
+import { GearIcon } from '../../shared/ui/icons.tsx';
+import { withLive } from '../portfolio/balance-points.ts';
+import { OwnProfile } from '../profile/OwnProfile.tsx';
+import { CoinLists, HeadSkeleton, MoreGlyph, ProfileHead, ShareGlyph, StatsStrip, shareProfile } from '../profile/ProfileParts.tsx';
+import { followButton, totalWords, type ProfileRange } from '../profile/profile-words.ts';
+import styles from '../profile/profile.module.css';
 
 export function ProfileScreen({ profileKey }: { profileKey: string }) {
   const [loaded, reload] = useLoad(`profile:${profileKey}`, () => fetchProfile(profileKey), 'memory');
+  if (loaded.state === 'loading') return <section className={styles['page']}><HeadSkeleton back /></section>;
+  if (loaded.state === 'failed') {
+    return (
+      <section className={styles['page']}>
+        <HeadSkeleton back />
+        <p className={styles['note']}>No account @{profileKey}. Nobody has claimed this handle here yet, or it could not be read just now.</p>
+      </section>
+    );
+  }
+  const p = loaded.value.profile;
+  return p.isMe && p.wallet !== null ? <Mine key={p.userId} p={p} reload={reload} /> : <Theirs key={p.userId} p={p} />;
+}
+
+/** Your own profile reached by its link: your wallet read here, as the Portfolio tab reads it. */
+function Mine({ p, reload }: { p: ProfileCard; reload: () => void }) {
+  const wallet = p.wallet!;
+  const now = useNow();
+  const [range, setRange] = useState<ProfileRange>('1w');
+  const [data] = useLoad(`wallet:${wallet}`, (signal) => fetchPortfolio(wallet, '24h', signal), 'memory');
+  const [stored] = useLoad(`wallet-history:${wallet}:${range}`, (signal) => fetchWalletHistory(wallet, range, signal), 'memory');
+  const read = data.state === 'ready' ? data.value : data.state === 'failed' ? ({ kind: 'unavailable' } as const) : null;
+  const live = read?.kind === 'read' && read.totalUsd.known ? read.totalUsd.amount : null;
+  const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());
   return (
-    <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
-        <BackIcon size={22} />
-      </button>
-      {loaded.state === 'loading' ? (
-        <div className={styles['head']}>
-          <span className={styles['skAvatar']} />
-          <span className={styles['skName']} />
-        </div>
-      ) : null}
-      {loaded.state === 'failed' ? <p className={styles['note']}>No account @{profileKey}. Nobody has claimed this handle here yet, or it could not be read just now.</p> : null}
-      {loaded.state === 'ready' ? <Body p={loaded.value.profile} reload={reload} /> : null}
-    </section>
+    <OwnProfile
+      who={p}
+      card={p}
+      reloadCard={reload}
+      address={wallet}
+      data={read}
+      total={read?.kind === 'read' ? totalWords(read.totalUsd) : null}
+      asOf={null}
+      points={points}
+      range={range}
+      onRange={setRange}
+      over={<a className={styles['glass']} href={hrefFor({ screen: 'portfolio' })} aria-label="Settings, on your Portfolio tab"><GearIcon size={19} /></a>}
+      back
+      now={now}
+      signInName={null}
+    />
   );
 }
 
-function Body({ p, reload }: { p: ProfileCard; reload: () => void }) {
+/** Someone else's profile. */
+function Theirs({ p }: { p: ProfileCard }) {
   const toast = useToast();
-  const [following, setFollowing] = useState(p.iFollow);
+  const now = useNow();
+  const [iFollow, setIFollow] = useState(p.iFollow);
   const [followers, setFollowers] = useState(p.followers);
-  const [editing, setEditing] = useState(false);
-  const [bio, setBio] = useState(p.bio);
+  const [menu, setMenu] = useState(false);
   const key = p.handle ?? p.userId;
   const at = p.handle !== null ? `@${p.handle}` : (p.name ?? 'This person');
+  const button = followButton({ isMe: p.isMe, iFollow, followsMe: p.followsMe });
+  const shownWallet = p.portfolio === 'shown' ? p.wallet : null;
+  const state = p.portfolio === 'private' ? 'hidden' : p.portfolio === 'no_wallet' ? 'no_wallet' : 'shown';
+  const [data] = useLoad(`wallet:${shownWallet ?? 'none'}`, (signal) => (shownWallet === null ? Promise.resolve(null) : fetchPortfolio(shownWallet, '24h', signal)), 'memory');
+  const [catches] = useLoad(`catches:${shownWallet ?? 'none'}`, (signal) => (shownWallet === null ? Promise.resolve(null) : fetchCatches(shownWallet, signal)), 'memory');
 
   const toggleFollow = async () => {
-    const next = !following;
-    setFollowing(next);
+    const next = !iFollow;
+    setIFollow(next);
     setFollowers((n) => n + (next ? 1 : -1));
     try {
       await follow(p.userId, next);
     } catch (e) {
-      setFollowing(!next);
+      setIFollow(!next);
       setFollowers((n) => n + (next ? -1 : 1));
       toast("Couldn't update that follow", e instanceof Error ? e.message : '');
     }
   };
-
-  const save = async () => {
-    try {
-      await saveBio(bio);
-      setEditing(false);
-      reload();
-    } catch (e) {
-      toast("Couldn't save", e instanceof Error ? e.message : '');
-    }
+  const share = () => {
+    setMenu(false);
+    void shareProfile(key, p.name ?? at).then((r) => {
+      if (r === 'copied') toast('Link copied');
+      if (r === 'failed') toast("Couldn't share", 'Try again in a moment.');
+    });
+  };
+  const copyLink = () => {
+    setMenu(false);
+    void navigator.clipboard.writeText(`${location.origin}${location.pathname}#/u/${encodeURIComponent(key)}`).then(() => toast('Link copied'), () => toast("Couldn't copy the link"));
   };
 
   return (
-    <>
-      <div className={styles['head']}>
-        <Avatar name={p.name ?? p.handle} seed={p.userId} src={p.pictureUrl} size={48} />
-        <div className={styles['headText']}>
-          <h1 className={styles['name']}>{p.name ?? at}</h1>
-          {p.handle !== null ? <div className={styles['handle']}>@{p.handle}</div> : null}
-        </div>
-        {p.isMe ? null : (
-          <button type="button" className={following ? styles['pillGhost'] : styles['pillFollow']} onClick={() => void toggleFollow()}>
-            {following ? 'Following' : p.followsMe ? 'Follow back' : 'Follow'}
-          </button>
-        )}
-      </div>
-
-      <div className={styles['rankRow']}><RankPill p={p} /></div>
-
-      {p.bio !== '' && !editing ? <p className={styles['bio']}>{p.bio}</p> : null}
-
-      <div className={styles['counts']}>
-        <a href={hrefFor({ screen: 'follows', key, which: 'followers' })}><b>{followers.toLocaleString('en-US')}</b> followers</a>
-        <a href={hrefFor({ screen: 'follows', key, which: 'following' })}><b>{p.following.toLocaleString('en-US')}</b> following</a>
-      </div>
-
-      {p.portfolio === 'shown' && p.wallet !== null ? (
-        <PublicPortfolio wallet={p.wallet} at={at} self={p.isMe} />
-      ) : p.portfolio === 'private' ? (
-        <p className={styles['private']}>{at} keeps their portfolio private.</p>
-      ) : (
-        <p className={styles['private']}>— {at} has no wallet on Insidor yet, so there is no portfolio to show.</p>
-      )}
-
-      {p.isMe ? (
-        <div className={styles['mine']}>
-          {editing ? (
-            <>
-              <textarea className={styles['bioField']} value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} aria-label="Bio" />
-              <div className={styles['actions']}>
-                <button type="button" className={styles['ghost']} onClick={() => setEditing(false)}>Cancel</button>
-                <button type="button" className={styles['follow']} onClick={() => void save()}>Save bio</button>
-              </div>
-            </>
-          ) : (
-            <button type="button" className={styles['quiet']} onClick={() => setEditing(true)}>Edit bio</button>
-          )}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * Someone's portfolio on their profile — Trador's PublicStonkfolio, cut down: the total with
- * "Portfolio value" under it, then HOLDINGS with the same rows as your own Portfolio. A list only:
- * Trador keeps the pie for your own allocation, and Insidor has no pie.
- */
-function PublicPortfolio({ wallet, at, self }: { wallet: string; at: string; self: boolean }) {
-  const [loaded] = useLoad(`wallet:${wallet}`, (signal) => fetchPortfolio(wallet, '24h', signal), 'memory');
-  const data: PortfolioData | null = loaded.state === 'ready' ? loaded.value : loaded.state === 'failed' ? { kind: 'unavailable' } : null;
-  const read = data !== null && data.kind === 'read' ? data : null;
-  return (
-    <section className={styles['folio']}>
-      <div className={styles['folioBig']}>{read === null ? '—' : <Value r={formatUsd(read.totalUsd)} num />}</div>
-      <div className={styles['folioLabel']}>Portfolio value</div>
-
-      {data === null ? (
-        <ul className={folio['list']}>
-          {[0, 1, 2].map((i) => (
-            <li key={i} className={folio['skeleton']}><span className={folio['skDot']} /><span className={folio['skLines']}><span /><span /></span></li>
-          ))}
-        </ul>
-      ) : data.kind === 'unavailable' ? (
-        <p className={styles['note']}>— what this wallet holds could not be read just now.</p>
-      ) : (
-        <>
-          <Holdings data={data} />
-          {data.holdings.length === 0 ? <p className={styles['note']}>{at} holds no coins yet.</p> : null}
-          {self && data.holdings.length > 0 ? <p className={folio['foot']}>{gainsNote(data.holdings)}</p> : null}
-        </>
-      )}
+    <section className={styles['page']}>
+      <ProfileHead
+        who={{ ...p, followers }}
+        back
+        countsFor={key}
+        over={<button type="button" className={styles['glass']} aria-label={`Share ${at}'s profile`} onClick={share}><ShareGlyph /></button>}
+        actions={
+          <>
+            {button !== null ? (
+              <button type="button" className={button.solid ? styles['solid'] : styles['outline']} onClick={() => void toggleFollow()}>{button.label}</button>
+            ) : null}
+            <button type="button" className={styles['outline']} onClick={share}>Share</button>
+            <div className={styles['menuWrap']}>
+              <button type="button" className={`${styles['outline']} ${styles['more']}`} aria-label="More" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}><MoreGlyph /></button>
+              {menu ? (
+                <div className={styles['menu']} role="menu">
+                  <button type="button" role="menuitem" onClick={share}>Share profile</button>
+                  <button type="button" role="menuitem" onClick={copyLink}>Copy profile link</button>
+                </div>
+              ) : null}
+            </div>
+          </>
+        }
+      />
+      <StatsStrip catches={catches.state === 'ready' ? catches.value : catches.state === 'failed' ? { kind: 'unavailable' } : null} state={state} />
+      <CoinLists
+        data={state !== 'shown' ? null : data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null}
+        catches={catches.state === 'ready' ? catches.value : null}
+        self={false}
+        at={at}
+        hidden={state === 'hidden'}
+        noWallet={state === 'no_wallet'}
+        now={now}
+      />
     </section>
   );
 }

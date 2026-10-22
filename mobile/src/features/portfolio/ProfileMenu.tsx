@@ -39,7 +39,7 @@ import styles from './profile-menu.module.css';
 
 type Open = 'wallets' | 'invites' | 'settings' | 'owner' | 'missed' | null;
 
-export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportKey, profileKey, linked, leave }: {
+export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportKey, profileKey, linked, leave, onBanner = false, onReceive = null }: {
   name: string;
   /** The X handle without "@"; null for a sign-in without one. */
   handle: string | null;
@@ -55,6 +55,10 @@ export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportK
   linked: readonly string[];
   /** Sign out, or in the demo leave it; the label says which. */
   leave: { readonly label: string; readonly run: () => void };
+  /** Drawn over the profile's banner: the gear on dark glass so it reads on any picture. */
+  onBanner?: boolean;
+  /** Opens Receive (the address and its QR code), from the wallet card; null where there is none. */
+  onReceive?: (() => void) | null;
 }) {
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState<Open>(null);
@@ -144,7 +148,7 @@ export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportK
 
   return (
     <div ref={root} className={styles['root']}>
-      <button type="button" className={`${styles['gear']} ${open ? styles['gearOn'] : ''}`} aria-label="Profile and settings" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className={`${styles['gear']} ${onBanner ? styles['gearOnBanner'] : ''} ${open ? styles['gearOn'] : ''}`} aria-label="Profile and settings" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <GearIcon size={19} />
       </button>
 
@@ -184,6 +188,9 @@ export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportK
               <span>{copied ? 'Copied' : shortAddress(address)}</span>
               <button type="button" aria-label="Copy wallet address" onClick={copy}><CopyIcon size={14} /></button>
               <a href={`https://solscan.io/account/${address}`} target="_blank" rel="noreferrer" aria-label="Open the wallet on Solscan"><ExternalIcon size={14} /></a>
+              {onReceive !== null ? (
+                <button type="button" aria-label="Receive: your address and its QR code" onClick={() => { setOpen(false); onReceive(); }}><QrMark /></button>
+              ) : null}
             </div>
           </div>
 
@@ -206,6 +213,17 @@ function Row({ icon, label, onClick, more = false, pill = null }: { icon: React.
       {pill !== null ? <span className={styles['active']}>{pill}</span> : null}
       {more ? <span className={styles['more']}><ChevronIcon size={14} /></span> : null}
     </button>
+  );
+}
+
+function QrMark() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM20 14v1M14 20h1M17 17h4v4h-4" />
+    </svg>
   );
 }
 
