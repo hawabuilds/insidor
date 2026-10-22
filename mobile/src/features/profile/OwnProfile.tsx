@@ -1,6 +1,6 @@
 /**
  * YOUR OWN PROFILE — the approved design's first screen: the head (ProfileParts.tsx) with share and
- * settings over the banner and "Share profile" and "Edit profile" under the counts; then your
+ * settings over the banner and a small "Edit profile" level with the picture; then your
  * portfolio (the total, its move this window and the purple chart), the stats strip, and your
  * Holdings and Created.
  *
@@ -80,12 +80,10 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
             {over}
           </>
         }
-        actions={
-          <>
-            <button type="button" className={styles['outline']} onClick={share}>Share profile</button>
-            {card !== null ? <button type="button" className={styles['outline']} onClick={() => setEditing(true)}>Edit profile</button> : null}
-          </>
-        }
+        /* Share is the banner's share button; Edit profile sits level with the picture, so the
+           first screen reaches Holdings and Created (the owner, 2026-10-23). */
+        beside={card !== null ? <button type="button" className={styles['editSmall']} onClick={() => setEditing(true)}>Edit profile</button> : null}
+        actions={null}
       />
       <PortfolioBlock total={total} asOf={asOf} points={points} range={range} onRange={onRange} />
       {below}
