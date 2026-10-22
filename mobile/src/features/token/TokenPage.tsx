@@ -110,7 +110,7 @@ function NarrativeInfo({ story, coin }: { story: Story; coin: Coin }) {
     <>
       <a className={styles['from']} href={hrefFor({ screen: 'story', storyId: story.id })}>
         <span className={styles['fromHead']}>
-          <span className={styles['kicker']}>From narrative</span>
+          <span className={styles['fromKicker']}>From narrative</span>
           <ChevronIcon size={16} />
         </span>
         <span className={styles['fromTitle']}>
@@ -154,7 +154,7 @@ export function Origin({ origin, now }: { origin: Coin['origin']; now: number })
   if (origin.kind === 'unknown') {
     return (
       <div className={styles['from']}>
-        <span className={styles['kicker']}>Where it came from</span>
+        <span className={styles['fromKicker']}>Where it came from</span>
         <Value r={formatAge({ known: false, pending: origin.pending }, now as never)} />
       </div>
     );
@@ -164,7 +164,7 @@ export function Origin({ origin, now }: { origin: Coin['origin']; now: number })
   const body = (
     <>
       <span className={styles['fromHead']}>
-        <span className={styles['kicker']}>{ORIGIN_LABEL[origin.kind]}</span>
+        <span className={styles['fromKicker']}>{ORIGIN_LABEL[origin.kind]}</span>
         {origin.post.permalink !== null ? <ChevronIcon size={16} /> : null}
       </span>
       <span className={styles['fromTitle']}>

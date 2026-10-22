@@ -1,5 +1,8 @@
 /* The Info tab: Trador's InfoPanel — a two-column stat card, a card of rows, then Insidor's part —
-   with Trador's sizes written out and our colours. */
+   with Trador's sizes written out and our colours, on the approved system (tokens.css): cards on
+   the #1f1f26 hairline, no text under 12px, section headings 17 at 600, every small icon a 44px
+   touch, and no purple (the facts line is grey). The stat card and the rows card are table-like
+   and read by their alternate shading; no rule is drawn between their rows. */
 
 .info {
   padding-bottom: 4px;
@@ -29,7 +32,8 @@
   grid-template-columns: 1fr 1fr;
   column-gap: 12px;
   overflow: hidden;
-  border-radius: 16px;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
   background: var(--card);
 }
 
@@ -43,7 +47,7 @@
 
 .stat dt {
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -59,7 +63,8 @@
 .rows {
   margin-top: 16px;
   overflow: hidden;
-  border-radius: 16px;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
   background: var(--card);
 }
 
@@ -77,7 +82,7 @@
 
 .rowLabel {
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -120,6 +125,7 @@
 
 .mint button,
 .mint a {
+  position: relative;
   width: 28px;
   height: 28px;
   display: grid;
@@ -128,19 +134,25 @@
   color: var(--text-3);
 }
 
+/* Copy and open: 28px drawn, a 44px touch. */
+.mint button::after,
+.mint a::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
 /* ── Insidor's part ────────────────────────────────────────────────── */
 
 .section {
-  margin: 22px 0 0;
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  margin: 24px 0 0;
+  color: var(--text-1);
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .kicker {
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -150,6 +162,7 @@
 .card {
   margin-top: 12px;
   padding: 12px 14px;
+  border: 1px solid var(--card-line);
   border-radius: var(--r-card);
   background: var(--card);
 }
@@ -202,15 +215,13 @@
 .facts {
   display: block;
   margin-top: 8px;
-  color: var(--brand-300);
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: var(--t-caption);
   font-weight: 700;
 }
 
 .storyLink {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  margin-top: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -401,7 +401,8 @@
   bottom: -1px;
   height: 3px;
   border-radius: 999px;
-  background: var(--brand);
+  /* White, not purple: the chosen tab is a selected state (tokens.css). */
+  background: var(--text-1);
 }
 
 .panel {
@@ -415,7 +416,9 @@
   margin-left: auto;
 }
 
+/* 28px drawn so the tabs row keeps its height (two whole trades above Buy and Sell), a 44px touch. */
 .tapeMenuButton {
+  position: relative;
   height: 28px;
   padding: 0 8px 0 11px;
   display: inline-flex;
@@ -426,6 +429,12 @@
   color: var(--text-2);
   font-size: 13px;
   font-weight: 700;
+}
+
+.tapeMenuButton::after {
+  content: '';
+  position: absolute;
+  inset: -8px -4px;
 }
 
 .tapeMenuArrow {
@@ -466,6 +475,9 @@
 
 /* ── one trade, one 33px line: side, age, amount, dollars, wallet ─────── */
 
+/* The rule under each trade stays: the tape is a table read across five columns at a glance, and
+   at 33px a line with no rule runs into the next (the one place the approved system keeps one). */
+
 .tradeLine {
   display: grid;
   grid-template-columns: 34px 30px minmax(0, 1fr) auto 86px;
@@ -503,7 +515,7 @@
   overflow: hidden;
   color: var(--text-3);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--t-caption);
   text-align: right;
 }
 
@@ -548,8 +560,19 @@
   display: block;
   margin-top: 12px;
   padding: 12px 14px;
+  border: 1px solid var(--card-line);
   border-radius: var(--r-card);
   background: var(--card);
+}
+
+/* The Info tab's small capitals over each card, at the 12px floor (the top half's own kicker, by
+   the market cap, is .kicker and is left as it is). */
+.fromKicker {
+  font-size: var(--t-caption);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 
 .fromHead {
@@ -578,8 +601,7 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding-top: 4px;
 }
 
 .fromPostText {
