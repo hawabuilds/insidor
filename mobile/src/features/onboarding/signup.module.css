@@ -1,0 +1,724 @@
+/* The approved sign-up (reports/signup/signup.html), in the app's tokens. Purple only on the main
+   button, the progress line and the photo ring; links are white and grey; no purple wash. */
+
+.screen {
+  display: grid;
+  min-height: 100dvh;
+  grid-template-rows: var(--tap) 1fr auto;
+  padding: 12px 24px max(30px, calc(env(safe-area-inset-bottom) + 12px));
+  background: var(--bg);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--tap);
+}
+
+.back {
+  display: grid;
+  width: var(--tap);
+  height: var(--tap);
+  margin-left: -11px;
+  place-items: center;
+  color: var(--text-1);
+}
+
+.bar {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  border-radius: 3px;
+  background: #24242b;
+}
+
+.bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--brand-300);
+  transition: width 0.25s ease;
+}
+
+.skip {
+  width: 40px;
+  color: var(--text-2);
+  font-size: var(--type-body);
+  text-align: right;
+}
+
+.body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding-top: 28px;
+}
+
+.q {
+  margin: 0;
+  font-size: var(--type-onboarding);
+  font-weight: var(--type-onboarding-weight);
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+}
+
+.s {
+  max-width: 310px;
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.s button,
+.inlineLink {
+  color: var(--link);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.primary,
+.secondary {
+  display: flex;
+  width: 100%;
+  height: var(--button-h);
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: var(--r-button);
+}
+
+.primary {
+  background: var(--brand);
+  color: #fff;
+  font-size: var(--button-size);
+  font-weight: 700;
+}
+
+.secondary {
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--text-1);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.link {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  font-size: var(--type-body);
+}
+
+.linkStrong {
+  color: var(--text-1);
+}
+
+.fine {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.fine button {
+  color: var(--text-2);
+  font-size: inherit;
+  text-decoration: underline;
+  text-decoration-color: #3f3f46;
+}
+
+.card {
+  border: 1px solid var(--card-line);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.problem {
+  margin: 14px 0 0;
+  color: var(--down);
+  font-size: var(--type-body);
+  line-height: 1.4;
+}
+
+.note {
+  margin: 14px 0 0;
+  color: var(--text-2);
+  font-size: var(--type-body);
+  line-height: 1.4;
+}
+
+/* ── Welcome ─────────────────────────────────────────────── */
+
+.welcome {
+  grid-template-rows: 1fr auto;
+  padding-top: 0;
+}
+
+.hero {
+  position: relative;
+  height: clamp(320px, 52dvh, 470px);
+  margin: 0 -24px;
+}
+
+.postCard {
+  position: absolute;
+  top: 18%;
+  right: 28px;
+  left: 28px;
+  padding: 14px;
+  background: #141418;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.who > div {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.who b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.who span {
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+.reach {
+  margin-left: auto;
+  color: var(--up);
+  font-family: var(--font-mono);
+  font-size: var(--type-secondary);
+}
+
+.excerpt {
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.postPic {
+  display: block;
+  width: 100%;
+  height: clamp(96px, 17dvh, 150px);
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.coinCard {
+  position: absolute;
+  right: 28px;
+  bottom: 18px;
+  left: 70px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #141418;
+}
+
+.coinCard div {
+  line-height: 1.3;
+}
+
+.coinCard b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.coinCard span {
+  color: var(--text-2);
+  font-size: var(--type-secondary);
+}
+
+.pfp {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.claim {
+  margin: 18px 0 0;
+  font-size: 40px;
+  font-weight: 300;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+}
+
+.payoff {
+  color: var(--brand-300);
+  font-weight: 500;
+}
+
+.waiting {
+  display: grid;
+  height: var(--button-h);
+  place-items: center;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ── Create account ──────────────────────────────────────── */
+
+.invited {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 14px 16px;
+  font-size: var(--type-body);
+}
+
+.invited b {
+  font-weight: 600;
+}
+
+.invited svg {
+  margin-left: auto;
+  color: var(--up);
+}
+
+.field {
+  display: flex;
+  height: 60px;
+  align-items: center;
+  margin-top: 30px;
+  padding: 0 18px;
+  border: 1px solid var(--tag-line);
+  border-radius: var(--r-button);
+  background: var(--card);
+}
+
+.field input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  background: none;
+  outline: none;
+  font-size: 18px;
+}
+
+.handleField input {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.at {
+  margin-right: 2px;
+  color: var(--text-3);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.fieldNote {
+  margin-left: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.taken {
+  color: var(--down);
+}
+
+.free {
+  display: grid;
+  color: var(--up);
+}
+
+/* ── Code ────────────────────────────────────────────────── */
+
+.digits {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  margin-top: 30px;
+}
+
+.digit {
+  display: grid;
+  height: 60px;
+  flex: 1;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-control);
+  background: var(--card);
+  font-family: var(--font-mono);
+  font-size: 28px;
+}
+
+.digitOn {
+  border-color: var(--text-1);
+}
+
+.digitBad {
+  border-color: var(--down);
+}
+
+/* The one real box under the six drawn ones: the keyboard, paste and the phone's code autofill all type into it. */
+.codeInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  opacity: 0.01;
+}
+
+.resend {
+  margin: 18px 0 0;
+  color: var(--text-2);
+  font-size: var(--type-body);
+}
+
+.resend button {
+  color: var(--text-1);
+  font-size: inherit;
+}
+
+/* ── Username ────────────────────────────────────────────── */
+
+.try {
+  margin: 16px 0 0;
+  color: var(--text-2);
+  font-size: var(--type-body);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-1);
+  font-size: var(--type-body);
+}
+
+/* ── Photo ───────────────────────────────────────────────── */
+
+.photoArea {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0 8px;
+}
+
+.cropBox {
+  position: relative;
+  display: grid;
+  width: 236px;
+  height: 236px;
+  place-items: center;
+  border-radius: 28px;
+  background: var(--card);
+}
+
+.ring {
+  position: relative;
+  display: grid;
+  width: 196px;
+  height: 196px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  outline: 3px solid var(--brand-300);
+  background: #1f1f25;
+  color: var(--text-1);
+  font-size: 84px;
+  font-weight: 600;
+  touch-action: none;
+  user-select: none;
+}
+
+.ring img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  pointer-events: none;
+  transform-origin: center;
+}
+
+.ringStill img {
+  width: 100%;
+  height: 100%;
+  position: static;
+  object-fit: cover;
+}
+
+.pinch {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  padding: 0 10px;
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: var(--type-secondary);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.presets {
+  display: flex;
+  gap: 10px;
+  margin-top: 34px;
+}
+
+.preset {
+  display: grid;
+  width: var(--tap);
+  height: var(--tap);
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: #1f1f25;
+  font-size: 22px;
+}
+
+.presetOn {
+  border-color: var(--text-1);
+}
+
+.fileInput {
+  display: none;
+}
+
+/* ── Home Screen ─────────────────────────────────────────── */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 30px;
+  padding: 20px;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 16px;
+}
+
+.steps ol {
+  display: contents;
+}
+
+.num {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: #1f1f25;
+  font-weight: 600;
+}
+
+.shareIcon {
+  width: 20px;
+  height: 20px;
+  margin: 0 4px;
+  fill: none;
+  stroke: var(--text-1);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vertical-align: -4px;
+}
+
+.showHow {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  width: 100%;
+  padding: 0 32px calc(env(safe-area-inset-bottom) + 28px);
+  background: var(--bg);
+  color: var(--text-1);
+  font-size: 17px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.showHow > svg {
+  animation: nudge 1.2s ease-in-out infinite;
+}
+
+@keyframes nudge {
+  50% { transform: translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showHow > svg { animation: none; }
+}
+
+/* ── Alerts ──────────────────────────────────────────────── */
+
+.alert {
+  margin-top: 30px;
+  padding: 14px 16px;
+  border: 1px solid #2e2e35;
+  border-radius: 22px;
+  background: rgb(40 40 46 / 92%);
+}
+
+.alertHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: var(--type-secondary);
+  font-weight: 500;
+}
+
+.alertHead span:last-child {
+  margin-left: auto;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.alertBody {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.alertBody > div {
+  flex: 1;
+}
+
+.alertBody b {
+  display: block;
+  font-size: var(--type-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.alertBody span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.alertBody img {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+/* ── Done ────────────────────────────────────────────────── */
+
+.done {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.doneFace {
+  display: grid;
+  width: 124px;
+  height: 124px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  outline: 3px solid var(--brand-300);
+  outline-offset: 6px;
+  background: #1f1f25;
+  font-size: 54px;
+  font-weight: 600;
+}
+
+.doneFace img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.done .q {
+  margin-top: 34px;
+  overflow-wrap: anywhere;
+}
+
+.done .chip {
+  margin-top: 22px;
+}
+
+/* ── Legal ───────────────────────────────────────────────── */
+
+.legal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  padding: calc(var(--safe-top) + 12px) 24px 40px;
+  background: var(--bg);
+}
+
+.legal h2 {
+  margin: 20px 0 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.legal p {
+  color: var(--text-2);
+  font-size: var(--type-body);
+  line-height: 1.6;
+}

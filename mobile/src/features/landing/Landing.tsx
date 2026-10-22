@@ -1,40 +1,37 @@
 /**
- * THE FRONT DOOR — Trador's landing page (`LoginScreen.tsx`), in Insidor's words.
+ * THE FRONT DOOR — the approved sign-up's first screens (reports/signup/signup.html): Welcome,
+ * Create account (or Log in), and for email the address and the six-digit code. Everything is our
+ * own screen: Apple, Google and X leave for the provider's own page and come back, and that page is
+ * the only screen in sign-up that is not Insidor's (the wallet's headless calls,
+ * @insidor/wallet-embedded). A wallet is made on the way in with no screen at all.
  *
- * One claim, one line saying what the app holds, one thing to press. The wordmark sits on dark
- * with clear space above the headline; the headline is light, large and on two lines, with the
- * payoff in the accent colour. "Join now" opens the sign-in: Continue with X (X only, for now), and a
- * wallet is made on the way in.
+ * ★ A REAL EXAMPLE, SHIPPED WITH THE APP. Welcome shows the CarTon post and the $PIERRE coin found
+ * 1h 39m before it, from the design, as three small pictures in public/welcome. Nothing new is read
+ * at runtime to draw the door: a signed-out first open must paint before anything answers.
  *
- * ★ NO NUMBERS ON THE DOOR. Trador took its counts off this page after they disagreed with the
- * live universe by forty times; a figure on the front door that is wrong is worse than none.
+ * ★ INVITE ONLY (2026-10-21). An invite link (insidor.app/i/<CODE>, features/invites/invite-code.ts)
+ * keeps its code on the phone; Create account says who it is from, with their picture, and the code
+ * is brought to the server once signed in (useAccess.ts). Signed in without access, the door asks
+ * for a code or offers the waitlist (`InviteDoor`).
  *
- * In a build with no sign-in, "Join now" goes straight in and says why, as Trador's demo mode
- * does — never a button that opens nothing. While sign-in is starting or finishing, the door says
- * "Loading" where the button will be, as Trador's does, rather than offering one that cannot work
- * yet. The iOS app
- * is a label, not a disabled button.
- *
- * ★ INVITE ONLY (2026-10-21). The code box sits above Join now: a code typed there, or brought by an
- * invite link (insidor.app/i/<CODE>, features/invites/invite-code.ts), is kept on the phone and
- * brought to the server once the person has signed in, and the door says who it is from, with
- * their picture. A member signing in again needs no code. Signed in without access, the same door
- * asks for the code ("Enter") and offers "No code? Join the waitlist" — still no numbers: the proof
- * row the brief allowed was left off for the rule above.
+ * In a build with no sign-in, Get started goes straight in and says why, never a button that opens
+ * nothing. While the provider's page is coming back, the door shows the mark, not Welcome again.
  *
  * This is the only place anyone signs in (shared/sign-in.ts is the gate in front of the app).
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useWallet } from '../../shared/wallet.tsx';
 import { CodeBox, useCodeCheck } from '../invites/CodeBox.tsx';
-import { Avatar } from '../portfolio/Avatar.tsx';
-import { cleanCode, keepCode, pendingCode } from '../invites/invite-code.ts';
+import { cleanCode, pendingCode } from '../invites/invite-code.ts';
 import inv from '../invites/invites.module.css';
-import { Modal } from '../../shared/ui/Modal.tsx';
-import { XMark } from '../../shared/ui/icons.tsx';
-import styles from './landing.module.css';
+import { Avatar } from '../portfolio/Avatar.tsx';
+import { CheckMark, Frame, Line, Mark as SignUpMark, Primary, Question, Secondary, TextLink } from '../onboarding/Frame.tsx';
+import { progressOf, type DoorStep } from '../onboarding/flow.ts';
+import { Legal, type LegalPage } from '../onboarding/Legal.tsx';
+import styles from '../onboarding/signup.module.css';
+import landing from './landing.module.css';
 
 /** Signed in without access: what the door does with a code, the waitlist, and signing out. */
 export interface InviteDoor {
@@ -47,26 +44,320 @@ export interface InviteDoor {
   readonly retry: () => void;
   /** "@handle", or null. */
   readonly signedInAs: string | null;
-  /** Their own X picture, drawn beside the handle. */
+  /** Their own picture, drawn beside the handle. */
   readonly picture: string | null;
   readonly signOut: () => void;
 }
 
+/** Seconds before another code may be asked for. */
+const RESEND_AFTER_S = 60;
+
 export function Landing({ configured, onEnter, invite = null }: { configured: boolean; onEnter: () => void; invite?: InviteDoor | null }) {
+  if (invite !== null) return <InviteDoorScreen invite={invite} />;
+  return <Door configured={configured} onEnter={onEnter} />;
+}
+
+function Door({ configured, onEnter }: { configured: boolean; onEnter: () => void }) {
   const { wallet, state } = useWallet();
-  const [open, setOpen] = useState(false);
+  /* Back from a refused or failed sign-in: straight to the buttons, with the reason. */
+  const [step, setStep] = useState<DoorStep>(() => (state.kind === 'refused' || state.kind === 'failed' ? 'methods' : 'welcome'));
+  const [mode, setMode] = useState<'join' | 'login'>('join');
+  const [email, setEmail] = useState('');
+  const [legal, setLegal] = useState<LegalPage | null>(null);
+  const ready = configured && wallet !== null && state.kind !== 'unavailable';
+
+  /* The provider's page is coming back, or a code was right and the wallet is being made. */
+  if (configured && state.kind === 'connecting' && step === 'welcome') return <Holding />;
+
+  const open = (m: 'join' | 'login') => {
+    if (!configured) return onEnter();
+    setMode(m);
+    setStep('methods');
+  };
+
+  let screen;
+  if (step === 'welcome') screen = <Welcome configured={configured} ready={ready || !configured} onJoin={() => open('join')} onLogIn={() => open('login')} />;
+  else if (step === 'methods') screen = <Methods mode={mode} onBack={() => setStep('welcome')} onEmail={() => setStep('email')} onLegal={setLegal} />;
+  else if (step === 'email') screen = <EmailStep email={email} onEmail={setEmail} onBack={() => setStep('methods')} onSent={() => setStep('code')} />;
+  else screen = <CodeStep email={email} onBack={() => setStep('email')} />;
+  return (
+    <>
+      {screen}
+      {legal !== null ? <Legal page={legal} onClose={() => setLegal(null)} /> : null}
+    </>
+  );
+}
+
+/* ── Welcome ─────────────────────────────────────────────── */
+
+function Welcome({ configured, ready, onJoin, onLogIn }: { configured: boolean; ready: boolean; onJoin: () => void; onLogIn: () => void }) {
+  return (
+    <div className={`${styles['screen']} ${styles['welcome']}`}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className={styles['hero']} aria-hidden="true">
+          <div className={`${styles['card']} ${styles['postCard']}`}>
+            <div className={styles['who']}>
+              <img className={styles['pfp']} src="/welcome/pfp.jpg" alt="" width={36} height={36} />
+              <div>
+                <b>CarTon 🎮</b>
+                <span>@CarTon_Gaming</span>
+              </div>
+              <span className={styles['reach']}>{'302K'}</span>
+            </div>
+            <p className={styles['excerpt']}>🚨 ALERTE : AIDONS-LE ! On lance le #JVSolidaire…</p>
+            <img className={styles['postPic']} src="/welcome/post.jpg" alt="" />
+          </div>
+          <div className={`${styles['card']} ${styles['coinCard']}`}>
+            <img className={styles['pfp']} src="/welcome/pierre.png" alt="" width={34} height={34} />
+            <div>
+              <b>$PIERRE</b>
+              <span>Found 1h 39m before the coin</span>
+            </div>
+          </div>
+        </div>
+        <div className={styles['brand']}>
+          <SignUpMark size={34} />
+          <span className={styles['wordmark']}>INSIDOR</span>
+        </div>
+        <h1 className={styles['claim']}>
+          Catch the meme
+          <br />
+          <span className={styles['payoff']}>before the coin</span>
+        </h1>
+      </div>
+      <div className={styles['foot']}>
+        {ready ? <Primary onClick={onJoin}>Get started</Primary> : <span className={styles['waiting']}>Loading</span>}
+        <TextLink onClick={onLogIn}>Log in</TextLink>
+        {!configured ? <p className={styles['fine']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+/* ── Create account / Log in ─────────────────────────────── */
+
+function Methods({ mode, onBack, onEmail, onLegal }: { mode: 'join' | 'login'; onBack: () => void; onEmail: () => void; onLegal: (p: LegalPage) => void }) {
+  const { wallet, state } = useWallet();
+  const [more, setMore] = useState(false);
+  const code = pendingCode();
+  const check = useCodeCheck(code ?? '');
+  const from = check?.state === 'valid' ? check.from : null;
+  const go = (via: 'apple' | 'x' | 'google') => void wallet?.connect(via);
+  return (
+    <Frame
+      progress={progressOf('methods')}
+      onBack={onBack}
+      foot={
+        <>
+          <Primary onClick={() => go('apple')}>
+            <AppleLogo /> Continue with Apple
+          </Primary>
+          <Secondary onClick={() => go('x')}>
+            <XLogo /> Continue with X
+          </Secondary>
+          {more ? (
+            <>
+              <Secondary onClick={() => go('google')}>
+                <GoogleLogo /> Continue with Google
+              </Secondary>
+              <Secondary onClick={onEmail}>
+                <MailLogo /> Continue with email
+              </Secondary>
+            </>
+          ) : (
+            <TextLink strong onClick={() => setMore(true)}>
+              More options
+            </TextLink>
+          )}
+          <p className={styles['fine']}>
+            You confirm you're 18 or older and agree to the{' '}
+            <button type="button" onClick={() => onLegal('terms')}>
+              Terms
+            </button>{' '}
+            and{' '}
+            <button type="button" onClick={() => onLegal('privacy')}>
+              Privacy Notice
+            </button>
+            .
+          </p>
+        </>
+      }
+    >
+      <Question>{mode === 'join' ? 'Create your account' : 'Log in'}</Question>
+      <Line>{mode === 'join' ? 'It takes about 30 seconds.' : 'Use the way you joined.'}</Line>
+      {from !== null ? (
+        <div className={`${styles['card']} ${styles['invited']}`}>
+          {from.kind === 'member' ? <Avatar name={from.handle ?? from.name} seed={from.userId} src={from.pictureUrl} size={36} /> : null}
+          <span>
+            Invited by <b>{from.kind === 'member' ? (from.handle !== null ? `@${from.handle}` : (from.name ?? 'a member')) : from.label}</b>
+          </span>
+          <CheckMark />
+        </div>
+      ) : null}
+      {state.kind === 'refused' ? <p className={styles['note']}>You closed sign-in. Pick a way to try again.</p> : null}
+      {state.kind === 'failed' ? <p className={styles['note']}>Sign-in didn't finish. Pick a way to try again.</p> : null}
+    </Frame>
+  );
+}
+
+/* ── Email ───────────────────────────────────────────────── */
+
+const SENT_WORDS = {
+  'invalid-email': "That doesn't look like an email address.",
+  'too-many': 'Too many tries. Wait a minute and try again.',
+  failed: "We couldn't send a code just now. Try again.",
+  unavailable: "Sign-in isn't ready yet. Try again in a moment.",
+} as const;
+
+function EmailStep({ email, onEmail, onBack, onSent }: { email: string; onEmail: (v: string) => void; onBack: () => void; onSent: () => void }) {
+  const { wallet } = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const send = async () => {
+    if (busy || wallet === null) return;
+    setBusy(true);
+    const r = await wallet.sendEmailCode(email);
+    setBusy(false);
+    if (r === 'sent') onSent();
+    else setProblem(SENT_WORDS[r]);
+  };
+  return (
+    <Frame progress={progressOf('email')} onBack={onBack} foot={<Primary busy={busy} onClick={() => void send()}>{busy ? 'Sending code' : 'Send code'}</Primary>}>
+      <Question>What's your email?</Question>
+      <Line>We'll send you a 6-digit code.</Line>
+      <label className={styles['field']}>
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="you@example.com"
+          aria-label="Email"
+          value={email}
+          enterKeyHint="send"
+          autoFocus
+          onChange={(e) => {
+            onEmail(e.target.value);
+            setProblem(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void send();
+          }}
+        />
+      </label>
+      {problem !== null ? <p className={styles['problem']}>{problem}</p> : null}
+    </Frame>
+  );
+}
+
+/* ── Code ────────────────────────────────────────────────── */
+
+const CODE_WORDS = {
+  'wrong-code': "That code didn't work. Check it and try again.",
+  expired: 'That code has expired. Send a new one.',
+  'too-many': 'Too many tries. Send a new code.',
+  failed: "We couldn't check the code just now. Try again.",
+  unavailable: "Sign-in isn't ready yet. Try again in a moment.",
+} as const;
+
+function CodeStep({ email, onBack }: { email: string; onBack: () => void }) {
+  const { wallet } = useWallet();
+  const [code, setCode] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  const [wait, setWait] = useState(RESEND_AFTER_S);
+  const box = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (wait <= 0) return;
+    const t = setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
+
+  const submit = async (c: string) => {
+    if (busy || wallet === null) return;
+    setBusy(true);
+    const r = await wallet.signInWithEmailCode(c);
+    setBusy(false);
+    if (r === 'signed-in') {
+      setSignedIn(true);
+      return;
+    }
+    setProblem(CODE_WORDS[r]);
+    setCode('');
+    box.current?.focus();
+  };
+  const resend = async () => {
+    if (wallet === null) return;
+    setWait(RESEND_AFTER_S);
+    setProblem(null);
+    const r = await wallet.sendEmailCode(email);
+    if (r !== 'sent') setProblem(SENT_WORDS[r]);
+  };
+
+  const digits = code.padEnd(6, ' ').slice(0, 6).split('');
+  const bad = problem !== null && code === '';
+  return (
+    <Frame progress={progressOf('code')} onBack={onBack}>
+      <Question>Enter the code</Question>
+      <Line>
+        Sent to {email.trim()}{' '}
+        <button type="button" onClick={onBack}>
+          Change
+        </button>
+      </Line>
+      <div className={styles['digits']}>
+        {digits.map((d, i) => (
+          <span key={i} className={`${styles['digit']} ${i === Math.min(code.length, 5) && !signedIn ? styles['digitOn'] : ''} ${bad ? styles['digitBad'] : ''}`} aria-hidden="true">
+            {d.trim()}
+          </span>
+        ))}
+        <input
+          ref={box}
+          className={styles['codeInput']}
+          value={code}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]*"
+          maxLength={6}
+          aria-label="6-digit code"
+          autoFocus
+          onChange={(e) => {
+            const next = e.target.value.replace(/\D/g, '').slice(0, 6);
+            setCode(next);
+            setProblem(null);
+            if (next.length === 6) void submit(next);
+          }}
+        />
+      </div>
+      {problem !== null ? <p className={styles['problem']}>{problem}</p> : null}
+      {signedIn || busy ? (
+        <p className={styles['resend']}>{signedIn ? 'Signing you in' : 'Checking'}</p>
+      ) : wait > 0 ? (
+        <p className={styles['resend']}>Resend code in 0:{String(wait).padStart(2, '0')}</p>
+      ) : (
+        <p className={styles['resend']}>
+          <button type="button" onClick={() => void resend()}>
+            Resend code
+          </button>
+        </p>
+      )}
+    </Frame>
+  );
+}
+
+/* ── Signed in, no access ────────────────────────────────── */
+
+function InviteDoorScreen({ invite }: { invite: InviteDoor }) {
   const [code, setCode] = useState(() => pendingCode() ?? '');
-  const [problem, setProblem] = useState<string | null>(invite?.refusal ?? null);
+  const [problem, setProblem] = useState<string | null>(invite.refusal);
   const [busy, setBusy] = useState(false);
   const check = useCodeCheck(code);
-  /* Sign-in starting, or finishing after the provider hands back: Trador's "Loading", no button. */
-  const waiting = invite === null && configured && (wallet === null || state.kind === 'unavailable' || state.kind === 'connecting');
-  const typed = (v: string) => {
-    setCode(v);
-    setProblem(null);
-  };
   const enter = async () => {
-    if (invite === null || busy) return;
+    if (busy) return;
     const clean = cleanCode(code);
     if (clean === null) {
       setProblem('Type your invite code first.');
@@ -77,104 +368,45 @@ export function Landing({ configured, onEnter, invite = null }: { configured: bo
     setBusy(false);
   };
   const toWaitlist = async () => {
-    if (invite === null || busy) return;
+    if (busy) return;
     setBusy(true);
     setProblem(await invite.wait());
     setBusy(false);
   };
-
   return (
-    <div className={styles['page']}>
-      <div className={styles['middle']}>
-        <div className={styles['brand']}>
-          <Mark />
-          <span className={styles['wordmark']}>INSIDOR</span>
-        </div>
-
-        <h1 className={styles['claim']}>
-          Catch the meme
-          <br />
-          <span className={styles['payoff']}>before the coin</span>
-        </h1>
-
-        <p className={styles['line']}>
-          Viral posts, grouped into narratives,
-          <br />
-          with the coins they became.
-        </p>
-
-        <div className={styles['actions']}>
-          {configured ? <CodeBox value={code} onChange={typed} check={check} problem={problem} /> : null}
-          {invite !== null ? (
-            <>
-              {invite.unchecked ? <p className={styles['demo']}>We couldn't check your invite just now.</p> : null}
-              {invite.unchecked ? (
-                <button type="button" className={styles['join']} onClick={invite.retry}>
-                  Try again
-                </button>
-              ) : (
-                <button type="button" className={styles['join']} onClick={() => void enter()}>
-                  {busy ? 'Checking' : 'Enter'} <Arrow />
-                </button>
-              )}
-              <button type="button" className={inv['quiet']} onClick={() => void toWaitlist()}>
-                No code? Join the waitlist
-              </button>
-              <p className={inv['signedAs']}>
-                {invite.signedInAs !== null ? <Avatar name={invite.signedInAs.replace(/^@/, '')} seed={invite.signedInAs} src={invite.picture} size={18} /> : null}
-                <span>Signed in{invite.signedInAs !== null ? ` as ${invite.signedInAs}` : ''}</span>
-                <button type="button" className={inv['textButton']} onClick={invite.signOut}>Sign out</button>
-              </p>
-            </>
-          ) : waiting ? <span className={styles['waiting']}>Loading</span> : (
-            <button
-              type="button"
-              className={styles['join']}
-              onClick={() => {
-                if (!configured) return onEnter();
-                /* The code goes with the sign-in: kept here, brought once signed in (features/invites/useAccess.ts). */
-                const clean = cleanCode(code);
-                if (clean !== null) keepCode(clean);
-                setOpen(true);
-              }}
-            >
-              Join now <Arrow />
+    <Frame
+      foot={
+        <>
+          {invite.unchecked ? <Primary onClick={invite.retry}>Try again</Primary> : <Primary busy={busy} onClick={() => void enter()}>{busy ? 'Checking' : 'Enter'}</Primary>}
+          <TextLink strong onClick={() => void toWaitlist()}>
+            No code? Join the waitlist
+          </TextLink>
+          <p className={inv['signedAs']}>
+            {invite.signedInAs !== null ? <Avatar name={invite.signedInAs.replace(/^@/, '')} seed={invite.signedInAs} src={invite.picture} size={18} /> : null}
+            <span>Signed in{invite.signedInAs !== null ? ` as ${invite.signedInAs}` : ''}</span>
+            <button type="button" className={inv['textButton']} onClick={invite.signOut}>
+              Sign out
             </button>
-          )}
-          {invite === null ? (
-            <span className={styles['ios']} aria-label="iOS app coming soon">
-              <Apple /> Coming soon
-            </span>
-          ) : null}
-          {invite === null && configured && state.kind === 'refused' ? <p className={styles['demo']}>You closed sign-in. Join now to try again.</p> : null}
-          {invite === null && configured && state.kind === 'failed' ? <p className={styles['demo']}>Sign-in didn't finish. Join now to try again.</p> : null}
-          {!configured ? <p className={styles['demo']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
-        </div>
+          </p>
+        </>
+      }
+    >
+      <Question>Enter your invite code</Question>
+      <Line>{invite.unchecked ? "We couldn't check your invite just now." : 'Insidor is invite only. Ask a member for a code, or join the waitlist.'}</Line>
+      <div style={{ marginTop: 28 }}>
+        <CodeBox value={code} onChange={(v) => {
+          setCode(v);
+          setProblem(null);
+        }} check={check} problem={problem} />
       </div>
-
-      {open ? (
-        <Modal title="Log in or create an account" onClose={() => setOpen(false)}>
-          <button
-            type="button"
-            className={styles['x']}
-            onClick={() => {
-              setOpen(false);
-              void wallet?.connect('x');
-            }}
-          >
-            <XMark size={18} /> Continue with X
-          </button>
-          <p className={styles['small']}>A wallet is created for you on the way in. Nothing to install, nothing to pay.</p>
-        </Modal>
-      ) : null}
-    </div>
+    </Frame>
   );
 }
 
 /** A returning person's session coming back: the mark, pulsing, and nothing to press. */
 export function Holding() {
   return (
-    <div className={styles['holding']} role="status" aria-label="Loading">
+    <div className={landing['holding']} role="status" aria-label="Loading">
       <Mark />
     </div>
   );
@@ -182,27 +414,41 @@ export function Holding() {
 
 /** Insidor's mark: an eye — seeing it first. */
 export function Mark() {
+  return <SignUpMark size={40} />;
+}
+
+function AppleLogo() {
   return (
-    <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" rx="11" fill="var(--brand)" />
-      <path d="M8 20c3.4-5.6 7.4-8.4 12-8.4s8.6 2.8 12 8.4c-3.4 5.6-7.4 8.4-12 8.4S11.4 25.6 8 20Z" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
-      <circle cx="20" cy="20" r="4.2" fill="#fff" />
+    <svg width="18" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+      <path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.76-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.65ZM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.67-1.09 1.75-.96 2.79 1.02.08 2.05-.51 2.68-1.27Z" />
     </svg>
   );
 }
 
-function Arrow() {
+function XLogo() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14M13 6l6 6-6 6" />
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--text-1)" aria-hidden="true">
+      <path d="M18.9 2H22l-6.8 7.8L23 22h-6.2l-4.9-6.4L6.3 22H3.2l7.3-8.3L1 2h6.3l4.4 5.8L18.9 2Zm-1.1 18h1.7L6.2 3.9H4.4L17.8 20Z" />
     </svg>
   );
 }
 
-function Apple() {
+function GoogleLogo() {
   return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.78.74 2.99.72 1.24-.02 2.02-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.65l.04.02ZM14.1 5.85c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.67-1.09 1.75-.95 2.79 1.01.08 2.04-.51 2.67-1.27Z" />
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8Z" />
+      <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1C3.3 21.3 7.3 24 12 24Z" />
+      <path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1Z" />
+      <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9Z" />
+    </svg>
+  );
+}
+
+function MailLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
     </svg>
   );
 }
