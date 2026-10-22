@@ -8,6 +8,10 @@
  *      latest point ticked up while the window is down tells the wrong story about the window.
  *
  * Scrubbing reports the point under the finger, so the header can show "Value at" that moment.
+ *
+ * `tone="brand"` draws the line purple whatever its direction, as the profile's chart is (the
+ * owner's approved profile, 2026-10-22: the app's charts are purple); the move's colour is then said
+ * by the line of words above it.
  */
 
 import { useMemo, useState } from 'react';
@@ -18,7 +22,7 @@ import type { BalancePoint } from './balance-points.ts';
 const W = 1000;
 const H = 300;
 
-export function BalanceChart({ points, height, onScrub }: { points: readonly BalancePoint[]; height: number; onScrub: (p: BalancePoint | null) => void }) {
+export function BalanceChart({ points, height, onScrub, tone = 'move' }: { points: readonly BalancePoint[]; height: number; onScrub: (p: BalancePoint | null) => void; tone?: 'move' | 'brand' }) {
   const [hover, setHover] = useState<number | null>(null);
   const geometry = useMemo(() => {
     if (points.length === 0) return null;
@@ -38,8 +42,8 @@ export function BalanceChart({ points, height, onScrub }: { points: readonly Bal
   }, [points]);
   if (geometry === null) return null;
 
-  const stroke = geometry.rising ? 'var(--up)' : 'var(--down)';
-  const gradient = `balance-fill-${geometry.rising ? 'up' : 'down'}`;
+  const stroke = tone === 'brand' ? 'var(--brand-300)' : geometry.rising ? 'var(--up)' : 'var(--down)';
+  const gradient = `balance-fill-${tone === 'brand' ? 'brand' : geometry.rising ? 'up' : 'down'}`;
   const hovered = hover === null ? null : points[hover] ?? null;
   const pick = (ratio: number) => {
     const i = Math.min(points.length - 1, Math.max(0, Math.round(ratio * (points.length - 1))));

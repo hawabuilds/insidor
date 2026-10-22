@@ -1,6 +1,7 @@
 /**
  * The portfolio's wording, apart from the screens so `node --test` holds it: what a holding's gain
- * says, how an amount is written, the line under the total, and the SOL row's value. Shared by the
+ * says, how an amount is written, and the SOL row's value (the line under the total is the
+ * profile's, features/profile/profile-words.ts moveLine). Shared by the
  * Portfolio tab and a profile's portfolio, so a holding reads the same wherever it is shown.
  *
  * ★ A GAIN IS SIGNED DOLLARS, "+$17.40" / "−$47.80", THE SIGN PART OF THE NUMBER. It is the gain
@@ -20,7 +21,6 @@
 
 import type { Holding, Portfolio } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import type { BalancePoint } from './balance-points.ts';
 
 export function profitLine(p: Holding['profit']): { readonly text: string; readonly tone: 'up' | 'down' | 'none'; readonly title: string } {
   if (p.kind === 'none') {
@@ -42,23 +42,6 @@ export function signedUsd(v: number): string {
   const abs = Math.abs(v);
   const digits = abs > 0 && abs < 0.01 ? 4 : 2;
   return `${v < 0 ? '−' : '+'}$${abs.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
-
-/** The chart window's words, as the line under the total says them. */
-export const RANGE_WORDS = { '1d': 'today', '1w': 'this week', '1m': 'this month', all: 'all time' } as const;
-
-/**
- * "+$8.10 (+0.92%) this week": first point to the live total. Null with fewer than two points or a
- * first value of nothing, where a share cannot be said; the chart's place says why.
- */
-export function rangeLine(points: readonly BalancePoint[] | null, range: keyof typeof RANGE_WORDS): { readonly text: string; readonly tone: 'up' | 'down' } | null {
-  if (points === null || points.length < 2) return null;
-  const first = points[0]!.value;
-  const last = points[points.length - 1]!.value;
-  if (!(first > 0) || !Number.isFinite(last)) return null;
-  const usd = last - first;
-  const pct = (usd / first) * 100;
-  return { text: `${signedUsd(usd)} (${pct < 0 ? '−' : '+'}${Math.abs(pct).toFixed(2)}%) ${RANGE_WORDS[range]}`, tone: usd < 0 ? 'down' : 'up' };
 }
 
 /**

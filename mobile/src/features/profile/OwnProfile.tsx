@@ -1,0 +1,97 @@
+/**
+ * YOUR OWN PROFILE — the approved design's first screen: the head (ProfileParts.tsx) with share and
+ * settings over the banner and "Share profile" and "Edit profile" under the counts; then your
+ * portfolio (the total, its move this window and the purple chart), the stats strip, and your
+ * Holdings and Created.
+ *
+ * Drawn on the Portfolio tab (features/portfolio/PortfolioScreen.tsx, which holds the wallet's kept
+ * prices and the settings menu) and on #/u/<you> (ProfileScreen.tsx). Both hand in the wallet read
+ * and the chart's points; this screen only lays them out and holds Edit profile.
+ *
+ * ★ WHO YOU ARE SHOWS AT ONCE. Until the social service's card is read, the head is drawn from the
+ * sign-in (name, handle, picture) with your counts as dashes' worth of nothing; the card fills in the
+ * banner, bio and counts. Edit profile opens only once the card is here, so it never saves over a
+ * bio it has not read.
+ *
+ * What breaks if changed carelessly: the stats read the wallet's catches by address, the same
+ * address the holdings were read for; a linked wallet's view must pass its own, or its rows would
+ * carry another wallet's "Early" tags.
+ */
+
+import { useState, type ReactNode } from 'react';
+
+import { fetchCatches, type Portfolio } from '../../shared/api/index.ts';
+import type { ProfileCard } from '../../shared/api/people.ts';
+import { useLoad } from '../../shared/hooks.ts';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import type { BalancePoint } from '../portfolio/balance-points.ts';
+import { EditProfileSheet } from './EditProfileSheet.tsx';
+import { CoinLists, PortfolioBlock, ProfileHead, ShareGlyph, StatsStrip, shareProfile, type Who } from './ProfileParts.tsx';
+import type { ProfileRange } from './profile-words.ts';
+import styles from './profile.module.css';
+
+export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, rowsAsOf = null, points, range, onRange, over, below = null, back = false, now, signInName }: {
+  /** What the sign-in knows, drawn until the card is read. */
+  who: Who;
+  card: ProfileCard | null;
+  reloadCard: () => void;
+  /** The wallet shown. */
+  address: string;
+  data: Portfolio | null;
+  /** The total, drawn (with its kept-price steadying); null while read. */
+  total: ReactNode | null;
+  asOf: string | null;
+  /** Rows shown from a last price, and when. */
+  rowsAsOf?: ReadonlyMap<string, number> | null;
+  points: readonly BalancePoint[] | null;
+  range: ProfileRange;
+  onRange: (r: ProfileRange) => void;
+  /** The settings button (and anything else) over the banner, after Share. */
+  over: ReactNode;
+  /** Drawn under the portfolio: the wallet switcher and the linked-wallet notice. */
+  below?: ReactNode;
+  back?: boolean;
+  now: number;
+  signInName: string | null;
+}) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [catches] = useLoad(`catches:${address}`, (signal) => fetchCatches(address, signal), 'memory');
+  const shown: Who = card ?? who;
+  const key = shown.handle ?? (card === null ? null : card.userId);
+  const share = () => {
+    if (key === null) return;
+    void shareProfile(key, shown.name ?? `@${key}`).then((r) => {
+      if (r === 'copied') toast('Link copied');
+      if (r === 'failed') toast("Couldn't share", 'Try again in a moment.');
+    });
+  };
+  return (
+    <section className={styles['page']}>
+      <ProfileHead
+        who={shown}
+        back={back}
+        countsFor={card === null ? null : key}
+        over={
+          <>
+            {key !== null ? (
+              <button type="button" className={styles['glass']} aria-label="Share your profile" onClick={share}><ShareGlyph /></button>
+            ) : null}
+            {over}
+          </>
+        }
+        actions={
+          <>
+            <button type="button" className={styles['outline']} onClick={share}>Share profile</button>
+            {card !== null ? <button type="button" className={styles['outline']} onClick={() => setEditing(true)}>Edit profile</button> : null}
+          </>
+        }
+      />
+      <PortfolioBlock total={total} asOf={asOf} points={points} range={range} onRange={onRange} />
+      {below}
+      <StatsStrip catches={catches.state === 'ready' ? catches.value : catches.state === 'failed' ? { kind: 'unavailable' } : null} state="shown" />
+      <CoinLists data={data} catches={catches.state === 'ready' ? catches.value : null} self at={shown.handle !== null ? `@${shown.handle}` : 'You'} now={now} asOf={rowsAsOf} />
+      {editing && card !== null ? <EditProfileSheet card={card} signInName={signInName} onClose={() => setEditing(false)} onSaved={reloadCard} /> : null}
+    </section>
+  );
+}
