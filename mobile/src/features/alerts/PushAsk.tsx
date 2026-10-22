@@ -126,7 +126,7 @@ export function PushAskView({ initial, publicKey, onDone }: { initial: PushAskSt
               {busy ? 'Asking your phone' : 'Allow'}
             </Button>
           ) : null}
-          <Button look="quiet" size="large" onClick={close}>
+          <Button look="link" size="large" onClick={close}>
             {state === 'blocked' ? 'Close' : 'Not now'}
           </Button>
         </div>

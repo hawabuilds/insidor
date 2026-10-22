@@ -30,7 +30,7 @@ import styles from './alerts.module.css';
 
 const RANKS: readonly string[] = ['intern', 'analyst', 'quant', 'wolf', 'goat'];
 
-/** The row's face: a picture (person, poster), a rank, a coin's logo, or Trador's brand-wash circle with a glyph. */
+/** The row's face: a picture (person, poster), a rank, a coin's logo, or a grey circle with a glyph. */
 export function Mark({ a }: { a: Alert }) {
   const m = markOf(a, RANKS);
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;

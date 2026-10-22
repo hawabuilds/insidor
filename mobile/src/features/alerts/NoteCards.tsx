@@ -28,6 +28,7 @@ import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { CoinIcon, FlameIcon, TrendingUpIcon } from '../../shared/ui/icons.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { Avatar } from '../portfolio/Avatar.tsx';
 import { linkOf } from './split.ts';
 import styles from './alerts.module.css';
 
@@ -71,7 +72,11 @@ export function PostNote({ a, post, now, unread }: { a: Alert; post: RisingPost;
         <div className={styles['cardText']}>
           <p className={styles['cardTitle']}>{post.translation?.text ?? post.excerpt}</p>
           <p className={styles['cardMeta']}>
-            <span>{post.authorLabel}</span>
+            {/* Every @handle with its picture (the owner, 2026-10-21): the stored copy, then the link, then the letter. */}
+            <span className={styles['cardWho']}>
+              <Avatar name={post.authorLabel.replace(/^@/, '')} seed={post.authorLabel} src={post.authorPictureUrl} file={post.authorPictureFile} size={18} />
+              <span>{post.authorLabel}</span>
+            </span>
             <Value r={formatAge(post.postedAt, now as never)} />
           </p>
           {a.speed != null && a.speed.gain > 0 ? <p className={styles['cardUp']}>+{compact(a.speed.gain)} views in {Math.round(a.speed.minutes)}m</p> : null}
