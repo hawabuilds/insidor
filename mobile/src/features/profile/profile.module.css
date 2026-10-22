@@ -14,7 +14,8 @@
   /* Above the status-bar strip (tokens.css body::before, z 50) while it is at the top, so the banner
      runs behind the clock; once scrolled away the strip covers the rows again. */
   z-index: 51;
-  height: calc(132px + var(--safe-top));
+  /* Short enough that Holdings and Created show on the first screen (the owner, 2026-10-23). */
+  height: calc(96px + var(--safe-top));
   margin-top: calc(-1 * var(--safe-top));
   background: var(--card);
   overflow: visible;
@@ -67,7 +68,7 @@
 .avatar {
   position: absolute;
   left: var(--gutter);
-  bottom: -40px;
+  bottom: -34px;
   border-radius: 50%;
   /* The page's ground around the picture, so it sits cut out of the banner; not a ring of colour. */
   box-shadow: 0 0 0 4px var(--bg);
@@ -78,7 +79,7 @@
 /* ── who ── */
 
 .who {
-  padding: 50px var(--gutter) 0;
+  padding: 42px var(--gutter) 0;
 }
 
 .nameRow {
@@ -182,7 +183,7 @@
 .actions {
   display: flex;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .actions > * {
@@ -246,7 +247,7 @@
 /* ── the portfolio (your own only) ── */
 
 .section {
-  margin: 28px var(--gutter) 0;
+  margin: 18px var(--gutter) 0;
 }
 
 .label {
@@ -280,13 +281,13 @@
 }
 
 .chart {
-  height: 120px;
-  margin: 14px calc(-1 * var(--gutter)) 0;
+  height: 96px;
+  margin: 10px calc(-1 * var(--gutter)) 0;
 }
 
 .chartNote {
-  height: 120px;
-  margin-top: 14px;
+  height: 72px;
+  margin-top: 10px;
   display: grid;
   place-items: center;
   padding: 0 12px;
@@ -301,13 +302,13 @@
 .ranges {
   display: flex;
   gap: 4px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .range,
 .rangeOn {
   flex: 1;
-  height: 36px;
+  height: 32px;
   border-radius: 10px;
   font-size: var(--type-secondary);
   font-weight: 600;
@@ -327,8 +328,8 @@
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  margin: 22px var(--gutter) 0;
-  padding: 14px 6px;
+  margin: 14px var(--gutter) 0;
+  padding: 10px 6px;
   border-radius: var(--r-card);
   background: var(--card);
 }
@@ -362,7 +363,7 @@
 .tabs {
   display: flex;
   gap: 22px;
-  margin: 26px var(--gutter) 6px;
+  margin: 14px var(--gutter) 2px;
 }
 
 .tab {

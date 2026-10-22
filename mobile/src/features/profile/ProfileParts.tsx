@@ -45,7 +45,7 @@ import { primeSearchedCoin } from '../token/searched-key.ts';
 import { firstRows, launchedWords, moveLine, mutualsLine, PROFILE_RANGES, statCells, type ProfileRange } from './profile-words.ts';
 import styles from './profile.module.css';
 
-const PICTURE = 84;
+const PICTURE = 72;
 const LOGO = 38;
 
 /** Who the head draws: the profile card, or what the sign-in knows while the card is on its way. */
@@ -202,7 +202,7 @@ export function PortfolioBlock({ total, asOf, points, range, onRange }: {
       ) : null}
       {asOf !== null && scrubbed === null ? <div className={styles['move']}>{asOf}</div> : null}
       {points !== null && points.length >= 2 ? (
-        <div className={styles['chart']}><BalanceChart points={points} height={120} onScrub={setScrubbed} tone="brand" /></div>
+        <div className={styles['chart']}><BalanceChart points={points} height={96} onScrub={setScrubbed} tone="brand" /></div>
       ) : (
         <div className={styles['chartNote']}>{points === null ? '' : 'The chart starts from the first time Insidor reads this wallet. Check back shortly.'}</div>
       )}
