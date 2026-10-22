@@ -25,10 +25,12 @@
  * the app; signed out, the front door, with the address kept so signing in lands on it; a
  * returning person, a moment's hold while their session comes back. No screen inside asks anyone
  * to sign in. Signed in is not let in: a first sign-in is asked about access (features/invites
- * useAccess.ts) and, without it, sees the door's code box or their place on the waitlist.
+ * useAccess.ts) and, without it, sees the door's code box or their place on the waitlist. Let in is
+ * not signed up: a member with a sign-up step left (username, photo, Home Screen, alerts, done) sees
+ * those screens first (features/onboarding), and only then the app.
  */
 
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { fetchUnread } from './shared/api/following.ts';
@@ -45,6 +47,7 @@ import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { Holding, Landing } from './features/landing/Landing.tsx';
 import { forgetEntered, hasEntered, markEntered } from './features/landing/entered.ts';
 import { useAccess } from './features/invites/useAccess.ts';
+import { useSignUp } from './features/onboarding/useSignUp.ts';
 import { Waitlist } from './features/invites/Waitlist.tsx';
 import { SIGN_IN_CONFIGURED, gateFor } from './shared/sign-in.ts';
 import { useWallet } from './shared/wallet.tsx';
@@ -83,6 +86,8 @@ const SCREENS = {
   ImportScreen: later(() => import('./features/portfolio/ImportScreen.tsx'), (m) => m.ImportScreen),
   WalletsScreen: later(() => import('./features/portfolio/WalletsScreen.tsx'), (m) => m.WalletsScreen),
 };
+/* Sign-up after sign-in (Username to Done): seen once per member, so its own chunk, never on For You's path. */
+const SignUpSteps = lazy(() => import('./features/onboarding/SignUpSteps.tsx').then((m) => ({ default: m.SignUpSteps })));
 const CreateCoin = SCREENS.CreateCoin.Component;
 const Learn = SCREENS.Learn.Component;
 const FollowingScreen = SCREENS.FollowingScreen.Component;
@@ -265,8 +270,10 @@ export function App() {
   const signedIn = state.kind === 'connected';
   /* Signed in on a browser never let in before: does this person have access (invite only)? */
   const access = useAccess(signedIn, entered);
-  /* Once let in, this browser is held rather than shown the door while its session comes back. */
-  if (signedIn && !entered && access.access === 'in') {
+  /* Let in on this browser for the first time: where is this member in sign-up (features/onboarding)? */
+  const signUp = useSignUp(signedIn && !entered && access.access === 'in');
+  /* Once let in and signed up, this browser is held rather than shown the door while its session comes back. */
+  if (signedIn && !entered && access.access === 'in' && signUp.signUp === 'done') {
     markEntered();
     setEntered(true);
   }
@@ -318,12 +325,30 @@ export function App() {
   useScrollPerEntry(place, keptTab);
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
-  const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access });
+  const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access, signUp: signUp.signUp });
   if (gate === 'holding') return <Holding />;
   const handle = wallet?.identity()?.handle ?? null;
   const signedInAs = handle !== null ? `@${handle}` : null;
   const picture = wallet?.identity()?.pictureUrl ?? null;
   const signOut = () => void wallet?.disconnect();
+  if (gate === 'onboarding' && signUp.status !== null) {
+    const status = signUp.status;
+    return (
+      <ComingSoonProvider>
+        <Suspense fallback={<Holding />}>
+          <SignUpSteps
+            status={status}
+            onSignOut={signOut}
+            onFinished={(s) => {
+              /* Open For You: the app, at For You, whatever address sign-up started on. */
+              if (window.location.hash !== '' && window.location.hash !== '#/') window.location.hash = '#/';
+              signUp.finish(s);
+            }}
+          />
+        </Suspense>
+      </ComingSoonProvider>
+    );
+  }
   if (gate === 'waitlist') return <Waitlist place={access.place} bring={access.bring} signedInAs={signedInAs} picture={picture} signOut={signOut} />;
   if (gate === 'invite' || gate === 'unchecked') {
     return (
