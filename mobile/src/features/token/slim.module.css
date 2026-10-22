@@ -1,6 +1,7 @@
-/* The token page's slim card under the interval row (the owner, 2026-10-17): 68px tall, #151320
-   with a thin #2B2440 border, radius 18, a 48px picture, one bold line and one small line, and on
-   the right a word and a small arrow. The narrative card and, without a narrative, the post card
+/* The token page's slim card under the interval row (the owner, 2026-10-17): 68px tall, radius 18,
+   a 48px picture, one bold line and one small line, and on the right a word and a small arrow. On
+   the approved system it is the app's one card (#131317 on the #1f1f26 hairline) rather than a
+   purple-tinted one, and its "Story coin" word is white: green is a number going up. The narrative card and, without a narrative, the post card
    share it, so the trades below start at the same height either way. */
 
 .card {
@@ -11,15 +12,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid #2b2440;
-  border-radius: 18px;
-  background: #151320;
-  color: #8b8794;
+  border: 1px solid var(--card-line);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--text-2);
   text-align: left;
 }
 
 .card:active {
-  background: #1b1829;
+  background: var(--hover);
 }
 
 .pic {
@@ -39,7 +40,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 2px solid #151320;
+  border: 2px solid var(--card);
   background: #000;
   color: #fff;
 }
@@ -56,7 +57,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #fff;
+  color: var(--text-1);
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -86,7 +87,7 @@
 }
 
 .up {
-  color: #2fd47a;
+  color: var(--up);
 }
 
 .end {
@@ -99,5 +100,5 @@
 }
 
 .story {
-  color: #2fd47a;
+  color: var(--text-1);
 }

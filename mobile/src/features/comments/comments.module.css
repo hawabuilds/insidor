@@ -1,5 +1,8 @@
 /* The comment thread: Trador's CommentsPanel and CommentCard — composer on top, conversations
-   separated by space alone, replies under a rule — with Trador's sizes and our colours. */
+   separated by space alone, replies under a rule — with Trador's sizes and our colours. On the
+   approved system (tokens.css): no text under 12px, links and a liked heart white (purple is only
+   the composer's Post, the tab's main action), the proof tag grey. The replies' left rule stays:
+   it says which comment a reply answers, which spacing alone cannot. */
 
 .thread {
   padding-bottom: 8px;
@@ -15,7 +18,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--t-caption);
   font-weight: 600;
 }
 
@@ -25,6 +28,7 @@
 }
 
 .replying button {
+  position: relative;
   width: 18px;
   height: 18px;
   display: grid;
@@ -32,6 +36,12 @@
   border-radius: 50%;
   background: var(--overlay-wash);
   color: var(--text-2);
+}
+
+.replying button::after {
+  content: '';
+  position: absolute;
+  inset: -13px;
 }
 
 .row {
@@ -51,7 +61,7 @@
   box-shadow: var(--shadow-inset-soft);
   color: var(--text-1);
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.4;
   resize: none;
   outline: none;
@@ -72,7 +82,7 @@
   background: var(--brand);
   box-shadow: var(--shadow-brand);
   color: #fff;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -80,7 +90,7 @@
 .countOver {
   margin: 6px 0 0;
   text-align: right;
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 600;
   color: var(--text-3);
 }
@@ -92,7 +102,7 @@
 .addProof {
   margin-top: 6px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--t-caption);
   font-weight: 700;
 }
 
@@ -106,14 +116,14 @@
   box-shadow: var(--shadow-inset-soft);
   color: var(--text-1);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 15px;
   outline: none;
 }
 
 .hint {
   margin: 6px 0 0;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 500;
   line-height: 1.45;
 }
@@ -132,9 +142,12 @@
 
 .retry {
   margin-top: 8px;
-  color: var(--brand-400);
-  font-size: 13px;
-  font-weight: 700;
+  min-height: var(--tap);
+  color: var(--link);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .list {
@@ -195,7 +208,9 @@
 }
 
 .inline {
-  color: var(--brand-400);
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
   word-break: break-all;
 }
 
@@ -211,8 +226,8 @@
 }
 
 .proof {
-  background: var(--up-wash);
-  color: var(--up);
+  background: var(--select-bg);
+  color: var(--text-1);
 }
 
 .link {
@@ -242,7 +257,7 @@
 }
 
 .actions .liked {
-  color: var(--brand);
+  color: var(--text-1);
 }
 
 .actions .word {
