@@ -48,6 +48,7 @@ import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, siteOf, tradeDet
 import { usePeopleFeed } from './list.ts';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './following.module.css';
+import { Nums } from '../../shared/ui/Num.tsx';
 
 const TABS: readonly { readonly key: FeedTab; readonly label: string }[] = [
   { key: 'following', label: 'Following' },
@@ -187,7 +188,7 @@ function TradeRow({ t, now }: { t: FeedTrade; now: number }) {
           </span>
           <span className={styles['age']}>{age(t.at, now)}</span>
         </div>
-        {detail !== null ? <p className={styles['detail']}>{detail}</p> : null}
+        {detail !== null ? <p className={styles['detail']}><Nums text={detail} /></p> : null}
       </a>
     </div>
   );

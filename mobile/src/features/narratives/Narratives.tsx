@@ -371,7 +371,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
  */
 function CardCap({ coin, story }: { coin: CoinFace; story: Story }) {
   const cap = useCoinCap(coin.address, coin.marketCapUsd, false, servedPrice(story, coin.address));
-  return cap.known ? <Value r={formatUsd(cap)} /> : null;
+  return cap.known ? <Value r={formatUsd(cap)} num /> : null;
 }
 
 /** The price the list sent for one of the narrative's coins, or null when it sent none for that address. */

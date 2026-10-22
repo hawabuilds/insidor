@@ -66,6 +66,7 @@ import { Thumb } from './Thumb.tsx';
 import { TranslatedLine, useShownWords } from './Translated.tsx';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
+import { Nums } from './Num.tsx';
 
 export interface PostHandlers {
   /** Opens the post sheet: a tap on the card, its title, Buy or View coins. */
@@ -159,8 +160,8 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
               <CoinLogo small address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
             </span>
           ) : null}
-          {status.line}
-          {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}>{status.facts.join(', ')}</span> : null}
+          <Nums text={status.line} />
+          {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}><Nums text={status.facts.join(', ')} /></span> : null}
         </span>
         {status.actions.length > 0 || watch !== null ? (
           <span className={styles['actions']}>

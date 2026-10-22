@@ -53,7 +53,7 @@
 
 .facts {
   display: block;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   color: var(--text-3);
   margin-top: 2px;
 }

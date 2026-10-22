@@ -27,6 +27,7 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { primeSearchedCoin } from '../token/searched-key.ts';
 import { asOfWords, compactAmount, noPriceReason, profitLine, solValueUsd } from './wallet-view.ts';
 import styles from './portfolio.module.css';
+import { Nums } from '../../shared/ui/Num.tsx';
 
 const LOGO = 38;
 
@@ -51,7 +52,7 @@ export function Holdings({ data, asOf = null, now = 0 }: {
               <div className={styles['units']}>{data.solBalance.known ? data.solBalance.amount.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'} SOL</div>
             </div>
             <div className={styles['right']}>
-              <div className={sol === null ? `${styles['worth']} ${styles['faint']}` : styles['worth']} title={sol === null ? solReason.title : undefined}>{sol === null ? '—' : <Value r={formatUsd(known(sol))} />}</div>
+              <div className={sol === null ? `${styles['worth']} ${styles['faint']}` : styles['worth']} title={sol === null ? solReason.title : undefined}>{sol === null ? '—' : <Value r={formatUsd(known(sol))} num />}</div>
               {sol === null ? <div className={styles['faintSmall']}>{solReason.text}</div> : null}
             </div>
           </div>
@@ -77,7 +78,7 @@ export function HoldingRow({ h, asOf = null, now = 0 }: { h: Holding; asOf?: num
       </div>
       <div className={styles['right']}>
         <div className={priced ? styles['worth'] : `${styles['worth']} ${styles['faint']}`} title={priced ? undefined : reason.title}>
-          {priced ? <Value r={formatUsd(h.valueUsd)} /> : '—'}
+          {priced ? <Value r={formatUsd(h.valueUsd)} num /> : '—'}
         </div>
         {/* No price: the reason takes the gain's line, as a gain cannot be measured without one. */}
         {!priced ? (
@@ -85,7 +86,7 @@ export function HoldingRow({ h, asOf = null, now = 0 }: { h: Holding; asOf?: num
         ) : asOf !== null ? (
           <div title="The last price this phone saw; it is read again on the next refresh." className={styles['faintSmall']}>{asOfWords(asOf, now)}</div>
         ) : (
-          <div title={p.title} className={p.tone === 'up' ? styles['up'] : p.tone === 'down' ? styles['down'] : styles['faintSmall']}>{p.text}</div>
+          <div title={p.title} className={p.tone === 'up' ? styles['up'] : p.tone === 'down' ? styles['down'] : styles['faintSmall']}><Nums text={p.text} /></div>
         )}
       </div>
     </a>

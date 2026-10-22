@@ -90,7 +90,7 @@ export function PostNote({ a, post, now, unread }: { a: Alert; post: RisingPost;
         <div className={styles['cardCoin']}>
           <CoinLogo small address={own.address} ticker={own.ticker} imageUrl={own.imageUrl ?? null} size={22} />
           <b>{tickerText(own.ticker)}</b>
-          <Value r={formatUsd(own.marketCapUsd)} />
+          <Value r={formatUsd(own.marketCapUsd)} num />
           <span className={styles['cardCoinLabel']}>market cap</span>
         </div>
       ) : null}

@@ -90,7 +90,7 @@
 .headText h1 {
   margin: 0;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: var(--type-screen-title-weight);
   letter-spacing: -0.02em;
   line-height: 1.2;
   overflow: hidden;
@@ -103,7 +103,7 @@
   gap: 8px;
   margin-top: 3px;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
   white-space: nowrap;
 }
 
@@ -139,7 +139,7 @@
   row-gap: 2px;
   margin: 10px var(--gutter) 0;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 500;
 }
 
@@ -290,7 +290,7 @@
 .barTop {
   display: flex;
   gap: 6px;
-  font-size: 16px;
+  font-size: var(--type-body);
   white-space: nowrap;
 }
 
@@ -313,12 +313,12 @@
   min-width: 0;
   padding: 4px 0;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .barNone b {
   color: var(--text-1);
-  font-size: 16px;
+  font-size: var(--type-body);
 }
 
 .allCoins {
@@ -348,8 +348,8 @@
 }
 
 .editHead b {
-  font-size: 22px;
-  font-weight: 800;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
 }
 
 .editHead span {
@@ -387,7 +387,7 @@
 }
 
 .editRowWords span {
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .editBody {
@@ -400,7 +400,7 @@
 .editLabel {
   margin: 16px 0 0;
   color: var(--text-2);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -449,7 +449,7 @@
   background: var(--card);
   border: 1px solid var(--hairline);
   color: var(--text-1);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 
@@ -465,7 +465,7 @@
 
 .editLink {
   color: var(--link);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 
@@ -490,7 +490,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .editInput {
@@ -502,7 +502,7 @@
   border: 1px solid var(--hairline);
   background: var(--input);
   color: var(--text-1);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 /* The two moments, "First post" and "We found it", in their own card above the list, the first post under them. */

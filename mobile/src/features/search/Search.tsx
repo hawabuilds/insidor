@@ -143,7 +143,7 @@ function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
           <span className={styles['timeline']}>
             <span>First post <Value r={formatAge(n.firstPostAt, now)} /></span>
             <span>First coin <Value r={formatAge(n.firstCoinAt, now)} /></span>
-            <span>Peak <Value r={formatUsd(n.peakMarketCapUsd)} /></span>
+            <span>Peak <Value r={formatUsd(n.peakMarketCapUsd)} num /></span>
           </span>
         ) : null}
       </span>
@@ -199,7 +199,7 @@ export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
         {c.matched !== null ? <span className={styles['matched']}>Matched to this narrative: {c.matched.title}</span> : null}
       </span>
       <span className={styles['cap']}>
-        <Value r={formatUsd(cap)} />
+        <Value r={formatUsd(cap)} num />
       </span>
     </a>
   );

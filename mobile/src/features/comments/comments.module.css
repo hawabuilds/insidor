@@ -18,7 +18,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 600;
 }
 
@@ -61,7 +61,7 @@
   box-shadow: var(--shadow-inset-soft);
   color: var(--text-1);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px; /* 16 so iPhone does not zoom the page when the field is focused */
   line-height: 1.4;
   resize: none;
   outline: none;
@@ -82,7 +82,7 @@
   background: var(--brand);
   box-shadow: var(--shadow-brand);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 700;
 }
 
@@ -90,7 +90,7 @@
 .countOver {
   margin: 6px 0 0;
   text-align: right;
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 600;
   color: var(--text-3);
 }
@@ -102,7 +102,7 @@
 .addProof {
   margin-top: 6px;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 700;
 }
 
@@ -116,14 +116,14 @@
   box-shadow: var(--shadow-inset-soft);
   color: var(--text-1);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   outline: none;
 }
 
 .hint {
   margin: 6px 0 0;
   color: var(--text-3);
-  font-size: var(--t-caption);
+  font-size: var(--type-caption);
   font-weight: 500;
   line-height: 1.45;
 }
@@ -144,7 +144,7 @@
   margin-top: 8px;
   min-height: var(--tap);
   color: var(--link);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 2px;

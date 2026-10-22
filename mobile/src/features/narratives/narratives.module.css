@@ -18,7 +18,7 @@
 
 .live {
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .empty {
@@ -36,7 +36,7 @@
   border-radius: 999px;
   background: var(--card);
   color: var(--text-1);
-  font-size: 14px;
+  font-size: var(--type-body);
   font-weight: 600;
 }
 
@@ -73,8 +73,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
 }
 
 .sub {
@@ -108,7 +108,7 @@
 }
 
 .gain b {
-  font-size: 16px;
+  font-size: var(--type-body);
 }
 
 .views {
@@ -161,7 +161,7 @@
 .coinNone {
   flex: 1;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 
 .buy,

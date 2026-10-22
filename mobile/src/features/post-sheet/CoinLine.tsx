@@ -22,6 +22,7 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { ageText, pctText } from './sheet-view.ts';
 import styles from './post-sheet.module.css';
 import { tickerText } from '../../shared/format/ticker.ts';
+import { Num } from '../../shared/ui/Num.tsx';
 
 export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: number; onOpen: () => void; action: ReactNode }) {
   const age = ageText(coin.launchedAt, now);
@@ -40,8 +41,8 @@ export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: 
       </span>
       <span className={styles['coinNums']}>
         {/* A cap no market reports is left out, as the design asks: the row says only what is known. */}
-        {cap.known ? <Value r={formatUsd(cap)} className={styles['cap']} /> : null}
-        {coin.changePct24h.known ? <span className={coin.changePct24h.amount >= 0 ? styles['up'] : styles['down']}>{pctText(coin.changePct24h.amount)}</span> : null}
+        {cap.known ? <Value r={formatUsd(cap)} className={styles['cap']} num /> : null}
+        {coin.changePct24h.known ? <Num className={coin.changePct24h.amount >= 0 ? styles['up'] : styles['down']}>{pctText(coin.changePct24h.amount)}</Num> : null}
       </span>
       {action}
     </div>
