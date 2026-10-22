@@ -32,6 +32,10 @@
  * ★ A NARRATIVE ONLY ON A CONFIDENT MATCH. A coin shows the narrative whose page names it as its
  * one coin (`kind: 'one'`); "several", "unsure" and "none" show nothing.
  *
+ * GET /wallet/:address/catches serves a profile's stats strip from the same kept read (catches.ts
+ * holds the rules): the held coins that were on For You before they were minted, the best multiple
+ * from entry to peak among them, and the share that are up from their entry.
+ *
  * Each read may add one point to the balance chart (0041's narrow append function, at most once
  * a `snapshotGapMs`); `history` serves those points. The chart starts when the wallet was first
  * read, and says so.
@@ -47,6 +51,7 @@ import type { WalletPolicy } from '@insidor/contracts/policy.ts';
 import { NATIVE, positionsFrom, profitOf, type Balances, type Profit, type Trade } from '@insidor/chain-portfolio';
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
+import { caughtEarly, catchStats, entryAndPeak, firstBuys, SIGHTINGS_SQL, sightingsFrom, type CaughtCoin } from './catches.ts';
 import { createHoldingPrices } from './holding-prices.ts';
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
@@ -58,8 +63,16 @@ select s.story_id, s.payload ->> 'title' as title, s.payload #>> '{coins,coin,ad
  where s.payload #>> '{coins,kind}' = 'one'
    and s.payload #>> '{coins,coin,address}' = any($1)`;
 
+/* A created coin is "from a catch" when the post it was made from was on For You: its narrative's
+   posts, or the card naming the coin, are in public.feed_post's fyp list. */
 export const CREATED_SQL = `
-select c.address, c.story_id, c.created_at, n.name, n.ticker
+select c.address, c.story_id, (extract(epoch from c.created_at) * 1000)::bigint as created_ms, n.name, n.ticker,
+       exists (
+         select 1 from public.feed_post f
+          where f.feed_id = 'fyp' and f.withdrawn_at is null
+            and (f.payload #>> '{coins,coin,address}' = c.address
+                 or (c.story_id is not null and f.item_id in (select m.item_id from public.story_member m where m.story_id = c.story_id)))
+       ) as from_catch
   from public.created_coin c
   left join public.coin_name n on n.address = c.address
  where c.creator = $1
@@ -101,8 +114,8 @@ select (extract(epoch from at) * 1000)::bigint as t, total_usd
  where address = $1 and at >= $2
  order by at asc`;
 
-/** The chart's windows, Trador's: a day, a week, a month, everything. */
-const HISTORY_RANGES: Readonly<Record<string, number | null>> = { '1d': 86_400_000, '1w': 604_800_000, '1m': 2_592_000_000, all: null };
+/** The chart's windows: a day, a week, a month, three months, everything. */
+const HISTORY_RANGES: Readonly<Record<string, number | null>> = { '1d': 86_400_000, '1w': 604_800_000, '1m': 2_592_000_000, '3m': 7_776_000_000, all: null };
 
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const RANGES = ['1h', '6h', '24h'] as const;
@@ -113,6 +126,11 @@ const PRICED_AT_MOST = 300;
 const PAIR_BATCH = 30;
 /** One coin's price is kept this long across wallet reads (holding-prices.ts): brief, a wallet is live. */
 const PRICE_KEEP_MS = 30_000;
+/* A catch's candles: hourly while the buy is inside the market's thousand hourly buckets (about 41
+   days), daily past that, so an old buy still has a bucket to stand on. */
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+const HOURLY_COVERS_MS = 40 * DAY_MS;
 
 export interface WalletDeps {
   readonly db: Db;
@@ -127,6 +145,8 @@ export interface WalletDeps {
   readonly tokenPrices?: { prices(addresses: readonly string[]): Promise<ReadonlyMap<string, number>> } | null;
   readonly images: ((mints: readonly string[]) => Promise<ReadonlyMap<string, string>>) | null;
   readonly creatorFees: ((creator: string) => Promise<bigint>) | null;
+  /** A coin's candles, oldest first, in dollars (the token page's market source); null when they could not be read. Absent: no best catch or hit rate. */
+  readonly candles?: ((mint: string, timeframe: '1h' | '1D') => Promise<readonly { readonly t: number; readonly c: number }[] | null>) | null;
   readonly now: () => number;
 }
 
@@ -274,10 +294,33 @@ export function createWallet(deps: WalletDeps) {
         coins: createdRows.map((r) => {
           const a = str(r['address']) ?? '';
           const q = createdQuotes.get(a);
-          return { coinId: `solana:${a}`, address: a, name: str(r['name']) ?? q?.name ?? null, ticker: str(r['ticker']) ?? q?.ticker ?? null, marketCapUsd: measured(q?.marketCapUsd, 'no_market'), storyId: str(r['story_id']) };
+          const createdMs = Number(r['created_ms']);
+          return {
+            coinId: `solana:${a}`,
+            address: a,
+            name: str(r['name']) ?? q?.name ?? null,
+            ticker: str(r['ticker']) ?? q?.ticker ?? null,
+            marketCapUsd: measured(q?.marketCapUsd, 'no_market'),
+            storyId: str(r['story_id']),
+            launchedAt: Number.isFinite(createdMs) ? createdMs : null,
+            /* Off its launchpad curve, on the market's word; a coin no market lists is neither. */
+            graduated: q === undefined ? null : q.bonded,
+            fromCatch: r['from_catch'] === true,
+          };
         }),
       },
     });
+  }
+
+  /** One reply per key, kept `keepMs`; a stale one is read again. */
+  async function cached(key: string, make: () => Promise<{ status: number; body: string }>): Promise<{ status: number; body: string }> {
+    const now = deps.now();
+    const held = kept.get(key);
+    if (held !== undefined && now - held.at < deps.policy.keepMs) return held.reply;
+    const reply = await make();
+    kept.set(key, { at: now, reply });
+    for (const [k, v] of kept) if (now - v.at >= deps.policy.keepMs) kept.delete(k);
+    return reply;
   }
 
   const allow = (client: string, now: number): boolean => {
@@ -311,13 +354,40 @@ export function createWallet(deps: WalletDeps) {
       const range: Range = (RANGES as readonly string[]).includes(rawRange ?? '') ? (rawRange as Range) : '24h';
       const now = deps.now();
       if (!allow(client, now)) return json(429, { error: 'slow down' });
-      const key = `${address}:${range}`;
-      const held = kept.get(key);
-      if (held !== undefined && now - held.at < deps.policy.keepMs) return held.reply;
-      const reply = await read(address, range);
-      kept.set(key, { at: now, reply });
-      for (const [k, v] of kept) if (now - v.at >= deps.policy.keepMs) kept.delete(k);
-      return reply;
+      return cached(`${address}:${range}`, () => read(address, range));
+    },
+
+    /**
+     * GET /wallet/:address/catches — the stats strip and the "Early" tags (catches.ts): which held
+     * coins were on For You before they were minted, the best multiple from entry to peak among
+     * them, and the share that are up from their entry. From the wallet's own read (kept, so the
+     * profile's two calls cost one chain read), our For You list and trade record, and the
+     * market's candles for the coins caught early only.
+     */
+    async catches(address: string, client: string) {
+      if (!ADDRESS.test(address)) return json(400, { error: 'bad request' });
+      const now = deps.now();
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
+      return cached(`${address}:catches`, async () => {
+        const walletReply = await cached(`${address}:24h`, () => read(address, '24h'));
+        const body = JSON.parse(walletReply.body) as { kind?: unknown; holdings?: readonly { address: string; priceUsd: Measured }[] };
+        if (body.kind !== 'read' || body.holdings === undefined) return json(200, { kind: 'unavailable', why: 'not_read_yet' });
+        const price = new Map(body.holdings.map((h) => [h.address, h.priceUsd.v]));
+        const mints = [...price.keys()];
+        const early = mints.length === 0 ? [] : caughtEarly(mints, sightingsFrom(await deps.db.query(SIGHTINGS_SQL, [mints])));
+        let bought: ReadonlyMap<string, number> = new Map();
+        if (early.length > 0) bought = firstBuys(await deps.db.query(LANDED_TRADES_SQL, [address, deps.policy.tradesRead]));
+        const coins = await Promise.all(early.map(async (a): Promise<CaughtCoin> => {
+          const at = bought.get(a);
+          const nowUsd = price.get(a) ?? null;
+          if (at === undefined) return { address: a, entry: null, nowUsd, unread: false };
+          const hourly = deps.now() - at < HOURLY_COVERS_MS;
+          const candles = deps.candles == null ? null : await deps.candles(a, hourly ? '1h' : '1D').catch(() => null);
+          if (candles === null) return { address: a, entry: null, nowUsd, unread: true };
+          return { address: a, entry: entryAndPeak(candles, at, hourly ? HOUR_MS : DAY_MS), nowUsd, unread: false };
+        }));
+        return json(200, { kind: 'read', ...catchStats(coins) });
+      });
     },
   };
 }

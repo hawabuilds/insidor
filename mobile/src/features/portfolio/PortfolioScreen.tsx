@@ -1,7 +1,12 @@
 /**
- * THE WALLET TAB — Trador's Stonkfolio, in Insidor: who you are, what your wallet holds and what
- * it is worth (Portfolio.tsx), and top right the round QR button (Receive: the address and its QR
- * code), Send in a trading build, and the profile menu's gear (ProfileMenu.tsx).
+ * THE PORTFOLIO TAB — your own profile (features/profile/OwnProfile.tsx, the owner's approved
+ * design of 2026-10-22): who you are over your banner, what your wallet holds and what it is worth,
+ * your catches, Holdings and Created. Over the banner, Share and the settings gear (ProfileMenu.tsx,
+ * whose wallet card opens Receive: the address and its QR code), and Send in a trading build.
+ *
+ * This file holds the wallet's reads: the signed-in wallet or a linked one, each read's prices kept
+ * on the phone so a worth never blanks (wallet-view.ts steadyWallet), the chart's points with the
+ * live total last, and the last wallet remembered so the tab opens at once while a session returns.
  *
  * ★ NOBODY SIGNS IN HERE. The front door is the only sign-in (shared/sign-in.ts gates the whole
  * app), so this tab is only ever reached signed in. Signing out is in the profile menu, and
@@ -18,6 +23,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
+import { fetchMe } from '../../shared/api/people.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { keep, kept } from '../../shared/kept-reads.ts';
 import { LINKED_WALLET } from '../../shared/notice.ts';
@@ -27,14 +33,23 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { SIGN_IN_CONFIGURED } from '../../shared/sign-in.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { forgetEntered } from '../landing/entered.ts';
-import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
+import { OwnProfile } from '../profile/OwnProfile.tsx';
+import { totalWords, type ProfileRange } from '../profile/profile-words.ts';
+import profile from '../profile/profile.module.css';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { withLive, type BalancePoint } from './balance-points.ts';
-import { notePrices, steadyWallet, type LastPrices, type SteadyWallet } from './wallet-view.ts';
+import { asOfWords, notePrices, steadyWallet, type LastPrices, type SteadyWallet } from './wallet-view.ts';
 import { ReceiveSheet } from './ReceiveSheet.tsx';
 import { SendSheet } from './SendSheet.tsx';
-import styles from './portfolio.module.css';
 import box from './wallet.module.css';
+
+/** Who the tab is for: the signed-in person, or a linked wallet being viewed. */
+interface WhoAmI {
+  readonly name: string | null;
+  readonly handle: string | null;
+  readonly pictureUrl: string | null;
+  readonly address: string;
+}
 
 /* Read once, at build time, like the trade bar: a deploy turns Send on, never a page. */
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
@@ -42,7 +57,7 @@ const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as s
 function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
   who: WhoAmI;
   load: (signal: AbortSignal) => Promise<PortfolioData>;
-  history: (signal: AbortSignal, range: ChartRange) => Promise<readonly BalancePoint[]>;
+  history: (signal: AbortSignal, range: ProfileRange) => Promise<readonly BalancePoint[]>;
   canAct: boolean;
   exportKey: (() => void) | null;
   /** The signed-in person's own wallet, for the menu's card, whichever wallet is shown. */
@@ -53,11 +68,12 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   switcher?: React.ReactNode;
   leave: { readonly label: string; readonly run: () => void };
 }) {
-  const [range, setRange] = useState<ChartRange>('1w');
-  const [scrubbed, setScrubbed] = useState<BalancePoint | null>(null);
+  const [range, setRange] = useState<ProfileRange>('1w');
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
   const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
   const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
+  /* Your profile card (banner, bio, counts): for you, not for a linked wallet's view. */
+  const [card, reloadCard] = useLoad(`me:${profileKey ?? 'none'}`, () => (profileKey === null ? Promise.resolve(null) : fetchMe()), 'memory');
   const now = useNow();
   const read: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
   /* Each fresh read's prices are kept on the phone, and the last read with a total too, so a read
@@ -82,43 +98,51 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
     }
   };
 
-  /* Round buttons before the gear: Send in a trading build, and the QR code that opens Receive. */
-  const buttons = canAct ? (
+  /* Over the banner, before the gear: Send in a trading build. Receive is in the gear's wallet card. */
+  const over = (
     <>
-      {TRADING ? <button type="button" className={styles['round']} aria-label="Send" onClick={() => setSheet('send')}><Arrow up /></button> : null}
-      <button type="button" className={styles['round']} aria-label="Receive: your address and its QR code" onClick={() => setSheet('receive')}><QrGlyph /></button>
+      {canAct && TRADING ? <button type="button" className={profile['glass']} aria-label="Send" onClick={() => setSheet('send')}><Arrow up /></button> : null}
+      <ProfileMenu
+        name={who.name ?? who.handle ?? 'Your wallet'}
+        handle={who.handle}
+        pictureUrl={who.pictureUrl}
+        address={ownAddress ?? who.address}
+        onCopy={() => void copy()}
+        exportKey={exportKey}
+        profileKey={profileKey}
+        linked={linked}
+        leave={leave}
+        onBanner
+        onReceive={canAct ? () => setSheet('receive') : null}
+      />
     </>
-  ) : null;
+  );
+  const totalAsOf = shown?.asOf.total ?? null;
+  const shownRead = portfolio?.kind === 'read' ? portfolio : null;
 
   return (
     <>
-      {switcher}
-      <Portfolio
-        who={who}
+      <OwnProfile
+        who={{ userId: who.address, handle: who.handle, name: who.name, pictureUrl: who.pictureUrl, bio: '', followers: 0, following: 0 }}
+        card={canAct && card.state === 'ready' ? card.value : null}
+        reloadCard={reloadCard}
+        address={who.address}
         data={portfolio}
-        asOf={shown?.asOf ?? null}
-        unread={shown?.unread ?? false}
-        now={now}
+        total={shownRead === null ? null : totalWords(shownRead.totalUsd)}
+        asOf={shownRead !== null && totalAsOf !== null ? (shown?.unread === true ? `Couldn't read your wallet just now. Worth ${asOfWords(totalAsOf, now)}` : `Worth ${asOfWords(totalAsOf, now)}`) : null}
+        rowsAsOf={shown?.asOf.holdings ?? null}
         points={points}
         range={range}
         onRange={setRange}
-        scrubbed={scrubbed}
-        onScrub={setScrubbed}
-        buttons={buttons}
-        notice={!canAct ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
-        menu={
-          <ProfileMenu
-            name={who.name ?? who.handle ?? 'Your wallet'}
-            handle={who.handle}
-            pictureUrl={who.pictureUrl}
-            address={ownAddress ?? who.address}
-            onCopy={() => void copy()}
-            exportKey={exportKey}
-            profileKey={profileKey}
-            linked={linked}
-            leave={leave}
-          />
+        over={over}
+        below={
+          <>
+            {switcher}
+            {!canAct ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
+          </>
         }
+        now={now}
+        signInName={who.name}
       />
       {sheet === 'send' ? <SendSheet holdings={holdings} onClose={() => setSheet(null)} /> : null}
       {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}
@@ -150,17 +174,6 @@ function shownWallet(read: PortfolioData | null, stale: boolean, address: string
   if (good === undefined || good.value.kind !== 'read') return null;
   const s = steadyWallet(good.value, last, now);
   return { data: s.data, asOf: { total: Math.min(good.at, s.asOf.total ?? good.at), holdings: s.asOf.holdings }, unread: true };
-}
-
-function QrGlyph() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <path d="M14 14h3v3h-3zM20 14v1M14 20h1M17 17h4v4h-4" />
-    </svg>
-  );
 }
 
 function Arrow({ up = false }: { up?: boolean }) {

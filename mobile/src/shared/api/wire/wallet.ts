@@ -54,6 +54,12 @@ export interface CreatedCoin {
   readonly name: string | null;
   readonly ticker: string | null;
   readonly marketCapUsd: Measured;
+  /** When it was created on Insidor, ms; null when the service did not say. */
+  readonly launchedAt: number | null;
+  /** Off its launchpad curve, on the market's word; null when no market lists it. */
+  readonly graduated: boolean | null;
+  /** Made from a post that was on For You. */
+  readonly fromCatch: boolean;
 }
 
 export type Portfolio =

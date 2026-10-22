@@ -11,6 +11,10 @@
  *
  * ★ NO CHAIN, NO LIKES. Likes are checked against the voter's holdings on the chain; without an
  * RPC the like route says so rather than letting anyone like.
+ *
+ * ★ NO STORAGE, NO PICTURE UPLOADS. Edit profile's picture and banner go to the same public bucket
+ * the coin logos and poster pictures use (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, as the trade
+ * and project services read them); without both, the upload routes say they are not set up.
  */
 
 export interface SocialConfig {
@@ -21,7 +25,7 @@ export interface SocialConfig {
   readonly rpcUrl: string | null;
   readonly parseUrl: string | null;
   readonly allowedOrigins: readonly string[];
-  /** Our storage, for sign-up photos; null when either setting is missing, and photos then say they can't be saved. */
+  /** Our storage, for sign-up photos and Edit profile's picture and banner; null when either setting is missing, and those routes then say they can't save. */
   readonly storage: { readonly url: string; readonly serviceKey: string } | null;
 }
 

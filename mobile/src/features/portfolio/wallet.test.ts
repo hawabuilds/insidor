@@ -5,7 +5,7 @@ import { decodePortfolio } from '../../shared/api/decode.ts';
 import { fixturePortfolio } from '../../test-fixtures/fixture-wallet.ts';
 import { confirmBuilt, fromBase64 } from '../trade/order-flow.ts';
 import { tradingOn } from '../../shared/trading.ts';
-import { compactAmount, gainsNote, profitLine, rangeLine, solValueUsd } from './wallet-view.ts';
+import { compactAmount, gainsNote, profitLine, solValueUsd } from './wallet-view.ts';
 
 const usd = (v: number | null) => (v === null ? { known: false, pending: 'no_market' } : { known: true, amount: v }) as never;
 const gain = (sol: number, usdV: number | null, partial = false) => ({ kind: 'known', sol, costSol: 0.1, pct: (sol / 0.1) * 100, usd: usd(usdV), partial }) as const;
@@ -20,15 +20,6 @@ test('★ no gain is a plain dash, never a number; its reason is in the title an
   const read = decodePortfolio(raw);
   assert.equal(read.kind === 'read' && gainsNote(read.holdings), 'Gains count coins bought in Insidor.');
   assert.equal(gainsNote([{ ...(read.kind === 'read' ? read.holdings[0]! : null!), profit: { kind: 'none', why: 'history_unread' } }]), 'Gains count coins bought in Insidor. Your trades could not be read just now.');
-});
-
-test('the line under the total is the window\'s move in dollars and percent, in words; under two points it is not said', () => {
-  const pts = [{ t: 1, value: 880 }, { t: 2, value: 888.1 }];
-  assert.deepEqual(rangeLine(pts, '1w'), { text: '+$8.10 (+0.92%) this week', tone: 'up' });
-  assert.deepEqual(rangeLine([{ t: 1, value: 100 }, { t: 2, value: 90 }], '1d'), { text: '−$10.00 (−10.00%) today', tone: 'down' });
-  assert.equal(rangeLine([{ t: 1, value: 100 }], 'all'), null);
-  assert.equal(rangeLine(null, '1m'), null);
-  assert.equal(rangeLine([{ t: 1, value: 0 }, { t: 2, value: 5 }], '1m'), null, 'no share of nothing');
 });
 
 test('the SOL row is worth SOL at the price the totals were counted at; unknown stays unknown', () => {

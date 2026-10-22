@@ -24,3 +24,8 @@ export function usePosterPic(file: string | null, link: string | null): { readon
   const { src, tryKey, fail } = usePictureTries(posterPicSources(file, link, BASE));
   return { src, tryKey, onError: () => (src === null ? undefined : fail(src)) };
 }
+
+/** The public address of a file in the faces folder (an uploaded banner); null when there is no folder set or the name is not one of ours. */
+export function facesFileUrl(file: string | null | undefined): string | null {
+  return posterPicSources(file ?? null, null, BASE)[0] ?? null;
+}
