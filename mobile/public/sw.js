@@ -7,7 +7,8 @@
  *   the icons and the manifest   precached: what a home-screen launch needs before the first frame
  *   /assets/*                    cache first. Their names carry a hash of their contents, so a
  *                                kept copy can never be out of date: a new deploy has new names.
- *                                The newest ASSET_ROWS are kept.
+ *                                The newest ASSET_ROWS are kept. A miss is asked again with the
+ *                                phone's cache bypassed, since the host keeps even a 404 for a year.
  *   the page itself (the shell)  network first, but given SHELL_WAIT_MS: on a slow connection the
  *                                kept shell opens the app, and the network's copy, when it lands,
  *                                is kept for next time.
@@ -103,7 +104,11 @@ async function asset(request) {
   const cache = await caches.open(ASSETS);
   const hit = await cache.match(request);
   if (hit !== undefined) return hit;
-  const response = await fetch(request);
+  /* A miss is asked again past the phone's own cache: the host marks every /assets/ answer as kept
+     for a year, a "not found" included, so a file asked for in the seconds a deploy is spreading
+     would otherwise stay missing on that phone and the app would not open again (2026-10-23). */
+  let response = await fetch(request);
+  if (!response.ok) response = await fetch(new Request(request, { cache: 'reload' }));
   if (response.ok && response.type === 'basic') {
     await cache.put(request, response.clone());
     const keys = await cache.keys();
