@@ -26,18 +26,21 @@
   --hover: #1c1c21;
 
   --border: #26262c;
-  --border-subtle: #1a1a1f;
+  /* A card's hairline edge: the approved system's #1f1f26 (see the sign-up block below). */
+  --border-subtle: #1f1f26;
 
   --text-1: #f4f4f6;
   --text-2: #a1a1aa;
   --text-3: #7a7a85;
   --text-4: #4a4a54;
 
-  /* Trador purple. 500 is the action colour: buttons, the active tab underline, selected
-     pills. Green and red stay reserved for price (rule 1); purple never means up or down. */
+  /* Trador purple. 500 is the main action's colour: the primary button, the logo, a progress
+     bar, the signed-in person's own picture ring. A selected tab, pill or chip is white and grey
+     (--select-*, below), a link is white (--link). Green and red stay reserved for price
+     (rule 1); purple never means up or down. */
   --brand: #9945ff;
-  --brand-400: #a96bff; /* links */
-  --brand-300: #b688ff; /* view sparklines and accent text */
+  --brand-400: #a96bff;
+  --brand-300: #b688ff; /* the own-picture ring and the progress fill */
   --brand-200: #cdaeff;
   --brand-wash: rgb(153 69 255 / 16%);
   --brand-glow: rgb(153 69 255 / 45%);
@@ -105,6 +108,33 @@
   --sheet-action: #9945ff;
   /* The sheet's top edge: about 54px down, never under the status bar. */
   --sheet-top: max(54px, calc(var(--safe-top) + 10px));
+
+  /* ★ THE APPROVED SIGN-UP AND PROFILE SYSTEM (reports/signup/signup.html, the owner, 2026-10-22),
+     as names every other screen draws with. Purple is the screen's main action, the logo, a
+     progress bar and the signed-in person's own picture ring, nothing else: a selected chip, a
+     link, a tag or a secondary button is white and grey, so the one purple thing on a screen is
+     the thing to press. A screen that reaches for --brand-wash to mark "selected" is the drift
+     these names exist to stop. */
+  --card-line: #1f1f26; /* a card's edge */
+  --hairline: #26262d; /* a chip's, a control's, a secondary button's edge */
+  --select-bg: #232329; /* a chosen chip, pill or segment */
+  --select-ink: var(--text-1);
+  --select-line: #3a3a42; /* the chosen one's edge, where it has one */
+  --link: var(--text-1); /* a tappable word: white, never purple */
+  --spark: var(--text-2); /* a views sparkline: a fact about reach, not a price */
+
+  /* Buttons and tap areas. The main button is 56px, 17px corners, 700 at 17px, at the bottom in
+     the thumb zone; a second action is a plain text link under it, never a second filled button. */
+  --button-h: 56px;
+  --r-button: 17px;
+  --button-size: 17px;
+  --tap: 44px; /* the smallest thing a thumb is asked to hit: back, close, share, star, bell */
+
+  /* One type scale: screen titles 28/800 (ScreenHeader), section headings 16 to 18 at 600, body
+     14 to 16, captions 12 and never under. */
+  --t-section: 17px;
+  --t-body: 15px;
+  --t-caption: 12px;
 }
 
 *,

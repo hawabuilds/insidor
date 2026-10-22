@@ -1,13 +1,15 @@
 /* One story as a card. 22px gutters, 12px between cards, no strip or stripe of colour on
-   any edge: a card is a fact, and colour on this screen is reserved for meaning. */
+   any edge: a card is a fact, and colour on this screen is reserved for meaning. The card is the
+   approved system's card (#131317 on a #1f1f26 hairline, tokens.css), the same as every other
+   card in the app. */
 
 .card {
-  --badge-ring: var(--input);
+  --badge-ring: var(--card);
   margin: 0 var(--gutter) 12px;
   padding: 18px;
   border-radius: var(--r-card);
-  border: 1px solid var(--border-subtle);
-  background: var(--input);
+  border: 1px solid var(--card-line);
+  background: var(--card);
   cursor: pointer;
 }
 
@@ -77,29 +79,30 @@
 }
 
 /* The poster's picture, small and inline before the handle on a post card, so the line keeps the
-   baseline the story cards share. The letter stands in only when the picture fails to load. */
+   baseline the story cards share. The letter stands in only when the picture fails to load, at
+   the caption size (12px, the floor for any text), so the picture is 20px to hold it. */
 .posterPic {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 5px;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
   border-radius: 50%;
   object-fit: cover;
-  vertical-align: -3px;
-  background: var(--input);
+  vertical-align: -5px;
+  background: var(--hover);
 }
 
 .posterLetter {
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
-  margin-right: 5px;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
   border-radius: 50%;
-  vertical-align: -3px;
-  background: var(--input);
+  vertical-align: -5px;
+  background: var(--hover);
   color: var(--text-2);
-  font-size: 9px;
+  font-size: var(--t-caption);
   font-weight: 700;
   line-height: 1;
 }
@@ -134,7 +137,7 @@
 }
 
 .gained {
-  color: #2fd47a;
+  color: var(--up);
 }
 
 .speed {
@@ -142,7 +145,7 @@
 }
 
 .viewsL {
-  font-size: 10.5px;
+  font-size: var(--t-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -249,23 +252,23 @@
 /* Why a post's own coin is its coin, as facts, on the line under the ticker (coin-status.ts). */
 .facts {
   display: block;
-  font-size: 11px;
+  font-size: var(--t-caption);
   font-weight: 400;
   color: var(--text-3);
   margin-top: 2px;
 }
 
-/* The narrative a post is part of (PostRow StoryTag): a small pill under the card's words, one line,
-   the title cut before the count. */
+/* The narrative a post is part of (PostRow StoryTag): a small grey pill under the card's words, one
+   line, the title cut before the count. Grey, not purple: a tag is a fact, not the card's action. */
 .storyTag {
   display: flex;
   max-width: 100%;
   margin: 10px 0 0;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--brand-wash);
-  color: var(--brand-300);
-  font-size: 12px;
+  background: var(--select-bg);
+  color: var(--text-2);
+  font-size: var(--t-caption);
   font-weight: 700;
   line-height: 16px;
   white-space: nowrap;
