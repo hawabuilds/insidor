@@ -185,14 +185,16 @@
    with a 44px tap (::after). */
 .beside {
   position: absolute;
-  top: 8px;
+  top: 4px;
   right: var(--gutter);
 }
 
 .editSmall {
   position: relative;
-  height: 36px;
-  padding: 0 16px;
+  height: 34px;
+  padding: 0 14px;
+  /* One line always: the box is absolutely placed, so without this it shrank to its longest word. */
+  white-space: nowrap;
   border-radius: 999px;
   background: var(--card);
   box-shadow: inset 0 0 0 1px var(--follow-line);
