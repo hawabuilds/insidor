@@ -85,6 +85,16 @@ export const askForReading = async (postId: string): Promise<void> => void (awai
 export const syncMe = async (pictureUrl: string | null = null): Promise<ProfileCard> => (await social('POST', '/me', pictureUrl === null ? undefined : { pictureUrl })) as ProfileCard;
 export const fetchMe = async (): Promise<ProfileCard> => (await social('GET', '/me')) as ProfileCard;
 export const saveBio = async (bio: string): Promise<ProfileCard> => (await social('PUT', '/me', { bio })) as ProfileCard;
+/** Edit profile's words: the name shown ('' goes back to the sign-in's) and the bio. */
+export const saveProfile = async (p: { readonly name: string; readonly bio: string }): Promise<ProfileCard> => (await social('PUT', '/me', p)) as ProfileCard;
+/** Edit profile's picture or banner, as a data URL the service checks for type and size; the stored file's name. */
+export const uploadProfileImage = async (kind: 'picture' | 'banner', image: string): Promise<string | null> => {
+  const r = (await social('POST', `/me/${kind}`, { image })) as Record<string, unknown>;
+  const file = r[kind === 'picture' ? 'pictureFile' : 'bannerFile'];
+  return typeof file === 'string' ? file : null;
+};
+/** Back to the X picture, or the default banner. */
+export const clearProfileImage = async (kind: 'picture' | 'banner'): Promise<void> => void (await social('DELETE', `/me/${kind}`));
 export const fetchProfile = async (key: string): Promise<{ profile: ProfileCard; comments: readonly Comment[] }> => {
   const raw = (await social('GET', `/profile/${encodeURIComponent(key)}`)) as { profile: unknown; comments: readonly Comment[] };
   return { profile: decodeProfileWallet(raw.profile), comments: raw.comments };
