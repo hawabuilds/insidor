@@ -89,44 +89,70 @@ function Door({ configured, onEnter }: { configured: boolean; onEnter: () => voi
 
 /* ── Welcome ─────────────────────────────────────────────── */
 
+/* How early, counted up once as the proof card lands (signup.module.css .coinCard's timing): 0h 00m to
+   the real lead, easing out. Someone who asks for less motion sees the number at once. */
+const COUNT_DELAY_MS = 900;
+const COUNT_MS = 1100;
+function CountUp({ minutes }: { minutes: number }) {
+  const still = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  const [shown, setShown] = useState(still ? minutes : 0);
+  useEffect(() => {
+    if (still) return;
+    let frame = 0;
+    const start = performance.now() + COUNT_DELAY_MS;
+    const tick = (now: number) => {
+      const p = Math.min(1, Math.max(0, (now - start) / COUNT_MS));
+      setShown(Math.round(minutes * (1 - (1 - p) ** 3)));
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [minutes, still]);
+  return <>{`${Math.floor(shown / 60)}h ${String(shown % 60).padStart(2, '0')}m`}</>;
+}
+
 function Welcome({ configured, onJoin, onLogIn }: { configured: boolean; onJoin: () => void; onLogIn: () => void }) {
   return (
     <div className={`${styles['screen']} ${styles['welcome']}`}>
-      <div className={styles['welcomeTop']}>
-        <div className={styles['hero']} aria-hidden="true">
-          <div className={`${styles['card']} ${styles['postCard']}`}>
-            <div className={styles['who']}>
-              <img className={styles['pfp']} src="/welcome/pfp.jpg" alt="" width={36} height={36} />
-              <div>
-                <b>CarTon 🎮</b>
-                <span>@CarTon_Gaming</span>
-              </div>
-              <span className={styles['reach']}>{'302K'}</span>
-            </div>
-            <p className={styles['excerpt']}>🚨 ALERTE : AIDONS-LE ! On lance le #JVSolidaire…</p>
-            <img className={styles['postPic']} src="/welcome/post.jpg" alt="" />
-          </div>
-          <div className={`${styles['card']} ${styles['coinCard']}`}>
-            <img className={styles['pfp']} src="/welcome/pierre.png" alt="" width={34} height={34} />
-            <div>
-              <b>$PIERRE</b>
-              <span>Found 1h 39m before the coin</span>
-            </div>
-          </div>
-        </div>
-        <div className={styles['brand']}>
-          <SignUpMark size={34} />
-          <span className={styles['wordmark']}>INSIDOR</span>
-        </div>
-        <h1 className={styles['claim']}>
-          Catch the meme
-          <br />
-          <span className={styles['payoff']}>before the coin</span>
-        </h1>
+      <div className={styles['brandTop']}>
+        <SignUpMark size={26} />
+        <span className={styles['wordmark']}>INSIDOR</span>
       </div>
+      <div className={styles['story']}>
+        {/* The product as one line: the post, the gap, the coin. The line draws down while the gap counts up. */}
+        <ol className={styles['timeline']} aria-label="CarTon posted; Insidor caught it 1 hour 39 minutes before $PIERRE launched">
+          <li className={`${styles['stop']} ${styles['postStop']}`}>
+            <img className={styles['stopPic']} src="/welcome/pfp.jpg" alt="" width={44} height={44} />
+            <div className={styles['postText']}>
+              <b>@CarTon_Gaming posted</b>
+              <q>🚨 ALERTE : AIDONS-LE ! On lance le #JVSolidaire…</q>
+              <span>{'302K views'}</span>
+            </div>
+            <img className={styles['postThumb']} src="/welcome/post.jpg" alt="" width={64} height={64} />
+          </li>
+          <li className={styles['gap']} aria-hidden="true">
+            <div>
+              <em className={styles['early']}><CountUp minutes={99} /></em>
+              <span>Insidor caught it</span>
+            </div>
+          </li>
+          <li className={styles['stop']}>
+            <img className={styles['stopPic']} src="/welcome/pierre.png" alt="" width={44} height={44} />
+            <div>
+              <b>$PIERRE launched</b>
+              <span>The coin came after</span>
+            </div>
+          </li>
+        </ol>
+      </div>
+      <h1 className={styles['claim']}>
+        Catch the meme
+        <br />
+        <span className={styles['payoff']}>before the coin</span>
+      </h1>
       <div className={styles['foot']}>
         <Primary onClick={onJoin}>Get started</Primary>
-        <Secondary onClick={onLogIn}>Log in</Secondary>
+        <button type="button" className={styles['logIn']} onClick={onLogIn}>Log in</button>
         {!configured ? <p className={styles['fine']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
       </div>
     </div>
