@@ -1,8 +1,8 @@
 /* The wallet's own screens around the Portfolio tab: the signed-out door, the wallet switcher, the
    linked Wallets list and Import. Separate from portfolio.module.css because these are screens of
    their own, not the tab's body. Drawn on the approved system (tokens.css): one 56px purple main
-   button per screen (.linkButton) with its second choice as words under it (.quietButton), tags
-   and the chosen wallet in white and grey. Making .quietButton a filled shape again puts two
+   button per screen (.linkButton) with its second choice as words under it (.quietButton), tags in
+   white and grey, the chosen wallet white on a lighter grey. Making .quietButton a filled shape again puts two
    buttons side by side and loses which one is the main action. */
 
 .screen {
@@ -54,9 +54,9 @@
 }
 
 .walletOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
-  box-shadow: inset 0 0 0 1px var(--select-line);
+  background: var(--tag-bg);
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--tag-line);
 }
 
 /* The Wallets and Import screens. */
@@ -124,7 +124,7 @@
 
 /* A tag, so white on the chosen grey: green is a price going up and nothing else. */
 .active {
-  background: var(--select-bg);
+  background: var(--tag-bg);
   color: var(--text-1) !important;
 }
 

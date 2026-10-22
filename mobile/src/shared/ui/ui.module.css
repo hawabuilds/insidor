@@ -222,7 +222,7 @@
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
-  background: var(--text-1);
+  background: var(--brand);
 }
 
 /* ── modal ─────────────────────────────────────────────────────────── */
@@ -349,7 +349,7 @@
 .tabbarOn {
   color: var(--text-1);
   background: var(--input);
-  box-shadow: inset 0 0 0 1px var(--hairline);
+  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 18px -8px var(--brand-glow);
 }
 
 

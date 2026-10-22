@@ -226,7 +226,7 @@
 }
 
 .proof {
-  background: var(--select-bg);
+  background: var(--tag-bg);
   color: var(--text-1);
 }
 

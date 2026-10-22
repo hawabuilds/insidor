@@ -34,13 +34,15 @@
   --text-3: #7a7a85;
   --text-4: #4a4a54;
 
-  /* Trador purple. 500 is the main action's colour: the primary button, the logo, a progress
-     bar, the signed-in person's own picture ring. A selected tab, pill or chip is white and grey
-     (--select-*, below), a link is white (--link). Green and red stay reserved for price
-     (rule 1); purple never means up or down. */
+  /* Trador purple. 500 is the main action's colour (the primary button), the logo, a progress
+     bar, and a state the owner reads at a glance: the chosen tab's rule, an on switch, the unread
+     dot, a watched star, and every chart line. No purple wash sits behind content (the owner,
+     2026-10-22): a chosen chip is white on a lighter grey (--tag-bg), and a link, tag, border or
+     empty picture is white and grey (--link, --tag-*, below). Green and red stay reserved for
+     price (rule 1); purple never means up or down. */
   --brand: #9945ff;
   --brand-400: #a96bff;
-  --brand-300: #b688ff; /* the own-picture ring and the progress fill */
+  --brand-300: #b688ff; /* chart lines and sparklines */
   --brand-200: #cdaeff;
   --brand-wash: rgb(153 69 255 / 16%);
   --brand-glow: rgb(153 69 255 / 45%);
@@ -110,18 +112,14 @@
   --sheet-top: max(54px, calc(var(--safe-top) + 10px));
 
   /* ★ THE APPROVED SIGN-UP AND PROFILE SYSTEM (reports/signup/signup.html, the owner, 2026-10-22),
-     as names every other screen draws with. Purple is the screen's main action, the logo, a
-     progress bar and the signed-in person's own picture ring, nothing else: a selected chip, a
-     link, a tag or a secondary button is white and grey, so the one purple thing on a screen is
-     the thing to press. A screen that reaches for --brand-wash to mark "selected" is the drift
-     these names exist to stop. */
+     as names every other screen draws with. Purple is kept for the main action and for state
+     (see the brand scale above); links, tags, borders, secondary buttons and the empty-picture
+     letter are white and grey. In-app pictures have no ring, yours included. */
   --card-line: #1f1f26; /* a card's edge */
   --hairline: #26262d; /* a chip's, a control's, a secondary button's edge */
-  --select-bg: #232329; /* a chosen chip, pill or segment */
-  --select-ink: var(--text-1);
-  --select-line: #3a3a42; /* the chosen one's edge, where it has one */
+  --tag-bg: #232329; /* a tag, a grey chosen state, the empty-picture letter's ground */
+  --tag-line: #3a3a42; /* a lighter edge: a focused field, a grey chosen state */
   --link: var(--text-1); /* a tappable word: white, never purple */
-  --spark: var(--text-2); /* a views sparkline: a fact about reach, not a price */
 
   /* Buttons and tap areas. The main button is 56px, 17px corners, 700 at 17px, at the bottom in
      the thumb zone; a second action is a plain text link under it, never a second filled button. */

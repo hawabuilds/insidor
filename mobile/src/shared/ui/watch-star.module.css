@@ -1,7 +1,7 @@
-/* The Watch star (WatchStar.tsx): an outlined square like the post sheet's head buttons, a
-   filled white star on the chosen grey while the post is watched (purple is the main action's,
-   and watching is a choice, not the action). 36px drawn on a card (the card's row height), 44px
-   in the sheet; the card's tap reaches a 44px square either way through ::after. */
+/* The Watch star (WatchStar.tsx): an outlined square like the post sheet's head buttons, filled
+   purple while the post is watched (a state the owner reads at a glance). 36px drawn on a card
+   (the card's row height), 44px in the sheet; the card's tap reaches a 44px square either way
+   through ::after. */
 .star {
   position: relative;
   width: 36px;
@@ -34,7 +34,7 @@
 }
 
 .on {
-  background: var(--select-bg);
-  box-shadow: inset 0 0 0 1px var(--select-line);
-  color: var(--select-ink);
+  background: var(--brand, #9945ff);
+  box-shadow: none;
+  color: #fff;
 }

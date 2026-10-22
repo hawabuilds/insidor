@@ -401,8 +401,7 @@
   bottom: -1px;
   height: 3px;
   border-radius: 999px;
-  /* White, not purple: the chosen tab is a selected state (tokens.css). */
-  background: var(--text-1);
+  background: var(--brand);
 }
 
 .panel {

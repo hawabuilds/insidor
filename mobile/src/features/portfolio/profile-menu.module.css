@@ -1,6 +1,6 @@
 /* Trador's settings menu: a gear, and a panel anchored under its right edge, with the sheets its
    rows open. On the approved system (tokens.css): every icon button a 44px tap, no text under 12px,
-   tags and the on switch white and grey (green is a price going up, purple the main action). */
+   tags white and grey (green is a price going up); the on switch stays purple, a state. */
 
 .root {
   position: relative;
@@ -122,7 +122,7 @@
 .active {
   padding: 2px 6px;
   border-radius: 999px;
-  background: var(--select-bg);
+  background: var(--tag-bg);
   color: var(--text-1);
   font-size: var(--t-caption);
   font-weight: 700;
@@ -307,11 +307,7 @@
 }
 
 .toggleOn {
-  background: var(--text-1);
-}
-
-.toggleOn i {
-  background: var(--bg);
+  background: var(--brand);
 }
 
 .toggleOn i {

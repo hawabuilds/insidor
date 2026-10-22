@@ -52,7 +52,7 @@
 }
 
 .starred {
-  color: var(--text-1);
+  color: #b48cff;
 }
 
 /* Edit: a 36px pill drawn, a 44px tap (::after), like every control in the top row. */

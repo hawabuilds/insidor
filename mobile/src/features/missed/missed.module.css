@@ -32,7 +32,7 @@
 .suggestion {
   padding: 10px 12px;
   border-radius: var(--r-card);
-  background: var(--brand-wash);
+  background: var(--tag-bg);
   color: var(--text-1);
   font-size: 12px;
   line-height: 1.5;

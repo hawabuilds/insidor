@@ -79,7 +79,7 @@ export function Sparkline({
           <polyline
             key={i}
             fill="none"
-            stroke="var(--spark)"
+            stroke="var(--brand-300)"
             strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"
