@@ -1,24 +1,32 @@
 /**
  * THE ONE FILE THAT TALKS TO THE WALLET VENDOR'S SDK.
  *
- * Renders the vendor's provider — sign-in with X (X only, for now), an embedded Solana wallet created for
- * anyone who signs in without one — and one invisible component that reads the vendor's hooks
- * and writes three facts into the store (store.ts): ready, signed in, the embedded wallet's
- * address. Everything the app sees goes through the wallet port; nothing here is exported for a
- * screen to call.
+ * Renders the vendor's provider and one invisible component that reads the vendor's hooks and
+ * writes what the app needs into the store (store.ts): ready, signed in, the embedded wallet's
+ * address, who signed in. Everything the app sees goes through the wallet port; nothing here is
+ * exported for a screen to call.
  *
- * ★ NO KEY EVER. Export opens the vendor's own window, which draws the key in a frame on the
- * vendor's domain; our code is handed nothing and passes nothing on. Import is not here at all:
- * the vendor's only import call takes the key as text from the app, which would put it in our
- * code. The address is read from the user's linked accounts (the embedded wallet is the one the
- * vendor itself created).
+ * ★ NO VENDOR SCREEN IN SIGN-UP OR TRADING (the owner, 2026-10-22). Sign-in is drawn by the app
+ * (mobile features/landing and features/onboarding) and done here with the vendor's headless calls:
+ * email with `useLoginWithEmail` (sendCode, loginWithCode), and Apple, Google and X with
+ * `useLoginWithOAuth` (initOAuth), which leaves for the provider's own page and finishes when the
+ * page comes back with this component mounted. The embedded Solana wallet is made on sign-in with
+ * no screen (`createOnLogin`, and `useCreateWallet` as the net). `showWalletUIs: false` turns the
+ * vendor's approve window off for every signature, so the app's own Buy and Sell pop-ups are the
+ * only confirmation a person sees. The vendor's login modal (`useLogin`) is no longer used.
  *
- * What breaks if changed carelessly: the error code. The sign-in's own "the person closed it"
- * is `refused`; every other code is `failed` with no detail. Passing the vendor's code through
- * would put a vendor string where the port promises none can go.
+ * ★ NO KEY EVER. Export opens the vendor's own window (`useExportWallet`), which draws the key in a
+ * frame on the vendor's domain — the one vendor screen left, on purpose; our code is handed nothing
+ * and passes nothing on. The address is read from the user's linked accounts (the embedded wallet
+ * is the one the vendor itself created).
+ *
+ * What breaks if changed carelessly: the error codes. A vendor error becomes one of the port's
+ * closed words (store.ts `emailErrorOf`, `signInEnded`); passing the vendor's text through would
+ * put a vendor string where the port promises none can go. And `showWalletUIs`: turned back on, a
+ * second confirmation appears over our own pop-ups, and the earlier crash note below applies again.
  */
 
-import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, useIdentityToken, useLinkAccount, useLoginWithEmail, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
 import { defaultSolanaRpcsPlugin, toSolanaWalletConnectors, useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, useRef, type ReactNode } from 'react';
 
@@ -26,6 +34,14 @@ import type { Bridge } from './store.ts';
 
 /** The vendor's code for a person closing the sign-in themselves. */
 const CLOSED_BY_PERSON = 'exited_auth_flow';
+/** The vendor's codes for a person saying no on the provider's own page. */
+const DENIED_BY_PERSON = new Set([CLOSED_BY_PERSON, 'oauth_user_denied']);
+/** The provider's page each of our buttons leaves for. */
+const PROVIDER = { x: 'twitter', google: 'google', apple: 'apple' } as const;
+/** The provider's page came back to us: the address carries the vendor's state and code. */
+const RETURNING = typeof window !== 'undefined' && /[?&]privy_oauth_(state|code)=/.test(window.location.search);
+/** How long a returning sign-in may take to finish before the door says it did not. */
+const RETURN_WAIT_MS = 20_000;
 
 /* Made once: a new connectors object each render would restart the vendor's wallet discovery. */
 const CONNECTORS = toSolanaWalletConnectors();
@@ -49,9 +65,10 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
     <PrivyProvider
       appId={appId}
       config={{
-        /* X only, for now. Google is off here and must be off in the vendor's dashboard too. */
-        loginMethods: ['twitter'],
-        embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' } },
+        /* Our own sign-in screens use these four; each must be switched on in the vendor's dashboard too. */
+        loginMethods: ['email', 'apple', 'google', 'twitter'],
+        /* Made on sign-in with no screen; the vendor's approve window is off (see the header). */
+        embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' }, showWalletUIs: false },
         /* Outside wallets are joined for viewing only, through the vendor's own connect window. */
         externalWallets: { solana: { connectors: CONNECTORS } },
         plugins: PLUGINS,
@@ -66,10 +83,38 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
 
 function VendorBridge({ bridge }: { bridge: Bridge }) {
   const { ready, authenticated, user, logout } = usePrivy();
-  const { login } = useLogin({
+  const ended = {
     onComplete: () => bridge.signInEnded('done'),
-    onError: (code: unknown) => bridge.signInEnded(code === CLOSED_BY_PERSON ? 'closed' : 'error'),
-  });
+    onError: (code: unknown) => bridge.signInEnded(typeof code === 'string' && DENIED_BY_PERSON.has(code) ? 'closed' : 'error'),
+  };
+  const { initOAuth, state: oauth } = useLoginWithOAuth(ended);
+  const { sendCode, loginWithCode } = useLoginWithEmail(ended);
+
+  /* Back from the provider's page: connecting while the vendor finishes, never the door flashing,
+     and an error if it never does. */
+  const signedInNow = useRef(authenticated);
+  signedInNow.current = authenticated;
+  useEffect(() => {
+    if (!RETURNING) return;
+    bridge.signInPending();
+    const t = setTimeout(() => {
+      if (!signedInNow.current) bridge.signInEnded('error');
+    }, RETURN_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [bridge]);
+  /* Finished: the vendor's state and code are taken off the address, so a reload is not a second return. */
+  useEffect(() => {
+    if (!RETURNING || !(authenticated || oauth.status === 'error')) return;
+    const url = new URL(window.location.href);
+    for (const k of [...url.searchParams.keys()]) if (k.startsWith('privy_oauth_')) url.searchParams.delete(k);
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [authenticated, oauth.status]);
+  useEffect(() => {
+    if (oauth.status === 'error') {
+      const code = (oauth.error as { privyErrorCode?: unknown } | null)?.privyErrorCode;
+      bridge.signInEnded(typeof code === 'string' && DENIED_BY_PERSON.has(code) ? 'closed' : 'error');
+    }
+  }, [oauth, bridge]);
 
   /* The embedded wallet: the Solana wallet the vendor created for this user. */
   const embedded = (user?.linkedAccounts ?? []).find(
@@ -117,11 +162,13 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
 
   useEffect(() => {
     bridge.actions({
-      /* Always the vendor's own sign-in sheet, as Trador opens it — narrowed to the one provider
-         the front door named. Its headless OAuth call is not used: it skips the sheet, takes a
-         different route through the provider, and is not what Trador runs. */
-      /* Every sign-in is X's, whatever the caller asked: Google is switched off. */
-      signIn: () => login({ loginMethods: ['twitter'] }),
+      /* Leaves for the provider's own page; nothing is drawn by the vendor. With no method named
+         (a Sign in button inside the app), X, as the door offered first before sign-up. */
+      signIn: (via) => {
+        initOAuth({ provider: PROVIDER[via ?? 'x'] }).catch(() => bridge.signInEnded('error'));
+      },
+      sendEmailCode: (email) => sendCode({ email }),
+      loginWithEmailCode: (code) => loginWithCode({ code }),
       signOut: () => logout(),
       showExport: () => (address === null ? Promise.reject(new Error('no embedded wallet')) : exportWallet({ address })),
       linkWallet: () => linkWallet({ walletChainType: 'solana-only' }),
@@ -132,10 +179,10 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       },
     });
     return () => bridge.actions(null);
-  }, [bridge, login, logout, signer, signTransaction, exportWallet, linkWallet, address]);
+  }, [bridge, initOAuth, sendCode, loginWithCode, logout, signer, signTransaction, exportWallet, linkWallet, address]);
 
-  /* Who signed in, as the vendor reports it: the X account, or the Google account's name. A
-     Google email is never passed on — it is not a name, and nothing here needs it. */
+  /* Who signed in, as the vendor reports it: the X account, or the Google account's name. An
+     email address is never passed on — it is not a name, and nothing here needs it. */
   const x = user?.twitter;
   const name = x?.name ?? user?.google?.name ?? null;
   const handle = x?.username ?? null;
