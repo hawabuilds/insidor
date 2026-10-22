@@ -7,9 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { embeddedWallet, type Broadcast } from './store.ts';
+import { embeddedWallet, emailErrorOf, type Broadcast } from './store.ts';
 
-function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array>; exportWindow?: () => Promise<unknown> } = {}) {
+function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array>; exportWindow?: () => Promise<unknown>; email?: { send?: () => Promise<void>; login?: () => Promise<void> } } = {}) {
   const { wallet, bridge } = embeddedWallet(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast });
   const calls: string[] = [];
   bridge.actions({
@@ -17,6 +17,8 @@ function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<
     signOut: async () => void calls.push('signOut'),
     showExport: opts.exportWindow ?? (async () => void calls.push('export')),
     linkWallet: () => void calls.push('link'),
+    sendEmailCode: opts.email?.send ?? (async (email: string) => void calls.push(`code:${email}`)),
+    loginWithEmailCode: opts.email?.login ?? (async (code: string) => void calls.push(`login:${code}`)),
     signTransaction: opts.sign ?? (async (p) => {
       calls.push('sign');
       return new Uint8Array([...p, 9]);
@@ -184,4 +186,43 @@ test('the identity token is offered only while signed in', () => {
   assert.equal(wallet.sessionToken(), null);
   bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: 'id-token' });
   assert.equal(wallet.sessionToken(), 'id-token');
+});
+
+test('★ email sign-in: a code sent, the right code signs in and the state follows; nothing throws', async () => {
+  const { wallet, bridge, calls } = setup();
+  assert.equal(await wallet.sendEmailCode('  hawa@gmail.com '), 'sent');
+  assert.equal(await wallet.sendEmailCode('not an address'), 'invalid-email', 'checked before the vendor is asked');
+  assert.deepEqual(calls, ['code:hawa@gmail.com']);
+  assert.equal(await wallet.signInWithEmailCode('12345'), 'wrong-code', 'six digits or it is not a code');
+  assert.equal(await wallet.signInWithEmailCode('482913'), 'signed-in');
+  assert.equal(wallet.state().kind, 'connecting', 'signed in, the wallet on its way');
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111' });
+  assert.equal(wallet.state().kind, 'connected');
+});
+
+test('★ a vendor error on email sign-in is one of our words, never its message', async () => {
+  const vendor = (privyErrorCode: string) => Object.assign(new Error(`secret detail ${privyErrorCode}`), { privyErrorCode });
+  const wrong = setup({ email: { login: async () => Promise.reject(vendor('invalid_credentials')) } });
+  assert.equal(await wrong.wallet.signInWithEmailCode('000000'), 'wrong-code');
+  assert.equal(wrong.wallet.state().kind, 'disconnected', 'a wrong code leaves the door as it was');
+  const often = setup({ email: { send: async () => Promise.reject(vendor('too_many_requests')) } });
+  assert.equal(await often.wallet.sendEmailCode('a@b.co'), 'too-many');
+  const odd = setup({ email: { send: async () => Promise.reject(new Error('boom')) } });
+  assert.equal(await odd.wallet.sendEmailCode('a@b.co'), 'failed');
+  assert.equal(emailErrorOf({ privyErrorCode: 'missing_or_invalid_token' }), 'expired');
+  assert.equal(emailErrorOf('anything'), 'failed');
+});
+
+test('a sign-in finished after the provider\'s page came back is connecting until the wallet is there, and an error is failed', () => {
+  const { wallet, bridge } = setup();
+  bridge.signInPending();
+  assert.equal(wallet.state().kind, 'connecting');
+  bridge.signInEnded('error');
+  assert.deepEqual(wallet.state(), { kind: 'failed', code: 'internal' });
+});
+
+test('with no sign-in configured, the email calls answer unavailable', async () => {
+  const { wallet } = embeddedWallet();
+  assert.equal(await wallet.sendEmailCode('a@b.co'), 'unavailable');
+  assert.equal(await wallet.signInWithEmailCode('123456'), 'unavailable');
 });

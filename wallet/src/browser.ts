@@ -284,6 +284,9 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
     sessionToken: () => null,
     linkedWallets: () => [],
     linkWallet: async () => 'unavailable',
+    /* An extension wallet has no email sign-in. */
+    sendEmailCode: async () => 'unavailable',
+    signInWithEmailCode: async () => 'unavailable',
 
     signer: (): Signer | null => {
       if (state.kind !== 'connected') return null;
