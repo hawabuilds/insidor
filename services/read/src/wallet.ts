@@ -58,8 +58,16 @@ select s.story_id, s.payload ->> 'title' as title, s.payload #>> '{coins,coin,ad
  where s.payload #>> '{coins,kind}' = 'one'
    and s.payload #>> '{coins,coin,address}' = any($1)`;
 
+/* A created coin is "from a catch" when the post it was made from was on For You: its narrative's
+   posts, or the card naming the coin, are in public.feed_post's fyp list. */
 export const CREATED_SQL = `
-select c.address, c.story_id, c.created_at, n.name, n.ticker
+select c.address, c.story_id, (extract(epoch from c.created_at) * 1000)::bigint as created_ms, n.name, n.ticker,
+       exists (
+         select 1 from public.feed_post f
+          where f.feed_id = 'fyp' and f.withdrawn_at is null
+            and (f.payload #>> '{coins,coin,address}' = c.address
+                 or (c.story_id is not null and f.item_id in (select m.item_id from public.story_member m where m.story_id = c.story_id)))
+       ) as from_catch
   from public.created_coin c
   left join public.coin_name n on n.address = c.address
  where c.creator = $1
@@ -101,8 +109,8 @@ select (extract(epoch from at) * 1000)::bigint as t, total_usd
  where address = $1 and at >= $2
  order by at asc`;
 
-/** The chart's windows, Trador's: a day, a week, a month, everything. */
-const HISTORY_RANGES: Readonly<Record<string, number | null>> = { '1d': 86_400_000, '1w': 604_800_000, '1m': 2_592_000_000, all: null };
+/** The chart's windows: a day, a week, a month, three months, everything. */
+const HISTORY_RANGES: Readonly<Record<string, number | null>> = { '1d': 86_400_000, '1w': 604_800_000, '1m': 2_592_000_000, '3m': 7_776_000_000, all: null };
 
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const RANGES = ['1h', '6h', '24h'] as const;
@@ -274,7 +282,19 @@ export function createWallet(deps: WalletDeps) {
         coins: createdRows.map((r) => {
           const a = str(r['address']) ?? '';
           const q = createdQuotes.get(a);
-          return { coinId: `solana:${a}`, address: a, name: str(r['name']) ?? q?.name ?? null, ticker: str(r['ticker']) ?? q?.ticker ?? null, marketCapUsd: measured(q?.marketCapUsd, 'no_market'), storyId: str(r['story_id']) };
+          const createdMs = Number(r['created_ms']);
+          return {
+            coinId: `solana:${a}`,
+            address: a,
+            name: str(r['name']) ?? q?.name ?? null,
+            ticker: str(r['ticker']) ?? q?.ticker ?? null,
+            marketCapUsd: measured(q?.marketCapUsd, 'no_market'),
+            storyId: str(r['story_id']),
+            launchedAt: Number.isFinite(createdMs) ? createdMs : null,
+            /* Off its launchpad curve, on the market's word; a coin no market lists is neither. */
+            graduated: q === undefined ? null : q.bonded,
+            fromCatch: r['from_catch'] === true,
+          };
         }),
       },
     });
