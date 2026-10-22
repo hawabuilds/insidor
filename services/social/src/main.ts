@@ -2,7 +2,8 @@
  * The social service, assembled: the people role's database, Privy's identity check, and the
  * chain for holdings, first buys and proof transactions. Every read of the chain is kept for a
  * while (policy), so one busy comment does not become a burst of RPC calls. The owner's coin check
- * (coin-sources.ts) reads the same chain and the free market sources, for the owner only.
+ * (coin-sources.ts) reads the same chain and the free market sources, for the owner only. Sign-up
+ * photos go to our storage (picture.ts) when the storage settings are present.
  */
 
 import pg from 'pg';
@@ -11,10 +12,12 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import { portfolioReader, tradesFromTx } from '@insidor/chain-portfolio';
 import { privyIdentity } from '@insidor/identity-privy';
 import { launchPriceSol } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
+import { memberPicStore, PhotoRefused } from '@insidor/storage-supabase/member-pic.ts';
 
 import { liveCoinCheck } from './coin-sources.ts';
 import { loadSocialConfig } from './config.ts';
 import { pacer, serve } from './http.ts';
+import { MAX_PHOTO_BYTES, type PhotoStore } from './picture.ts';
 import { handle, type Chain } from './routes.ts';
 
 
@@ -82,7 +85,15 @@ const chain: Chain | null = (() => {
   };
 })();
 
-const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, invites: DEFAULT_POLICY.invites, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
+/* Sign-up photos, into our storage (picture.ts); none without the storage settings. */
+const PHOTO_TIMEOUT_MS = 15_000;
+const storage = cfg.storage;
+const photos: PhotoStore | null = storage === null ? null : (() => {
+  const store = memberPicStore({ url: storage.url, serviceKey: storage.serviceKey, fetch: globalThis.fetch, timeoutMs: PHOTO_TIMEOUT_MS, maxBytes: MAX_PHOTO_BYTES });
+  return { put: store.put, urlOf: store.urlOf, refused: (e: unknown) => e instanceof PhotoRefused };
+})();
+
+const deps = { db, photos, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, invites: DEFAULT_POLICY.invites, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
 
 serve(cfg.allowedOrigins, async (req) => {
   try {
@@ -91,4 +102,4 @@ serve(cfg.allowedOrigins, async (req) => {
     log('error', 'request failed', { path: req.url.split('?')[0], err: e instanceof Error ? e.message : String(e) });
     return { status: 500, body: '{"error":"server error"}' };
   }
-}).listen(cfg.port, () => log('info', 'listening', { port: cfg.port, likes: chain === null ? 'off: no chain' : 'on' }));
+}).listen(cfg.port, () => log('info', 'listening', { port: cfg.port, likes: chain === null ? 'off: no chain' : 'on', photos: photos === null ? 'off: no storage' : 'on' }));

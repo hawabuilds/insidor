@@ -26,9 +26,25 @@ const person = (n: number | string, handle: string | null = null, name: string |
 
 type Call = (method: string, url: string, body?: unknown) => Promise<{ status: number; body: Record<string, unknown> }>;
 
-function routesOver(db: Db) {
+/** A stand-in for our storage: keeps what it was given, refuses what is not a JPEG by its first bytes. */
+class Refused extends Error {}
+const photoStore = () => {
+  const kept = new Map<string, Uint8Array>();
+  return {
+    kept,
+    put: async (file: string, bytes: Uint8Array) => {
+      if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Refused('not a photo');
+      kept.set(file, bytes);
+    },
+    urlOf: (file: string) => `https://storage.test/member-pics/${file}`,
+    refused: (e: unknown) => e instanceof Refused,
+  };
+};
+
+function routesOver(db: Db, photos: ReturnType<typeof photoStore> | null = null) {
   const people = new Map<string, Person>();
   const deps = {
+    photos,
     db,
     identity: { verify: async (token: string) => people.get(token) ?? null },
     chain: null,
@@ -147,4 +163,26 @@ test('★ members from before sign-up are done, numbered by when they got in, an
 
   await letIn(raw as unknown as Db, person('w'));
   assert.equal((await as(person('w', 'waiting'))('POST', '/onboarding/done')).body['memberNo'], 3, 'the next number, after the backfill');
+});
+
+test('★ a photo is kept in our storage, becomes the picture, and no later X sign-in replaces it', async () => {
+  const db = (await migratedDb()) as unknown as Db;
+  const photos = photoStore();
+  const { as } = routesOver(db, photos);
+  const me = person('pic', 'hawaonx', 'Hawa', 'https://pbs.twimg.com/profile_images/1/a.jpg');
+  const jpeg = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2]).toString('base64')}`;
+  assert.equal((await as(me)('POST', '/onboarding/picture', { image: jpeg })).status, 403, 'members only');
+  await letIn(db, me);
+  const saved = await as(me)('POST', '/onboarding/picture', { image: jpeg });
+  assert.equal(saved.status, 200);
+  assert.match(String(saved.body['pictureUrl']), /^https:\/\/storage\.test\/member-pics\/[0-9a-f]{32}$/);
+  assert.equal(photos.kept.size, 1);
+  const after = await as(me)('GET', '/onboarding');
+  assert.equal(after.body['pictureUrl'], saved.body['pictureUrl'], 'the X picture on the next sign-in does not replace it');
+  assert.equal(after.body['pictureChosen'], true);
+
+  const gif = `data:image/jpeg;base64,${Buffer.from('GIF89a').toString('base64')}`;
+  assert.equal((await as(me)('POST', '/onboarding/picture', { image: gif })).status, 400, 'bytes that are not a photo, whatever the type said');
+  assert.equal((await as(me)('POST', '/onboarding/picture', { image: 'not a picture' })).status, 400);
+  assert.equal((await routesOver(db).as(me)('POST', '/onboarding/picture', { image: jpeg })).status, 503, 'no storage: said, never faked');
 });
