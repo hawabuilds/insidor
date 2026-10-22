@@ -143,10 +143,10 @@
 }
 
 .large {
-  height: 52px;
+  height: var(--button-h);
   padding: 0 20px;
-  border-radius: var(--r-control);
-  font-size: 16px;
+  border-radius: var(--r-button);
+  font-size: var(--button-size);
 }
 
 .primary {
@@ -169,6 +169,19 @@
 .quiet {
   background: var(--card);
   color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* The second action under a main button: words, no fill, the main button's width for the thumb. */
+.link {
+  background: none;
+  color: var(--text-2);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.link.large {
+  height: 44px;
 }
 
 /* ── underline tabs ────────────────────────────────────────────────── */
@@ -209,7 +222,7 @@
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
-  background: var(--brand);
+  background: var(--text-1);
 }
 
 /* ── modal ─────────────────────────────────────────────────────────── */
@@ -336,14 +349,14 @@
 .tabbarOn {
   color: var(--text-1);
   background: var(--input);
-  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 18px -8px var(--brand-glow);
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 
 /* ── a translated post's line (Translated.tsx) ─────────────────────── */
 
 /* "Translated from Portuguese  Show original": small and grey under the words, like the text
-   source's own; the toggle is the one tappable part, in the link colour. */
+   source's own; the toggle is the one tappable part, in the link colour (white). */
 .translated {
   display: flex;
   flex-wrap: wrap;
@@ -375,6 +388,9 @@
   border: 0;
   background: none;
   font: inherit;
-  color: var(--brand-400);
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
+  text-underline-offset: 2px;
   cursor: pointer;
 }

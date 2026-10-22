@@ -83,10 +83,12 @@
   gap: 10px;
 }
 
+/* A sheet's title is a section heading on the one type scale (tokens.css): 18 at 600, under the
+   28/800 screen titles, so a sheet never shouts louder than the screen it opened over. */
 .title {
   margin: 0;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
