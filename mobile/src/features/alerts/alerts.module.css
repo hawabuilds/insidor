@@ -1,8 +1,9 @@
 /*
  * The Feed tab, its Notifications and the Feed settings sheet: Trador's Feed, Notifications and
  * notification settings, measured from its Tailwind classes and written in Insidor's tokens. On
- * the approved system (tokens.css): the chosen tab, segment, chip and switch, the unread dot and
- * the bell's count are white and grey, never purple; purple is the screen's one main action. Kept in one module because the three screens share the
+ * the approved system (tokens.css), with solid purple kept where it says a state: the chosen tab's
+ * rule, an on switch, the unread dot and the bell's count. A chosen segment or chip is white on a
+ * lighter grey, never a purple wash; links, tags, faces and borders are white and grey. Kept in one module because the three screens share the
  * header, the faces and the rows. What breaks if changed carelessly: the sticky header must stay
  * opaque, or rows scroll visibly through the title.
  */
@@ -61,7 +62,7 @@
   color: var(--text-1);
 }
 
-/* The bell's count: Trador's 18px pill at the top right, 9+ past nine, white with dark figures. */
+/* The bell's count: Trador's 18px brand pill at the top right, 9+ past nine. */
 .count {
   position: absolute;
   top: 4px;
@@ -72,14 +73,14 @@
   display: grid;
   place-items: center;
   border-radius: 9px;
-  background: var(--text-1);
-  color: var(--bg);
+  background: var(--brand);
+  color: #fff;
   font-size: var(--t-caption);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-/* Trador's PanelTabs at md, start: labels together, 24px apart, a 2px white rule under the current one. */
+/* Trador's PanelTabs at md, start: labels together, 24px apart, a 2px brand rule under the current one. */
 .tabs {
   display: flex;
   gap: 24px;
@@ -111,7 +112,7 @@
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
-  background: var(--text-1);
+  background: var(--brand);
 }
 
 .windowRow {
@@ -141,8 +142,8 @@
 }
 
 .segment .segmentOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
+  background: var(--tag-bg);
+  color: var(--text-1);
 }
 
 .list {
@@ -159,7 +160,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--select-bg);
+  background: var(--tag-bg);
   color: var(--text-1);
   font-size: 15px;
   font-weight: 600;
@@ -381,14 +382,13 @@
   background: var(--hover);
 }
 
-/* What is new: a small white dot on the app's dark rows. */
+/* What is new: a small purple dot on the app's dark rows. */
 .note {
   border: 1px solid transparent;
   border-radius: 16px;
 }
 
-/* Unread: the app's own dark look with a small dot (the owner, 2026-10-18: the purple card was too
-   loud); white since the approved system kept purple for the main action. */
+/* Unread: the app's own dark look with a small purple dot (the owner, 2026-10-18: the purple card was too loud). */
 .note.unread {
   position: relative;
 }
@@ -401,7 +401,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-1);
+  background: var(--brand);
 }
 
 /* The settings button on Notifications: round. */
@@ -556,13 +556,8 @@
   transition: transform 0.15s;
 }
 
-/* On: a white track and a dark knob, as the approved system draws a chosen thing. */
 .switchOn {
-  background: var(--text-1);
-}
-
-.switchOn span {
-  background: var(--bg);
+  background: var(--brand);
 }
 
 .switchOn span {
@@ -591,9 +586,9 @@
 }
 
 .chipOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
-  box-shadow: inset 0 0 0 1px var(--select-line);
+  background: var(--tag-bg);
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--tag-line);
 }
 
 .stepper {
@@ -699,7 +694,7 @@
   text-decoration: none;
 }
 
-/* Unread: the same dark card with a small white dot, never a purple card. */
+/* Unread: the same dark card with a small purple dot, never a purple card. */
 .noteCardUnread {
   position: relative;
 }
@@ -712,7 +707,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-1);
+  background: var(--brand);
 }
 
 .noteCardUnread .reasonAge {

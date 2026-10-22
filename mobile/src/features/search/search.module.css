@@ -21,7 +21,7 @@
 .input:focus {
   outline: none;
   /* Focus is the approved input's lighter edge, not purple: purple is the main action only. */
-  border-color: var(--select-line);
+  border-color: var(--tag-line);
 }
 
 .hint {
@@ -77,8 +77,8 @@
 }
 
 .order button.on {
-  background: var(--select-bg);
-  color: var(--select-ink);
+  background: var(--card);
+  color: var(--text-1);
 }
 
 .row {
@@ -163,7 +163,7 @@
   margin-top: 2px;
   padding: 3px 8px;
   border-radius: 8px;
-  background: var(--select-bg);
+  background: var(--tag-bg);
   color: var(--text-2);
   font-size: var(--t-caption);
   font-weight: 700;

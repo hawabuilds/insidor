@@ -9,7 +9,7 @@
  */
 
 /* The title row is the shared one (shared/ui/screen-header.module.css): "Feed" in the same place and face as
-   every tab, the round bell at its right (44px, the tap size) with a white dot when something is
+   every tab, the round bell at its right (44px, the tap size) with a purple dot when something is
    unread. The chips
    start 15px under the title, as they did. */
 .titleRow {
@@ -35,11 +35,11 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-1);
+  background: var(--brand);
   box-shadow: 0 0 0 2px var(--card);
 }
 
-/* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one on the chosen grey. */
+/* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one white on a lighter grey. */
 .chips {
   display: flex;
   gap: 2px;
@@ -58,8 +58,8 @@
 }
 
 .chipOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
+  background: var(--tag-bg);
+  color: var(--text-1);
 }
 
 /* Top calls' This week / All time, as For You's window toggle. */
@@ -86,8 +86,8 @@
 }
 
 .windows .windowOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
+  background: var(--tag-bg);
+  color: var(--text-1);
 }
 
 /* ── Trador's rows: no box, spacing between them ("a feed of boxes reads as a list of adverts") ── */

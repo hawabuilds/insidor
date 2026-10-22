@@ -1,8 +1,6 @@
-/* The views-gained chart (GainChart.tsx), in the owner's design of 2026-10-17 (one line at 1.8px
-   with a faint glow and a fade to nothing, dashed markers with pills, three times under it and the
-   interval rail) on the approved system's colours: the line is white, because views are a fact
-   and purple is the screen's main action only; the markers are grey (Found) and white (the coin),
-   told apart by their pills' words, because green is kept for a number going up. */
+/* The views-gained chart (GainChart.tsx), in the owner's design values of 2026-10-17: the line
+   #B48CFF at 1.8px with a faint glow and a fade to nothing, purple and green dashed markers with
+   pills, three times under it and the interval rail, its chosen one white on grey. */
 
 .chart {
   margin-top: 14px;
@@ -22,7 +20,7 @@
 .line,
 .glow {
   fill: none;
-  stroke: var(--text-1);
+  stroke: #b48cff;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -33,7 +31,7 @@
 
 .glow {
   stroke-width: 4;
-  opacity: 0.25;
+  opacity: 0.55;
 }
 
 .foundLine,
@@ -43,12 +41,12 @@
 }
 
 .foundLine {
-  stroke: var(--text-3);
+  stroke: #8e74c9;
 }
 
 .coinLine {
-  stroke: var(--text-1);
-  opacity: 0.6;
+  stroke: #2fd47a;
+  opacity: 0.75;
 }
 
 .pill {
@@ -56,8 +54,8 @@
   height: 20px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--card);
-  color: var(--text-1);
+  background: #16151b;
+  color: #f4eeff;
   font-size: 12px;
   font-weight: 600;
   line-height: 18px;
@@ -65,16 +63,16 @@
 }
 
 .pillFound {
-  border: 1px solid var(--select-line);
+  border: 1px solid #6e58a6;
 }
 
 .pillCoin {
-  border: 1px solid var(--text-2);
+  border: 1px solid #23885a;
 }
 
 .endLabel {
   position: absolute;
-  color: var(--text-1);
+  color: #b48cff;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -85,7 +83,7 @@
   left: 0;
   right: 62px;
   text-align: center;
-  color: var(--text-2);
+  color: #8b8794;
   font-size: 12px;
 }
 
@@ -95,7 +93,7 @@
   justify-content: space-between;
   margin-top: 6px;
   height: 16px;
-  color: var(--text-2);
+  color: #8b8794;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -116,12 +114,13 @@
   height: 30px;
   padding: 0 10px;
   border-radius: 10px;
-  color: var(--text-2);
+  color: #8b8794;
   font-size: 14px;
   font-weight: 600;
 }
 
+/* The chosen interval: white on a lighter grey, no purple wash behind it (the owner, 2026-10-22). */
 .ivOn {
-  background: var(--select-bg);
-  color: var(--select-ink);
+  background: var(--tag-bg);
+  color: var(--text-1);
 }

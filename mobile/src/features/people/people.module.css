@@ -1,7 +1,7 @@
 /* Profiles, rank cards, the leaderboard and the rank-up screen: Trador's, in Insidor's tokens.
    The leaderboard, the follow lists and the rank-up are on the approved system (tokens.css): rows
-   apart by space with no rule between them, no text under 12px, the 56px main button, and a purple
-   ring round your own picture and nobody else's. The profile's own classes (head, counts, follow,
+   apart by space with no rule between them, no text under 12px, the 56px main button, and every
+   picture drawn plain, your own included (no ring when signed in, the owner 2026-10-22). The profile's own classes (head, counts, follow,
    folio) are the profile redesign's and are left for it. */
 
 .screen {
@@ -165,15 +165,6 @@
   padding: 10px 0;
   color: var(--text-1);
   text-decoration: none;
-}
-
-/* Your own picture on a list: the one purple ring a face may have (the approved system). */
-.ownRing {
-  flex-shrink: 0;
-  display: inline-flex;
-  border-radius: 50%;
-  outline: 2px solid var(--brand-300);
-  outline-offset: 2px;
 }
 
 .rowText {
