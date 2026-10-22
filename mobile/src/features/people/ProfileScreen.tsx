@@ -110,7 +110,7 @@ function Body({ p, reload }: { p: ProfileCard; reload: () => void }) {
         </div>
         {p.isMe ? null : (
           <button type="button" className={following ? styles['pillGhost'] : styles['pillFollow']} onClick={() => void toggleFollow()}>
-            {following ? 'Following' : 'Follow'}
+            {following ? 'Following' : p.followsMe ? 'Follow back' : 'Follow'}
           </button>
         )}
       </div>
