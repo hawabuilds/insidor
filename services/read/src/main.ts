@@ -262,6 +262,8 @@ async function main(): Promise<void> {
     }),
     images: chain === null ? null : (mints) => chain.imageUris(mints),
     creatorFees: rpcUrl === null ? null : (creator) => unclaimedCreatorFees(rpcUrl, creator),
+    /* The profile's best catch and hit rate (catches.ts): the token page's own candles, kept by the adapter. */
+    candles: async (mint, timeframe) => (await marketData.coin(mint, timeframe)).candles,
     now: Date.now,
   });
 

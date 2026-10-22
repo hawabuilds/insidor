@@ -543,6 +543,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       return (await orOpened(param, deps, () => coinAbout(param, { ...about, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
     }
 
+    if (deps.wallet !== undefined && segments.length === 3 && head === 'wallet' && param !== undefined && segments[2] === 'catches') {
+      return await deps.wallet.catches(param, client);
+    }
     if (deps.wallet !== undefined && segments.length === 3 && head === 'wallet' && param !== undefined && segments[2] === 'history') {
       return await deps.wallet.history(param, new URLSearchParams(rawUrl.split('?')[1] ?? '').get('range'), client);
     }
