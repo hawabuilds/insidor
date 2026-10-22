@@ -132,9 +132,10 @@
   font-size: 13px;
 }
 
+/* "Live" is a state, not a number going up, so it is white rather than green (tokens.css rule 1). */
 .live {
-  color: var(--up);
-  font-weight: 700;
+  color: var(--text-1);
+  font-weight: 600;
 }
 
 .coinTop {
