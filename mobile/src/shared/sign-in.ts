@@ -25,22 +25,38 @@
  *      (`unchecked`), never a no. A browser that was let in before (`entered`) goes straight in,
  *      as in rule 1: access is never taken back, and everyone signed in before invites kept it.
  *
+ *   4. ★ LET IN IS NOT SIGNED UP (2026-10-22). Someone let in on a browser never let in before is
+ *      asked where they are in sign-up (features/onboarding useOnboarding.ts): a moment's hold while
+ *      that is asked (`holding`), the sign-up screens while a step is left (`onboarding`: username,
+ *      photo, Home Screen, alerts, done), then the app. A member who finished sign-up before —
+ *      everyone in before sign-up existed, 0123 — goes straight in. A sign-up state that could not
+ *      be read lets the member in (`app`) rather than holding them at a screen they may not need;
+ *      the browser is not marked let in, so the next launch asks again.
+ *
  * What breaks if changed carelessly: `connecting` while the sign-in window is open must stay on
  * the door — the person is mid sign-in, and the door is where they will come back to.
  */
 
 import type { WalletState } from '@insidor/contracts/ports/wallet.ts';
 
-export type Gate = 'app' | 'landing' | 'holding' | 'invite' | 'waitlist' | 'unchecked';
+export type Gate = 'app' | 'landing' | 'holding' | 'invite' | 'waitlist' | 'unchecked' | 'onboarding';
 
 /** What the social service said about this sign-in: not asked yet, in, out, out and waiting, or could not be asked. */
 export type Access = 'unknown' | 'in' | 'out' | 'waiting' | 'unchecked';
 
-const BY_ACCESS: Readonly<Record<Access, Gate>> = { unknown: 'holding', in: 'app', out: 'invite', waiting: 'waitlist', unchecked: 'unchecked' };
+/** Where a member let in is in sign-up: not asked yet, a step left, finished, or could not be asked. */
+export type SignUp = 'unknown' | 'needed' | 'done' | 'unchecked';
 
-export function gateFor(r: { readonly configured: boolean; readonly state: WalletState; readonly entered: boolean; readonly access?: Access }): Gate {
+const BY_ACCESS: Readonly<Record<Access, Gate>> = { unknown: 'holding', in: 'app', out: 'invite', waiting: 'waitlist', unchecked: 'unchecked' };
+const BY_SIGN_UP: Readonly<Record<SignUp, Gate>> = { unknown: 'holding', needed: 'onboarding', done: 'app', unchecked: 'app' };
+
+export function gateFor(r: { readonly configured: boolean; readonly state: WalletState; readonly entered: boolean; readonly access?: Access; readonly signUp?: SignUp }): Gate {
   if (!r.configured) return r.entered ? 'app' : 'landing';
-  if (r.state.kind === 'connected' || r.state.kind === 'wrong-network') return r.entered ? 'app' : BY_ACCESS[r.access ?? 'unknown'];
+  if (r.state.kind === 'connected' || r.state.kind === 'wrong-network') {
+    if (r.entered) return 'app';
+    const access = r.access ?? 'unknown';
+    return access === 'in' ? BY_SIGN_UP[r.signUp ?? 'unknown'] : BY_ACCESS[access];
+  }
   if (r.entered && (r.state.kind === 'unavailable' || r.state.kind === 'connecting')) return 'app';
   return 'landing';
 }

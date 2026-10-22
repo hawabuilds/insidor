@@ -17,6 +17,8 @@
  *   GET    /feed, /feed/people          the people you follow's trades and comments, People to follow (activity.ts)
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
  *   GET    /access, /invites/…, POST /waitlist, /owner/invites   invite-only access (invites.ts)
+ *   GET    /onboarding, /username/:name, PUT /username, POST /onboarding/done   sign-up (onboarding.ts)
+ *   POST   /onboarding/picture { image }   my photo, into our storage (picture.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
@@ -50,6 +52,8 @@ import { missedRoute } from './missed.ts';
 import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
 import { inviteRoute, ownerInvitesRoute } from './invites.ts';
+import { onboardingRoute } from './onboarding.ts';
+import { pictureRoute, type PhotoStore } from './picture.ts';
 import { ownerRefOf, ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
@@ -80,6 +84,8 @@ export interface SocialDeps {
   readonly invites?: InvitePolicy;
   /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
   readonly coinCheck?: CoinCheck;
+  /** Where sign-up photos are kept (picture.ts); absent or null, photos can't be saved and the route says so. */
+  readonly photos?: PhotoStore | null;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
 }
@@ -140,14 +146,23 @@ interface ProfileRow {
 
 const PROFILE_COLS = `user_id as "userId", handle, name, picture_url as "pictureUrl", bio, wallet, trades_public as "tradesPublic"`;
 
-/** The profile row brought up to date from a signed sign-in. A handle someone else held moves to its new owner. */
+/**
+ * The profile row brought up to date from a signed sign-in. An X handle someone else held as a copy
+ * of their X handle moves to its new owner, as X moved it. A username a member CHOSE at sign-up
+ * (handle_chosen_at, 0123) is theirs: the sign-in never overwrites it, and an X handle that matches
+ * someone else's chosen name is simply not copied. A picture chosen at sign-up is kept the same way.
+ */
 export async function syncProfile(db: Db, p: Person): Promise<void> {
   const handle = p.handle?.toLowerCase() ?? null;
   const wallet = p.wallets.find((w) => w.kind === 'embedded')?.address ?? null;
-  if (handle !== null) await db.query('update people.profile set handle = null where handle = $1 and user_id <> $2', [handle, p.userId]);
+  if (handle !== null) await db.query('update people.profile set handle = null where handle = $1 and user_id <> $2 and handle_chosen_at is null', [handle, p.userId]);
   await db.query(
-    `insert into people.profile (user_id, handle, name, picture_url, wallet) values ($1, $2, $3, $4, $5)
-     on conflict (user_id) do update set handle = excluded.handle, name = excluded.name, picture_url = coalesce(excluded.picture_url, people.profile.picture_url),
+    `insert into people.profile (user_id, handle, name, picture_url, wallet)
+     values ($1, case when exists (select 1 from people.profile o where o.handle = $2 and o.user_id <> $1) then null else $2 end, $3, $4, $5)
+     on conflict (user_id) do update set
+       handle = case when people.profile.handle_chosen_at is not null then people.profile.handle else excluded.handle end,
+       name = excluded.name,
+       picture_url = case when people.profile.picture_chosen_at is not null then people.profile.picture_url else coalesce(excluded.picture_url, people.profile.picture_url) end,
        wallet = coalesce(excluded.wallet, people.profile.wallet), updated_at = now()`,
     [p.userId, handle, p.name, p.pictureUrl, wallet],
   );
@@ -347,6 +362,9 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
   }
   const invited = await inviteRoute(m, seg, req.body, me, invites);
   if (invited !== null) return invited;
+  if (head === 'onboarding' && id === 'picture' && seg.length === 2) return pictureRoute(m, req.body, me, { db: deps.db, photos: deps.photos ?? null });
+  const onboarded = await onboardingRoute(m, seg, req.body, me, invites);
+  if (onboarded !== null) return onboarded;
 
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
@@ -365,7 +383,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
       /* Their own X picture, as the sign-in window showed it to the app, when the signed token
          carried none (see xPictureOf): every @handle on screen is drawn with its picture. */
       const sent = me.pictureUrl === null ? xPictureOf((req.body as { pictureUrl?: unknown } | null)?.pictureUrl) : null;
-      if (sent !== null) await deps.db.query('update people.profile set picture_url = $2, updated_at = now() where user_id = $1', [me.userId, sent]);
+      if (sent !== null) await deps.db.query('update people.profile set picture_url = $2, updated_at = now() where user_id = $1 and picture_chosen_at is null', [me.userId, sent]);
     }
     if (m === 'PUT' && typeof (req.body as { tradesPublic?: unknown } | null)?.tradesPublic === 'boolean') {
       await deps.db.query('update people.profile set trades_public = $2, updated_at = now() where user_id = $1', [me.userId, (req.body as { tradesPublic: boolean }).tradesPublic]);
