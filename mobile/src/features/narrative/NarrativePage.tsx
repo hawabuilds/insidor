@@ -62,6 +62,7 @@ import { NarrativeEdit } from './NarrativeEdit.tsx';
 import { PAGE, firstPosted, moments, newestFirst, type Moment } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
+import { Avatar } from '../portfolio/Avatar.tsx';
 import styles from './narrative.module.css';
 
 /* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
@@ -267,8 +268,12 @@ function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: 
       <span className={styles['rowText']}>
         <span className={styles['rowLine']}>{e.excerpt}</span>
         <span className={styles['rowBy']}>
-          {e.authorLabel}
-          {age.kind === 'value' ? ` ${age.text}` : ''}
+          {/* Every @handle with its picture (the owner, 2026-10-21): the stored copy first, then the link, then the letter. */}
+          <Avatar name={e.authorLabel.replace(/^@/, '')} seed={e.authorLabel} src={card?.authorPictureUrl ?? null} file={card?.authorPictureFile ?? null} size={18} />
+          <span className={styles['rowHandle']}>
+            {e.authorLabel}
+            {age.kind === 'value' ? ` ${age.text}` : ''}
+          </span>
         </span>
       </span>
       <span className={styles['rowNums']}>
