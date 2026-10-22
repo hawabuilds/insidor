@@ -73,7 +73,10 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
   const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
   /* Your profile card (banner, bio, counts): for you, not for a linked wallet's view. */
-  const [card, reloadCard] = useLoad(`me:${profileKey ?? 'none'}`, () => (profileKey === null ? Promise.resolve(null) : fetchMe()), 'memory');
+  /* Read whenever you are signed in, not only when the sign-in carries an X handle: an email or Google
+     member has no handle there, and their chosen username and sign-up photo live only on this card. */
+  const meKey = canAct ? (ownAddress ?? who.address) : profileKey;
+  const [card, reloadCard] = useLoad(`me:${meKey ?? 'none'}`, () => (meKey === null ? Promise.resolve(null) : fetchMe()), 'memory');
   const now = useNow();
   const read: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
   /* Each fresh read's prices are kept on the phone, and the last read with a total too, so a read
@@ -109,7 +112,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         address={ownAddress ?? who.address}
         onCopy={() => void copy()}
         exportKey={exportKey}
-        profileKey={profileKey}
+        profileKey={(card.state === 'ready' ? card.value?.handle : null) ?? profileKey}
         linked={linked}
         leave={leave}
         onBanner
