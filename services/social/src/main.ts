@@ -11,6 +11,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import { portfolioReader, tradesFromTx } from '@insidor/chain-portfolio';
 import { privyIdentity } from '@insidor/identity-privy';
 import { launchPriceSol } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
+import { posterPicStore } from '@insidor/storage-supabase/poster-pic.ts';
 
 import { liveCoinCheck } from './coin-sources.ts';
 import { loadSocialConfig } from './config.ts';
@@ -82,7 +83,12 @@ const chain: Chain | null = (() => {
   };
 })();
 
-const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, invites: DEFAULT_POLICY.invites, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
+/* Edit profile's picture and banner (profile-media.ts): the poster pictures' folder and store. The
+   download half is unused here; its cap only has to be a number. */
+const UPLOAD_TIMEOUT_MS = 15_000;
+const media = cfg.storage === null ? null : posterPicStore({ url: cfg.storage.url, serviceKey: cfg.storage.serviceKey, fetch: globalThis.fetch, timeoutMs: UPLOAD_TIMEOUT_MS, maxBytes: 2 * 1024 * 1024 });
+
+const deps = { db, media, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, invites: DEFAULT_POLICY.invites, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
 
 serve(cfg.allowedOrigins, async (req) => {
   try {
@@ -91,4 +97,4 @@ serve(cfg.allowedOrigins, async (req) => {
     log('error', 'request failed', { path: req.url.split('?')[0], err: e instanceof Error ? e.message : String(e) });
     return { status: 500, body: '{"error":"server error"}' };
   }
-}).listen(cfg.port, () => log('info', 'listening', { port: cfg.port, likes: chain === null ? 'off: no chain' : 'on' }));
+}).listen(cfg.port, () => log('info', 'listening', { port: cfg.port, likes: chain === null ? 'off: no chain' : 'on', uploads: media === null ? 'off: no storage' : 'on' }));

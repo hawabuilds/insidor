@@ -8,6 +8,10 @@
  *
  * ★ NO CHAIN, NO LIKES. Likes are checked against the voter's holdings on the chain; without an
  * RPC the like route says so rather than letting anyone like.
+ *
+ * ★ NO STORAGE, NO PICTURE UPLOADS. Edit profile's picture and banner go to the same public bucket
+ * the coin logos and poster pictures use (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, as the trade
+ * and project services read them); without both, the upload routes say they are not set up.
  */
 
 export interface SocialConfig {
@@ -18,6 +22,8 @@ export interface SocialConfig {
   readonly rpcUrl: string | null;
   readonly parseUrl: string | null;
   readonly allowedOrigins: readonly string[];
+  /** The public bucket's project and its service key, for profile pictures; null when either is unset. */
+  readonly storage: { readonly url: string; readonly serviceKey: string } | null;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -37,6 +43,8 @@ export function loadSocialConfig(env: Env): SocialConfig {
   const appId = trimmed(env, 'PRIVY_APP_ID') ?? trimmed(env, 'VITE_PRIVY_APP_ID');
   if (appId === null) throw new Error('PRIVY_APP_ID (or VITE_PRIVY_APP_ID) is not set: nobody could be signed in.');
   const helius = trimmed(env, 'HELIUS_API_KEY');
+  const storageUrl = trimmed(env, 'SUPABASE_URL');
+  const storageKey = trimmed(env, 'SUPABASE_SERVICE_ROLE_KEY');
   const origins = (trimmed(env, 'SOCIAL_ALLOWED_ORIGINS') ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
   /* SOCIAL_PORT locally, where several services share one .env.local; PORT where a host assigns one (Railway). */
   const port = Number(trimmed(env, 'SOCIAL_PORT') ?? trimmed(env, 'PORT') ?? DEFAULT_PORT);
@@ -47,5 +55,6 @@ export function loadSocialConfig(env: Env): SocialConfig {
     rpcUrl: helius === null ? null : `https://mainnet.helius-rpc.com/?api-key=${helius}`,
     parseUrl: helius === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${helius}`,
     allowedOrigins: origins.length > 0 ? origins : DEV_ORIGINS,
+    storage: storageUrl === null || storageKey === null ? null : { url: storageUrl, serviceKey: storageKey },
   };
 }
