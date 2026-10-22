@@ -18,6 +18,7 @@
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
  *   GET    /access, /invites/…, POST /waitlist, /owner/invites   invite-only access (invites.ts)
  *   GET    /onboarding, /username/:name, PUT /username, POST /onboarding/done   sign-up (onboarding.ts)
+ *   POST   /onboarding/picture { image }   my photo, into our storage (picture.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
@@ -52,6 +53,7 @@ import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
 import { inviteRoute, ownerInvitesRoute } from './invites.ts';
 import { onboardingRoute } from './onboarding.ts';
+import { pictureRoute, type PhotoStore } from './picture.ts';
 import { ownerRefOf, ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
@@ -82,6 +84,8 @@ export interface SocialDeps {
   readonly invites?: InvitePolicy;
   /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
   readonly coinCheck?: CoinCheck;
+  /** Where sign-up photos are kept (picture.ts); absent or null, photos can't be saved and the route says so. */
+  readonly photos?: PhotoStore | null;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
 }
@@ -358,6 +362,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
   }
   const invited = await inviteRoute(m, seg, req.body, me, invites);
   if (invited !== null) return invited;
+  if (head === 'onboarding' && id === 'picture' && seg.length === 2) return pictureRoute(m, req.body, me, { db: deps.db, photos: deps.photos ?? null });
   const onboarded = await onboardingRoute(m, seg, req.body, me, invites);
   if (onboarded !== null) return onboarded;
 

@@ -1,6 +1,6 @@
 /**
  * The transport, shared by the social and alert services' shape: CORS for the phone app's
- * origins, a bounded JSON body, the bearer token handed to the routes, and per-client pacing.
+ * origins, a bounded JSON body (16 KB; the sign-up photo route alone takes up to 600 KB), the bearer token handed to the routes, and per-client pacing.
  * Every rule about people lives in routes.ts.
  *
  * What breaks if changed carelessly: the token is passed through, never logged. It proves who
@@ -23,6 +23,12 @@ export interface Request {
 }
 
 const MAX_BODY_BYTES = 16 * 1024;
+/** The one route whose body is a photo (picture.ts): a cropped 512-pixel square as base64, with room. */
+const PHOTO_PATH = '/onboarding/picture';
+const MAX_PHOTO_BODY_BYTES = 600 * 1024;
+
+/** How big a body this path may carry: the photo route its photo, every other route a small JSON body. */
+export const bodyLimitFor = (url: string): number => (url.split('?')[0] === PHOTO_PATH ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES);
 
 export const json = (status: number, value: unknown): Reply => ({ status, body: JSON.stringify(value) });
 
@@ -37,7 +43,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > bodyLimitFor(req.url ?? '/')) {
         req.destroy();
         resolve(null);
         return;
