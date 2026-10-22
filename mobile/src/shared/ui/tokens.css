@@ -120,6 +120,9 @@
   --tag-bg: #232329; /* a tag, a grey chosen state, the empty-picture letter's ground */
   --tag-line: #3a3a42; /* a lighter edge: a focused field, a grey chosen state */
   --link: var(--text-1); /* a tappable word: white, never purple */
+  /* Follow, as the approved profile mockup draws it: Follow and Follow back a solid purple pill with
+     white 600 text, Following an outline pill on the card with this edge and light text. */
+  --follow-line: #2a2a33;
 
   /* Buttons and tap areas. The main button is 56px, 17px corners, 700 at 17px, at the bottom in
      the thumb zone; a second action is a plain text link under it, never a second filled button. */

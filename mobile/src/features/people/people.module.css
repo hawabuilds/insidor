@@ -302,14 +302,16 @@
 
 
 /* Trador's small Follow / Following button, at the end of the header row. */
+/* Follow, Follow back and Following on someone's profile, as the approved profile mockup draws
+   them: a solid purple pill with white 600 text, and once followed an outline pill on the card. */
 .pillFollow,
 .pillGhost {
   flex-shrink: 0;
-  height: 34px;
+  height: 36px;
   padding: 0 16px;
-  border-radius: 17px;
-  font-size: 13px;
-  font-weight: 800;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .pillFollow {
@@ -318,9 +320,9 @@
 }
 
 .pillGhost {
-  background: transparent;
+  background: var(--card);
   color: var(--text-1);
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: inset 0 0 0 1px var(--follow-line);
 }
 
 .skAvatar {
