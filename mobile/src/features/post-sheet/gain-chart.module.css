@@ -1,6 +1,8 @@
-/* The views-gained chart (GainChart.tsx), in the owner's design values of 2026-10-17: the line
-   #B48CFF at 1.8px with a faint glow and a fade to nothing, purple and green dashed markers with
-   pills, three times under it and the interval rail with #241A3A behind the chosen one. */
+/* The views-gained chart (GainChart.tsx), in the owner's design of 2026-10-17 (one line at 1.8px
+   with a faint glow and a fade to nothing, dashed markers with pills, three times under it and the
+   interval rail) on the approved system's colours: the line is white, because views are a fact
+   and purple is the screen's main action only; the markers are grey (Found) and white (the coin),
+   told apart by their pills' words, because green is kept for a number going up. */
 
 .chart {
   margin-top: 14px;
@@ -20,7 +22,7 @@
 .line,
 .glow {
   fill: none;
-  stroke: #b48cff;
+  stroke: var(--text-1);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -31,7 +33,7 @@
 
 .glow {
   stroke-width: 4;
-  opacity: 0.55;
+  opacity: 0.25;
 }
 
 .foundLine,
@@ -41,12 +43,12 @@
 }
 
 .foundLine {
-  stroke: #8e74c9;
+  stroke: var(--text-3);
 }
 
 .coinLine {
-  stroke: #2fd47a;
-  opacity: 0.75;
+  stroke: var(--text-1);
+  opacity: 0.6;
 }
 
 .pill {
@@ -54,8 +56,8 @@
   height: 20px;
   padding: 0 10px;
   border-radius: 999px;
-  background: #16151b;
-  color: #f4eeff;
+  background: var(--card);
+  color: var(--text-1);
   font-size: 12px;
   font-weight: 600;
   line-height: 18px;
@@ -63,16 +65,16 @@
 }
 
 .pillFound {
-  border: 1px solid #6e58a6;
+  border: 1px solid var(--select-line);
 }
 
 .pillCoin {
-  border: 1px solid #23885a;
+  border: 1px solid var(--text-2);
 }
 
 .endLabel {
   position: absolute;
-  color: #b48cff;
+  color: var(--text-1);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -83,7 +85,7 @@
   left: 0;
   right: 62px;
   text-align: center;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -93,7 +95,7 @@
   justify-content: space-between;
   margin-top: 6px;
   height: 16px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -114,12 +116,12 @@
   height: 30px;
   padding: 0 10px;
   border-radius: 10px;
-  color: #8b8794;
+  color: var(--text-2);
   font-size: 14px;
   font-weight: 600;
 }
 
 .ivOn {
-  background: #241a3a;
-  color: #e4d6ff;
+  background: var(--select-bg);
+  color: var(--select-ink);
 }

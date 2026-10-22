@@ -45,6 +45,7 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { Button } from '../../shared/ui/Button.tsx';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { storyWords } from '../../shared/story-words.ts';
@@ -166,7 +167,7 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
                       : "Couldn't read this post just now."}
                   </p>
                   {!(loaded.error instanceof ReadError && loaded.error.said === 'not found') ? (
-                    <button type="button" className={styles['dark']} onClick={reload}>Try again</button>
+                    <Button look="link" size="large" onClick={reload}>Try again</Button>
                   ) : null}
                 </div>
               ) : null}
@@ -371,19 +372,24 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
           ) : (
             <div className={styles['coinHead']}><span>{listShown ? 'No coin with this name yet' : 'No coin for this post yet'}</span></div>
           )}
-          <div className={styles['pair']}>
-            <button type="button" className={styles['dark']} onClick={onCreate}>Create</button>
-            {listShown && data.coins.length > 0 ? (
-              <button type="button" className={styles['dark']} onClick={onAll}>
-                <span className={styles['stack']}>
-                  {data.coins.slice(0, 3).map((c) => (
-                    <span key={c.address} className={styles['stackItem']}><CoinLogo small address={c.address} ticker={c.ticker ?? c.name} imageUrl={c.imageUrl} size={26} /></span>
-                  ))}
-                </span>
-                {data.coins.length === 1 ? 'All 1 coin' : `All ${data.coins.length} coins`}
-              </button>
-            ) : null}
-          </div>
+          {/* One main button at the bottom: Buy when there is a coin, Create when there is none. The
+              other choices are words under it, never a second filled button (the approved system). */}
+          {main === null ? <Button look="primary" size="large" className={styles['wide']} onClick={onCreate}>Create</Button> : null}
+          {main !== null || (listShown && data.coins.length > 0) ? (
+            <div className={styles['links']}>
+              {main !== null ? <Button look="link" size="large" onClick={onCreate}>Create</Button> : null}
+              {listShown && data.coins.length > 0 ? (
+                <Button look="link" size="large" onClick={onAll}>
+                  <span className={styles['stack']}>
+                    {data.coins.slice(0, 3).map((c) => (
+                      <span key={c.address} className={styles['stackItem']}><CoinLogo small address={c.address} ticker={c.ticker ?? c.name} imageUrl={c.imageUrl} size={22} /></span>
+                    ))}
+                  </span>
+                  {data.coins.length === 1 ? 'All 1 coin' : `All ${data.coins.length} coins`}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       </SheetFoot>
     </>

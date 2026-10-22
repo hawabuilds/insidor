@@ -1,6 +1,6 @@
 /**
  * THE VIEWS-GAINED CHART — the one chart on the narrative page and the post sheet (the owner's
- * design, 2026-10-17): views gained per interval as one smooth purple line with a faint glow and a
+ * design, 2026-10-17): views gained per interval as one smooth white line with a faint glow and a
  * fade under it to nothing, the newest value at the line's end, the Found and coin markers as dashed
  * lines with pills at their exact times, three times along the bottom (the first one saying when the
  * first post went up), and the 5m 15m 1h 4h 1D rail under it (the narrative page adds All: the whole
@@ -124,8 +124,8 @@ export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, 
             <svg width={width} height={top + plotH} className={styles['svg']} aria-hidden="true">
               <defs>
                 <linearGradient id={`${glow}f`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#B48CFF" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#B48CFF" stopOpacity="0" />
+                  <stop offset="0%" style={{ stopColor: 'var(--text-1)' }} stopOpacity="0.14" />
+                  <stop offset="100%" style={{ stopColor: 'var(--text-1)' }} stopOpacity="0" />
                 </linearGradient>
                 <filter id={`${glow}g`} x="-10%" y="-30%" width="120%" height="160%">
                   <feGaussianBlur stdDeviation="3" />

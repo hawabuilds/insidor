@@ -27,6 +27,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { fetchTradeVenue, type PostSheetData, type SheetCoin, type TradeLimits } from '../../shared/api/index.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { useWallet } from '../../shared/wallet.tsx';
+import { Button } from '../../shared/ui/Button.tsx';
 import { useDismiss } from '../../shared/ui/dismiss.ts';
 import { BackIcon, CloseIcon } from '../../shared/ui/icons.tsx';
 import { SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
@@ -133,7 +134,7 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
       </SheetBody>
 
       <SheetFoot>
-        <button type="button" className={`${styles['dark']} ${styles['wide']}`} onClick={onCreate}>None of these, create one</button>
+        <Button look="link" size="large" className={styles['wide']} onClick={onCreate}>None of these, create one</Button>
       </SheetFoot>
 
       {panel && choice !== null ? (
