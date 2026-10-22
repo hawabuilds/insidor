@@ -80,13 +80,15 @@ function Banner({ file }: { file: string | null }) {
 
 /* ── the head ───────────────────────────────────────────────────────── */
 
-export function ProfileHead({ who, back = false, over, actions, countsFor }: {
+export function ProfileHead({ who, back = false, over, beside = null, actions, countsFor }: {
   who: Who;
   /** A back button at the top left (a profile reached from somewhere); none on the Portfolio tab. */
   back?: boolean;
   /** The round buttons at the top right of the banner. */
   over: ReactNode;
-  /** The buttons under the counts. */
+  /** A small button at the right, level with the picture (your own Edit profile, as X draws it). */
+  beside?: ReactNode;
+  /** The buttons under the counts; null for none. */
   actions: ReactNode;
   /** Whose follow lists the counts open (handle or id); null draws them as plain text. */
   countsFor: string | null;
@@ -113,6 +115,7 @@ export function ProfileHead({ who, back = false, over, actions, countsFor }: {
       </div>
 
       <div className={styles['who']}>
+        {beside !== null ? <div className={styles['beside']}>{beside}</div> : null}
         <div className={styles['nameRow']}>
           <h1 className={styles['name']}>{who.name ?? at ?? 'Profile'}</h1>
           {x !== null ? (
@@ -137,7 +140,7 @@ export function ProfileHead({ who, back = false, over, actions, countsFor }: {
           )}
         </div>
         {who.mutuals != null && mutualPeople.length > 0 ? <Mutuals who={who} /> : null}
-        <div className={styles['actions']}>{actions}</div>
+        {actions !== null ? <div className={styles['actions']}>{actions}</div> : null}
       </div>
     </>
   );
@@ -202,7 +205,7 @@ export function PortfolioBlock({ total, asOf, points, range, onRange }: {
       ) : null}
       {asOf !== null && scrubbed === null ? <div className={styles['move']}>{asOf}</div> : null}
       {points !== null && points.length >= 2 ? (
-        <div className={styles['chart']}><BalanceChart points={points} height={96} onScrub={setScrubbed} tone="brand" /></div>
+        <div className={styles['chart']}><BalanceChart points={points} height={80} onScrub={setScrubbed} tone="brand" /></div>
       ) : (
         <div className={styles['chartNote']}>{points === null ? '' : 'The chart starts from the first time Insidor reads this wallet. Check back shortly.'}</div>
       )}
@@ -251,17 +254,14 @@ export function CoinLists({ data, catches, self, at, hidden = false, noWallet = 
   const [tab, setTab] = useState<'holdings' | 'created'>('holdings');
   const [all, setAll] = useState(false);
   const read: Read | null = data !== null && data.kind === 'read' ? data : null;
-  const coins = read === null ? null : read.holdings.length + read.notShown;
-  const created = read === null ? null : read.created.coins.length;
-  const count = (n: number | null) => (n === null ? null : <span>{n.toLocaleString('en-US')}</span>);
   return (
     <>
       <div className={styles['tabs']} role="tablist" aria-label="Coins">
         <button type="button" role="tab" aria-selected={tab === 'holdings'} className={`${styles['tab']} ${tab === 'holdings' ? styles['tabOn'] : ''}`} onClick={() => { setTab('holdings'); setAll(false); }}>
-          Holdings{hidden ? null : count(coins)}
+          Holdings
         </button>
         <button type="button" role="tab" aria-selected={tab === 'created'} className={`${styles['tab']} ${tab === 'created' ? styles['tabOn'] : ''}`} onClick={() => { setTab('created'); setAll(false); }}>
-          Created{hidden ? null : count(created)}
+          Created
         </button>
       </div>
 
