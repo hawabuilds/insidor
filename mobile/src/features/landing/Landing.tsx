@@ -58,13 +58,12 @@ export function Landing({ configured, onEnter, invite = null }: { configured: bo
 }
 
 function Door({ configured, onEnter }: { configured: boolean; onEnter: () => void }) {
-  const { wallet, state } = useWallet();
+  const { state } = useWallet();
   /* Back from a refused or failed sign-in: straight to the buttons, with the reason. */
   const [step, setStep] = useState<DoorStep>(() => (state.kind === 'refused' || state.kind === 'failed' ? 'methods' : 'welcome'));
   const [mode, setMode] = useState<'join' | 'login'>('join');
   const [email, setEmail] = useState('');
   const [legal, setLegal] = useState<LegalPage | null>(null);
-  const ready = configured && wallet !== null && state.kind !== 'unavailable';
 
   /* The provider's page is coming back, or a code was right and the wallet is being made. */
   if (configured && state.kind === 'connecting' && step === 'welcome') return <Holding />;
@@ -76,7 +75,7 @@ function Door({ configured, onEnter }: { configured: boolean; onEnter: () => voi
   };
 
   let screen;
-  if (step === 'welcome') screen = <Welcome configured={configured} ready={ready || !configured} onJoin={() => open('join')} onLogIn={() => open('login')} />;
+  if (step === 'welcome') screen = <Welcome configured={configured} onJoin={() => open('join')} onLogIn={() => open('login')} />;
   else if (step === 'methods') screen = <Methods mode={mode} onBack={() => setStep('welcome')} onEmail={() => setStep('email')} onLegal={setLegal} />;
   else if (step === 'email') screen = <EmailStep email={email} onEmail={setEmail} onBack={() => setStep('methods')} onSent={() => setStep('code')} />;
   else screen = <CodeStep email={email} onBack={() => setStep('email')} />;
@@ -90,10 +89,10 @@ function Door({ configured, onEnter }: { configured: boolean; onEnter: () => voi
 
 /* ── Welcome ─────────────────────────────────────────────── */
 
-function Welcome({ configured, ready, onJoin, onLogIn }: { configured: boolean; ready: boolean; onJoin: () => void; onLogIn: () => void }) {
+function Welcome({ configured, onJoin, onLogIn }: { configured: boolean; onJoin: () => void; onLogIn: () => void }) {
   return (
     <div className={`${styles['screen']} ${styles['welcome']}`}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className={styles['welcomeTop']}>
         <div className={styles['hero']} aria-hidden="true">
           <div className={`${styles['card']} ${styles['postCard']}`}>
             <div className={styles['who']}>
@@ -126,8 +125,8 @@ function Welcome({ configured, ready, onJoin, onLogIn }: { configured: boolean; 
         </h1>
       </div>
       <div className={styles['foot']}>
-        {ready ? <Primary onClick={onJoin}>Get started</Primary> : <span className={styles['waiting']}>Loading</span>}
-        <TextLink onClick={onLogIn}>Log in</TextLink>
+        <Primary onClick={onJoin}>Get started</Primary>
+        <Secondary onClick={onLogIn}>Log in</Secondary>
         {!configured ? <p className={styles['fine']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
       </div>
     </div>
@@ -141,7 +140,14 @@ function Methods({ mode, onBack, onEmail, onLegal }: { mode: 'join' | 'login'; o
   const code = pendingCode();
   const check = useCodeCheck(code ?? '');
   const from = check?.state === 'valid' ? check.from : null;
-  const go = (via: 'x' | 'google') => void wallet?.connect(via);
+  /* Get started never waits on the wallet starting: a tap made before it is ready is kept and sent the moment it is. */
+  const [waiting, setWaiting] = useState<'x' | 'google' | null>(null);
+  useEffect(() => {
+    if (waiting === null || wallet === null || state.kind === 'unavailable') return;
+    setWaiting(null);
+    void wallet.connect(waiting);
+  }, [waiting, wallet, state.kind]);
+  const go = (via: 'x' | 'google') => (wallet === null || state.kind === 'unavailable' ? setWaiting(via) : void wallet.connect(via));
   return (
     <Frame
       progress={progressOf('methods')}

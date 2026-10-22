@@ -3,7 +3,8 @@
 
 .screen {
   display: grid;
-  min-height: 100dvh;
+  /* #root already keeps the status bar's room (tokens.css); a full 100dvh on top of it scrolled. */
+  min-height: calc(100dvh - var(--safe-top));
   grid-template-rows: var(--tap) 1fr auto;
   padding: 12px 24px max(30px, calc(env(safe-area-inset-bottom) + 12px));
   background: var(--bg);
@@ -163,21 +164,37 @@
 /* ── Welcome ─────────────────────────────────────────────── */
 
 .welcome {
-  grid-template-rows: 1fr auto;
+  /* Exactly one screen, never a scroll: the picture gives up height on a short phone, the words and buttons never do. */
+  height: calc(100dvh - var(--safe-top));
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr) auto;
   padding-top: 0;
 }
 
+.welcomeTop {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The two cards in a column, centred in whatever height is left: only the post picture gives way
+   on a short phone (.postPic), so the cards never overlap each other or the wordmark. */
 .hero {
-  position: relative;
-  height: clamp(320px, 52dvh, 470px);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
   margin: 0 -24px;
+  padding: 16px 28px 0;
 }
 
 .postCard {
-  position: absolute;
-  top: 18%;
-  right: 28px;
-  left: 28px;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
   padding: 14px;
   background: #141418;
 }
@@ -219,17 +236,17 @@
 .postPic {
   display: block;
   width: 100%;
-  height: clamp(96px, 17dvh, 150px);
+  /* Takes whatever height is left, up to 150px, and never under 64px. */
+  flex: 0 1 150px;
+  min-height: 64px;
   border-radius: 14px;
   object-fit: cover;
 }
 
 .coinCard {
-  position: absolute;
-  right: 28px;
-  bottom: 18px;
-  left: 70px;
   display: flex;
+  flex: none;
+  margin-left: 42px;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -282,15 +299,6 @@
 .payoff {
   color: var(--brand-300);
   font-weight: 500;
-}
-
-.waiting {
-  display: grid;
-  height: var(--button-h);
-  place-items: center;
-  color: var(--text-3);
-  font-size: 14px;
-  font-weight: 600;
 }
 
 /* ── Create account ──────────────────────────────────────── */
