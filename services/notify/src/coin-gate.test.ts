@@ -14,7 +14,7 @@ test('★ a launchpad coin launched after we had the post passes', () => {
 });
 
 test('★ a coin older than our post ("$ANATOLY launched 7d before @mert\'s post") is refused', () => {
-  assert.equal(coinGate({ ...ok, launchedMs: HAD - 7 * 86_400_000 }), 'launched_before_we_had_it');
+  assert.equal(coinGate({ ...ok, launchedMs: HAD - 7 * 86_400_000 }), 'launched_before_the_post');
 });
 
 test('★ an unknown launch ("$Warhound has the name of…") or an unknown sighting is refused, never let through', () => {

@@ -1,6 +1,5 @@
 /**
- * WHETHER A COIN MAY BE ANNOUNCED AT ALL: launched on the launchpad, and launched after we had the
- * post. One gate for the two For You coin alerts (`fyp_coin` in pipeline.ts, `coin_launched` in
+ * WHETHER A COIN MAY BE ANNOUNCED AT ALL: launched on the launchpad, and launched after the post. One gate for the two For You coin alerts (`fyp_coin` in pipeline.ts, `coin_launched` in
  * launch.ts), so they cannot drift into two answers to the same question.
  *
  * The owner, 2026-10-23: "should be showing me coins that are launched from pumpfun", and his
@@ -16,8 +15,10 @@
  * no suffix and each opened at the launchpad's ~28 SOL curve price. A coin with no row is a coin we
  * cannot place on the launchpad, and is not announced.
  *
- * ★ "HAD THE POST" IS public.item.first_seen_at, our first sighting, not the post's own time: a coin
- * made a minute after a post we found an hour later was not caught by us.
+ * ★ "AFTER THE POST" IS THE POST'S OWN TIME (public.item.posted_at, our first sighting when that is
+ * unknown). The owner, 2026-10-23, kept the list entry for a coin launched after the post but before
+ * we found it ("$SLB launched 2h after @Dexerto's post"): it is still the post's coin, not an older
+ * coin that shares a name. Only coins older than the post itself are left out.
  *
  * What breaks if changed carelessly: answering "unknown" as yes. A coin with no launch time, no
  * venue row, or a post with no sighting fails the gate; nothing here may default to letting it pass.
@@ -35,17 +36,17 @@ export interface CoinGateFacts {
   readonly venueId: string | null;
   readonly origin: string | null;
   readonly launchedMs: number | null;
-  /** When we first had the post. */
+  /** When the post was made (our first sighting when its own time is unknown). */
   readonly hadPostMs: number | null;
 }
 
-export type CoinGateRefusal = 'not_launchpad' | 'launch_unknown' | 'launched_before_we_had_it';
+export type CoinGateRefusal = 'not_launchpad' | 'launch_unknown' | 'launched_before_the_post';
 
 /** Null when the coin may be announced, else why not. Pure. */
 export function coinGate(f: CoinGateFacts): CoinGateRefusal | null {
   if (f.venueId !== LAUNCHPAD_VENUE || f.origin === null || !(OBSERVED_ASSET_ORIGINS as readonly string[]).includes(f.origin)) return 'not_launchpad';
   if (f.launchedMs === null || f.hadPostMs === null) return 'launch_unknown';
-  return f.launchedMs >= f.hadPostMs ? null : 'launched_before_we_had_it';
+  return f.launchedMs >= f.hadPostMs ? null : 'launched_before_the_post';
 }
 
 const ms = (v: unknown): number | null => {
@@ -63,7 +64,7 @@ export async function coinGateFacts(db: Db, pairs: readonly { readonly itemId: s
   const assets = new Map(
     (await db.query<{ address: string; venue_id: string; origin: string | null; minted_at: unknown }>(`select address, venue_id, origin, minted_at from public.asset where chain = 'solana' and address = any($1::text[])`, [coins])).map((a) => [a.address, a] as const),
   );
-  const had = new Map((await db.query<{ item_id: string; first_seen_at: unknown }>(`select item_id, first_seen_at from public.item where item_id = any($1::text[])`, [items])).map((i) => [i.item_id, ms(i.first_seen_at)] as const));
+  const had = new Map((await db.query<{ item_id: string; at: unknown }>(`select item_id, coalesce(posted_at, first_seen_at) as at from public.item where item_id = any($1::text[])`, [items])).map((i) => [i.item_id, ms(i.at)] as const));
   for (const p of pairs) {
     const a = assets.get(p.address);
     out.set(`${p.itemId}|${p.address}`, { venueId: a?.venue_id ?? null, origin: a?.origin ?? null, launchedMs: ms(a?.minted_at), hadPostMs: had.get(p.itemId) ?? null });
