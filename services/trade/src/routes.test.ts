@@ -257,6 +257,17 @@ test('★ a coin whose curve is priced in another token (a stock pair) goes thro
   assert.equal(calls.includes('curve.quote'), false, 'the SOL curve is never asked to price it');
 });
 
+test('a pool route says what the router trades against: a stock pair\'s curve, or a bonded pool', async () => {
+  const { d } = deps();
+  assert.equal(body(await handle('GET', `/venue/${PAIRED_COIN}`, null, d)).via, 'curve', 'a stock pair on its curve is not a bonded pool');
+  assert.equal(body(await handle('GET', `/venue/${BONDED_COIN}`, null, d)).via, 'pool');
+  assert.equal('via' in body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)), false, 'a curve trade needs no router');
+  const paired = body(await handle('GET', quoteUrl(PAIRED_COIN, '30000000'), null, d));
+  assert.equal(paired.via, 'curve');
+  assert.equal('via' in paired.quote, false, 'the quote itself goes back to /build unchanged');
+  assert.equal(body(await handle('GET', quoteUrl(BONDED_COIN, '30000000'), null, d)).via, 'pool');
+});
+
 test('★ a curve quote for a coin that is no longer an open SOL curve is refused before anything is built', async () => {
   const { d, calls } = deps();
   /* An older app, or a quote from before the curve was read as paired. */

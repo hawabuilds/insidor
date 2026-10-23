@@ -7,6 +7,9 @@
  *                                            ticket sizes against: the buy cap (null: none), the
  *                                            slippage bounds and the platform fee, all from policy
  *   GET  /quote?mint&side&amount&wallet&slippageBps
+ *                                            a pool quote, and a pool venue, carry `via`: 'curve'
+ *                                            for a stock pair still on its curve, else 'pool' — what
+ *                                            the router trades against, for the sheet's Route line
  *   POST /build   { quote, wallet }          → { transaction } only if the simulation passed
  *   POST /send    { transaction }            → { signature }
  *   GET  /balance?mint&wallet                how much of the coin the wallet holds, for Sell
@@ -163,17 +166,19 @@ function parse(body: string | null): Record<string, unknown> | null {
 
 /** Where a coin trades now: its curve while it is open, else the aggregator if it routes. The rule
     itself is `routeAfter`, shared with the market reader, so a card's "tradable" and this answer
-    can never disagree. */
-async function venueOf(mint: string, deps: TradeDeps): Promise<TradeRoute> {
+    can never disagree. `via` says what the aggregator trades against: a stock pair's curve is
+    still a curve (only the router can fill it), so the sheet must not call it a bonded pool. */
+async function venueOf(mint: string, deps: TradeDeps): Promise<{ readonly route: TradeRoute; readonly via: 'curve' | 'pool' }> {
   let state: CurveState;
   try {
     state = await deps.curve.state(mint);
   } catch {
-    return 'unavailable';
+    return { route: 'unavailable', via: 'pool' };
   }
-  return routeAfter(state, () =>
+  const route = await routeAfter(state, () =>
     deps.pool.quote({ inputMint: NATIVE, outputMint: mint, amount: BigInt(Math.round(deps.policy.probeSol * 1e9)), slippageBps: deps.policy.defaultSlippageBps }),
   );
+  return { route, via: state === 'paired' ? 'curve' : 'pool' };
 }
 
 /** A quote that came back through the browser, checked before it is built. */
@@ -225,8 +230,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
       if (!ADDRESS.test(mint)) return json(400, { error: 'bad request' });
       /* The limits travel with the venue so the order sheet offers only sizes the gate will take:
          a preset over the cap (with its slippage) would be a button that can only be refused. */
+      const { route, via } = await venueOf(mint, deps);
       return json(200, {
-        kind: await venueOf(mint, deps),
+        kind: route,
+        ...(route === 'pool' ? { via } : {}),
         limits: {
           /* Null: no cap. Said explicitly, so the app can tell "no cap" from "could not read". */
           maxBuyLamports: capLamports(deps.policy)?.toString() ?? null,
@@ -247,13 +254,15 @@ export async function handle(method: string, rawUrl: string, body: string | null
       if (!ADDRESS.test(mint) || (side !== 'buy' && side !== 'sell')) return json(400, { error: 'bad request' });
       const refusal = checkRequest({ wallet, side, amount, slippageBps }, deps.cfg.allowlist, deps.policy);
       if (refusal !== null) return refuse(403, refusal);
-      const venue = await venueOf(mint, deps);
+      const { route: venue, via } = await venueOf(mint, deps);
       if (venue === 'curve') return json(200, { quote: await deps.curve.quote({ mint, side, amount: BigInt(amount), slippageBps }) });
       if (venue === 'pool') {
         const quote = await deps.pool.quote(side === 'buy'
           ? { inputMint: NATIVE, outputMint: mint, amount: BigInt(amount), slippageBps }
           : { inputMint: mint, outputMint: NATIVE, amount: BigInt(amount), slippageBps });
-        return json(200, { quote });
+        /* Beside the quote, not in it: the quote goes back to /build unchanged and is checked
+           field by field against the router's reply. */
+        return json(200, { quote, via });
       }
       return json(409, { error: venue === 'none' ? "This coin can't be traded right now." : 'Prices could not be read just now.', venue });
     }
