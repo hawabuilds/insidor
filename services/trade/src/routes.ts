@@ -21,24 +21,28 @@
  * ★ TRADING OFF MEANS NO TRADE PATH. When the switch, the allowlist or the RPC is missing, every
  * route above answers "trading is off" before reading anything else — not a quote, not a venue.
  *
- * ★ A FAILED SIMULATION RETURNS NO TRANSACTION. The reply carries the reason and the program's
- * last log lines, and nothing a wallet could sign. Ported from Trador's `api/swap/build`, which
- * fails closed the same way.
+ * ★ A FAILED SIMULATION RETURNS NO TRANSACTION. The reply carries the reason in plain words and
+ * nothing a wallet could sign. Ported from Trador's `api/swap/build`, which fails closed the same
+ * way. The program's own log lines go to this service's log, never into the reply: an Anchor
+ * error on the order sheet tells the person nothing they can act on.
  *
  * ★ THE QUOTE IS NOT RE-PRICED. The build takes the quote the person saw and builds exactly it;
  * the quote functions are not called on the build path at all. Because the quote went through
  * the browser, its amounts are checked again (allowlist, cap, slippage), and a pool quote's
  * fields must agree with the router's reply inside it — that reply is what actually executes.
  *
- * Coins on the launchpad's curve are traded with the launchpad's own instructions; coins that
- * bonded are routed through the aggregator. The platform fee is off (policy).
+ * Coins on the launchpad's curve, priced in SOL, are traded with the launchpad's own instructions;
+ * coins that bonded, and coins whose curve is priced in another token (a stock pair), are routed
+ * through the aggregator, which swaps SOL into that token and buys on the curve in one
+ * transaction. A curve quote is built only while the curve is still an open SOL curve. The
+ * platform fee is off (policy).
  *
  * Every build, send and landing is recorded (records.ts, public.trade): a record that cannot be
  * written never stops a trade, and a reply never waits on one.
  */
 
 import type { TradePolicy } from '@insidor/contracts/policy.ts';
-import type { CurveQuote } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
+import type { CurveQuote, CurveState } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { routeAfter, type TradeRoute } from '@insidor/venue-solana-pumpfun/route.ts';
 import { NATIVE, readQuote, type PoolQuote } from '@insidor/venue-jupiter';
 
@@ -62,7 +66,7 @@ export interface TradeDeps {
   readonly cfg: Pick<TradeConfig, 'trading' | 'allowlist' | 'rpcUrl'>;
   readonly policy: TradePolicy;
   readonly curve: {
-    state(mint: string): Promise<'open' | 'complete' | 'none'>;
+    state(mint: string): Promise<CurveState>;
     quote(r: { mint: string; side: Side; amount: bigint; slippageBps: number }): Promise<CurveQuote>;
     build(q: CurveQuote, user: string): Promise<Built>;
   };
@@ -140,6 +144,9 @@ const NAME_MAX = 32;
 const SYMBOL_MAX = 10;
 const DESCRIPTION_MAX = 500;
 
+/** How many of a failed simulation's last program lines the service log keeps. */
+const SIM_LOG_LINES = 20;
+
 const json = (status: number, value: unknown): Reply => ({ status, body: JSON.stringify(value) });
 const refuse = (status: number, why: Refusal): Reply => json(status, { error: REFUSAL_TEXT[why], refusal: why });
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -158,7 +165,7 @@ function parse(body: string | null): Record<string, unknown> | null {
     itself is `routeAfter`, shared with the market reader, so a card's "tradable" and this answer
     can never disagree. */
 async function venueOf(mint: string, deps: TradeDeps): Promise<TradeRoute> {
-  let state: 'open' | 'complete' | 'none';
+  let state: CurveState;
   try {
     state = await deps.curve.state(mint);
   } catch {
@@ -267,6 +274,11 @@ export async function handle(method: string, rawUrl: string, body: string | null
       const { quote, side } = back;
       const refusal = checkRequest({ wallet, side, amount: quote.inAmount, slippageBps: quote.slippageBps }, deps.cfg.allowlist, deps.policy);
       if (refusal !== null) return refuse(403, refusal);
+      /* A curve quote (it came through the browser, maybe from an older app) is built only for a
+         curve that still takes SOL: on a curve priced in another token the program refuses it. */
+      if (quote.venue === 'curve' && (await deps.curve.state(back.mint)) !== 'open') {
+        return json(409, { error: 'This coin now trades another way. Get a new quote and try again.' });
+      }
       const built = quote.venue === 'curve' ? await deps.curve.build(quote, wallet) : await deps.pool.build(quote, wallet);
       const simulation = await deps.chain.simulate(built.transactionBase64);
       recordBuilt(deps, built.transactionBase64, {
@@ -274,9 +286,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
         slippageBps: quote.slippageBps, feeBps: deps.policy.platformFeeBps, costLamports: null, simulatedOk: simulation.ok, simulationError: simulation.ok ? null : simulation.message,
       });
       if (!simulation.ok) {
-        deps.log.info('simulation refused a trade', { side, venue: quote.venue });
+        /* The program's own lines are kept here, for us; the person gets the plain reason. */
+        deps.log.info('simulation refused a trade', { side, venue: quote.venue, mint: back.mint, logs: simulation.logs.slice(-SIM_LOG_LINES) });
         /* No transaction in this reply: nothing here can be signed. */
-        return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
+        return json(422, { error: simulation.message });
       }
       return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
     }
@@ -298,7 +311,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
         wallet, kind: 'transfer', venue: null, mint, to, inAmount: amount, outAmount: amount, bound: null,
         slippageBps: null, feeBps: null, costLamports: null, simulatedOk: simulation.ok, simulationError: simulation.ok ? null : simulation.message,
       });
-      if (!simulation.ok) return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
+      if (!simulation.ok) {
+        deps.log.info('simulation refused a send', { mint, logs: simulation.logs.slice(-SIM_LOG_LINES) });
+        return json(422, { error: simulation.message });
+      }
       return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
     }
 
