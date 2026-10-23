@@ -21,6 +21,9 @@
  * on-chain" wait (the trade service sends; it does not report confirmation). And there are no
  * disabled buttons: where Trador greys out Confirm, this shows why in its place.
  *
+ * After a sell is sent, one plain line under Done offers "Share your trade", which swaps the ticket
+ * for its own sheet (ShareTradeSheet.tsx, the flex card); nothing else on the ticket changes.
+ *
  * What breaks if changed carelessly: amounts are exact decimal strings to base units
  * (order-flow.ts `toBaseUnits`), never floats; and a quote is dropped the moment the amount,
  * side or slippage changes, so a price is never shown above a button that trades another size.
@@ -33,6 +36,7 @@ import type { Measured } from '../../shared/format/measure.ts';
 import { formatPrice } from '../../shared/format/number.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { CloseIcon, GearIcon } from '../../shared/ui/icons.tsx';
+import { Button } from '../../shared/ui/Button.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import {
   SELL_STEPS,
@@ -48,6 +52,7 @@ import {
   toBaseUnits,
   type ConfirmOutcome,
 } from './order-flow.ts';
+import { ShareTradeSheet } from './ShareTradeSheet.tsx';
 import styles from './sheet.module.css';
 
 const SOL_DECIMALS = 9;
@@ -80,9 +85,11 @@ function writeSlippage(bps: number): void {
 type Quoted = { readonly kind: 'none' } | { readonly kind: 'asking' } | { readonly kind: 'quote'; readonly quote: TradeQuote } | { readonly kind: 'refused'; readonly why: string };
 type Status = { readonly kind: 'idle' } | { readonly kind: 'working'; readonly line: string } | { readonly kind: 'done'; readonly outcome: ConfirmOutcome };
 
-export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
+export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = null, onClose }: {
   mint: string;
   ticker: string;
+  /** The flex card's second line after a sell: "paired with TTWOx" or the coin's name; null when unknown. */
+  subline?: string | null;
   side: 'buy' | 'sell';
   /** The gate's numbers, read with the venue; null when they could not be read (no presets then). */
   limits: TradeLimits | null;
@@ -109,6 +116,8 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
   const [sol, setSol] = useState<Measured | 'loading'>('loading');
   const [quoted, setQuoted] = useState<Quoted>({ kind: 'none' });
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  /* After a sell is sent, the card to share it with replaces the ticket (ShareTradeSheet.tsx). */
+  const [sharing, setSharing] = useState<string | null>(null);
   const buying = activeSide === 'buy';
 
   useEffect(() => {
@@ -219,6 +228,10 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
                 : impact === 'block' && impactPct !== null
                   ? `Price impact is ${Math.abs(impactPct).toFixed(1)}%, too high to place.`
                   : null;
+
+  if (sharing !== null) {
+    return <ShareTradeSheet signature={sharing} mint={mint} ticker={ticker} subline={subline} signedIn={account !== null} onClose={onClose} />;
+  }
 
   const payLine = amount === null
     ? `— ${buying ? 'SOL' : ticker}`
@@ -361,7 +374,10 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
             {status.kind === 'done' ? <OutcomeLine outcome={status.outcome} /> : null}
 
             {sent !== null ? (
-              <button type="button" className={styles['confirm']} onClick={onClose}>Done</button>
+              <>
+                <button type="button" className={styles['confirm']} onClick={onClose}>Done</button>
+                {!buying ? <Button look="link" onClick={() => setSharing(sent)}>Share your trade</Button> : null}
+              </>
             ) : status.kind === 'working' ? (
               <div className={styles['confirmWait']} role="status">{status.line}</div>
             ) : quote !== null && blockReason === null && !overSol ? (
