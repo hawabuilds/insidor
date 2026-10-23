@@ -17,7 +17,10 @@
  *   New on FYP     every post new to For You, one by one ("@handle: words… 751K views, +38K in 5m"),
  *                  opening the post's sheet
  *   a coin found   the first coin a For You post gets — its own line's coin, or the first of its
- *                  list ("See 3 coins") — "launched 33m after" or "before" the post (`fyp_coin`)
+ *                  list ("See 3 coins") — "launched 33m after" the post (`fyp_coin`). ★ Since 23 Oct
+ *                  only a launchpad coin launched after we had the post (coin-gate.ts): "launched 7d
+ *                  before @mert's post" and "has the name of" (no launch time) are not news. The
+ *                  post is spent all the same, so its later coins never follow as a hand-over.
  *   a proven coin  a coin whose own links carry the post, or whose address the poster's own profile
  *                  names (`fyp_proven`; said as the profile, never as a link) — however long after
  *                  the post first showed a coin, once per post and coin
@@ -42,6 +45,7 @@ import type { AlertKind } from '@insidor/core';
 import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
+import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
 import { queue, type Db } from './deliver.ts';
 import { checkFirstCoins } from './first-coin.ts';
 import { posterPictures } from './faces.ts';
@@ -332,6 +336,12 @@ async function listedCoins(db: Db, itemIds: readonly string[]): Promise<Map<stri
   }
 }
 
+/** Whether a `fyp_coin` event passes the coin gate (coin-gate.ts); a pair the read did not answer for does not. */
+export function fypCoinPasses(e: Pick<FypCoinEvent, 'itemId' | 'address'>, gate: ReadonlyMap<string, CoinGateFacts>): boolean {
+  const f = gate.get(`${e.itemId}|${e.address}`);
+  return f !== undefined && coinGate(f) === null;
+}
+
 /** The For You coin events with what the push says filled in: who, the words, the pictures, the cap. */
 export async function fypCoinProposals(db: Db, rows: readonly RisingRow[], events: readonly FypCoinEvent[], ports: PipelinePorts): Promise<Proposed[]> {
   if (events.length === 0) return [];
@@ -407,7 +417,10 @@ export async function checkPipeline(db: Db, ports: PipelinePorts = {}): Promise<
   const fp = await seenSet(db, 'fyp-proven');
   const fs = await seenSet(db, 'story-post');
   const fyp = fypCoinEvents(rising, await listedCoins(db, rising.map((x) => x.itemId)), { coin: fc.keys, proven: fp.keys, story: fs.keys });
-  const due = fyp.events.filter((e) => (e.kind === 'fyp_coin' ? fc.seeded : e.kind === 'fyp_proven' ? fp.seeded : fs.seeded));
+  const seededDue = fyp.events.filter((e) => (e.kind === 'fyp_coin' ? fc.seeded : e.kind === 'fyp_proven' ? fp.seeded : fs.seeded));
+  /* ★ A coin found is said only for a launchpad coin launched after we had the post (coin-gate.ts); the post is spent either way. */
+  const gate = await coinGateFacts(db, seededDue.filter((e) => e.kind === 'fyp_coin'));
+  const due = seededDue.filter((e) => e.kind !== 'fyp_coin' || fypCoinPasses(e, gate));
   queued += await send(db, await fypCoinProposals(db, rising, due, ports), ports.ownerWallets ?? []);
   await markSeen(db, 'fyp-coin', [SEEDED, ...fyp.coinKeys]);
   await markSeen(db, 'fyp-proven', [SEEDED, ...fyp.provenKeys]);
