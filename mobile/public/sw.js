@@ -65,7 +65,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== ASSETS && k !== OPEN_CACHE).map((k) => caches.delete(k)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== ASSETS && k !== OPEN_CACHE && k !== TAP_LOG).map((k) => caches.delete(k)))),
   );
   self.clients.claim();
 });
@@ -135,6 +135,30 @@ self.addEventListener('fetch', (event) => {
   if (PRECACHE.includes(url.pathname)) event.respondWith(caches.match(event.request).then((hit) => hit ?? fetch(event.request)));
 });
 
+/*
+ * ★ TAP DIAGNOSTICS (2026-10-23): each push and tap writes its steps to a small log the page sends to
+ * notify (mobile/src/shared/tap-log.ts says how to read and remove it). Written only while the log's
+ * cache exists, which the page's switch makes or deletes, so turning it off needs no worker deploy.
+ * Queued, never awaited on the way to opening the app: a note can never slow a tap down.
+ */
+const TAP_LOG = 'insidor-taplog';
+const TAP_KEY = '/__insidor_taplog/sw';
+const TAP_ROWS = 30;
+let trail = Promise.resolve();
+function note(step, fields) {
+  const row = { ...fields, at: Date.now(), by: 'sw', step };
+  trail = trail
+    .then(async () => {
+      if (!(await caches.has(TAP_LOG))) return;
+      const cache = await caches.open(TAP_LOG);
+      const hit = await cache.match(TAP_KEY);
+      const rows = hit ? await hit.json() : [];
+      rows.push(row);
+      await cache.put(TAP_KEY, new Response(JSON.stringify(rows.slice(-TAP_ROWS)), { headers: { 'content-type': 'application/json' } }));
+    })
+    .catch(() => undefined);
+}
+
 const OPEN_CACHE = 'insidor-open';
 const OPEN_KEY = '/__insidor_open';
 const https = (v) => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) ? v : undefined);
@@ -149,15 +173,16 @@ self.addEventListener('push', (event) => {
   const title = typeof data.title === 'string' && data.title !== '' ? data.title : 'Insidor';
   const url = typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/#/feed/notifications';
   const image = https(data.image);
+  note('push', { url, sent: typeof data.url === 'string' ? data.url : '' });
   event.waitUntil(
-    self.registration.showNotification(title, {
+    Promise.all([trail, self.registration.showNotification(title, {
       body: typeof data.body === 'string' ? data.body : '',
       icon: https(data.icon) ?? '/icons/icon-192.png',
       ...(image === undefined ? {} : { image }),
       badge: '/icons/icon-192.png',
       data: { url },
       tag: typeof data.tag === 'string' && data.tag !== '' ? data.tag : url,
-    }),
+    })]),
   );
 });
 
@@ -166,29 +191,45 @@ self.addEventListener('notificationclick', (event) => {
   const url = event.notification.data?.url ?? '/#/feed/notifications';
   const at = url.indexOf('#');
   const hash = at >= 0 ? url.slice(at) : '#/';
+  note('click', { url, hash, data: event.notification.data != null, action: event.action || '' });
   event.waitUntil(
     (async () => {
-      /* Left for a launch that lands on the start page instead (see the header). */
       try {
-        const cache = await caches.open(OPEN_CACHE);
-        await cache.put(OPEN_KEY, new Response(JSON.stringify({ hash, at: Date.now() }), { headers: { 'content-type': 'application/json' } }));
-      } catch {
-        /* No cache: the message or the mark still carries it. */
-      }
-      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const ours = windows.filter((w) => new URL(w.url).origin === self.location.origin);
-      /* The window on screen first, then a visible one: a page left behind by an earlier launch can still be listed. */
-      const open = ours.find((w) => w.focused) ?? ours.find((w) => w.visibilityState === 'visible') ?? ours[0];
-      if (open) {
-        open.postMessage({ type: 'insidor-open', hash });
+        /* Left for a launch that lands on the start page instead (see the header). */
         try {
-          await open.focus();
-          return;
-        } catch {
-          /* Refused (iPhone can list a window it will not bring forward): opened afresh below. */
+          const cache = await caches.open(OPEN_CACHE);
+          await cache.put(OPEN_KEY, new Response(JSON.stringify({ hash, at: Date.now() }), { headers: { 'content-type': 'application/json' } }));
+          note('stash', { ok: true });
+        } catch (e) {
+          /* No cache: the message or the mark still carries it. */
+          note('stash', { ok: false, err: String(e) });
         }
+        const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const ours = windows.filter((w) => new URL(w.url).origin === self.location.origin);
+        /* The window on screen first, then a visible one: a page left behind by an earlier launch can still be listed. */
+        const open = ours.find((w) => w.focused) ?? ours.find((w) => w.visibilityState === 'visible') ?? ours[0];
+        note('windows', { all: windows.length, ours: ours.length, list: ours.map((w) => `${w.focused ? 'focused' : 'unfocused'} ${w.visibilityState} ${new URL(w.url).hash || '#'}`).join(' | ') });
+        if (open) {
+          open.postMessage({ type: 'insidor-open', hash });
+          note('posted', { to: new URL(open.url).hash || '#' });
+          try {
+            await open.focus();
+            note('focus', { ok: true });
+            return;
+          } catch (e) {
+            /* Refused (iPhone can list a window it will not bring forward): opened afresh below. */
+            note('focus', { ok: false, err: String(e) });
+          }
+        }
+        try {
+          const opened = await self.clients.openWindow(`/?push=1${hash}`);
+          note('opened', { got: opened != null, at: opened?.url ? new URL(opened.url).pathname + new URL(opened.url).search + new URL(opened.url).hash : '' });
+        } catch (e) {
+          note('opened', { got: false, err: String(e) });
+        }
+      } finally {
+        await trail;
       }
-      await self.clients.openWindow(`/?push=1${hash}`);
     })(),
   );
 });

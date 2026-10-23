@@ -14,6 +14,8 @@
  * person was doing a second after the app opened.
  */
 
+import { noteTap } from './tap-log.ts';
+
 /** How long after coming back to look for a tap in hand: the worker writes it as the tap lands. */
 const HOLD_CHECK_MS = 1_000;
 let newer = false;
@@ -30,6 +32,7 @@ export function listenForNewVersion(holdIf: () => Promise<boolean> = () => Promi
       void holdIf()
         .catch(() => false)
         .then((hold) => {
+          noteTap(hold ? 'reload-held' : 'reload', {});
           if (!hold && newer && document.visibilityState === 'visible') location.reload();
         });
     }, HOLD_CHECK_MS);
