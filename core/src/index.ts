@@ -64,8 +64,8 @@ export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries
 export { earlyMatches, earlyShortlist } from './group/narrative-early.ts';
 export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';
 /* Narratives are permanent: what a regroup may add, create, merge (the owner's) and remove (group/narrative-keep.ts). */
-export { keepNarratives, narrativeDead, ownerMerges, ownerSplits, removedPosts, survivorOf } from './group/narrative-keep.ts';
-export type { KeepInput, KeptPass, NarrativeState, OwnerSplit } from './group/narrative-keep.ts';
+export { keepNarratives, narrativeDead, ownerAdds, ownerMerges, ownerSplits, removedPosts, survivorOf } from './group/narrative-keep.ts';
+export type { KeepInput, KeptPass, NarrativeState, OwnerAdd, OwnerSplit } from './group/narrative-keep.ts';
 /* One story, one narrative: a new group joins the narrative it is the same subject as; a newer duplicate merges into the older (group/narrative-same.ts). */
 export { joinExisting, sameSubject, sameSubjectMerges, subjectName, subjectOf, subjectPosts } from './group/narrative-same.ts';
 export type { NarrativeSubject, SubjectPost } from './group/narrative-same.ts';

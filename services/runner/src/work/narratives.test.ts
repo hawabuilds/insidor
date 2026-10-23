@@ -212,6 +212,25 @@ test('★ the owner\'s title stands: a narrative he renamed is never sent to the
   assert.deepEqual(s.titles.map(([id]) => id), ['n-model'], 'only the model\'s title is asked again');
 });
 
+test('★ the owner\'s "Add a post": the post is moved into his narrative, pinned there for the regroup, and written once', async () => {
+  const war: StoredNarrative = { id: 'n-war', members: ['a', 'b'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'War', titlePosts: 2, newestPostAtMs: NOW, early: [] };
+  const cat: StoredNarrative = { id: 'n-cat', members: ['x', 'y'], anchor: 'x', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Cat', titlePosts: 2, newestPostAtMs: NOW, early: [] };
+  const add: NarrativeCallRow = { id: 12, atMs: NOW - 1, narrativeId: 'n-war', verdict: 'add_post', otherId: 'x', coin: null, members: ['a', 'b'], otherMembers: [] };
+  const other = { body: 'A new cat cafe opened downtown with twenty rescue cats', proposedName: 'Cat Cafe' };
+  const v = { a: unit(0), b: unit(0), x: unit(1.5), y: unit(1.5), z: unit(1.5), far: unit(0) };
+  let stored = [war, cat];
+  const s = setup([row('a'), row('b'), row('x', other), row('y', other), row('z', other)], v, 'live', [add], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.added, [{ itemId: 'x', into: 'n-war' }]);
+  assert.ok(!(s.saved[0]?.narratives ?? []).some((n) => n.added?.includes('x')), 'x is pinned to n-war: no group takes it anywhere else');
+
+  /* As the write left it: x in n-war. Nothing to write again, and a post never in the window (a queued one) waits the same way. */
+  stored = [{ ...war, members: ['a', 'b', 'x'] }, { ...cat, members: ['y'] }];
+  const again = setup([row('a'), row('b'), row('x', other), row('y', other)], v, 'live', [add, { ...add, id: 13, otherId: 'queued' }], [], () => stored);
+  await again.grouper.pass();
+  assert.deepEqual(again.saved[0]?.added, [{ itemId: 'queued', into: 'n-war' }], 'x is there; the queued post is offered until the store has it');
+});
+
 test('★ the owner\'s split: the posts he picked are a new narrative this pass, shown and titled, and it is done once', async () => {
   const before: StoredNarrative[] = [
     { id: 'n-a', members: ['a', 'b', 'c', 'd'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'All', titlePosts: 4, newestPostAtMs: NOW, early: [] },

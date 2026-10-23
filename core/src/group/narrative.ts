@@ -159,8 +159,12 @@ export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean)
 
 /* ── the owner's calls ────────────────────────────────────────────────── */
 
-/** `rename` (0127) is the owner's title: written straight onto the narrative, so grouping folds nothing from it. */
-export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename';
+/**
+ * `rename` (0127) is the owner's title: written straight onto the narrative, so grouping folds
+ * nothing from it. `add_post` (0127) is his "Add a post": `otherId` the post, which the runner moves
+ * into the narrative and keeps there (narrative-keep.ts `ownerAdds`).
+ */
+export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename' | 'add_post';
 
 /** One stored call on a narrative (internal.owner_feedback, subject 'narrative', 0093). */
 export interface NarrativeCallRow {
@@ -168,7 +172,7 @@ export interface NarrativeCallRow {
   readonly atMs: number;
   readonly narrativeId: string;
   readonly verdict: NarrativeCallVerdict;
-  /** merge: the narrative it was merged with; remove_post: the post removed; split: the new narrative's id. */
+  /** merge: the narrative it was merged with; remove_post / add_post: the post; split: the new narrative's id. */
   readonly otherId: string | null;
   readonly coin: string | null;
   /** The narrative's posts when the call was made, as the server read them; split: the posts moved out. */
@@ -195,6 +199,11 @@ export interface NarrativeCalls {
   /** Every "Not a narrative", with the posts it was said over: the hide rides on the posts, not the id. */
   readonly hidden: readonly NarrativeHide[];
   readonly coins: ReadonlyMap<string, NarrativeCoinCall>;
+  /**
+   * Each post the owner added to a narrative, and the narrative he added it to, while that is his
+   * newest call about the post (a later "Remove this post" or "Split" naming it takes it back).
+   */
+  readonly added: ReadonlyMap<string, string>;
 }
 
 /** One "Not a narrative": the narrative it was said on and the posts it held then. */
@@ -213,8 +222,19 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
   const together: { posts: readonly string[]; with: readonly string[] }[] = [];
   const hidden: NarrativeHide[] = [];
   const coins = new Map<string, { right: { address: string; atMs: number } | null; wrong: Map<string, number>; members: readonly string[] }>();
+  const added = new Map<string, string>();
   for (const r of [...rows].sort((x, y) => x.atMs - y.atMs || x.id - y.id)) {
-    if (r.verdict === 'not_narrative') {
+    if (r.verdict === 'remove_post' && r.otherId !== null) added.delete(r.otherId);
+    if (r.verdict === 'split') for (const m of r.members) added.delete(m);
+    if (r.verdict === 'add_post' && r.otherId !== null) {
+      /* "Add a post": it belongs beside these posts, so any earlier "apart" between them is undone, as a merge undoes it. */
+      const post = r.otherId;
+      for (const m of r.members) apart.delete(pairKey(post, m));
+      const was = removed.get(post);
+      if (was !== undefined) for (const m of r.members) was.delete(m);
+      for (const [other, beside] of removed) if (r.members.includes(other)) beside.delete(post);
+      added.set(post, r.narrativeId);
+    } else if (r.verdict === 'not_narrative') {
       hidden.push({ narrativeId: r.narrativeId, atMs: r.atMs, members: new Set(r.members) });
       for (let i = 0; i < r.members.length; i += 1) for (let j = i + 1; j < r.members.length; j += 1) apart.add(pairKey(r.members[i] ?? '', r.members[j] ?? ''));
     } else if (r.verdict === 'remove_post' && r.otherId !== null) {
@@ -261,7 +281,7 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
   }
   /* A merge whose posts were later kept apart stands only for the pairs still allowed: the union
      below skips a group the owner has since separated (see `groupNarratives`). */
-  return { apart, removed, together, hidden, coins };
+  return { apart, removed, together, hidden, coins, added };
 }
 
 /** The coin calls that apply to a narrative: on its id, else on the posts it holds most of. */

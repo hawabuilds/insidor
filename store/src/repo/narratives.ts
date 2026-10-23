@@ -212,6 +212,12 @@ export interface NarrativePass {
    * is kept as `gone`, so its id stays given out and the split is not tried again.
    */
   readonly split?: readonly { readonly from: string; readonly into: string; readonly members: readonly string[] }[];
+  /**
+   * The owner's "Add a post" (0127; core group/narrative-keep.ts `ownerAdds`): `itemId` moves into
+   * `into` from whatever narrative holds it, or joins it from none. Only a stored post (public.item)
+   * and only into an open narrative: a post still queued for the runner to read waits for a later pass.
+   */
+  readonly added?: readonly { readonly itemId: string; readonly into: string }[];
 }
 
 /** A narrative's state, for the owner's merges and the ids already given out. */
@@ -226,7 +232,7 @@ export interface NarrativeCallRecord {
   readonly id: number;
   readonly atMs: number;
   readonly narrativeId: string;
-  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename';
+  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename' | 'add_post';
   readonly otherId: string | null;
   readonly coin: string | null;
   readonly members: readonly string[];
@@ -599,6 +605,23 @@ export class PgNarrativeRepo {
       for (const r of splits) {
         await this.#db.query(`update internal.narrative_member set narrative_id = $2 where narrative_id = $1 and item_id = any($3::text[])`, [r.from, r.into, [...r.members]]);
       }
+      /* The owner's adds, after his merges and splits (an add names where its narrative leads now). The
+         one-narrative-a-post index means the post's row moves; one in no narrative gets a row. */
+      const adds = pass.added ?? [];
+      const addedFrom: string[] = [];
+      for (const a of adds) {
+        const was = await this.#db.query<{ narrative_id: string }>(`select narrative_id from internal.narrative_member where item_id = $1`, [a.itemId]);
+        const moved = await this.#db.query<{ item_id: string }>(
+          `insert into internal.narrative_member (narrative_id, item_id)
+           select $2, $1
+            where exists (select 1 from public.item i where i.item_id = $1)
+              and exists (select 1 from internal.narrative t where t.narrative_id = $2 and t.state = 'open')
+           on conflict (item_id) do update set narrative_id = excluded.narrative_id${withEarly ? ', early = false' : ''}
+           returning item_id`,
+          [a.itemId, a.into],
+        );
+        if (moved.length > 0) addedFrom.push(a.into, ...was.map((w) => w.narrative_id));
+      }
       const removed = pass.removed ?? [];
       if (removed.length > 0) {
         await this.#db.query(
@@ -608,7 +631,7 @@ export class PgNarrativeRepo {
         );
       }
 
-      await this.#recount([...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...splits.map((r) => r.from), ...removed.map((r) => r.narrativeId)])]);
+      await this.#recount([...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...splits.map((r) => r.from), ...removed.map((r) => r.narrativeId), ...addedFrom])]);
       if (splits.length > 0) {
         await this.#db.query(
           `update internal.narrative n set state = 'gone', shown = false, updated_at = now()

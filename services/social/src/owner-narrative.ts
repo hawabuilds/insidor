@@ -1,11 +1,18 @@
 /**
  * THE OWNER'S CALLS ON A NARRATIVE (the owner, 2026-10-16): "Not a narrative", "Merge with…",
  * "Remove this post", "Split", "Right coin" and "Wrong coin", from the narrative page, and "Rename"
- * (2026-10-23).
+ * and "Add a post" (2026-10-23).
  *
- *   POST /owner/narrative { action, storyId, intoStoryId?, itemId?, itemIds?, coin?, title?, note? }
+ *   POST /owner/narrative { action, storyId, intoStoryId?, itemId?, itemIds?, coin?, title?, postUrl?, note? }
  *     action  not_narrative | merge (into `intoStoryId`) | remove_post (`itemId`) | split (`itemIds`)
- *             | coin_right | coin_wrong (`coin`) | rename (`title`)
+ *             | coin_right | coin_wrong (`coin`) | rename (`title`) | add_post (`postUrl` or `itemId`)
+ *
+ * ★ AN ADD NEEDS NO STORED POST. The link is read as the coin label reads one (owner-coin.ts
+ * `postIdOf`: `x:<id>`, `tiktok:<id>`); a post we do not hold is queued in internal.missed_post for
+ * the runner, which reads it with the missed-posts reader within a minute (the same path "Add missed
+ * posts" uses, so it also counts as a post we missed). The call is saved at once either way, and the
+ * runner moves the post in on the first pass after it is stored (core group/narrative-keep.ts
+ * `ownerAdds`). A post already in this narrative is refused; one in another narrative moves here.
  *
  * ★ A RENAME IS WRITTEN TWICE, IN ONE GO: the call (verdict 'rename', `name` the title) for the
  * record, and the title itself on internal.narrative with `title_model = 'owner'` (0127), so the
@@ -37,12 +44,13 @@
  */
 
 import { json, type Reply } from './http.ts';
+import { postIdOf } from './owner-coin.ts';
 
 interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
 }
 
-export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong', 'rename'] as const;
+export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong', 'rename', 'add_post'] as const;
 export type NarrativeAction = (typeof NARRATIVE_ACTIONS)[number];
 
 const ID = /^[A-Za-z0-9_:.\-]{1,200}$/;
@@ -67,6 +75,8 @@ export interface NarrativeCall {
   readonly coin: string | null;
   /** Rename: the title, spaces folded, 1 to `MAX_TITLE` characters. */
   readonly title: string | null;
+  /** Add a post: the link pasted, when one was (an added post given by id has none). */
+  readonly postUrl: string | null;
   readonly note: string | null;
 }
 
@@ -97,11 +107,18 @@ export function parseNarrativeCall(body: unknown): NarrativeCall | string {
   const title = typeof b['title'] === 'string' ? b['title'].replace(/\s+/g, ' ').trim() : null;
   if (action === 'rename' && (title === null || title === '')) return '"Rename" needs the new title.';
   if (action === 'rename' && title !== null && title.length > MAX_TITLE) return `A title is up to ${MAX_TITLE} characters.`;
+  const postUrl = typeof b['postUrl'] === 'string' && b['postUrl'].trim() !== '' ? b['postUrl'].trim().replace(/^http:/i, 'https:') : null;
+  let added: string | null = null;
+  if (action === 'add_post') {
+    added = postUrl === null ? itemId : postIdOf(postUrl);
+    if (postUrl !== null && added === null) return 'Paste the full link to an X or TikTok post.';
+    if (added === null) return '"Add a post" needs the post\'s link.';
+  }
   if (action === 'merge' && (intoStoryId === null || intoStoryId === storyId)) return '"Merge with…" names the other narrative.';
   if (action === 'remove_post' && itemId === null) return '"Remove this post" names the post.';
   if (action === 'split' && itemIds.length === 0) return '"Split" names the posts to move.';
   if ((action === 'coin_right' || action === 'coin_wrong') && rawCoin === null) return 'Say which coin.';
-  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, title: action === 'rename' ? title : null, note: note === '' ? null : note };
+  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : action === 'add_post' ? added : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, title: action === 'rename' ? title : null, postUrl: action === 'add_post' ? postUrl : null, note: note === '' ? null : note };
 }
 
 const VERDICT: Readonly<Record<NarrativeAction, string>> = {
@@ -112,12 +129,14 @@ const VERDICT: Readonly<Record<NarrativeAction, string>> = {
   coin_right: 'right',
   coin_wrong: 'wrong',
   rename: 'rename',
+  add_post: 'add_post',
 };
 
 /** The calls a database may not take yet, and what the owner is told then. */
 const LATER: ReadonlyMap<NarrativeAction, string> = new Map([
   ['split', 'Splitting a narrative'],
   ['rename', 'Renaming a narrative'],
+  ['add_post', 'Adding a post to a narrative'],
 ]);
 
 /** POST /owner/narrative, for a person `owner.ts` has already checked is the owner (`ref`). */
@@ -140,6 +159,17 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
     if (otherMembers.length === 0) return json(400, { error: 'The narrative to merge with is no longer grouped.' });
   }
   if (call.action === 'remove_post' && call.itemId !== null && !members.includes(call.itemId)) return json(400, { error: 'That post is not in this narrative.' });
+  /* An add: not one already here; a post we do not hold is queued for the runner to read, which needs its link. */
+  let queued = false;
+  if (call.action === 'add_post' && call.itemId !== null) {
+    if (members.includes(call.itemId)) return json(400, { error: 'That post is already in this narrative.' });
+    const [stored] = await db.query<{ item_id: string }>(`select item_id from public.item where item_id = $1`, [call.itemId]);
+    if (stored === undefined) {
+      if (call.postUrl === null) return json(400, { error: "This post isn't in our system yet: paste its link." });
+      await db.query(`insert into internal.missed_post (url, owner_ref) values ($1, $2) on conflict (owner_ref, url) do nothing`, [call.postUrl, ref]);
+      queued = true;
+    }
+  }
   let otherId = call.intoStoryId ?? call.itemId;
   let saved = members;
   if (call.action === 'split') {
@@ -178,5 +208,5 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
       [call.storyId, call.title, OWNER_TITLE_MODEL, members.length],
     );
   }
-  return json(201, { saved: row ?? null });
+  return json(201, { saved: row ?? null, ...(call.action === 'add_post' ? { queued } : {}) });
 }
