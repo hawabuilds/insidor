@@ -7,7 +7,8 @@
  * routes orders with, so a card and the Buy sheet cannot disagree about a coin.
  *
  *   1. Every coin's curve is read on every pass, in batches (cheap: one call per hundred). An
- *      open curve is `curve` and the aggregator is never asked.
+ *      open curve priced in SOL is `curve` and the aggregator is never asked; one priced in
+ *      another token (a stock pair) is asked like a coin off its curve.
  *   2. A coin off its curve reuses the aggregator's last answer inside the current window
  *      (reading.ts `reusableRoute`), else is asked, at most `maxProbes` coins a pass, in the
  *      order given — the coins on screen first.
@@ -30,13 +31,13 @@
  * for coins the trade service would happily fill on their curve.
  */
 
-import { routeAfter } from '@insidor/venue-solana-pumpfun/route.ts';
+import { routeAfter, type CurveState } from '@insidor/venue-solana-pumpfun/route.ts';
 
 import { reusableRoute, type LastAnswer, type TradeRoute } from './reading.ts';
 
 export interface RoutePorts {
   /** Curve states for many mints; throws when the chain cannot be read. Null: no chain access. */
-  readonly curveStates: ((mints: readonly string[]) => Promise<ReadonlyMap<string, 'open' | 'complete' | 'none'>>) | null;
+  readonly curveStates: ((mints: readonly string[]) => Promise<ReadonlyMap<string, CurveState>>) | null;
   /** A small aggregator quote for one mint; resolves on a route, throws otherwise. */
   readonly probe: (mint: string) => Promise<unknown>;
   /** Waits this long; absent, nothing waits (a test, or a caller that paces itself). */
@@ -79,7 +80,7 @@ export async function routesFor(
     else counts[route] += 1;
   };
 
-  let states: ReadonlyMap<string, 'open' | 'complete' | 'none'> | null = null;
+  let states: ReadonlyMap<string, CurveState> | null = null;
   if (ports.curveStates !== null && addresses.length > 0) {
     try {
       states = await ports.curveStates(addresses);

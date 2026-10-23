@@ -24,6 +24,8 @@ import { OnlinePumpSdk, PUMP_SDK, getBuyTokenAmountFromSolAmount, getSellSolAmou
 import { ComputeBudgetProgram, Connection, PublicKey, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import BN from 'bn.js';
 
+import { curveStateOf, type CurveState } from './route.ts';
+
 export type CurveSide = 'buy' | 'sell';
 
 /** A curve quote, as the person sees it and as the build takes it back. Amounts in base units, as strings. */
@@ -40,7 +42,11 @@ export interface CurveQuote {
   readonly slippageBps: number;
 }
 
-export type CurveState = 'open' | 'complete' | 'none';
+/* Defined beside the route rule that reads it; only `open` is traded here. */
+export type { CurveState } from './route.ts';
+
+/** Thrown when asked to price or build a SOL curve trade on a curve that is not one. */
+export class NotASolCurve extends Error {}
 
 /** Priority fee per compute unit for a curve trade: enough to land in a busy minute, a fraction of a cent. */
 const PRIORITY_MICRO_LAMPORTS = 100_000;
@@ -54,15 +60,21 @@ function sdk(rpcUrl: string): { readonly online: OnlinePumpSdk; readonly connect
   return { online: new OnlinePumpSdk(connection), connection };
 }
 
-/** Whether the coin is on its curve now: open, finished (it bonded), or no curve at all. */
+/** Whether the coin is on its curve now: open (in SOL), paired (in another token), finished (it bonded), or no curve at all. */
 export async function curveState(rpcUrl: string, mint: string): Promise<CurveState> {
   const { online } = sdk(rpcUrl);
   try {
-    const curve = await online.fetchBondingCurve(new PublicKey(mint));
-    return curve.complete ? 'complete' : 'open';
+    return curveStateOf(await online.fetchBondingCurve(new PublicKey(mint)));
   } catch {
     return 'none';
   }
+}
+
+/** Refuses anything but an open SOL curve: SOL priced against another token's reserves is a number in the wrong unit. */
+function mustBeSolCurve(curve: Parameters<typeof curveStateOf>[0]): void {
+  const state = curveStateOf(curve);
+  if (state === 'complete') throw new NotASolCurve('This coin has left its curve.');
+  if (state !== 'open') throw new NotASolCurve('This coin is priced in another token, not SOL.');
 }
 
 async function supplyOf(connection: Connection, mint: PublicKey): Promise<BN> {
@@ -80,7 +92,7 @@ export async function quoteCurve(rpcUrl: string, request: { readonly mint: strin
     online.fetchBondingCurve(mint),
     supplyOf(connection, mint),
   ]);
-  if (curve.complete) throw new Error('This coin has left its curve.');
+  mustBeSolCurve(curve);
   const amount = new BN(request.amount.toString());
   const out = request.side === 'buy'
     ? getBuyTokenAmountFromSolAmount({ global, feeConfig, mintSupply, bondingCurve: curve, amount })
@@ -110,10 +122,12 @@ export async function buildCurve(rpcUrl: string, quote: CurveQuote, user: string
   const instructions = quote.side === 'buy'
     ? await (async () => {
         const state = await online.fetchBuyState(mint, owner);
+        mustBeSolCurve(state.bondingCurve);
         return PUMP_SDK.buyInstructions({ global, ...state, mint, user: owner, amount: new BN(quote.outAmount), solAmount: new BN(quote.inAmount), slippage });
       })()
     : await (async () => {
         const state = await online.fetchSellState(mint, owner);
+        mustBeSolCurve(state.bondingCurve);
         return PUMP_SDK.sellInstructions({ global, ...state, mint, user: owner, amount: new BN(quote.inAmount), solAmount: new BN(quote.outAmount), slippage });
       })();
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');

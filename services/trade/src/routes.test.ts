@@ -32,6 +32,8 @@ const STRANGER = 'St11111111111111111111111111111111111111111';
 const CURVE_COIN = 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP';
 const BONDED_COIN = 'Bm4Czuq3X7BwgU429GiLb8wTHLNBiCzcysN8Gsqpump';
 const DEAD_COIN = 'Dd11111111111111111111111111111111111111111';
+/* On an open curve priced in a tokenised stock, not SOL: 2Nyb…pump, 23 Oct 2026. */
+const PAIRED_COIN = '2Nyb2GXVoXM42hVQxJg5RppTbiN5SCZFL4LtZVVDpump';
 
 interface LaunchOver { open?: boolean; refuse?: string; creatorFeeBps?: number; rentLamports?: number; landed?: { ok: boolean; payer: string | null; accounts: string[] } | null }
 
@@ -60,7 +62,7 @@ function deps(over: { trading?: boolean; allowlist?: string[] | 'everyone'; simu
     cfg: { trading: over.trading ?? true, allowlist: over.allowlist === 'everyone' ? 'everyone' : new Set(over.allowlist ?? [ME]), rpcUrl: 'https://rpc.example' },
     policy: over.policy ?? P,
     curve: {
-      state: async (mint) => (mint === CURVE_COIN ? 'open' : mint === BONDED_COIN ? 'complete' : 'none'),
+      state: async (mint) => (mint === CURVE_COIN ? 'open' : mint === PAIRED_COIN ? 'paired' : mint === BONDED_COIN ? 'complete' : 'none'),
       quote: async (r) => {
         calls.push('curve.quote');
         return { venue: 'curve', side: r.side, mint: r.mint, inAmount: r.amount.toString(), outAmount: '248401937865', bound: '10300000', slippageBps: r.slippageBps };
@@ -244,6 +246,37 @@ test('a coin on its curve trades there, a bonded one through the router, and one
   const r = await handle('GET', quoteUrl(DEAD_COIN, '1000'), null, d);
   assert.equal(r.status, 409);
   assert.equal(body(r).error, "This coin can't be traded right now.");
+});
+
+test('★ a coin whose curve is priced in another token (a stock pair) goes through the router, never the SOL curve', async () => {
+  const { d, calls } = deps();
+  assert.equal(body(await handle('GET', `/venue/${PAIRED_COIN}`, null, d)).kind, 'pool');
+  calls.length = 0;
+  const q = body(await handle('GET', quoteUrl(PAIRED_COIN, '30000000'), null, d)).quote;
+  assert.equal(q.venue, 'pool', 'the estimate is the router\'s, in the coin\'s own units');
+  assert.equal(calls.includes('curve.quote'), false, 'the SOL curve is never asked to price it');
+});
+
+test('★ a curve quote for a coin that is no longer an open SOL curve is refused before anything is built', async () => {
+  const { d, calls } = deps();
+  /* An older app, or a quote from before the curve was read as paired. */
+  const stale: CurveQuote = { venue: 'curve', side: 'buy', mint: PAIRED_COIN, inAmount: '30000000', outAmount: '1', bound: '30900000', slippageBps: P.defaultSlippageBps };
+  const r = await handle('POST', '/build', JSON.stringify({ quote: stale, wallet: ME }), d);
+  assert.equal(r.status, 409);
+  assert.match(body(r).error, /Get a new quote/);
+  assert.equal(calls.includes('curve.build'), false);
+});
+
+test('★ a failed simulation\'s program lines go to the log, never into the reply', async () => {
+  const lines: unknown[] = [];
+  const base = deps({ simulation: { jsonrpc: '2.0', id: 1, result: { value: { err: { InstructionError: [2, { Custom: 6063 }] }, logs: ['Program log: AnchorError caused by account: bonding_curve. Error Code: UnsupportedQuoteMint. Error Number: 6063.'] } } } });
+  const d: TradeDeps = { ...base.d, log: { info: (_m, f) => { lines.push(f); }, error: () => undefined } };
+  const q = body(await handle('GET', quoteUrl(CURVE_COIN, '10000000'), null, d)).quote;
+  const r = await handle('POST', '/build', JSON.stringify({ quote: q, wallet: ME }), d);
+  assert.equal(r.status, 422);
+  assert.deepEqual(body(r), { error: "This coin can't be bought here yet." });
+  assert.doesNotMatch(r.body, /Anchor|6063/);
+  assert.match(JSON.stringify(lines), /UnsupportedQuoteMint/, 'kept for us in the service log');
 });
 
 test('sells are not capped: they return what the wallet already holds', async () => {
