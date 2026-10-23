@@ -14,7 +14,7 @@ const NOW = 20 * WINDOW + 5_000;
 const OPTS = { nowMs: NOW, reuseMs: WINDOW, maxProbes: 2 };
 const keyOf = (a: string): string => `solana:${a}`;
 
-function ports(states: Record<string, 'open' | 'complete' | 'none'>, answers: Record<string, 'route' | 'no route' | 'rate limited'>): RoutePorts & { asked: string[] } {
+function ports(states: Record<string, 'open' | 'paired' | 'complete' | 'none'>, answers: Record<string, 'route' | 'no route' | 'rate limited'>): RoutePorts & { asked: string[] } {
   const asked: string[] = [];
   return {
     asked,
@@ -36,6 +36,14 @@ test('an open curve is the curve route and the aggregator is never asked about i
   assert.deepEqual(p.asked, ['B']);
   assert.equal(counts.curve, 1);
   assert.equal(counts.pool, 1);
+});
+
+test('★ a curve priced in another token (a stock pair) is asked of the aggregator, so the card agrees with the Buy sheet', async () => {
+  const p = ports({ S: 'paired', T: 'paired' }, { S: 'route' });
+  const { routes } = await routesFor(['S', 'T'], new Map(), keyOf, p, OPTS);
+  assert.equal(routes.get('S'), 'pool');
+  assert.equal(routes.get('T'), 'none');
+  assert.deepEqual(p.asked, ['S', 'T']);
 });
 
 test('★ a failed curve read asks nobody: every coin is not asked, never "no route"', async () => {
