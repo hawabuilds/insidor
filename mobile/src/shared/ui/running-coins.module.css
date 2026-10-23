@@ -13,6 +13,8 @@
 .strip {
   position: relative;
   height: 34px;
+  /* Room under it, where its line used to be, so the coins do not crowd the tabs. */
+  margin-bottom: 6px;
   /* The first coin starts at the page's gutter; the slide passes under it (overflow clips at the border). */
   padding-left: var(--gutter);
   overflow: hidden;
