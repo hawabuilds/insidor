@@ -42,6 +42,19 @@ export function holdZoom(): void {
 }
 
 /**
+ * How far an installed app's page box falls short of the screen once a keyboard has gone, in CSS
+ * pixels: the screen's height less the page box's, counted only when it is at least `minGap` (a
+ * keyboard's worth) and no text box has the keyboard up. Smaller gaps are the status bar's or
+ * rounding, and moving the bar for them put it off its place (the owner, 2026-10-23: "the
+ * navigation sits a little high", after a full-screen-height rule). Pure, for the tests.
+ */
+export function shortAfterKeyboard(screenHeight: number, innerHeight: number, typing: boolean, minGap: number): number {
+  if (typing) return 0;
+  const gap = Math.round(screenHeight - innerHeight);
+  return gap >= minGap ? gap : 0;
+}
+
+/**
  * How far the visible screen's bottom sits from the page box's bottom, in CSS pixels: 0 when they
  * agree, which is always the case except in the iPhone quirk below. Pure, for the tests.
  */
@@ -58,15 +71,25 @@ export function bottomDrift(innerHeight: number, viewportHeight: number, viewpor
  * screen really is; the gap is written to `--vv-drift` and the bars move by it (ui.module.css
  * .tabbar, trade.module.css .bar, narrative.module.css .bar). With no gap it is 0px and nothing moves.
  */
+/** A keyboard is at least this tall; a smaller shortfall is the status bar or rounding, never moved for. */
+const KEYBOARD_GAP_PX = 150;
+
 export function followVisibleScreen(): void {
   if (typeof window === 'undefined' || window.visualViewport == null) return;
   const vv = window.visualViewport;
   const root = document.documentElement;
   let last = 0;
   let queued = false;
+  const installed = window.matchMedia?.('(display-mode: standalone)').matches === true;
+  const typing = () => {
+    const el = document.activeElement;
+    return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
+  };
   const write = () => {
     queued = false;
-    const d = bottomDrift(window.innerHeight, vv.height, vv.offsetTop);
+    /* A page box left a keyboard short (installed app only): the bars go down by the gap, onto the glass. */
+    const short = installed ? shortAfterKeyboard(window.screen.height, window.innerHeight, typing(), KEYBOARD_GAP_PX) : 0;
+    const d = bottomDrift(window.innerHeight, vv.height, vv.offsetTop) + short;
     if (d === last) return;
     last = d;
     root.style.setProperty('--vv-drift', `${d}px`);
@@ -79,5 +102,7 @@ export function followVisibleScreen(): void {
   vv.addEventListener('resize', soon);
   vv.addEventListener('scroll', soon);
   window.addEventListener('scroll', soon, { passive: true });
+  window.addEventListener('resize', soon);
+  document.addEventListener('focusout', () => window.setTimeout(soon, 350));
   write();
 }

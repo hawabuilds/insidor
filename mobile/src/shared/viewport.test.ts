@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bottomDrift, withoutFocusZoom, zoomsOnFocus } from './viewport.ts';
+import { bottomDrift, shortAfterKeyboard, withoutFocusZoom, zoomsOnFocus } from './viewport.ts';
 
 const LINE = 'width=device-width, initial-scale=1, viewport-fit=cover';
 
@@ -26,4 +26,11 @@ test('the bottom bars move only when the visible screen has drifted from the pag
   assert.equal(bottomDrift(852, 852.4, 0), 0);
   assert.equal(bottomDrift(852, 852, 40), 40);
   assert.equal(bottomDrift(852, 800, 0), -52);
+});
+
+test('a page box left short after the keyboard moves the bars only by a keyboard-sized gap', () => {
+  assert.equal(shortAfterKeyboard(852, 852, false, 150), 0);
+  assert.equal(shortAfterKeyboard(852, 793, false, 150), 0, 'a status bar\'s worth is not moved for');
+  assert.equal(shortAfterKeyboard(852, 552, false, 150), 300);
+  assert.equal(shortAfterKeyboard(852, 552, true, 150), 0, 'never while typing');
 });
