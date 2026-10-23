@@ -29,6 +29,8 @@
  *
  * How much of For You one topic may take (the owner, 2026-10-15): at most a few cards in any run of
  * twenty (variety.ts, `rising.variety*`); the rest of the topic leave the live list, never reordered.
+ * And one account (the owner, 2026-10-23): at most two cards on the list (`rising.authorShare`), its
+ * most-viewed ones; the next post in line takes the freed place.
  *
  * In what order (the owner, 2026-10-13): `fyp` newest first, by when the post went up on its source
  * (`forYouOrder`); the pass routes (judge, judge with the signal, the signal) decide only whether a
@@ -129,7 +131,7 @@ import { liveCoinLine, loadPostPicks, type CardPick } from './one-coin-cards.ts'
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
-import { loadTopicLinks, topicsOf, withVariety } from './variety.ts';
+import { accountKey, loadTopicLinks, topicsOf, withVariety, type ShareRule } from './variety.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
 import { assertNoInternalVocabulary, instant, WireLeakError } from './wire.ts';
@@ -898,8 +900,8 @@ export async function buildRising(
   const byGates = (p: (typeof posts)[number]): boolean => p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
   const fypAll = posts.filter((p) => p.passes && (byGates(p) || p.byCoin)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const coinFirstAlone = new Set(posts.filter((p) => p.passes && p.byCoin && !p.member && !byGates(p)).map((p) => p.post.id));
-  /* ★ No one topic fills For You (variety.ts): only who is on it changes, never the order. */
-  const fyp = policy.rising.varietyOn ? await varied(db, fypAll, rows, policy) : fypAll;
+  /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
+  const fyp = await varied(db, fypAll, rows, policy);
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id)).sort((a, b) => {
     const va = views(a.post);
@@ -926,21 +928,34 @@ export async function buildRising(
 }
 
 /**
- * For You's posts with no topic over its share (variety.ts), in the order given. The topic facts are
- * read for these posts alone: the story and the judge's name from the loaded rows, the namer's guess
- * and the meaning vectors from `internal`.
+ * For You's posts with no topic and no account over its share (variety.ts), in the order given. The
+ * topic facts are read for these posts alone: the story and the judge's name from the loaded rows,
+ * the namer's guess and the meaning vectors from `internal`; the account from the loaded rows. With
+ * both rules off the list comes back as given, and the topic reads are made only with the topic rule on.
  */
 export async function varied<P extends { readonly at: number; readonly post: WireRisingPost }>(db: Db, list: readonly P[], rows: readonly RisingRow[], policy: typeof DEFAULT_POLICY): Promise<P[]> {
   const ids = list.map((p) => p.post.id);
-  const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning);
   const byId = new Map(rows.map((row) => [row.item_id, row] as const));
-  const facts = new Map(ids.map((id) => {
-    const row = byId.get(id);
-    return [id, { storyId: row?.story_id ?? null, name: row?.proposed_name ?? guesses.get(id) ?? null }] as const;
-  }));
-  const topics = topicsOf(ids, facts, alike);
+  const rules: ShareRule[] = [];
+  if (policy.rising.varietyOn) {
+    const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning);
+    const facts = new Map(ids.map((id) => {
+      const row = byId.get(id);
+      return [id, { storyId: row?.story_id ?? null, name: row?.proposed_name ?? guesses.get(id) ?? null }] as const;
+    }));
+    rules.push({ groupOf: topicsOf(ids, facts, alike), perWindow: policy.rising.varietyPerWindow, window: policy.rising.varietyWindow });
+  }
+  if (policy.rising.authorShare.on) {
+    /* A post whose row was not loaded has no known account and is its own group. */
+    const accounts = new Map(ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined ? [] : [[id, accountKey(row.source, row.source_author_id)] as const];
+    }));
+    rules.push({ groupOf: accounts, perWindow: policy.rising.authorShare.perWindow, window: policy.rising.authorShare.window });
+  }
+  if (rules.length === 0) return [...list];
   const cards = list.map((p) => ({ id: p.post.id, views: p.post.reach.v, at: p.at, p }));
-  return withVariety(cards, topics, policy.rising.varietyPerWindow, policy.rising.varietyWindow).map((c) => c.p);
+  return withVariety(cards, rules).map((c) => c.p);
 }
 
 /**
@@ -1121,7 +1136,7 @@ export async function withNewerCards(db: Db, frame: RisingFrame, began: QuickCur
   const rowAt = new Map(rows.map((r) => [r.item_id, new Date(r.posted_at ?? r.first_seen_at).getTime()] as const));
   const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
   const cards = mergeForYou(frame.fyp, changed, committed, at).map((post) => ({ at: at(post), post }));
-  const fyp = (policy.rising.varietyOn ? await varied(db, cards, rows, policy) : cards).slice(0, policy.rising.maxRows).map((c) => c.post);
+  const fyp = (await varied(db, cards, rows, policy)).slice(0, policy.rising.maxRows).map((c) => c.post);
   const deferred = committed.map((p) => p.id);
   const sameName = new Map([...frame.sameName].filter(([id]) => !deferred.includes(id)));
   return { frame: { ...frame, fyp, sameName }, deferred };

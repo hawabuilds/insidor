@@ -15,8 +15,16 @@
  * are one; or meaning vectors (internal.post_embedding) at least `rising.varietySameMeaning`
  * alike. Most launch-day posts were in no story, so a story alone would have caught none of them.
  *
+ * ★ ONE ACCOUNT, THE SAME WAY (the owner, 2026-10-23: "there's too much Mario Nawfal on For You").
+ * A news account posts all day and clears the views bar every time, so it held 6 of 60 cards while
+ * every other account held 1–2. The account is a second grouping under the very same rule: among
+ * any `rising.authorShare.window` consecutive cards at most `rising.authorShare.perWindow` are from
+ * one account (same source, same source account id), its most-viewed posts keep the places, and the
+ * next post in line fills the gap. Both groupings are checked in the one pass, so a card is kept
+ * only when it fits its topic's share AND its account's.
+ *
  * Its own file because rising.ts decides who MAY be on For You and this decides how much of it one
- * topic may take; the sorting stays there. What breaks if changed carelessly: reordering here would
+ * topic or one account may take; the sorting stays there. What breaks if changed carelessly: reordering here would
  * break the newest-first rule pull-to-refresh relies on; a vector bar much under the measured one
  * chains unrelated posts into one topic (single linkage), and they would then crowd each other out.
  * Nothing here is ever written to the wire: a topic is the system's reasoning.
@@ -31,6 +39,16 @@ export interface VarietyCard {
   readonly views: number | null;
   /** When it went up, the tie-break for equal strength: newer first. */
   readonly at: number;
+}
+
+/**
+ * One share rule: cards with the same `groupOf` value (a card missing from it is its own group) take
+ * at most `perWindow` places in any `window` consecutive cards.
+ */
+export interface ShareRule {
+  readonly groupOf: ReadonlyMap<string, string>;
+  readonly perWindow: number;
+  readonly window: number;
 }
 
 export interface TopicFacts {
@@ -90,24 +108,28 @@ export function topicsOf(ids: readonly string[], facts: ReadonlyMap<string, Topi
 }
 
 /**
- * The cards that keep a place, in their given order: strongest first, a card joins when its topic
- * still has at most `perWindow` cards in every `window` consecutive cards of the list with it in.
- * A card of another topic only spreads a topic's cards apart, so admitting by strength never
- * breaks a place already given; a pass that admits nothing new ends it.
+ * The cards that keep a place, in their given order: strongest first, a card joins when, for every
+ * rule, its group still has at most `perWindow` cards in every `window` consecutive cards of the list
+ * with it in. A card of another group only spreads a group's cards apart, so admitting by strength
+ * never breaks a place already given; a pass that admits nothing new ends it. No rules: every card.
  */
-export function withVariety<T extends VarietyCard>(cards: readonly T[], topicOf: ReadonlyMap<string, string>, perWindow: number, window: number): T[] {
+export function withVariety<T extends VarietyCard>(cards: readonly T[], rules: readonly ShareRule[]): T[] {
+  if (rules.length === 0) return [...cards];
   const position = new Map(cards.map((c, i) => [c.id, i] as const));
-  const topic = (c: T): string => topicOf.get(c.id) ?? c.id;
   const strength = [...cards].sort((a, b) => {
     if (a.views === null || b.views === null) return a.views === null ? (b.views === null ? b.at - a.at : 1) : -1;
     return b.views - a.views || b.at - a.at;
   });
   const kept = new Set<string>();
+  const fitsRule = (list: readonly T[], card: T, rule: ShareRule): boolean => {
+    const group = (c: T): string => rule.groupOf.get(c.id) ?? c.id;
+    const at = list.flatMap((c, i) => (group(c) === group(card) ? [i] : []));
+    for (let i = 0; i + rule.perWindow < at.length; i += 1) if ((at[i + rule.perWindow] as number) - (at[i] as number) < rule.window) return false;
+    return true;
+  };
   const fits = (card: T): boolean => {
     const list = cards.filter((c) => kept.has(c.id) || c.id === card.id);
-    const at = list.flatMap((c, i) => (topic(c) === topic(card) ? [i] : []));
-    for (let i = 0; i + perWindow < at.length; i += 1) if ((at[i + perWindow] as number) - (at[i] as number) < window) return false;
-    return true;
+    return rules.every((rule) => fitsRule(list, card, rule));
   };
   let added = true;
   while (added) {
@@ -120,6 +142,9 @@ export function withVariety<T extends VarietyCard>(cards: readonly T[], topicOf:
   }
   return cards.filter((c) => kept.has(c.id)).sort((a, b) => (position.get(a.id) as number) - (position.get(b.id) as number));
 }
+
+/** A post's account as a group key: the same account on the same source. */
+export const accountKey = (source: string, sourceAuthorId: string): string => `${source}:${sourceAuthorId}`;
 
 /**
  * The names and alike pairs for the posts on offer. The namer's guess and the vectors are read in

@@ -31,7 +31,7 @@ test('★ the frame never runs older-then-newer: the variety rule leaves a card 
   /* Ten posts of one topic, newest first, and three others among them: the topic keeps a few places. */
   const cards = Array.from({ length: 13 }, (_, i) => ({ id: `x:${i}`, at: 1000 - i * 10, views: i % 4 === 0 ? 5 : 100 - i }));
   const topic = new Map(cards.map((c) => [c.id, c.views === 5 ? c.id : 'gta'] as const));
-  const kept = withVariety([...cards].sort(forYouOrder), topic, 3, 20);
+  const kept = withVariety([...cards].sort(forYouOrder), [{ groupOf: topic, perWindow: 3, window: 20 }]);
   assert.ok(kept.length < cards.length, 'some of the crowded topic are left out');
   for (let i = 1; i < kept.length; i += 1) assert.ok(forYouOrder(kept[i - 1] as P, kept[i] as P) < 0, `card ${i} is not newer than the one above it`);
 });
