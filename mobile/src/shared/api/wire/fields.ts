@@ -111,6 +111,23 @@ export const RISING_POST_FIELDS = [
   'translation',
   /* The real narrative the post is part of (services/read story-tags.ts): For You's narrative tag. */
   'inStory',
+  /* The post this one quotes (services/project rising.ts `quote`), drawn inside the card. */
+  'quote',
+] as const;
+
+/** A quoted post inside a card (`RisingPost.quote`). */
+export const QUOTED_POST_FIELDS = [
+  'id',
+  'authorLabel',
+  'authorName',
+  'authorPictureUrl',
+  'authorPictureFile',
+  'permalink',
+  'excerpt',
+  'thumbUrl',
+  'thumbFile',
+  'thumbIsVideo',
+  'postedAt',
 ] as const;
 
 /** An older coin trading since a post (`RisingPost.runningOlder`): facts, and an address to open. */

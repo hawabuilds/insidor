@@ -38,7 +38,8 @@ import type { CoinQuote } from '@insidor/market-dexscreener';
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
 import { buildStoryPosts, buildStorySheet } from './story-sheet.ts';
-import { fileOf, pictureFiles } from './post-pics.ts';
+import { fileOf, pictureFiles, withFile } from './post-pics.ts';
+import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { withTranslations } from './translations.ts';
 
 /** The post on whichever feed holds it, For You first. */
@@ -103,6 +104,20 @@ export async function readOr(db: Db, sql: string, legacy: string, params: readon
     throw e;
   }
 }
+
+/**
+ * The media of the post a post quotes (0128): its post row's when that has any, else the copy the
+ * quote's payload carried. Read only for a post with no media of its own, so its sheet shows (and
+ * plays) the quoted post's, as its card leads with the quoted picture.
+ */
+export const SHEET_QUOTED_MEDIA_SQL = `
+select case when jsonb_typeof(i.media) = 'array' and jsonb_array_length(i.media) > 0 then i.media else rp.media end as media
+  from (select $1::text as id) x
+  left join public.item i on i.item_id = x.id
+  left join public.reproduced_post rp on rp.item_id = x.id`;
+
+/** The same before 0128: the post row alone. */
+export const SHEET_QUOTED_MEDIA_LEGACY_SQL = `select media from public.item where item_id = $1`;
 
 /** The coins written beside the post (or its narrative), in the projector's order. */
 export const SHEET_LIST_SQL = `
@@ -270,14 +285,21 @@ export function createPostSheet(deps: PostSheetDeps) {
     /* The post's English when it was written in another language (translations.ts, 0081). */
     /* Sent together: both are read by the post's id alone, and each round trip crosses a sea. */
     /* And our copies of the card's and the media's picture (post-pics.ts, 0119), by the links in hand. */
-    const media = sheetMedia(row['media']);
-    const [translated, storyRows, files] = await Promise.all([
+    /* ★ A post with no media of its own shows the media of the post it quotes (0128), as its card
+       leads with that picture: the quote's words, then the meme. */
+    const own = sheetMedia(row['media']);
+    const quote = rec(rec(row['payload'])['quote']);
+    const quotedId = own === null ? str(quote['id']) : null;
+    const [translated, storyRows, files, faces, quotedRows] = await Promise.all([
       withTranslations(deps.db, [row['payload']]),
       readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId]),
-      pictureFiles(deps.db, [rec(row['payload'])['thumbUrl'], media?.posterUrl].filter((l): l is string => typeof l === 'string')),
+      pictureFiles(deps.db, [rec(row['payload'])['thumbUrl'], quote['thumbUrl'], own?.posterUrl].filter((l): l is string => typeof l === 'string')),
+      quoteFaces(deps.db, [row['payload']]),
+      quotedId === null ? Promise.resolve([]) : readOr(deps.db, SHEET_QUOTED_MEDIA_SQL, SHEET_QUOTED_MEDIA_LEGACY_SQL, [quotedId]),
     ]);
+    const media = own ?? sheetMedia(quotedRows[0]?.['media']);
     const thumbFile = fileOf(files, rec(row['payload'])['thumbUrl']);
-    const payload: Row = { ...rec(translated[0]), ...(thumbFile !== undefined ? { thumbFile } : {}) };
+    const payload: Row = withQuoteFace(withFile({ ...rec(translated[0]), ...(thumbFile !== undefined ? { thumbFile } : {}) }, files), faces);
     const storyRow = storyRows[0];
     const storyId = str(payload['storyId']) ?? str(storyRow?.['story_id']);
 

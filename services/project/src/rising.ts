@@ -44,7 +44,8 @@
  * What each row says: facts only — where it was posted, by whom, a link to it, its text
  * (without the trailing short links X appends), its picture (a video's preview counts, flagged
  * so the card draws a play icon), when, how many saw it and when we read that, and the views
- * line. Never the score, never anything
+ * line; and the post it quotes, when it quotes one we hold (quoted.ts) — whose picture leads the card
+ * when the post has none of its own. Never the score, never anything
  * TRACK or the judge computed.
  *
  * ★ EVERY ROW SAYS WHERE ITS COIN STANDS. `coins` is never null; it is one of these, decided in
@@ -118,6 +119,7 @@ import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type Fee
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
+import { loadQuotedPosts, mainPicture, type QuotedRow } from './quoted.ts';
 
 /** The source whose posts are held to the short-video bars. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
@@ -141,6 +143,8 @@ export const RISING_FEEDS = ['fyp', 'popular'] as const;
 export type RisingFeed = (typeof RISING_FEEDS)[number];
 
 const EXCERPT_MAX_CHARS = 280;
+/** A quoted post's words are clamped on screen; this only bounds the payload. */
+const QUOTE_EXCERPT_MAX_CHARS = 280;
 
 /** One single post on a feed. Fourteen keys, every one a fact. */
 export interface WireRisingPost {
@@ -170,6 +174,30 @@ export interface WireRisingPost {
    * before it existed.
    */
   readonly sheet?: WirePostSheetFacts;
+  /**
+   * The post this one quotes, drawn inside the card as the source draws it (quoted.ts). Absent when
+   * the post quotes none, or quotes one we hold nothing of. When the post has no picture of its
+   * own, `thumbUrl` above is this post's picture, so the meme leads the card.
+   */
+  readonly quote?: WireQuotedPost;
+}
+
+/**
+ * A quoted post on a card: who posted it, a link to it, its words and its picture. The read
+ * service adds the account's face (`authorPictureUrl`, `authorPictureFile`) and our copy of the
+ * picture (`thumbFile`) at read time, as it does for the card's own.
+ */
+export interface WireQuotedPost {
+  readonly id: string;
+  /** "@handle", else the account's name; never an internal key. */
+  readonly authorLabel: string;
+  /** The account's display name; null when the source gave none. */
+  readonly authorName: string | null;
+  readonly permalink: string | null;
+  readonly excerpt: string;
+  readonly thumbUrl: string | null;
+  readonly thumbIsVideo: boolean;
+  readonly postedAt: WireInstant;
 }
 
 /**
@@ -210,6 +238,8 @@ export interface RisingRow {
   handle: string | null;
   display_name: string | null;
   source_author_id: string;
+  /** The post this one quotes (quoted.ts), or null; absent from a row built by hand. */
+  reproduction_of?: string | null;
   /* Null together when the judge has not answered: such a row is loaded only when the owner
      called it a meme. */
   coinable: boolean | null;
@@ -260,7 +290,7 @@ export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly 
      target is one of COIN_MODEL_TARGETS, so it is spelled into the query rather than bound. */
   const netColumn = net !== null && COIN_MODEL_TARGETS.includes(net) ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add and cms.target = '${net}') as net_add` : `null::boolean as net_add`;
   return db.query<RisingRow>(
-    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
+    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media, i.reproduction_of,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name, j.judge_id,
             k.kind_label, ${netColumn},
@@ -482,6 +512,37 @@ function trimTo(text: string, max: number): string {
   return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
+/**
+ * A quoted post as the card carries it; null when there is nothing to draw (no words, no picture)
+ * or when its own words carry a word the wire refuses — then the card goes out without it, never
+ * withheld whole for another account's post.
+ */
+export function projectQuote(row: QuotedRow): WireQuotedPost | null {
+  const handle = (row.handle ?? '').trim().replace(/^@/, '');
+  const name = (row.display_name ?? '').trim();
+  const picture = pictureOf(row.media);
+  const excerpt = trimTo(withoutTrailingShortLinks(row.body ?? ''), QUOTE_EXCERPT_MAX_CHARS);
+  if (excerpt === '' && picture === null) return null;
+  const quote: WireQuotedPost = {
+    id: row.item_id,
+    authorLabel: handle !== '' ? `@${handle}` : name,
+    authorName: name === '' ? null : name,
+    permalink: handle === '' ? null : permalinkFor(row.source, handle, row.source_item_id),
+    excerpt,
+    thumbUrl: picture?.uri ?? null,
+    thumbIsVideo: picture?.isVideo ?? false,
+    postedAt: instant(toMs(row.posted_at), 'not_reported'),
+  };
+  if (quote.authorLabel === '') return null;
+  try {
+    assertNoInternalVocabulary(quote, `$.quote[${row.item_id}]`);
+  } catch (error: unknown) {
+    if (error instanceof WireLeakError) return null;
+    throw error;
+  }
+  return quote;
+}
+
 export function projectRisingPost(
   row: RisingRow,
   readings: readonly ReachReading[],
@@ -491,12 +552,15 @@ export function projectRisingPost(
   runningOlder: readonly WireOlderCoin[] = [],
   sheet: WirePostSheetFacts | null = null,
   check: CoinCheck | null = null,
+  quoted: QuotedRow | null = null,
 ): WireRisingPost {
   const latest = readings[readings.length - 1];
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
   const coin = postCoins(link, lookup, check);
   const handle = (row.handle ?? '').trim().replace(/^@/, '');
-  const picture = pictureOf(row.media);
+  const quote = quoted === null ? null : projectQuote(quoted);
+  /* ★ The post's own picture first; with none, the quoted post's leads the card (quoted.ts). */
+  const picture = mainPicture(row.media, quote);
   const post: WireRisingPost = {
     id: row.item_id,
     sourceLabel: sourceLabel(row.source),
@@ -513,6 +577,7 @@ export function projectRisingPost(
     coins: coin.coins,
     runningOlder,
     ...(sheet === null ? {} : { sheet }),
+    ...(quote === null ? {} : { quote }),
   };
   assertNoInternalVocabulary(post, `$.rising[${row.item_id}]`);
   return post;
@@ -792,6 +857,8 @@ export async function buildRising(
     if (listed !== undefined) lookups.set(id, listed);
   }
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
+  /* The posts these quote (quoted.ts): the card draws each inside it. */
+  const quoted = await loadQuotedPosts(db, rows.map((row) => row.reproduction_of));
   /* ★ ONE POST, ONE COIN (one-coin-cards.ts): only in live mode is the runner's pick read, and then
      it is the card's coin, or Create; in shadow nothing here is read and every card is as before. */
   const live = policy.oneCoin.mode === 'live';
@@ -864,7 +931,7 @@ export async function buildRising(
           return g === null ? null : Math.round(g);
         })(),
         tickersInReplies: crypto.get(row.item_id)?.othersTickers ?? null,
-      }, checks.get(row.item_id) ?? null), lookup),
+      }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: byViews || byCoin,

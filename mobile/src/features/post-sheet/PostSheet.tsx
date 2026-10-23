@@ -45,6 +45,8 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { QuoteInset } from '../../shared/ui/QuoteInset.tsx';
+import { quotePictureLeads } from '../../shared/api/wire/rising.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
@@ -104,8 +106,8 @@ const COLUMN = 480;
  * squashed; a tap opens it full screen (PostMedia.tsx).
  */
 const MEDIA_TALLEST = 160;
-/** How many lines of the post's words show before a tap: fewer above media, more with none. */
-const TEXT_LINES = { withMedia: 2, alone: 6 } as const;
+/** How many lines of the post's words show before a tap: fewer above media, more with none; and a quoted post's. */
+const TEXT_LINES = { withMedia: 2, alone: 6, quote: 3 } as const;
 
 /**
  * The media box's height: the media's own shape at the sheet's real width, so the whole frame
@@ -249,6 +251,9 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const slots = useMemo(() => postSlots(data.views, minute), [data.views, minute]);
   const gain = lastGain(slots, '5m');
   const media = data.media !== null && !mediaGone ? data.media : null;
+  /* The post this one quotes; `quoteLeads` when its picture is the card's (and so the sheet's media). */
+  const quote = post.quote ?? null;
+  const quoteLeads = quotePictureLeads(post);
   const handle = post.authorLabel;
   /* With no name stored, the handle is the name, said once. */
   const name = data.author.name ?? handle;
@@ -300,7 +305,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
 
       <SheetBody>
         <div ref={middle} className={styles['scroll']}>
-          {post.excerpt !== '' || media !== null ? (
+          {post.excerpt !== '' || media !== null || quote !== null ? (
             <section className={styles['postCard']}>
               {post.excerpt !== '' ? (
                 <div>
@@ -308,7 +313,11 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
                   <TranslatedLine line={words.line} className={styles['wordsLine']} />
                 </div>
               ) : null}
+              {/* ★ The quoted post (QuoteInset.tsx). With no media of its own the media below IS the
+                  quoted post's, so the box comes first and shows no picture; else after the media, with it. */}
+              {quote !== null && quoteLeads ? <QuoteInset quote={quote} showPicture={false} now={now} lines={TEXT_LINES.quote} link /> : null}
               {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} tiktokId={platform === 'tiktok' ? tiktokVideoId(post.id) : null} /> : null}
+              {quote !== null && !quoteLeads ? <QuoteInset quote={quote} showPicture now={now} lines={TEXT_LINES.quote} link /> : null}
             </section>
           ) : null}
 

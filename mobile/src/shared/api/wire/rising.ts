@@ -61,6 +61,37 @@ export interface RisingPost {
    * narrative tag that opens it. Absent when it is in none, or from a server that does not say.
    */
   readonly inStory?: PostInStory;
+  /**
+   * The post this one quotes, drawn inside the card as the source draws it. Absent when it quotes
+   * none, or one the server holds nothing of. When the post has no picture of its own, `thumbUrl`
+   * above IS this post's picture (`quotePictureLeads`), so the meme leads the card.
+   */
+  readonly quote?: QuotedPost;
+}
+
+/** A quoted post inside a card: who posted it (with their picture), a link, its words and its picture. */
+export interface QuotedPost {
+  readonly id: string;
+  /** "@handle", else the account's name. */
+  readonly authorLabel: string;
+  /** The account's display name; null when the source gave none (the handle is shown alone). */
+  readonly authorName: string | null;
+  readonly authorPictureUrl: string | null;
+  readonly authorPictureFile: string | null;
+  readonly permalink: string | null;
+  readonly excerpt: string;
+  readonly thumbUrl: string | null;
+  readonly thumbFile: string | null;
+  readonly thumbIsVideo: boolean;
+  readonly postedAt: Instant;
+}
+
+/**
+ * Whether the card's own picture is its quoted post's: the post has none of its own and the server
+ * put the quoted one in its place. The inset then shows no second copy of it.
+ */
+export function quotePictureLeads(post: Pick<RisingPost, 'thumbUrl' | 'quote'>): boolean {
+  return post.quote !== undefined && post.quote.thumbUrl !== null && post.quote.thumbUrl === post.thumbUrl;
 }
 
 /** A narrative a post is part of: its id, and its title and post count when the server has them. */
