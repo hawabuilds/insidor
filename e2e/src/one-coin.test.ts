@@ -176,8 +176,8 @@ test('★ the one push: the post\'s first pick, launched after For You showed it
   const out = (await deliverQueued({ db: ndb, push, pushOn: true, policy: SHADOW_POLICY.notify, now: () => NOW })).map((o) => o.outcome);
   assert.deepEqual(out, ['list-only', 'push', 'push', 'list-only']);
   assert.deepEqual(sent, [{ to: 'https://push.example/u1', title: '$FKITTY launched for a post you may have seen' }, { to: 'https://push.example/u2', title: '$FKITTY launched for a post you may have seen' }]);
-  const [row] = await ndb.query<{ href: string; body: string }>(`select href, body from people.alert where kind = 'coin_launched' and user_id = 'u2'`);
-  assert.deepEqual(row, { href: '/#/post/x%3A1001', body: '"Pancake the cat drinks from the fountain" (@catposter). $9K MC.' }, 'opens the post, whose card has the coin; the cap is the last one stored');
+  const [row] = await ndb.query<{ href: string; body: string; item: string }>(`select href, body, facts ->> 'item' as item from people.alert where kind = 'coin_launched' and user_id = 'u2'`);
+  assert.deepEqual(row, { href: `/#/token/solana%3A${LINK}`, body: '"Pancake the cat drinks from the fountain" (@catposter). $9K MC.', item: 'x:1001' }, 'opens the coin\'s chart, the post kept for its card; the cap is the last one stored');
 });
 
 test('the replay reads the same rows back: the owner\'s coin is the truth, and the rule finds it', async () => {
