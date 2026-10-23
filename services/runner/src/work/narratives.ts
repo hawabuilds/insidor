@@ -34,6 +34,10 @@
  *      older than its window but inside seven days, or over its cap — and in no narrative yet,
  *      matched into the shown narratives that formed or grew (core group/narrative-early.ts), so a
  *      story's first post is in it. Written with the narrative, marked early, kept for good
+ *   6b. the starting posts, one story across languages and the loose posts' join (work/narrative-origin.ts,
+ *      Policy.narrative.origin). From policy.v145 the owner's pasted posts of the last
+ *      `origin.missedLookbackMs` are read with step 1's posts though older than its window, and the
+ *      good posts the regroup placed nowhere are offered to the narratives they quote or echo
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass
@@ -117,7 +121,7 @@ const outOfEither = (a: ReadonlyMap<string, ReadonlySet<string>>, b: ReadonlyMap
 };
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings'>>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english'>>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -159,6 +163,8 @@ export interface NarrativeResult {
   readonly earlyMatched: number;
   /** Earlier starting posts taken, and narratives merged as one story, this pass (core group/narrative-origin.ts). */
   readonly traced: number;
+  /** Loose posts joined to the narrative they quote or say the same words as, this pass (core `joinLoose`). */
+  readonly joinedStory: number;
   readonly mergedStory: number;
   /** What the early step took this pass, its stored-post read included when it ran. */
   readonly earlyMs: number;
@@ -417,7 +423,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const nowMs = deps.now();
     const held = answerPolicies(p, await deps.block().catch(() => ({ cutoff: null, chosenOn: null })));
 
-    const rows = await deps.repo.candidates(nowMs - n.windowMs, n.searchedPosts);
+    /* ★ THE OWNER'S PASTED POSTS TAKE PART THOUGH OLDER THAN THE WINDOW (policy.v145
+       `origin.missedLookbackMs`): he pasted them because they started a story we missed. First, so the
+       `maxPosts` cap never cuts them. */
+    const windowRows = await deps.repo.candidates(nowMs - n.windowMs, n.searchedPosts);
+    const pasted = n.origin.on && n.origin.missedLookbackMs > 0 && deps.repo.pastedPosts !== undefined ? await deps.repo.pastedPosts(nowMs - n.origin.missedLookbackMs) : [];
+    const inWindow = new Set(windowRows.map((r) => r.itemId));
+    const rows = [...pasted.filter((r) => !inWindow.has(r.itemId)), ...windowRows];
     const left: Record<string, number> = {};
     const count = (why: string) => (left[why] = (left[why] ?? 0) + 1);
     const good: NarrativePostRow[] = [];
@@ -519,13 +531,16 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const earlyMs = deps.now() - earlyStarted;
     const withEarly: NarrativePass['narratives'][number][] = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
 
-    /* Step 6b: the starting posts and one story across languages (work/narrative-origin.ts). */
+    /* Step 6b: the starting posts and one story across languages (work/narrative-origin.ts). The
+       window's good posts the regroup placed nowhere (and no pin holds) may join a narrative there. */
+    const grouped = new Set([...withEarly.flatMap((x) => [...x.members, ...(x.early ?? [])]), ...pinned.keys()]);
     const origin = await traceOrigins({
       pass: withEarly.map((x) => ({ id: x.id, members: [...new Set([...x.members, ...(storedOf.get(x.id)?.early ?? []), ...(x.early ?? [])])], firstShownAtMs: storedOf.get(x.id)?.firstShownAtMs ?? null })),
       mergedAway: new Set([...merges.map((m) => m.from), ...same.merges.map((m) => m.from)]),
       untouchable: new Set([...callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]), ...merges.flatMap((m) => [m.from, m.into]), ...same.merges.flatMap((m) => [m.from, m.into]), ...splits.pending.flatMap((sp) => [sp.from, sp.into])]),
       hidden: hideOf,
       stored: stored?.rows ?? [],
+      loose: used.filter((r) => !grouped.has(r.itemId)),
       standing: standingOf,
       asPost: asNarrativePost,
       calls,
@@ -536,21 +551,32 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const entryOf = new Map(withEarly.map((x, i) => [x.id, i] as const));
     const merged = new Map<string, string[]>();
     for (const m of origin.plan.merges) merged.set(m.into, [...(merged.get(m.into) ?? []), m.from]);
-    const leads = new Set([...origin.plan.starts.keys(), ...merged.keys()]);
+    const joins = origin.plan.joins ?? new Map<string, readonly { readonly itemId: string }[]>();
+    const leads = new Set([...origin.plan.starts.keys(), ...merged.keys(), ...joins.keys()]);
     for (const id of leads) {
       const starts = (origin.plan.starts.get(id) ?? []).map((t) => t.itemId).filter((m) => !placedNow.has(m));
       for (const m of starts) placedNow.add(m);
+      /* The loose posts that join (core `joinLoose`): written as its own posts, not early ones — they came after. */
+      const joined = (joins.get(id) ?? []).map((t) => t.itemId).filter((m) => !placedNow.has(m));
+      for (const m of joined) placedNow.add(m);
+      const newestJoined = Math.max(0, ...joined.map(atOf));
       const at = entryOf.get(id);
       const had = at === undefined ? undefined : withEarly[at];
       if (had !== undefined && at !== undefined) {
-        withEarly[at] = { ...had, early: [...(had.early ?? []), ...starts] };
+        withEarly[at] = {
+          ...had,
+          members: [...had.members, ...joined],
+          added: [...(had.added ?? had.members), ...joined],
+          early: [...(had.early ?? []), ...starts],
+          newestPostAtMs: Math.max(had.newestPostAtMs ?? 0, newestJoined) || null,
+        };
         continue;
       }
       const s = origin.narratives.get(id);
       if (s === undefined || !('anchor' in s)) continue;
-      /* A live narrative this pass did not touch: written only for its earlier posts, and listed whole so its title can follow its merges. */
-      const all = [...s.members, ...(merged.get(id) ?? []).flatMap((f) => origin.narratives.get(f)?.members ?? [])];
-      withEarly.push({ id, members: all, added: [], early: starts, anchor: s.anchor, newestPostAtMs: s.newestPostAtMs ?? null, shown: s.shown, changed: true });
+      /* A live narrative this pass did not touch: written only for its earlier and joined posts, and listed whole so its title can follow its merges. */
+      const all = [...s.members, ...(merged.get(id) ?? []).flatMap((f) => origin.narratives.get(f)?.members ?? []), ...joined];
+      withEarly.push({ id, members: all, added: joined, early: starts, anchor: s.anchor, newestPostAtMs: Math.max(s.newestPostAtMs ?? 0, newestJoined) || null, shown: s.shown, changed: true });
     }
     return {
       pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending },
@@ -574,6 +600,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
         earlyMatched: matchedNow,
         earlyMs,
         traced: origin.traced,
+        joinedStory: origin.joined,
         mergedStory: origin.merged,
         left: left as NarrativeResult['left'],
       },
@@ -621,7 +648,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
 
   async function pass(): Promise<NarrativeResult> {
     const started = deps.now();
-    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, created: 0, grown: 0, shown: 0, retired: 0, joinedSame: 0, mergedSame: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, traced: 0, mergedStory: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
+    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, created: 0, grown: 0, shown: 0, retired: 0, joinedSame: 0, mergedSame: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, traced: 0, joinedStory: 0, mergedStory: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
     if (!deps.policy.narrative.on) return none('switched off (Policy.narrative.on)');
     const grouped = await group();
     if (typeof grouped === 'string') return none(grouped);

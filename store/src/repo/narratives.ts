@@ -751,6 +751,49 @@ export class PgNarrativeRepo {
   }
 
   /**
+   * ★ THE POST EACH OF THESE QUOTES (public.item.reproduction_of, policy.v145), apart from the links
+   * above: those are only the URLs in a post's words, and a quote carries its quoted post in the
+   * payload instead — on 23 Oct only 1,084 of a day's 3,606 quotes named theirs among their links,
+   * and none of the five "Vegeta is Algerian" posts did. Kept apart because the same-story merge was
+   * measured on the links alone (core group/narrative-origin.ts `quotes`). By primary key.
+   */
+  async quotes(itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; quoted: string }>(
+      `select item_id, reproduction_of as quoted from public.item where item_id = any($1::text[]) and reproduction_of is not null and reproduction_of <> item_id`,
+      [[...itemIds]],
+    );
+    return new Map(rows.map((r) => [r.item_id, [r.quoted]] as const));
+  }
+
+  /**
+   * ★ THE OWNER'S PASTED POSTS (0055 internal.missed_post), pasted since `sinceMs` and read, with
+   * their standing, for the regroup (policy.v145 `origin.missedLookbackMs`): a post he pasted takes
+   * part in the narratives though it is older than the regroup's window. Empty before 0055.
+   */
+  async pastedPosts(sinceMs: number): Promise<readonly NarrativePostRow[]> {
+    const rows = await orEmpty(() => this.#db.query<PostRow>(
+      `select i.item_id, i.source, i.body, i.media, coalesce(i.posted_at, i.first_seen_at) as at, ${STANDING_COLUMNS}
+         from (select distinct mp.item_id from internal.missed_post mp
+                where mp.added_at >= $1 and mp.status = 'done' and mp.item_id is not null) f
+         join public.item i on i.item_id = f.item_id
+         ${STANDING_JOINS}`,
+      [new Date(sinceMs).toISOString()],
+    ), []);
+    return rows.map(toPost);
+  }
+
+  /** Each post's stored English (0081 public.post_translation), for the same-words join; none before 0081. */
+  async english(itemIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await orEmpty(() => this.#db.query<{ item_id: string; text_en: string }>(
+      `select item_id, text_en from public.post_translation where item_id = any($1::text[]) and text_en is not null`,
+      [[...itemIds]],
+    ), []);
+    return new Map(rows.map((r) => [r.item_id, r.text_en] as const));
+  }
+
+  /**
    * The posts, of these, that a coin is tied to: a coin's own link names it (internal.coin_post_link)
    * or the coin-first route tied it (internal.coin_first_post, 0117). Such a post may start a narrative
    * though the judge never passed it. By the posts' keys; empty before those tables.

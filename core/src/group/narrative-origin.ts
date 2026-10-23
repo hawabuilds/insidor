@@ -21,8 +21,16 @@
  *                     the narrative's average at `nameAverage`; no gap limit, the lookback is the bound
  *             picture its picture is the same as one of its posts' (`group.image.likely`), at
  *                     `narrative.nameMeaning`
+ *             root    the judge did NOT pass it (the caller's `rootable`: said no, or never asked), but
+ *                     at least `rootMinQuoters` posts quote it — the narrative's, or viral loose posts
+ *                     at `linkMeaning` that then join through it — and it is at `rootMeaning`
+ *                     (policy.v145: @liistrk's "végéta est algérien" post, 14.9M views, judged "not a
+ *                     meme" on its words alone, quoted by the Japanese and French posts it set off)
  *           The earliest post a narrative holds is then its starting post (the projector says
  *           "Started by" only when its own posts quote it — services/project `projectEarliestPost`).
+ *   join    a good post in no narrative (the caller's `loose`) joins the narrative whose posts or
+ *           starting posts it quotes, or whose rare phrase it says (narrative-phrase.ts), at any
+ *           time — not only before its first post (see `joinLoose`).
  *   merge   two narratives formed within `formedWithinMs`, whose averages are at `mergeMeaning`,
  *           are one story when they quote the same judged starting post, or when quotes join them
  *           through at least `minLinkPosts` of their posts. The newer merges into the older.
@@ -46,10 +54,11 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { pairKey, type NarrativeCalls, type NarrativePost } from './narrative.ts';
+import { phrasesOf, rarePhrases } from './narrative-phrase.ts';
 import { subjectName } from './narrative-same.ts';
 import { clearsReachBar, type ReachLevel } from '../qualify/reach-bar.ts';
 
-export type OriginTie = 'quoted' | 'picture' | 'name';
+export type OriginTie = 'quoted' | 'root' | 'picture' | 'name' | 'phrase';
 
 export interface OriginNarrative {
   readonly id: string;
@@ -75,6 +84,34 @@ export interface OriginInput {
   readonly calls: NarrativeCalls;
   /** The narratives the owner made a call on: never merged, never merged into. */
   readonly untouchable: ReadonlySet<string>;
+  /**
+   * Posts the judge did not pass (said no, or never asked) that may still START a narrative as its
+   * quote root (`origin.root*`): several of its posts quote it. Never the owner's "Not a meme", a
+   * shill or a held kind (the caller's to leave out). Absent: none.
+   */
+  readonly rootable?: ReadonlySet<string>;
+  /**
+   * Good posts in no narrative that may JOIN one at any time (`origin.join*`): the window's posts
+   * the regroup left alone, and the owner's pasted posts. Absent: none.
+   */
+  readonly loose?: readonly string[];
+  /** More words of a post, for its phrases: its stored English translation. Absent: its own words only. */
+  readonly english?: ReadonlyMap<string, string>;
+  /** Of `loose`, the posts that clear For You's views bar (`origin.joinViral`). */
+  readonly looseViral?: ReadonlySet<string>;
+  /**
+   * Each post's quoted post (public.item `reproduction_of`), read beside `refs` for the starts, the
+   * roots and the joins — never for the merges, which read `refs` alone. Absent: `refs` only.
+   */
+  readonly reproductions?: ReadonlyMap<string, readonly string[]>;
+}
+
+/** `refs` with each post's quoted post added: what the starts, roots and joins follow. */
+export function withReproductions(refs: ReadonlyMap<string, readonly string[]>, reproductions: ReadonlyMap<string, readonly string[]> | undefined): ReadonlyMap<string, readonly string[]> {
+  if (reproductions === undefined || reproductions.size === 0) return refs;
+  const out = new Map(refs);
+  for (const [id, qs] of reproductions) out.set(id, [...new Set([...qs, ...(refs.get(id) ?? [])])].filter((q) => q !== id));
+  return out;
 }
 
 export interface StoryMerge {
@@ -95,6 +132,8 @@ export interface StoryPlan {
   readonly merges: readonly StoryMerge[];
   /** Per narrative that leads after the merges: the earlier posts it takes, earliest first. */
   readonly starts: ReadonlyMap<string, readonly TracedPost[]>;
+  /** Per narrative that leads after the merges: the loose posts that join it (quoted or same words), earliest first. Absent: none. */
+  readonly joins?: ReadonlyMap<string, readonly TracedPost[]>;
 }
 
 /** Every post `from` quotes or links, at most `maxHops` steps away (never itself). */
@@ -134,7 +173,7 @@ function averageOf(members: readonly string[], vectors: ReadonlyMap<string, Arra
   return sum;
 }
 
-const TIE_ORDER: Readonly<Record<OriginTie, number>> = { quoted: 0, picture: 1, name: 2 };
+const TIE_ORDER: Readonly<Record<OriginTie, number>> = { quoted: 0, root: 1, picture: 2, name: 3, phrase: 4 }; // policy-allow: an order of preference, not a threshold
 
 /**
  * The merges and each lead narrative's earlier posts. Narratives are merged first, so a starting
@@ -149,31 +188,40 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
   const byId = new Map(input.narratives.map((x) => [x.id, x] as const));
 
   /* What each narrative's posts quote: a post in another narrative, or a post in none (by which of its own posts). */
-  const linksIn = new Map<string, Map<string, Set<string>>>(); // narrative → other narrative → posts involved
-  const reachedBy = new Map<string, Map<string, Set<string>>>(); // outside post → narrative → its posts reaching it
-  for (const x of input.narratives) {
-    for (const m of x.members) {
-      for (const r of linkReach(m, input.refs, o.maxHops)) {
-        const other = input.narrativeOf.get(r);
-        if (other === x.id) continue;
-        if (other !== undefined) {
-          const per = linksIn.get(x.id) ?? new Map<string, Set<string>>();
-          per.set(other, new Set([...(per.get(other) ?? []), m, r]));
-          linksIn.set(x.id, per);
-        } else {
-          const per = reachedBy.get(r) ?? new Map<string, Set<string>>();
-          per.set(x.id, new Set([...(per.get(x.id) ?? []), m]));
-          reachedBy.set(r, per);
+  const reachOver = (refs: ReadonlyMap<string, readonly string[]>) => {
+    const linksIn = new Map<string, Map<string, Set<string>>>(); // narrative → other narrative → posts involved
+    const reachedBy = new Map<string, Map<string, Set<string>>>(); // outside post → narrative → its posts reaching it
+    for (const x of input.narratives) {
+      for (const m of x.members) {
+        for (const r of linkReach(m, refs, o.maxHops)) {
+          const other = input.narrativeOf.get(r);
+          if (other === x.id) continue;
+          if (other !== undefined) {
+            const per = linksIn.get(x.id) ?? new Map<string, Set<string>>();
+            per.set(other, new Set([...(per.get(other) ?? []), m, r]));
+            linksIn.set(x.id, per);
+          } else {
+            const per = reachedBy.get(r) ?? new Map<string, Set<string>>();
+            per.set(x.id, new Set([...(per.get(x.id) ?? []), m]));
+            reachedBy.set(r, per);
+          }
         }
       }
     }
-  }
+    return { linksIn, reachedBy };
+  };
+  /* ★ The merges read the links alone, as they were measured (policy.v143); the starts and the joins
+     read the quotes too (`reproductions`, policy.v145). With the quotes, the 5-day replay of 23 Oct merged
+     nine pairs instead of two — some plainly one story, some not — so the merge keeps its evidence. */
+  const { linksIn, reachedBy } = reachOver(input.refs);
+  const traceRefs = withReproductions(input.refs, input.reproductions);
+  const traced = input.reproductions === undefined || input.reproductions.size === 0 ? reachedBy : reachOver(traceRefs).reachedBy;
 
-  /* An outside post is a starting post for a narrative when it is eligible, earlier than the narrative's first post and inside the lookback. */
-  const startable = (post: string, members: readonly string[]): boolean => {
+  /* An outside post is a starting post for a narrative when it is eligible (or a quote root), earlier than the narrative's first post and inside the lookback. */
+  const startable = (post: string, members: readonly string[], asRoot = false): boolean => {
     const at = atOf(post);
     const first = oldestOf(members);
-    return input.eligible.has(post) && at !== null && at < first && at >= first - o.lookbackMs;
+    return (asRoot || input.eligible.has(post)) && at !== null && at < first && at >= first - o.lookbackMs;
   };
 
   /* ── merge ── */
@@ -253,14 +301,15 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
 
   /* ── trace: each narrative's ties, then given to where it leads ── */
   const best = new Map<string, { narrative: string; tie: OriginTie; formedAtMs: number }>();
+  /* The owner's calls: removed from beside these posts, or kept apart from one of them. */
+  const ownerKeepsOut = (post: string, members: readonly string[]): boolean => {
+    const set = new Set(members);
+    return [...(input.calls.removed.get(post) ?? [])].some((x) => set.has(x)) || members.some((m) => input.calls.apart.has(pairKey(post, m)));
+  };
   const offer = (narrative: string, post: string, tie: OriginTie) => {
     const lid = lead(narrative);
     const members = membersOf.get(lid) ?? [];
-    if (input.narrativeOf.has(post) || !startable(post, members)) return;
-    /* The owner's calls: removed from beside these posts, or kept apart from one of them. */
-    const set = new Set(members);
-    if ([...(input.calls.removed.get(post) ?? [])].some((x) => set.has(x))) return;
-    if (members.some((m) => input.calls.apart.has(pairKey(post, m)))) return;
+    if (input.narrativeOf.has(post) || !startable(post, members, tie === 'root') || ownerKeepsOut(post, members)) return;
     const formedAtMs = byId.get(lid)?.formedAtMs ?? 0;
     const had = best.get(post);
     if (had === undefined || TIE_ORDER[tie] < TIE_ORDER[had.tie] || (TIE_ORDER[tie] === TIE_ORDER[had.tie] && (formedAtMs < had.formedAtMs || (formedAtMs === had.formedAtMs && lid < had.narrative)))) {
@@ -272,12 +321,41 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
     if (!averages.has(id)) averages.set(id, averageOf(membersOf.get(id) ?? [], input.vectors));
     return averages.get(id) ?? null;
   };
-  for (const [r, per] of reachedBy) {
+  /* ★ THE QUOTE ROOT (`origin.root*`, the owner, 2026-10-23): a post the judge said no to on its
+     own words can still be the story's start when at least `rootMinQuoters` posts quote it, at most
+     `maxHops` away — the narrative's own (after its merges), or loose posts that join through it —
+     being what everyone reacts to is the evidence. "les japonais ils sont au courant que végéta est algérien ?" was judged "not a meme"
+     alone; the Japanese and French posts quoting it are the meme. Its own bar to the average,
+     `rootMeaning`: a words-only post reads far from the picture posts answering it (0.36). The
+     caller holds it to the views bar like every start, so a small post quoted twice never is one. */
+  const rootable = input.rootable ?? new Set<string>();
+  /* The loose posts that could join, and what each quotes: a loose post quoting the root and close to
+     the narrative counts as one of its quoters (it joins through the root, `joinLoose`). On 22 Oct the
+     regroup made the narrative of @rayaneAlg00 and @Badr_13Block, and the Japanese post and
+     @YanoxSaiyan's were left loose: only Badr's quote was a member's. */
+  const joinable = o.rootOn && rootable.size > 0 ? looseJoinable(input, p) : [];
+  const looseReach = new Map(joinable.map((c) => [c, linkReach(c, traceRefs, o.maxHops)] as const));
+  const quotersOf = (post: string, lid: string): number => {
+    const who = new Set<string>();
+    for (const [id, ms] of traced.get(post) ?? []) if (lead(id) === lid) for (const m of ms) who.add(m);
+    const avg = leadAverage(lid);
+    for (const [c, reach] of looseReach) {
+      const v = input.vectors.get(c);
+      if (reach.has(post) && avg !== null && v !== undefined && dot(v, avg) >= o.linkMeaning) who.add(c);
+    }
+    return who.size;
+  };
+  for (const [r, per] of traced) {
     for (const id of per.keys()) {
       const avg = leadAverage(lead(id));
       const v = input.vectors.get(r);
-      if (avg === null || v === undefined || dot(v, avg) < o.linkMeaning) continue;
-      offer(id, r, 'quoted');
+      if (avg === null || v === undefined) continue;
+      const meaning = dot(v, avg);
+      if (input.eligible.has(r)) {
+        if (meaning >= o.linkMeaning) offer(id, r, 'quoted');
+      } else if (o.rootOn && rootable.has(r) && meaning >= o.rootMeaning && quotersOf(r, lead(id)) >= o.rootMinQuoters) {
+        offer(id, r, 'root');
+      }
     }
   }
   for (const x of input.narratives) {
@@ -305,10 +383,96 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
   const starts = new Map<string, TracedPost[]>();
   for (const [post, b] of best) starts.set(b.narrative, [...(starts.get(b.narrative) ?? []), { itemId: post, tie: b.tie }]);
   const at = (t: TracedPost) => atOf(t.itemId) ?? 0;
-  return {
-    merges,
-    starts: new Map([...starts].map(([id, list]) => [id, list.sort((a, b) => TIE_ORDER[a.tie] - TIE_ORDER[b.tie] || at(a) - at(b) || a.itemId.localeCompare(b.itemId)).slice(0, o.maxPerNarrative).sort((a, b) => at(a) - at(b) || a.itemId.localeCompare(b.itemId))] as const)),
-  };
+  const kept = new Map([...starts].map(([id, list]) => [id, list.sort((a, b) => TIE_ORDER[a.tie] - TIE_ORDER[b.tie] || at(a) - at(b) || a.itemId.localeCompare(b.itemId)).slice(0, o.maxPerNarrative).sort((a, b) => at(a) - at(b) || a.itemId.localeCompare(b.itemId))] as const));
+  return { merges, starts: kept, joins: joinLoose(input, p, { lead, membersOf, starts: kept, leadAverage, ownerKeepsOut, refs: traceRefs }) };
+}
+
+/**
+ * The loose posts that may join: in no narrative, with a vector and — ★ with `joinViral` — clearing
+ * For You's views bar (the caller's `looseViral`): a small post joins by the regroup's own links, as
+ * before. Measured 2026-10-23 on the 5-day replay, the same-words tie without it took 36 posts of 0 to
+ * 3K views ("going viral on X", "polar bear") into 24 narratives; with it, none.
+ */
+function looseJoinable(input: OriginInput, p: Policy): readonly string[] {
+  const o = p.narrative.origin;
+  if (!o.joinOn) return [];
+  const viral = input.looseViral ?? new Set<string>();
+  return [...new Set(input.loose ?? [])].filter((c) => !input.narrativeOf.has(c) && input.vectors.has(c) && (!o.joinViral || viral.has(c)));
+}
+
+/**
+ * ★ THE LOOSE POSTS JOIN (`origin.join*`): a good post in no narrative — the window's posts the
+ * regroup left alone, the owner's pasted posts — joins the narrative it reacts to, once the merges
+ * and the starting posts are known:
+ *
+ *   quoted  it quotes or links one of the narrative's posts or starting posts, at most `maxHops`
+ *           away, and is at `linkMeaning` from its average (@Badr_13Block quotes @liistrk's post,
+ *           the narrative's start, and is 0.53 from the posts that share no name with it)
+ *   phrase  it says a rare phrase (narrative-phrase.ts) one of those posts says, in its own words or
+ *           its stored English, and is at `phraseMeaning` from the average (@rayaneAlg00's
+ *           "végéta est algérien", which quotes nothing and was named HOMER)
+ *
+ * A post two narratives could take goes to the closer tie, then the nearer average. At most
+ * `joinPerNarrative` a narrative a pass, nearest first; never against the owner's calls.
+ */
+function joinLoose(
+  input: OriginInput,
+  p: Policy,
+  t: {
+    readonly lead: (id: string) => string;
+    readonly membersOf: ReadonlyMap<string, readonly string[]>;
+    readonly starts: ReadonlyMap<string, readonly TracedPost[]>;
+    readonly leadAverage: (id: string) => Float64Array | null;
+    readonly ownerKeepsOut: (post: string, members: readonly string[]) => boolean;
+    readonly refs: ReadonlyMap<string, readonly string[]>;
+  },
+): ReadonlyMap<string, readonly TracedPost[]> {
+  const o = p.narrative.origin;
+  const started = new Set([...t.starts.values()].flat().map((x) => x.itemId));
+  const loose = looseJoinable(input, p).filter((c) => !started.has(c));
+  if (!o.joinOn || loose.length === 0) return new Map();
+
+  /* Each lead narrative's own posts: its members after the merges, and its starting posts. */
+  const leads = [...new Set(input.narratives.map((x) => t.lead(x.id)))];
+  const ownOf = new Map(leads.map((l) => [l, [...(t.membersOf.get(l) ?? []), ...(t.starts.get(l) ?? []).map((x) => x.itemId)]] as const));
+  const leadOfPost = new Map<string, string>();
+  for (const [l, own] of ownOf) for (const m of own) leadOfPost.set(m, l);
+
+  /* Every post's phrases, the rare ones among all the posts read here, and which narratives say each. */
+  const phrases = new Map<string, ReadonlySet<string>>();
+  for (const [id, post] of input.posts) phrases.set(id, phrasesOf([post.text, input.english?.get(id) ?? ''], p));
+  const rare = rarePhrases(phrases.values(), p);
+  const sayers = new Map<string, Set<string>>();
+  for (const [l, own] of ownOf) for (const m of own) for (const x of phrases.get(m) ?? []) if (rare.has(x)) sayers.set(x, (sayers.get(x) ?? new Set<string>()).add(l));
+
+  const offers: { post: string; lead: string; tie: OriginTie; meaning: number }[] = [];
+  for (const c of loose) {
+    const v = input.vectors.get(c);
+    if (v === undefined) continue;
+    const quoted = new Set([...linkReach(c, t.refs, o.maxHops)].flatMap((r) => {
+      const l = leadOfPost.get(r);
+      return l === undefined ? [] : [l];
+    }));
+    const said = new Set([...(phrases.get(c) ?? [])].flatMap((x) => [...(sayers.get(x) ?? [])]));
+    let best: { lead: string; tie: OriginTie; meaning: number } | null = null;
+    for (const l of new Set([...quoted, ...said])) {
+      const avg = t.leadAverage(l);
+      if (avg === null || t.ownerKeepsOut(c, ownOf.get(l) ?? [])) continue;
+      const meaning = dot(v, avg);
+      const tie: OriginTie | null = quoted.has(l) && meaning >= o.linkMeaning ? 'quoted' : said.has(l) && meaning >= o.phraseMeaning ? 'phrase' : null;
+      if (tie === null) continue;
+      if (best === null || TIE_ORDER[tie] < TIE_ORDER[best.tie] || (tie === best.tie && (meaning > best.meaning || (meaning === best.meaning && l < best.lead)))) best = { lead: l, tie, meaning };
+    }
+    if (best !== null) offers.push({ post: c, ...best });
+  }
+  const out = new Map<string, TracedPost[]>();
+  for (const x of offers.sort((a, b) => b.meaning - a.meaning || a.post.localeCompare(b.post))) {
+    const list = out.get(x.lead) ?? [];
+    if (list.length >= o.joinPerNarrative) continue;
+    out.set(x.lead, [...list, { itemId: x.post, tie: x.tie }]);
+  }
+  const atOf = (id: string): number => input.posts.get(id)?.atMs ?? 0;
+  return new Map([...out].map(([l, list]) => [l, [...list].sort((a, b) => atOf(a.itemId) - atOf(b.itemId) || a.itemId.localeCompare(b.itemId))] as const));
 }
 
 /**
