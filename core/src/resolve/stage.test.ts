@@ -92,6 +92,7 @@ function market(over: Partial<MarketState> = {}): MarketState {
     // either — resolve's gate is quotability.
     priceChange24hPct: null,
     liquidityUsd: null, // a curve has none, and NOTHING gates on it
+    lastHour: null,
     depth: { kind: 'bonding-curve', progress: 0.4, slippageBpsAt: { '0.1': 20, '0.5': 60, '1.0': 120 } },
     mintedAt: { at: NOW - 25 * MINUTE, source: 'chain_rpc', confidence: 'exact', boundS: null },
     transferRules: {

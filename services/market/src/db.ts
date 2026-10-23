@@ -282,7 +282,8 @@ export async function writeReadings(db: Db, readings: readonly MarketReading[]):
          liquidity_usd, liquidity_absent,
          price_change_24h_pct, price_change_24h_absent,
          tradable, quoted_by,
-         source_vendor, source_endpoint
+         source_vendor, source_endpoint,
+         volume_1h_usd, buys_1h, sells_1h, last_hour_absent
        ) values (
          $1, $2, $3, $4, $5,
          $6, $7,
@@ -290,7 +291,8 @@ export async function writeReadings(db: Db, readings: readonly MarketReading[]):
          $11, $12,
          $13, $14,
          $15, $16,
-         $17, $18
+         $17, $18,
+         $19, $20, $21, $22
        )
        on conflict (chain, address, taken_at) do nothing
        returning 1 as written`,
@@ -313,6 +315,10 @@ export async function writeReadings(db: Db, readings: readonly MarketReading[]):
         r.quotedBy,
         r.sourceVendor,
         r.sourceEndpoint,
+        r.lastHour.kind === 'read' ? r.lastHour.volumeUsd : null,
+        r.lastHour.kind === 'read' ? r.lastHour.buys : null,
+        r.lastHour.kind === 'read' ? r.lastHour.sells : null,
+        r.lastHour.kind === 'absent' ? r.lastHour.why : null,
       ],
     );
     written += result.length;

@@ -9,14 +9,22 @@ import assert from 'node:assert/strict';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
 import { SILENT } from './log.ts';
-import { RUNNING_COINS_SQL, createRunningCoins, dollarsGained, runningCoins } from './running-coins.ts';
+import { RUNNING_COINS_SQL, createRunningCoins, runningCoins } from './running-coins.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
 
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
 
-function row(address: string, cap: number | null, pct: number | null, over: { at?: number; venue?: string; origin?: string | null; tradable?: boolean; ticker?: string } = {}): Row {
+const RULE = DEFAULT_POLICY.runningCoins;
+/** An hour comfortably over both floors, unless a test says otherwise. */
+const BUSY = { volume: RULE.minVolume1hUsd * 5, trades: RULE.minTrades1h * 5 };
+
+type Over = { at?: number; venue?: string; origin?: string | null; tradable?: boolean; ticker?: string; volume?: number | null; trades?: number | null };
+
+function row(address: string, cap: number | null, pct: number | null, over: Over = {}): Row {
+  const volume = over.volume === undefined ? BUSY.volume : over.volume;
+  const trades = over.trades === undefined ? BUSY.trades : over.trades;
   return {
     coin: {
       coinId: `solana:${address}`,
@@ -26,6 +34,8 @@ function row(address: string, cap: number | null, pct: number | null, over: { at
       tradable: over.tradable ?? true,
       marketCapUsd: cap === null ? { v: null, why: 'no_market' } : { v: cap },
       priceChange24h: pct === null ? { v: null, why: 'no_market' } : { v: pct },
+      volume1hUsd: volume === null ? { v: null, why: 'not_read_yet' } : { v: volume },
+      trades1h: trades === null ? { v: null, why: 'not_read_yet' } : { v: trades },
     },
     at_ms: String(over.at ?? NOW - MIN),
     venue_id: over.venue ?? 'solana:pumpfun',
@@ -33,16 +43,34 @@ function row(address: string, cap: number | null, pct: number | null, over: { at
   };
 }
 
-test('dollars gained is the cap less the cap a day ago', () => {
-  assert.equal(dollarsGained(200, 100), 100);
-  assert.equal(dollarsGained(50, -50), -50);
-  assert.equal(dollarsGained(100, -100), null);
+test('ordered by the last hour\'s dollars traded, not by the day\'s move or the cap', () => {
+  const { coins } = runningCoins([
+    row('yesterday', 2_000_000, 5_000, { volume: 1_500 }),
+    row('busy', 30_000, -20, { volume: 90_000 }),
+    row('big', 10_000_000, 30, { volume: 40_000 }),
+  ], NOW);
+  assert.deepEqual(coins.map((c) => c.address), ['busy', 'big', 'yesterday']);
+  assert.deepEqual(coins[0], { coinId: 'solana:busy', address: 'busy', ticker: 'BUSY', imageUrl: null, marketCapUsd: 30_000, change24hPct: -20, volume1hUsd: 90_000, trades1h: BUSY.trades });
 });
 
-test('ordered by dollars gained, not by percent', () => {
-  const { coins } = runningCoins([row('small', 3_000, 300), row('big', 2_000_000, 30), row('down', 10_000_000, -30)], NOW);
-  assert.deepEqual(coins.map((c) => c.address), ['big', 'small', 'down']);
-  assert.deepEqual(coins[0], { coinId: 'solana:big', address: 'big', ticker: 'BIG', imageUrl: null, marketCapUsd: 2_000_000, change24hPct: 30 });
+test('★ a coin that stopped trading is left out, however far it ran in the day', () => {
+  const { coins } = runningCoins([
+    row('dead', 40_000, 1_129, { volume: 0, trades: 0 }),
+    row('thin', 40_000, 600, { volume: RULE.minVolume1hUsd - 1 }),
+    row('few', 40_000, 600, { volume: 50_000, trades: RULE.minTrades1h - 1 }),
+    row('edge', 40_000, 10, { volume: RULE.minVolume1hUsd, trades: RULE.minTrades1h }),
+  ], NOW);
+  assert.deepEqual(coins.map((c) => c.address), ['edge']);
+});
+
+test('★ an hour the card did not carry is not a quiet hour, and not a busy one: the coin is left out', () => {
+  const { coins } = runningCoins([row('unread', 40_000, 10, { volume: null, trades: null }), row('half', 40_000, 10, { trades: null }), row('ok', 40_000, 10)], NOW);
+  assert.deepEqual(coins.map((c) => c.address), ['ok']);
+});
+
+test('the fresher frame\'s hour decides, even when an older frame\'s was busier', () => {
+  const { coins } = runningCoins([row('a', 9_000, 10, { at: NOW - 3 * MIN, volume: 80_000 }), row('a', 9_000, 10, { at: NOW - MIN, volume: 0, trades: 0 })], NOW);
+  assert.deepEqual(coins, []);
 });
 
 test('a coin with no price, no move, or not tradable is left out, never shown as 0', () => {
@@ -68,7 +96,7 @@ test('one coin once, with the fresher frame\'s numbers', () => {
 });
 
 test('at most maxCoins', () => {
-  const rows = Array.from({ length: 30 }, (_, i) => row(`c${String(i).padStart(2, '0')}`, 10_000 + i, 10));
+  const rows = Array.from({ length: 30 }, (_, i) => row(`c${String(i).padStart(2, '0')}`, 10_000, 10, { volume: BUSY.volume + i }));
   const { coins } = runningCoins(rows, NOW);
   assert.equal(coins.length, DEFAULT_POLICY.runningCoins.maxCoins);
   assert.equal(coins[0]?.address, 'c29');

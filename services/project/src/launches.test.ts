@@ -58,6 +58,8 @@ function market(over: Partial<CoinMarket> = {}): CoinMarket {
     marketCapBasis: 'fully-diluted',
     liquidityUsd: absent('not_reported'),
     priceChange24h: absent('not_reported'),
+    volume1hUsd: absent('not_reported'),
+    trades1h: absent('not_reported'),
     tradable: true,
     ...over,
   };

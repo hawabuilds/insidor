@@ -34,8 +34,8 @@ async function coin(address: string, launchedMs: number): Promise<void> {
      values ('solana', $1, $2, 'solana:pumpfun', $3, 'vendor_field', 'bounded', 300, 'T', 'T', '{}'::jsonb, $3, 'backfill')`,
     [address, `solana:${address}`, iso(launchedMs)],
   );
-  await db.query(`insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
-     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 40000, 'circulating', 'no_market', 'no_market', false, 'test', 'test')`, [address, `solana:${address}`, iso(NOW - MIN)]);
+  await db.query(`insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, last_hour_absent, tradable, source_vendor, source_endpoint)
+     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 40000, 'circulating', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`, [address, `solana:${address}`, iso(NOW - MIN)]);
   await db.query(`insert into internal.coin_watch (address, reason, since, until) values ($1, 'one_coin', $2, $3)`, [address, iso(launchedMs), iso(launchedMs + 60 * MIN)]);
 }
 

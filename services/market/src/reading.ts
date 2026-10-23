@@ -53,6 +53,14 @@ export type ReadNumber =
   | { readonly kind: 'read'; readonly value: number }
   | { readonly kind: 'absent'; readonly why: MarketAbsenceReason };
 
+/**
+ * The last hour's dollars, buys and sells, or the reason they are not there. One union for the
+ * three because they arrive in one answer and 0127 keeps or misses them together.
+ */
+export type ReadLastHour =
+  | { readonly kind: 'read'; readonly volumeUsd: number; readonly buys: number; readonly sells: number }
+  | { readonly kind: 'absent'; readonly why: MarketAbsenceReason };
+
 /** One row of public.market_reading, in this package's vocabulary. */
 export interface MarketReading {
   readonly chain: string;
@@ -68,6 +76,8 @@ export interface MarketReading {
   readonly marketCapBasis: MarketCapBasis | null;
   readonly liquidityUsd: ReadNumber;
   readonly priceChange24hPct: ReadNumber;
+  /** The last hour's trading (0127): the three numbers together, or why not. */
+  readonly lastHour: ReadLastHour;
 
   /** See `tradeAnswer` below: the trade service's route, never a number in this row. */
   readonly tradable: boolean;
@@ -196,6 +206,7 @@ export function toReading(state: MarketState, ctx: ReadingContext): MarketReadin
   const priceUsd = quantity(state.priceUsd, whenAbsent);
   const liquidityUsd = quantity(state.liquidityUsd, whenAbsent);
   const priceChange24hPct = signedQuantity(state.priceChange24hPct, whenAbsent);
+  const lastHour = lastHourOf(state, whenAbsent);
 
   /* A cap whose basis the venue did not state is a number whose meaning is missing.
      The two bases differ by more than a factor of ten on a coin with most of its
@@ -227,6 +238,7 @@ export function toReading(state: MarketState, ctx: ReadingContext): MarketReadin
     marketCapBasis,
     liquidityUsd,
     priceChange24hPct,
+    lastHour,
 
     tradable: ctx.trade.tradable && ctx.trade.quotedBy !== null,
     quotedBy: ctx.trade.quotedBy,
@@ -237,6 +249,17 @@ export function toReading(state: MarketState, ctx: ReadingContext): MarketReadin
     sourceVendor: state.source.vendor,
     sourceEndpoint: state.source.endpoint,
   };
+}
+
+/** The hour as the row keeps it; a count that is not a whole number is a broken reading. */
+function lastHourOf(state: MarketState, whenAbsent: MarketAbsenceReason): ReadLastHour {
+  const h = state.lastHour;
+  if (h === null) return { kind: 'absent', why: whenAbsent };
+  const ok = (n: number) => Number.isFinite(n) && n >= 0;
+  if (!ok(h.volumeUsd) || !ok(h.buys) || !ok(h.sells) || !Number.isInteger(h.buys) || !Number.isInteger(h.sells)) {
+    return { kind: 'absent', why: 'unreadable' };
+  }
+  return { kind: 'read', volumeUsd: h.volumeUsd, buys: h.buys, sells: h.sells };
 }
 
 /** The number, or null — the shape a parameterised INSERT wants. Never a zero. */
