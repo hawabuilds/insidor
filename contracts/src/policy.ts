@@ -2781,6 +2781,20 @@ export interface RisingPolicy {
   readonly varietyWindow: number;
   readonly varietySameMeaning: number;
   /**
+   * ★ ONE ACCOUNT'S SHARE OF FOR YOU (the owner, 2026-10-23: "there's too much Mario Nawfal on For
+   * You"). Among any `window` consecutive For You cards at most `perWindow` are from one account; its
+   * most-viewed posts keep the places and the next post in line fills the gap (services/project
+   * variety.ts, the same rule as the topic share). `window` is the live list's length, so it reads as
+   * "at most two per account on the list". Measured over 48h of For You (23 Oct): one news account
+   * held 6 of 60 cards, every other account 1–2, so two takes nothing from an ordinary account.
+   * Off: no account limit.
+   */
+  readonly authorShare: {
+    readonly on: boolean;
+    readonly perWindow: number;
+    readonly window: number;
+  };
+  /**
    * ★ OLDER FEED POSTS' VIDEOS, READ AGAIN (the owner, 2026-10-13: "so older posts play too"). A
    * text-source post on For You, Popular or a Feed alert whose video was stored with no playable
    * file is read again by id (services/runner/src/work/post-refill.ts) on the live posts line: at
@@ -4883,7 +4897,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v142',
+  version: 'policy.v143',
 
   admit: {
     maxAgeMin: 240,
@@ -6484,6 +6498,7 @@ const POLICY_V1: Policy = {
     varietyPerWindow: 3,
     varietyWindow: 20,
     varietySameMeaning: 0.6,
+    authorShare: { on: true, perWindow: 2, window: 60 },
     /* Two batched reads of 50 a pass; 1,000 posts a day is at most $0.15 at $0.00015 a post. */
     refillPerPass: 100,
     refillPerDay: 1_000,
