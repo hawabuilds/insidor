@@ -20,6 +20,12 @@
  * the same each time it comes back to the front. One tap heard twice (the message and the cache, in
  * the same moment) is opened once (`isRepeat`).
  *
+ * ★ THE PENDING OPEN IS DELETED ONLY AFTER ITS SCREEN IS OPENED, and a newer build's reload waits while
+ * a tap is in hand (`tapInHand`, main.tsx hands it to shared/new-version.ts). A tap brings the app to
+ * the front, and the front is exactly when a newer build reloads the page: read-and-delete first, the
+ * reload landing between the two lost the tap for good (the reloaded page found nothing), and a
+ * post's sheet, whose address For You puts back to `#/` at once, did not survive the reload either.
+ *
  * A post's screen (`#/post/<id>`) needs nothing under it: For You itself takes the address, puts it
  * back to For You and opens the sheet over it (features/feed/Feed.tsx). Any other screen gets a For
  * You entry under it, so its Back button (history.back) lands on For You.
@@ -94,17 +100,24 @@ async function dropPending(): Promise<void> {
   }
 }
 
-/** A pending open the service worker left, if fresh; taken (deleted) as it is read. */
-async function takePending(): Promise<string | null> {
+/** A pending open the service worker left, if fresh. Read, not taken: it is deleted once its screen is open. */
+async function readPending(): Promise<string | null> {
   try {
-    const cache = await caches.open(OPEN_CACHE);
-    const hit = await cache.match(OPEN_KEY);
-    if (hit === undefined) return null;
-    await cache.delete(OPEN_KEY);
-    return freshOpen(await hit.json(), Date.now());
+    const hit = await (await caches.open(OPEN_CACHE)).match(OPEN_KEY);
+    return hit === undefined ? null : freshOpen(await hit.json(), Date.now());
   } catch {
     return null;
   }
+}
+
+/** Whether a tap is being opened now: one opened in the last few seconds, or one the worker left that no page has opened yet. */
+export function inHand(last: { readonly hash: string; readonly at: number } | null, pending: string | null, nowMs: number): boolean {
+  return pending !== null || (last !== null && nowMs - last.at >= 0 && nowMs - last.at < REPEAT_MS);
+}
+
+/** `inHand` for this page: what shared/new-version.ts asks before reloading for a newer build. */
+export async function tapInHand(): Promise<boolean> {
+  return inHand(lastOpen, await readPending(), Date.now());
 }
 
 /** Listen for taps while the app is alive, and pick up one that launched it at the wrong page. */
@@ -119,8 +132,10 @@ export function listenForOpens(): void {
   /* Messages that came while the page was starting are handed over now, not at the end of parsing. */
   navigator.serviceWorker.startMessages();
   const pending = () =>
-    void takePending().then((hash) => {
-      if (hash !== null) openFromPush(hash);
+    void readPending().then((hash) => {
+      if (hash === null) return;
+      openFromPush(hash);
+      void dropPending();
     });
   /* Each look is cheap (one cache read); the timers of an earlier look are dropped, never doubled. */
   let looks: ReturnType<typeof setTimeout>[] = [];
