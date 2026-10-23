@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { parseRoute } from '../../shared/route.ts';
-import { freshOpen, isRepeat, launchSteps } from './push-open.ts';
+import { freshOpen, inHand, isRepeat, launchSteps } from './push-open.ts';
 
 test('★ a coin opens over For You; a post opens as For You with its sheet; For You is For You', () => {
   assert.deepEqual(launchSteps('#/token/solana%3AAbc123pump'), ['#/', '#/token/solana%3AAbc123pump']);
@@ -36,4 +36,12 @@ test('one tap heard as both the message and the cache opens once; a later tap op
   assert.equal(isRepeat(last, '#/post/x%3A1', now + 300), false);
   assert.equal(isRepeat(last, '#/token/solana%3AAbc', now + 60_000), false);
   assert.equal(isRepeat(null, '#/token/solana%3AAbc', now), false);
+});
+
+test('★ a newer build does not reload over a tap being opened: one left by the worker, or one just opened', () => {
+  const now = 1_792_500_000_000;
+  assert.equal(inHand(null, '#/token/solana%3AAbc', now), true, 'the worker left it and no page has opened it');
+  assert.equal(inHand({ hash: '#/post/x%3A1', at: now - 1_000 }, null, now), true, 'opened a moment ago');
+  assert.equal(inHand({ hash: '#/post/x%3A1', at: now - 60_000 }, null, now), false);
+  assert.equal(inHand(null, null, now), false);
 });

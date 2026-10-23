@@ -20,6 +20,12 @@
  * the same each time it comes back to the front. One tap heard twice (the message and the cache, in
  * the same moment) is opened once (`isRepeat`).
  *
+ * ★ THE PENDING OPEN IS DELETED ONLY AFTER ITS SCREEN IS OPENED, and a newer build's reload waits while
+ * a tap is in hand (`tapInHand`, main.tsx hands it to shared/new-version.ts). A tap brings the app to
+ * the front, and the front is exactly when a newer build reloads the page: read-and-delete first, the
+ * reload landing between the two lost the tap for good (the reloaded page found nothing), and a
+ * post's sheet, whose address For You puts back to `#/` at once, did not survive the reload either.
+ *
  * A post's screen (`#/post/<id>`) needs nothing under it: For You itself takes the address, puts it
  * back to For You and opens the sheet over it (features/feed/Feed.tsx). Any other screen gets a For
  * You entry under it, so its Back button (history.back) lands on For You.
@@ -30,6 +36,7 @@
 
 import { entryState, pushEntry } from '../../shared/nav.ts';
 import { parseRoute } from '../../shared/route.ts';
+import { noteTap } from '../../shared/tap-log.ts';
 
 const OPEN_CACHE = 'insidor-open';
 const OPEN_KEY = '/__insidor_open';
@@ -66,7 +73,9 @@ export function launchSteps(hash: string): readonly string[] {
 /** Called once before the first frame: a launch at `/?push=1#/…` becomes the screen with For You under it. */
 export function settleLaunch(): void {
   const params = new URLSearchParams(window.location.search);
+  noteTap('boot', { hash: window.location.hash, search: window.location.search, visible: document.visibilityState === 'visible', controlled: navigator.serviceWorker?.controller != null });
   if (params.get('push') !== '1') return;
+  noteTap('launch-mark', { hash: window.location.hash });
   launchedFromPush = true;
   lastOpen = { hash: window.location.hash || FYP, at: Date.now() };
   const steps = launchSteps(window.location.hash || FYP);
@@ -77,9 +86,15 @@ export function settleLaunch(): void {
 }
 
 /** Go to a notification's screen from wherever the open app is, with For You under anything but a post. */
-export function openFromPush(hash: string): void {
-  if (isRepeat(lastOpen, hash, Date.now())) return;
+export function openFromPush(hash: string, from: 'message' | 'stash'): void {
+  if (isRepeat(lastOpen, hash, Date.now())) {
+    noteTap('repeat', { hash, from });
+    return;
+  }
   lastOpen = { hash, at: Date.now() };
+  noteTap('open', { hash, from, was: window.location.hash });
+  /* What is on screen a moment later: a screen that moved away again shows here. */
+  setTimeout(() => noteTap('shown', { hash: window.location.hash, screen: parseRoute(window.location.hash).screen }), 1_500);
   const target = parseRoute(hash);
   if (target.screen !== 'post' && target.screen !== 'feed' && parseRoute(window.location.hash).screen !== 'feed') pushEntry(FYP);
   if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -94,17 +109,28 @@ async function dropPending(): Promise<void> {
   }
 }
 
-/** A pending open the service worker left, if fresh; taken (deleted) as it is read. */
-async function takePending(): Promise<string | null> {
+/** A pending open the service worker left, if fresh. Read, not taken: it is deleted once its screen is open. */
+async function readPending(): Promise<string | null> {
   try {
-    const cache = await caches.open(OPEN_CACHE);
-    const hit = await cache.match(OPEN_KEY);
+    const hit = await (await caches.open(OPEN_CACHE)).match(OPEN_KEY);
     if (hit === undefined) return null;
-    await cache.delete(OPEN_KEY);
-    return freshOpen(await hit.json(), Date.now());
+    const left: unknown = await hit.json();
+    const hash = freshOpen(left, Date.now());
+    if (hash === null) noteTap('stash-old', { age: Date.now() - Number((left as { at?: unknown } | null)?.at) });
+    return hash;
   } catch {
     return null;
   }
+}
+
+/** Whether a tap is being opened now: one opened in the last few seconds, or one the worker left that no page has opened yet. */
+export function inHand(last: { readonly hash: string; readonly at: number } | null, pending: string | null, nowMs: number): boolean {
+  return pending !== null || (last !== null && nowMs - last.at >= 0 && nowMs - last.at < REPEAT_MS);
+}
+
+/** `inHand` for this page: what shared/new-version.ts asks before reloading for a newer build. */
+export async function tapInHand(): Promise<boolean> {
+  return inHand(lastOpen, await readPending(), Date.now());
 }
 
 /** Listen for taps while the app is alive, and pick up one that launched it at the wrong page. */
@@ -113,27 +139,32 @@ export function listenForOpens(): void {
   navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
     const d = e.data as { type?: unknown; hash?: unknown } | null;
     if (d?.type !== 'insidor-open' || typeof d.hash !== 'string') return;
+    noteTap('message', { hash: d.hash });
     void dropPending();
-    openFromPush(d.hash);
+    openFromPush(d.hash, 'message');
   });
   /* Messages that came while the page was starting are handed over now, not at the end of parsing. */
   navigator.serviceWorker.startMessages();
   const pending = () =>
-    void takePending().then((hash) => {
-      if (hash !== null) openFromPush(hash);
+    void readPending().then((hash) => {
+      if (hash === null) return;
+      noteTap('stash', { hash });
+      openFromPush(hash, 'stash');
+      void dropPending();
     });
   /* Each look is cheap (one cache read); the timers of an earlier look are dropped, never doubled. */
   let looks: ReturnType<typeof setTimeout>[] = [];
-  const lookAWhile = () => {
+  const lookAWhile = (why: string) => {
+    noteTap('look', { why });
     looks.forEach(clearTimeout);
     looks = LOOK_AFTER_MS.map((ms) => setTimeout(pending, ms));
   };
   if (launchedFromPush) void dropPending();
-  else lookAWhile();
+  else lookAWhile('launch');
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') lookAWhile();
+    if (document.visibilityState === 'visible') lookAWhile('visible');
   });
   window.addEventListener('pageshow', (e: PageTransitionEvent) => {
-    if (e.persisted) lookAWhile();
+    if (e.persisted) lookAWhile('pageshow');
   });
 }

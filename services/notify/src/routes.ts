@@ -14,6 +14,8 @@
  *                                    service said
  *   POST   /push/report { step, error, permission, standalone }   the phone says where turning push
  *                                    on stopped; logged, nothing stored (see below)
+ *   POST   /diag/taps { device, rows }   the phone's trail of a tapped notification; logged as one
+ *                                    `tap diagnostics` line, nothing stored (tap-diag.ts)
  *   PUT    /watch { stories }       the narratives this person stars, mirrored for alerts
  *   GET|PUT|DELETE /post-watch/:itemId    the post sheet's bell on one post (post-watch.ts)
  *
@@ -41,6 +43,7 @@ import { bellCount, parseList, readPage } from './list.ts';
 /** The rows drawn as a narrative's card in Notifications. */
 const NARRATIVE_ROWS = ['starred_speed', 'blowing_up', 'narrative_promoted'];
 import { postWatchRoute } from './post-watch.ts';
+import { tapRows } from './tap-diag.ts';
 
 export interface NotifyDeps {
   readonly db: Db;
@@ -197,6 +200,12 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
       device: short(r['device'], 60),
     });
     return json(200, { noted: true });
+  }
+
+  if (m === 'POST' && path === 'diag/taps') {
+    const rows = tapRows(req.body);
+    if (rows.length > 0) deps.log?.('tap diagnostics', { user: me.userId, device: short((req.body as Record<string, unknown> | null)?.['device'], 80), rows });
+    return json(200, { noted: rows.length });
   }
 
   if (m === 'POST' && path === 'push/test') {
