@@ -97,3 +97,17 @@ test('★ a window that refuses focus is not trusted to have heard: the app is o
   assert.equal(stale.posted.length, 1);
   assert.deepEqual(sw.opened, ['/?push=1#/token/solana%3AEgtzTrczSC6WmPas2hXqnuQ7Bo3LRUaZx9QZ1G7kpump']);
 });
+
+test('★ tap diagnostics: with the log made, a tap writes its steps; without it, nothing', async () => {
+  const front = win(`${ORIGIN}/#/`, { focused: true });
+  const sw = load([front]);
+  await sw.caches.api.open('insidor-taplog');
+  await sw.tap(COIN);
+  const rows = JSON.parse(sw.caches.stores.get('insidor-taplog')?.get('/__insidor_taplog/sw') ?? '[]') as { step: string; by: string }[];
+  assert.deepEqual(rows.map((r) => r.step), ['click', 'stash', 'windows', 'posted', 'focus']);
+  assert.ok(rows.every((r) => r.by === 'sw'));
+
+  const off = load([]);
+  await off.tap(COIN);
+  assert.equal(off.caches.stores.has('insidor-taplog'), false);
+});

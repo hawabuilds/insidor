@@ -35,9 +35,9 @@ import type { CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { fetchUnread } from './shared/api/following.ts';
 import { RankUp } from './features/people/RankUp.tsx';
-import { resavePush } from './features/alerts/push.ts';
+import { resavePush, standalone } from './features/alerts/push.ts';
 import { PushAsk } from './features/alerts/PushAsk.tsx';
-import { fetchAlertSettings, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { fetchAlertSettings, notifyCall, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
@@ -61,6 +61,7 @@ import { ScreenActive, ShownEntry } from './shared/screen-active.ts';
 import { preloadWhenQuiet } from './shared/preload.ts';
 import { later } from './shared/ui/later.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
+import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
 
 /*
  * ★ For You and Narratives come with the app; every other screen is its own chunk, fetched ahead
@@ -300,6 +301,8 @@ export function App() {
   useEffect(() => {
     if (signedIn) void fetchAlertSettings().then((s) => resavePush(s.push.on && s.push.configured ? s.push.publicKey : null), () => undefined);
   }, [signedIn]);
+  /* A tapped notification's trail, sent to notify once signed in (shared/tap-log.ts). */
+  useEffect(() => (signedIn ? startTapSending((body) => notifyCall('POST', '/diag/taps', body), deviceOf(navigator.userAgent, standalone())) : undefined), [signedIn]);
   /* The posts watched here, read from the alert service once signed in (shared/watched-posts.ts). */
   useEffect(() => {
     if (signedIn) watchedPosts.load();
@@ -326,6 +329,8 @@ export function App() {
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
   const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access, signUp: signUp.signUp });
+  /* Which screen the gate showed, for a tap's trail: a tap that lands behind the door shows here. */
+  useEffect(() => noteTap('gate', { gate }), [gate]);
   if (gate === 'holding') return <Holding />;
   const handle = wallet?.identity()?.handle ?? null;
   const signedInAs = handle !== null ? `@${handle}` : null;
