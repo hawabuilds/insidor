@@ -138,9 +138,9 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
   const { result, stored } = pass(source(seen, (lang) => ({ n: lang === 'en' ? 7 : 2, more: false })), P5, { fresh: memoryFreshClock() });
   const r = await result;
   assert.equal(r.failed, 0);
-  /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in the slow lane's (`slow.langs`, English). */
+  /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in the slow lane's (`slow.langs`: English, French, Japanese). */
   const lateLangs = P5.feed.slow.langs ?? LANGS;
-  assert.deepEqual(lateLangs, ['en']);
+  assert.deepEqual(lateLangs, ['en', 'fr', 'ja']);
   assert.equal(seen.length, 2 * LANGS.length + lateLangs.length);
   const windows = [...new Set(seen.map((s) => s.q.untilMs))];
   assert.equal(windows.length, 3);
@@ -148,7 +148,7 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
     const langs = seen.filter((s) => s.q.untilMs === window).map((s) => s.lang);
     assert.ok(JSON.stringify(langs) === JSON.stringify([...LANGS]) || JSON.stringify(langs) === JSON.stringify(lateLangs), `each band asks its languages in policy order: ${langs.join(',')}`);
   }
-  assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + 7);
+  assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + 7 + 2 * (lateLangs.length - 1));
   assert.equal(stored.filter((s) => [...new Set(s.langs)].sort().join() === [...LANGS].sort().join()).length, 2, 'one store per fresh band, holding every language');
 });
 
@@ -341,7 +341,7 @@ test('a quiet window is one billed page a language and the end', async () => {
 test('★ the slow lane asks its own languages, so its slices do not multiply with the searched ones', () => {
   const slices = slowSliceQueries({ all: 500, media: 500, slow: 10_000 }, NOW, P5);
   assert.ok(slices.length > 0);
-  for (const q of slices) assert.deepEqual(languageAsks(q).map((a) => a.lang), ['en'], 'one search a slice, English');
+  for (const q of slices) assert.deepEqual(languageAsks(q).map((a) => a.lang), ['en', 'fr', 'ja'], 'one search a slice in each of its own languages, not each searched one');
   const every = { ...P5, feed: { ...P5.feed, slow: { ...P5.feed.slow, langs: null } } };
   for (const q of slowSliceQueries({ all: 500, media: 500, slow: 10_000 }, NOW, every)) assert.equal(languageAsks(q).length, LANGS.length, 'unset: every searched language');
 });
