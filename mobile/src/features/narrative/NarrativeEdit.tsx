@@ -8,7 +8,8 @@
  *   COIN    Right coin (the coin the page shows is the narrative's), and Wrong coin, which saves
  *           at once and then offers the narrative's other coins to pick, or an address to paste,
  *           as the right one
- *   POSTS   Merge with another (pick the narrative it is the same as), Remove a post (pick it),
+ *   POSTS   Add a post (paste an X or TikTok post's link: it joins and stays, read first if we
+ *           do not hold it), Merge with another (pick the narrative it is the same as), Remove a post (pick it),
  *           and Split (tick the posts that are another story, then "Move N posts to a new
  *           narrative"; the server refuses none or all of them, and names the new one)
  *   and, on its own at the bottom, a red Not a narrative
@@ -38,7 +39,10 @@ import styles from './narrative.module.css';
 /** A pasted coin address: base58, as long as one is. */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split' | 'rename';
+type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split' | 'rename' | 'add';
+
+/** An X or TikTok post's link, as the server reads one (services/social owner-coin.ts `postIdOf`). */
+const POST_LINK = /^https?:\/\/(?:(?:www|mobile)\.)?(?:(?:x|twitter)\.com\/[^/]+\/status(?:es)?\/\d{5,25}|(?:(?:www|m)\.)?tiktok\.com\/.*\/(?:video|photo)\/\d{5,25})(?:[/?#].*)?$/i;
 
 /** The longest title the server takes (services/social owner-narrative.ts). */
 const MAX_TITLE = 80;
@@ -72,6 +76,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
               then={() => setPane('pick')}
             />
             <h3 className={styles['editLabel']}>Posts</h3>
+            <Row title="Add a post" sub="Paste an X or TikTok link" then={() => setPane('add')} />
             <Row title="Merge with another" sub="Same story, two narratives" then={() => setPane('merge')} />
             <Row title="Remove a post" sub="A post here doesn't belong" then={() => setPane('remove')} />
             <Row title="Split" sub="Some posts here are another story" then={() => setPane('split')} />
@@ -83,6 +88,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
         {pane === 'remove' ? <Remove story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'split' ? <Split story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'rename' ? <Rename story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'add' ? <AddPost story={story} onBack={() => setPane('main')} /> : null}
       </SheetBody>
     </Sheet>
   );
@@ -215,6 +221,24 @@ function Rename({ story, onBack }: { story: Story; onBack: () => void }) {
         <input className={styles['editInput']} placeholder="New title" value={typed} maxLength={MAX_TITLE} onChange={(e) => setTyped(e.target.value)} />
         {ok ? <Call key={title} call={{ action: 'rename', storyId: story.id, title }} label="Save" small /> : null}
       </div>
+    </div>
+  );
+}
+
+/** A post that belongs here: its link pasted, saved at once; it joins on the next pass and stays. */
+function AddPost({ story, onBack }: { story: Story; onBack: () => void }) {
+  const [pasted, setPasted] = useState('');
+  const link = pasted.trim();
+  const ok = POST_LINK.test(link);
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Add a post" />
+      <p className={styles['editNote']}>It joins this narrative within a few minutes and stays. A post we don't have yet is read first.</p>
+      <div className={styles['editRow']}>
+        <input className={styles['editInput']} placeholder="Paste the post's link" value={pasted} onChange={(e) => setPasted(e.target.value)} spellCheck={false} autoCapitalize="off" inputMode="url" />
+        {ok ? <Call key={link} call={{ action: 'add_post', storyId: story.id, postUrl: link }} label="Add" small /> : null}
+      </div>
+      {link !== '' && !ok ? <p className={styles['editNote']}>Paste the full link to an X or TikTok post.</p> : null}
     </div>
   );
 }

@@ -1,13 +1,14 @@
 -- 0127_narrative_owner_edits.sql
 --
--- THE OWNER NAMES A NARRATIVE HIMSELF.
+-- THE OWNER NAMES A NARRATIVE HIMSELF, AND ADDS A POST TO IT.
 --
 -- ── WHY ──────────────────────────────────────────────────────────────────
 --
 -- The owner, 2026-10-23: the country meme wars on X (China vs Turkey, France vs Japan) want one name
 -- he chooses, and the cheap titler re-titles a narrative every time it grows by half, so a name he
 -- typed would last one pass. His name must be the one the board, the page, the posts' tags and the
--- pushes say, and the titler must never write over it.
+-- pushes say, and the titler must never write over it. And a post that belongs in one (a quote-tweet
+-- of the war in another language, a TikTok of it) is often never grouped there: he pastes its link.
 --
 -- ── WHAT IS ADDED ────────────────────────────────────────────────────────
 --
@@ -20,6 +21,12 @@
 --                           'owner', so no pass can overwrite his title, however much it grows.
 --                           The people role is given UPDATE on those three columns only (and
 --                           `title_posts`, so the count the title was written for stays true).
+-- owner_feedback 'add_post' a narrative call: `other_id` the post he added, `members` the narrative's
+--                           posts then (read by the server, as every narrative call). The runner moves
+--                           the post into the narrative (core group/narrative-keep.ts `ownerAdds`) once
+--                           it is stored — a link to a post we do not hold is queued as a missed post
+--                           (0055) and read within a minute — and the pins keep it there. Only his own
+--                           later "Remove this post" or "Split" of it takes it out.
 --
 -- What breaks if changed carelessly: the owner_feedback check is dropped and made again whole (as
 -- 0108 did); a verdict left out of this copy stops being writable. And the column grant: widening it
@@ -35,6 +42,7 @@ alter table internal.owner_feedback add constraint owner_feedback_check check (
         (verdict = 'not_narrative' and coin_address is null)
      or (verdict = 'merge' and other_id is not null and coin_address is null)
      or (verdict = 'remove_post' and other_id is not null and coin_address is null)
+     or (verdict = 'add_post' and other_id is not null and coin_address is null)
      or (verdict = 'split' and other_id is not null and coin_address is null and coalesce(cardinality(members), 0) >= 1)
      or (verdict in ('right', 'wrong') and coin_address is not null)
      or (verdict = 'cleared' and coin_address is null)))

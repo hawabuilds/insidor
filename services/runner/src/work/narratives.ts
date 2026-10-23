@@ -11,7 +11,8 @@
  * add new posts to the one narrative it holds or be a new one (core group/narrative-keep.ts); a
  * narrative no group touched is not written at all. Only the owner merges (his "Merge with…"
  * moves its posts to the one he chose), splits (his "Split" moves the posts he picked to a new
- * narrative, written this pass and titled by step 7 like any new one) and removes posts, and his
+ * narrative, written this pass and titled by step 7 like any new one), removes posts and adds them
+ * (his "Add a post" moves the post into the narrative and the pins keep it there), and his
  * "Not a narrative" hides one.
  *
  * One pass, in order:
@@ -89,6 +90,7 @@ import {
   subjectPosts,
   narrativeShown,
   narrativeStanding,
+  ownerAdds,
   ownerMerges,
   ownerSplits,
   postPicture,
@@ -458,7 +460,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const calls = foldNarrativeCalls(callRows);
     /* ★ WHAT IS ALREADY MADE STAYS MADE: each window post's narrative, the owner's merges and removals. */
     const pinnedNow = await deps.repo.ofPosts(used.map((r) => r.itemId));
-    const callIds = callRows.flatMap((c) => ((c.verdict === 'merge' || c.verdict === 'split') && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' ? [c.narrativeId] : []));
+    const byWindow = new Set(used.map((r) => r.itemId));
+    const callIds = callRows.flatMap((c) => ((c.verdict === 'merge' || c.verdict === 'split') && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' || c.verdict === 'add_post' ? [c.narrativeId] : []));
     const states = new Map((await deps.repo.states([...new Set([...callIds, ...pinnedNow.values()])])).map((s) => [s.id, { state: s.state, mergedInto: s.mergedInto }] as const));
     const merges = ownerMerges(callRows, states);
     for (const m of merges) states.set(m.from, { state: 'merged', mergedInto: m.into });
@@ -471,6 +474,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const splits = ownerSplits(callRows, states);
     for (const sp of splits.pending) for (const m of sp.members) if (pinned.get(m) === sp.from) pinned.set(m, sp.into);
     const removedFrom = outOfEither(ownerRemoved, splits.movedFrom);
+    /* ★ The owner's adds: each post he added belongs to where his narrative leads now; only the ones
+       not there yet are written (a post still queued for reading waits, the write skips it), and a
+       window post among them is pinned there, so this pass's regroup groups it as that narrative's. */
+    const standingAdds = ownerAdds(callRows, states);
+    const addedWhere = standingAdds.length === 0 ? new Map<string, string>() : await deps.repo.ofPosts(standingAdds.map((a) => a.itemId));
+    const added = standingAdds.filter((a) => addedWhere.get(a.itemId) !== a.into);
+    for (const a of standingAdds) if (pinned.has(a.itemId) || byWindow.has(a.itemId)) pinned.set(a.itemId, a.into);
 
     const posts: NarrativePost[] = used.map(asNarrativePost);
     const formed = groupNarratives({ posts, pairs, calls, previous: new Map(), single, vectors: postVectors, pinned }, p);
@@ -580,7 +590,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       withEarly.push({ id, members: all, added: joined, early: starts, anchor: s.anchor, newestPostAtMs: Math.max(s.newestPostAtMs ?? 0, newestJoined) || null, shown: s.shown, changed: true });
     }
     return {
-      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending },
+      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending, added },
       posts: byId,
       reach: readings.latest,
       stored: storedOf,

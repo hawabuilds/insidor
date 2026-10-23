@@ -159,7 +159,9 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
     if (!n.shown) return null;
     /* A post the owner removed from beside these posts is off the list at once, before the regroup. */
     const removed = (m: string) => [...(calls.removed.get(m) ?? [])].some((x) => x !== m && n.members.includes(x));
-    const listed = n.members.filter((m) => good(byId.get(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
+    /* ★ A post the owner added ("Add a post", 0127) is listed whatever its kind or the shill rule say; only his own "Not a meme" takes it off. */
+    const ownerAdded = (m: string) => calls.added.has(m) && byId.get(m) !== undefined && byId.get(m)?.ownerCall !== 'not';
+    const listed = n.members.filter((m) => (good(byId.get(m)) || ownerAdded(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
     const single = n.members.length === 1 && n.shown;
     /* ★ Two accounts at least (the owner, 2026-10-18): one account's two posts are not a narrative; a
