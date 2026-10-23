@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { coinEvents, fypCoinEvents, newPromoted, newRising, risingRows, settledCoins, viewGain, type BoardStory, type RisingRow } from './pipeline.ts';
+import { coinEvents, fypCoinEvents, fypCoinPasses, newPromoted, newRising, risingRows, settledCoins, viewGain, type BoardStory, type RisingRow } from './pipeline.ts';
 import type { Db } from './deliver.ts';
 
 /* Recorded from /rising/fyp and /board/default frames, trimmed to the fields the alerts read. */
@@ -126,4 +126,14 @@ test('the live frame is read as versions, and a row whole only when it was rewri
   frame.delete('x:1');
   assert.deepEqual(await read(), ['x:2:two, rewritten']);
   assert.deepEqual(whole[1], ['x:2']);
+});
+
+test('★ a coin found is listed only when the gate passes: a launchpad coin launched after we had the post', () => {
+  const e = { itemId: 'x:1', address: 'A' };
+  const HAD = 1_792_500_000_000;
+  const at = (launchedMs: number | null) => new Map([['x:1|A', { venueId: 'solana:pumpfun', origin: 'live_stream', launchedMs, hadPostMs: HAD }]]);
+  assert.equal(fypCoinPasses(e, at(HAD + 60_000)), true);
+  assert.equal(fypCoinPasses(e, at(HAD - 7 * 86_400_000)), false, '"$ANATOLY launched 7d before @mert\'s post"');
+  assert.equal(fypCoinPasses(e, at(null)), false, '"$Warhound has the name of…": no launch time, no claim');
+  assert.equal(fypCoinPasses(e, new Map()), false, 'a coin the read did not answer for');
 });
