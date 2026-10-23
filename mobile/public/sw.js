@@ -33,7 +33,8 @@
  * ★ A TAP OPENS THE RIGHT SCREEN WHETHER THE APP IS CLOSED, IN THE BACKGROUND OR OPEN.
  *   open or in the background  the window is sent { type: 'insidor-open', hash } and focused; the
  *                              page goes there itself (features/alerts/push-open.ts), with For You
- *                              under it so back lands there
+ *                              under it so back lands there. A window that refuses focus is not
+ *                              trusted to have heard: the app is opened at the url as if closed
  *   closed                     a new window at `/?push=1#/…`; the page reads the mark on launch
  *   and either way             the hash is left in a small cache for a minute, for a launch that
  *                              comes up at the start page instead of the url (iPhone has done so);
@@ -175,15 +176,17 @@ self.addEventListener('notificationclick', (event) => {
         /* No cache: the message or the mark still carries it. */
       }
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      const ours = windows.filter((w) => new URL(w.url).origin === self.location.origin);
+      /* The window on screen first, then a visible one: a page left behind by an earlier launch can still be listed. */
+      const open = ours.find((w) => w.focused) ?? ours.find((w) => w.visibilityState === 'visible') ?? ours[0];
       if (open) {
         open.postMessage({ type: 'insidor-open', hash });
         try {
           await open.focus();
+          return;
         } catch {
-          /* Some platforms refuse focus from here; the page still moved. */
+          /* Refused (iPhone can list a window it will not bring forward): opened afresh below. */
         }
-        return;
       }
       await self.clients.openWindow(`/?push=1${hash}`);
     })(),
