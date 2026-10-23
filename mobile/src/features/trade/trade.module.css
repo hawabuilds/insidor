@@ -10,13 +10,16 @@
   position: fixed;
   left: 50%;
   bottom: calc(90px + env(safe-area-inset-bottom));
-  z-index: 30;
+  /* Over everything on the page, the stuck Trades / Comments / Info row (35) included: the bar was
+     drawn under that row as it passed, and looked to slide into the headings (the owner, 2026-10-23). */
+  z-index: 40;
   width: 100%;
   max-width: 480px;
   padding: 0 var(--gutter);
   transform: translateX(-50%);
   pointer-events: none;
 }
+
 
 .panel {
   pointer-events: auto;
