@@ -4244,6 +4244,16 @@ export interface NarrativePolicy {
    *   missed  `missedJudge`: the owner's pasted post is judged by the live post judge once, whatever
    *           its age; `missedLookbackMs`: a pasted post this recent takes part in the regroup
    *           (and every rule above) though it is older than the regroup's window
+   *
+   * policy.v149 (the owner, 2026-10-23: "they should all come under one narrative" — the Yotsuya
+   * station goats, three Japanese narratives quoting nothing):
+   *   words   `wordsOn`: two narratives also merge when they say at least `wordsMinShared` rare words
+   *           between them (narrative-phrase.ts `storyWords`: a phrase, or a two-character piece of
+   *           a han or katakana run; rare at `phraseMaxShare` of the posts read, and said by at most
+   *           `wordsMaxNarratives` narratives, and by at least `wordsMinCoverage` of each side's posts),
+   *           their averages are at `wordsMeaning`, and they were
+   *           first shown within `wordsFormedWithinMs` of each other. Never on a narrative the owner
+   *           made a call on, nor across posts he kept apart
    */
   readonly origin: {
     readonly on: boolean;
@@ -4271,6 +4281,12 @@ export interface NarrativePolicy {
     readonly phraseMeaning: number;
     readonly missedJudge: boolean;
     readonly missedLookbackMs: number;
+    readonly wordsOn: boolean;
+    readonly wordsMinShared: number;
+    readonly wordsMaxNarratives: number;
+    readonly wordsMinCoverage: number;
+    readonly wordsMeaning: number;
+    readonly wordsFormedWithinMs: number;
   };
 }
 
@@ -4977,7 +4993,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v148',
+  version: 'policy.v149',
 
   admit: {
     maxAgeMin: 240,
@@ -6983,6 +6999,19 @@ const POLICY_V1: Policy = {
       phraseMeaning: 0.6, // the regroup's own shared-name bar (`nameMeaning`); @rayaneAlg00 is 0.66
       missedJudge: true, // one live judge call a pasted post, about $0.0015
       missedLookbackMs: 604_800_000, // seven days, as the early posts
+      /* ── policy.v149: the merge on the story's own words (the Yotsuya goats) ──
+         Replayed 2026-10-23 over five days (tools/narrative-origin.ts, 748 live narratives): with no
+         share-of-posts bar, 28 merges, most wrong — generic pairs ("500k·views", "check·comments")
+         that one post of a 266-post blob says pulled a dozen stories into it. With `wordsMinCoverage`
+         0.34: the goats alone, on two words. At 0.25: the goats (ツ谷 ヤギ 四ツ 谷駅 除草, alike 0.78) and
+         "GTA 6 Release Could Cost Billion" into "Grand Theft Auto VI Release Approaches" (0.76, the
+         same $1B story is already in the bigger one). At 0.2, two more, both one story. 0.25 kept. */
+      wordsOn: true,
+      wordsMinShared: 2, // two rare words between them (the goats share five)
+      wordsMaxNarratives: 3, // a word four live stories say marks none of them
+      wordsMinCoverage: 0.25, // said by a quarter of each side's posts: its own word, not one post in a blob
+      wordsMeaning: 0.6, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
+      wordsFormedWithinMs: 345_600_000, // four days
     },
   },
 

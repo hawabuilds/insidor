@@ -71,7 +71,7 @@ export { joinExisting, sameSubject, sameSubjectMerges, subjectName, subjectOf, s
 export type { NarrativeSubject, SubjectPost } from './group/narrative-same.ts';
 /* The starting post, one story across languages, and the viral floor (group/narrative-origin.ts). */
 export { barWindowMs, linkReach, standsOnViralPost, traceStories, withReproductions } from './group/narrative-origin.ts';
-export { contentWords, phrasesOf, rarePhrases } from './group/narrative-phrase.ts';
+export { cjkPieces, contentWords, phrasesOf, rarePhrases, storyWords } from './group/narrative-phrase.ts';
 export type { OriginInput, OriginNarrative, OriginTie, StoryMerge, StoryPlan, TracedPost } from './group/narrative-origin.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';

@@ -33,7 +33,10 @@
  *           time — not only before its first post (see `joinLoose`).
  *   merge   two narratives formed within `formedWithinMs`, whose averages are at `mergeMeaning`,
  *           are one story when they quote the same judged starting post, or when quotes join them
- *           through at least `minLinkPosts` of their posts. The newer merges into the older.
+ *           through at least `minLinkPosts` of their posts — or (policy.v149, `words*`) when both
+ *           say the same rare words of their own, are alike at `wordsMeaning` and formed within
+ *           `wordsFormedWithinMs` (the Yotsuya goats, see `wordsEvidence`). The newer merges into the
+ *           older, so the merged story's first post is the earliest of all its sides.
  *
  * ★ NO MERGE ON A NAME OR A COIN ALONE. Measured 2026-10-23 over five days of live narratives: a
  * shared coin joined "France Protests" (212 posts) to "Viral Cats and Dogs" (82) and a dozen more
@@ -54,7 +57,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { pairKey, type NarrativeCalls, type NarrativePost } from './narrative.ts';
-import { phrasesOf, rarePhrases } from './narrative-phrase.ts';
+import { phrasesOf, rarePhrases, storyWords } from './narrative-phrase.ts';
 import { subjectName } from './narrative-same.ts';
 import { clearsReachBar, type ReachLevel } from '../qualify/reach-bar.ts';
 
@@ -118,9 +121,11 @@ export interface StoryMerge {
   readonly from: string;
   readonly into: string;
   readonly meaning: number;
-  readonly why: 'shared_start' | 'quotes';
-  /** The posts that tie them: the shared start, or the posts the quotes join. */
+  readonly why: 'shared_start' | 'quotes' | 'words';
+  /** The posts that tie them: the shared start, the posts the quotes join, or the posts saying the shared words. */
   readonly via: readonly string[];
+  /** `words` only: the rare words both narratives say. */
+  readonly words?: readonly string[];
 }
 
 export interface TracedPost {
@@ -258,6 +263,15 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
     if (Math.abs(xa.formedAtMs - xb.formedAtMs) > o.formedWithinMs) return false;
     return e.shared.size > 0 || e.posts.size >= o.minLinkPosts;
   });
+  /* ★ THE MERGE ON THE STORY'S OWN WORDS (`origin.words*`, policy.v149) — see `wordsEvidence`. */
+  const said = wordsEvidence(input, p);
+  type Candidate = { readonly a: string; readonly b: string; readonly why: StoryMerge['why']; readonly bar: number; readonly via: readonly string[]; readonly words?: readonly string[] };
+  const candidates: Candidate[] = [
+    ...allowed.map((e): Candidate => (e.shared.size > 0 ? { a: e.a, b: e.b, why: 'shared_start', bar: o.mergeMeaning, via: [...e.shared].sort() } : { a: e.a, b: e.b, why: 'quotes', bar: o.mergeMeaning, via: [...e.posts].sort() })),
+    ...said.map((w): Candidate => ({ a: w.a, b: w.b, why: 'words', bar: o.wordsMeaning, via: w.posts, words: w.words })),
+  ];
+  /* Strongest first: a shared start, then the links, then the words. */
+  const STRENGTH: readonly StoryMerge['why'][] = ['shared_start', 'quotes', 'words'];
   const into = new Map<string, string>();
   const lead = (id: string): string => {
     let at = id;
@@ -268,25 +282,27 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
   const merges: StoryMerge[] = [];
   /* ★ ONE MERGE AT A TIME, CLOSENESS READ ON WHAT EACH SIDE HAS BECOME: "Lele Starts China
      ... War" is 0.53 from "Cat Named Calajo" alone and 0.69 from the meme war it is part of, once Calajo
-     and the others have joined it. The strongest pair goes first (a shared start, then the closest).
-     Each round merges two narratives into one, so it ends after at most as many rounds as pairs. */
-  for (let round = 0; round < allowed.length; round += 1) {
-    let best: { a: string; b: string; meaning: number; why: StoryMerge['why']; via: string[] } | null = null;
-    for (const e of allowed) {
+     and the others have joined it. The strongest pair goes first (a shared start, then quotes, then
+     words; the closest within each). Each round merges two narratives into one, so it ends after at
+     most as many rounds as pairs. */
+  for (let round = 0; round < candidates.length; round += 1) {
+    let best: (Candidate & { meaning: number }) | null = null;
+    for (const e of candidates) {
       const a = lead(e.a);
       const b = lead(e.b);
       if (a === b) continue;
+      /* The words' merge reads the owner's calls on each side as it now stands: a side may have grown by an earlier merge. */
+      if (e.why === 'words' && keptApart(input.calls, membersOf.get(a) ?? [], membersOf.get(b) ?? [])) continue;
       const va = averageOf(membersOf.get(a) ?? [], input.vectors);
       const vb = averageOf(membersOf.get(b) ?? [], input.vectors);
       if (va === null || vb === null) continue;
       const meaning = dot(va, vb);
-      if (meaning < o.mergeMeaning) continue;
-      const why: StoryMerge['why'] = e.shared.size > 0 ? 'shared_start' : 'quotes';
+      if (meaning < e.bar) continue;
       const better =
         best === null ||
-        (why === 'shared_start' && best.why === 'quotes') ||
-        (why === best.why && (meaning > best.meaning || (meaning === best.meaning && `${a} ${b}` < `${best.a} ${best.b}`)));
-      if (better) best = { a, b, meaning, why, via: why === 'shared_start' ? [...e.shared].sort() : [...e.posts].sort() };
+        STRENGTH.indexOf(e.why) < STRENGTH.indexOf(best.why) ||
+        (e.why === best.why && (meaning > best.meaning || (meaning === best.meaning && `${a} ${b}` < `${best.a} ${best.b}`)));
+      if (better) best = { ...e, a, b, meaning };
     }
     if (best === null) break;
     const ma = membersOf.get(best.a) ?? [];
@@ -296,7 +312,7 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
     const newer = older === best.a ? best.b : best.a;
     into.set(newer, older);
     membersOf.set(older, [...(membersOf.get(older) ?? []), ...(membersOf.get(newer) ?? [])]);
-    merges.push({ from: newer, into: older, meaning: best.meaning, why: best.why, via: best.via });
+    merges.push({ from: newer, into: older, meaning: best.meaning, why: best.why, via: [...best.via], ...(best.words === undefined ? {} : { words: [...best.words] }) });
   }
 
   /* ── trace: each narrative's ties, then given to where it leads ── */
@@ -385,6 +401,84 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
   const at = (t: TracedPost) => atOf(t.itemId) ?? 0;
   const kept = new Map([...starts].map(([id, list]) => [id, list.sort((a, b) => TIE_ORDER[a.tie] - TIE_ORDER[b.tie] || at(a) - at(b) || a.itemId.localeCompare(b.itemId)).slice(0, o.maxPerNarrative).sort((a, b) => at(a) - at(b) || a.itemId.localeCompare(b.itemId))] as const));
   return { merges, starts: kept, joins: joinLoose(input, p, { lead, membersOf, starts: kept, leadAverage, ownerKeepsOut, refs: traceRefs }) };
+}
+
+/** Whether the owner kept any post of one side apart from, or removed it from beside, a post of the other. */
+function keptApart(calls: NarrativeCalls, as: readonly string[], bs: readonly string[]): boolean {
+  return as.some((x) => bs.some((y) => calls.apart.has(pairKey(x, y)) || (calls.removed.get(x)?.has(y) ?? false) || (calls.removed.get(y)?.has(x) ?? false)));
+}
+
+/**
+ * ★ ONE STORY BY ITS OWN WORDS (`origin.words*`, policy.v149; the owner, 2026-10-23: "they should all
+ * come under one narrative"). JR East posted that goats were weeding in front of Yotsuya station (19
+ * Oct, Japanese); by 23 Oct the posts about it sat in three narratives ("Japanese Goats Hired as
+ * Grass Keepers", "Company Goats Become Office Pets", "JR Goats Work as Station Mascots"), all judged
+ * yes, none quoting another. What ties them is what they SAY: ヤギ (goat), 除草 (weeding), 四ツ谷.
+ *
+ * The pairs of narratives that may merge on words, before any closeness (the caller holds each to
+ * `wordsMeaning` on their averages, as each side stands after the merges before it):
+ *
+ *   rare      a word (narrative-phrase.ts `storyWords`: a phrase, or a two-character piece of a
+ *             Japanese or Chinese run) is said by at most `phraseMaxShare` of the posts read, in their
+ *             words or their stored English, and by at most `wordsMaxNarratives` of the narratives —
+ *             a word many stories say marks none of them
+ *   own       each side says it in at least `wordsMinCoverage` of its posts: one post of a 266-post
+ *             blob saying "500k·views" does not make it the blob's word (measured: without this, a
+ *             dozen stories were pulled into two blobs on such pairs)
+ *   shared    the two narratives say at least `wordsMinShared` such words between them
+ *   formed    within `wordsFormedWithinMs` of each other (first shown)
+ *   calls     neither is one the owner made a call on, and no post of one is a post he kept apart
+ *             from, or removed from beside, a post of the other
+ *
+ * ★ STILL NO MERGE ON A NAME OR A COIN. A judge's name or a coin's name is one word given to the posts;
+ * these are several rare words the posts themselves say, AND close in meaning, AND days apart at most.
+ */
+function wordsEvidence(input: OriginInput, p: Policy): readonly { readonly a: string; readonly b: string; readonly words: readonly string[]; readonly posts: readonly string[] }[] {
+  const o = p.narrative.origin;
+  if (!o.on || !o.mergeOn || !o.wordsOn || input.narratives.length < 2) return [];
+  const byId = new Map(input.narratives.map((x) => [x.id, x] as const));
+  const wordsOf = new Map<string, ReadonlySet<string>>();
+  for (const [id, post] of input.posts) wordsOf.set(id, storyWords([post.text, input.english?.get(id) ?? ''], p));
+  const rare = rarePhrases(wordsOf.values(), p);
+  /* Which narratives say each rare word, and by which of their posts. */
+  const sayers = new Map<string, Map<string, string[]>>();
+  for (const x of input.narratives) {
+    for (const m of x.members) {
+      for (const w of wordsOf.get(m) ?? []) {
+        if (!rare.has(w)) continue;
+        const per = sayers.get(w) ?? new Map<string, string[]>();
+        per.set(x.id, [...(per.get(x.id) ?? []), m]);
+        sayers.set(w, per);
+      }
+    }
+  }
+  const pairs = new Map<string, { a: string; b: string; words: Set<string>; posts: Set<string> }>();
+  for (const [w, per] of sayers) {
+    if (per.size < 2 || per.size > o.wordsMaxNarratives) continue;
+    /* A narrative's own word: said by at least `wordsMinCoverage` of its posts, not one post in a blob. */
+    const ids = [...per.keys()].filter((id) => (per.get(id)?.length ?? 0) >= o.wordsMinCoverage * (byId.get(id)?.members.length ?? Number.POSITIVE_INFINITY)).sort();
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) {
+        const a = ids[i] ?? '';
+        const b = ids[j] ?? '';
+        const k = pairKey(a, b);
+        const e = pairs.get(k) ?? { a, b, words: new Set<string>(), posts: new Set<string>() };
+        e.words.add(w);
+        for (const m of [...(per.get(a) ?? []), ...(per.get(b) ?? [])]) e.posts.add(m);
+        pairs.set(k, e);
+      }
+    }
+  }
+  return [...pairs.values()]
+    .filter((e) => {
+      const xa = byId.get(e.a);
+      const xb = byId.get(e.b);
+      if (xa === undefined || xb === undefined || e.words.size < o.wordsMinShared) return false;
+      if (input.untouchable.has(e.a) || input.untouchable.has(e.b)) return false;
+      if (Math.abs(xa.formedAtMs - xb.formedAtMs) > o.wordsFormedWithinMs) return false;
+      return !keptApart(input.calls, xa.members, xb.members);
+    })
+    .map((e) => ({ a: e.a, b: e.b, words: [...e.words].sort(), posts: [...e.posts].sort() }));
 }
 
 /**

@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
 
-import { contentWords, phrasesOf, rarePhrases } from './narrative-phrase.ts';
+import { cjkPieces, contentWords, phrasesOf, rarePhrases, storyWords } from './narrative-phrase.ts';
 
 test('French: accents folded, function words out, links out', () => {
   assert.deepEqual(contentWords('Les japonais quand tu leurs dit que végéta est algérien https://t.co/x', P), ['japonais', 'vegeta', 'algerien']);
@@ -31,4 +31,15 @@ test('a phrase only one post says, or that many posts say, is not rare', () => {
   assert.ok(rare.has('a·b'));
   assert.ok(!rare.has('c·d'));
   assert.ok(!rare.has('e·f'));
+});
+
+test('★ a han or katakana run in two-character pieces: 四ツ谷駅 and JR四ツ谷駅前 meet, 除草作業 and 除草目的 meet', () => {
+  const a = cjkPieces(['四ツ谷駅にヤギが登場、除草作業']);
+  const b = cjkPieces(['JR四ツ谷駅前のヤギ、除草目的 https://t.co/x @JREast']);
+  for (const w of ['四ツ', 'ツ谷', '谷駅', 'ヤギ', '除草']) {
+    assert.ok(a.has(w), w);
+    assert.ok(b.has(w), w);
+  }
+  assert.ok(![...b].some((w) => /[A-Za-z]/.test(w)), 'Latin letters are not pieces');
+  assert.ok(storyWords(['végéta est algérien'], P).has('algerien·vegeta'), 'the phrases are story words too');
 });
