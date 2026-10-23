@@ -64,7 +64,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { barWindowMs, coinCallFor, foldNarrativeCalls, linkReach, standsOnViralPost, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { barWindowMs, coinCallFor, foldNarrativeCalls, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -324,10 +324,15 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   /* ★ "STARTED BY" ONLY ON PROOF (project.ts `projectEarliestPost`): the posts each listed post quotes
      or links, `origin.maxHops` steps out, so a narrative whose later posts quote its earliest one says
      so. Read by primary key; a post never read with its links proves nothing. */
+  /* ★ And what each quotes (public.item `reproduction_of`, policy.v145): a quote names its quoted post in
+     the payload, not among its links, so @liistrk's post, quoted by the Japanese and French posts it set
+     off, proves "Started by" only through these. */
   const refs = new Map<string, readonly string[]>();
   let front: readonly string[] = ids;
   for (let hop = 0; hop < policy.narrative.origin.maxHops && front.length > 0; hop += 1) {
-    const got = await new PgNarrativeRepo(db).references(front.filter((id) => !refs.has(id)));
+    const ask = front.filter((id) => !refs.has(id));
+    const repo = new PgNarrativeRepo(db);
+    const got = withReproductions(await repo.references(ask), await repo.quotes(ask));
     for (const [k, v] of got) refs.set(k, v);
     front = [...new Set([...got.values()].flat())].filter((id) => !refs.has(id));
   }
