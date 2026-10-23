@@ -226,3 +226,93 @@ test('★ a loose post joins only when viral, close enough, and quoting the stor
   });
   assert.equal(traceStories(common, P).joins?.size ?? 0, 0);
 });
+
+/* ── policy.v149: the merge on the story's own words — the Yotsuya station goats, 19–23 Oct ── */
+
+/* Three Japanese narratives about JR East's weeding goats at Yotsuya station, quoting nothing, as they
+   stood on 23 Oct; @JREast_official's post (19 Oct) is the first. `o1…` are unrelated posts read beside
+   them, so a word is rare among many, as in the pass. */
+function goats(over: Partial<OriginInput> = {}): OriginInput {
+  const text = (itemId: string, atMs: number, body: string): NarrativePost => ({ ...post(itemId, atMs), text: body });
+  const posts = [
+    text('jre', T0 - 4 * DAY, '四ツ谷駅にヤギが登場 環境にやさしい除草方法として、ヤギによる除草を試験的に行っています'),
+    text('fuu', T0 - 2 * DAY, '“勤務するヤギ”に通行人も夢中 山手線内側の四ツ谷駅前で初めて除草作業'),
+    text('tks', T0 - DAY, '夫の会社、ヤギの除草ブームに乗っかって2匹のヤギをレンタルしたけど'),
+    text('lov', T0 - 20 * H, '四谷のオフィス街に除草目的のヤギが投入されててめっちゃ和む'),
+    text('mim', T0 - 2 * H, 'JR四ツ谷駅のレンタルヤギさん 駅周辺の除草のお仕事中'),
+    ...Array.from({ length: 1_000 }, (_, i) => text(`o${i}`, T0, `unrelated post number ${i} about the market today`)),
+  ];
+  const narratives = [
+    { id: 'n-keep', members: ['fuu'], formedAtMs: T0 - DAY },
+    { id: 'n-pets', members: ['jre', 'tks'], formedAtMs: T0 },
+    { id: 'n-jr', members: ['lov', 'mim'], formedAtMs: T0 + 6 * H },
+  ];
+  return {
+    narratives,
+    posts: new Map(posts.map((x) => [x.itemId, x] as const)),
+    narrativeOf: new Map(narratives.flatMap((x) => x.members.map((m) => [m, x.id] as const))),
+    refs: new Map(),
+    eligible: new Set(),
+    shortlist: new Map(),
+    vectors: new Map([['jre', unit(0)], ['fuu', unit(0.4)], ['tks', unit(0.3)], ['lov', unit(0.2)], ['mim', unit(0.1)]]),
+    pictures: new Map(),
+    calls: foldNarrativeCalls([]),
+    untouchable: new Set(),
+    ...over,
+  };
+}
+const leadOf = (plan: ReturnType<typeof traceStories>, id: string): string => {
+  let at = id;
+  for (let m = plan.merges.find((x) => x.from === at); m !== undefined; m = plan.merges.find((x) => x.from === at)) at = m.into;
+  return at;
+};
+
+test('★ the Yotsuya goats: three narratives quoting nothing become one, started by JR East', () => {
+  const plan = traceStories(goats(), P);
+  const leads = new Set(['n-keep', 'n-pets', 'n-jr'].map((id) => leadOf(plan, id)));
+  assert.deepEqual([...leads], ['n-pets'], 'one story, under the narrative holding the first post (JR East, 19 Oct)');
+  assert.ok(plan.merges.every((m) => m.why === 'words'));
+  assert.ok(plan.merges.some((m) => (m.words ?? []).includes('ヤギ') && (m.words ?? []).includes('除草')), 'goat and weeding, in any run they sit in');
+});
+
+test('★ words alone are not enough: one shared word, far in meaning, days apart, or said by many stories', () => {
+  const one: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, wordsMinShared: 99 } } };
+  assert.deepEqual(traceStories(goats(), one).merges, []);
+  const far = goats({ vectors: new Map([...goats().vectors, ['lov', unit(1.6)], ['mim', unit(1.7)]]) });
+  assert.ok(!traceStories(far, P).merges.some((m) => m.from === 'n-jr' || m.into === 'n-jr'), 'not alike: stays apart');
+  const late = goats({ narratives: goats().narratives.map((x) => (x.id === 'n-jr' ? { ...x, formedAtMs: T0 + 5 * DAY } : x)) });
+  assert.ok(!traceStories(late, P).merges.some((m) => m.from === 'n-jr' || m.into === 'n-jr'), 'formed more than four days apart');
+  /* The same words said by four more narratives (far in meaning, so never merged themselves) mark none of them. */
+  const many = goats();
+  const others = ['x1', 'x2', 'x3', 'x4'].map((id) => ({ id: `n-${id}`, members: [id], formedAtMs: T0 }));
+  const crowded: OriginInput = {
+    ...many,
+    narratives: [...many.narratives, ...others],
+    posts: new Map([...many.posts, ...others.map((x) => [x.members[0] ?? '', { ...post(x.members[0] ?? '', T0), text: '四ツ谷駅のレンタルヤギが除草' }] as const)]),
+    narrativeOf: new Map([...many.narrativeOf, ...others.map((x) => [x.members[0] ?? '', x.id] as const)]),
+    vectors: new Map([...many.vectors, ...others.map((x) => [x.members[0] ?? '', unit(2.5)] as const)]),
+  };
+  assert.deepEqual(traceStories(crowded, P).merges, []);
+});
+
+test('★ a word one post in a big narrative says is not that narrative\'s word', () => {
+  const blob = goats();
+  const filler = Array.from({ length: 12 }, (_, i) => `o${i}`);
+  const input: OriginInput = {
+    ...blob,
+    narratives: blob.narratives.map((x) => (x.id === 'n-jr' ? { ...x, members: [...x.members, ...filler] } : x)),
+    narrativeOf: new Map([...blob.narrativeOf, ...filler.map((m) => [m, 'n-jr'] as const)]),
+    vectors: new Map([...blob.vectors, ...filler.map((m) => [m, unit(0.15)] as const)]),
+  };
+  assert.ok(!traceStories(input, P).merges.some((m) => m.from === 'n-jr' || m.into === 'n-jr'));
+});
+
+test('★ never against the owner: a narrative he called, or posts he kept apart, stay apart', () => {
+  const called = traceStories(goats({ untouchable: new Set(['n-jr']) }), P);
+  assert.ok(!called.merges.some((m) => m.from === 'n-jr' || m.into === 'n-jr'));
+  const apart = foldNarrativeCalls([{ id: 1, atMs: T0, narrativeId: 'n-jr', verdict: 'split', otherId: 'n-jr2', coin: null, members: ['lov', 'mim'], otherMembers: ['jre', 'tks'] }]);
+  const kept = traceStories(goats({ calls: apart }), P);
+  assert.ok(!kept.merges.some((m) => (m.from === 'n-jr' && m.into === 'n-pets') || (m.from === 'n-pets' && m.into === 'n-jr')));
+  const off: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, wordsOn: false } } };
+  assert.deepEqual(traceStories(goats(), off).merges, []);
+});
