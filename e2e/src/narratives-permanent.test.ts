@@ -41,7 +41,7 @@ let db: Db;
 const along = (axis: number) => `[${Array.from({ length: 1024 }, (_, i) => (i === axis ? 1 : 0)).join(',')}]`;
 
 /** Each post from its own account (a narrative needs two), unless `author` names a shared one. */
-async function post(id: string, atMs: number, story: { name: string; body: string; axis: number }, author = `x:by-${id}`): Promise<void> {
+async function post(id: string, atMs: number, story: { name: string; body: string; axis: number }, author = `x:by-${id}`, views: number | null = DEFAULT_POLICY.rising.fypMinReach): Promise<void> {
   const at = new Date(atMs).toISOString();
   await db.query(`insert into public.author (author_key, source, source_author_id, handle) values ($1, 'x', $2, $2) on conflict do nothing`, [author, author.replace(/[^a-z0-9]/gi, '')]);
   await db.query(
@@ -55,6 +55,11 @@ async function post(id: string, atMs: number, story: { name: string; body: strin
     [`x:${id}`, at, JUDGE, story.name],
   );
   await db.query(`insert into internal.post_embedding (item_id, space, embedding) values ($1, $2, $3::vector)`, [`x:${id}`, SPACE, along(story.axis)]);
+  /* Viral by default: For You's views bar, so the narrative is listed (Policy.narrative.origin.viralFloor). */
+  if (views !== null) await db.query(
+    `insert into public.observation (item_id, kind, captured_at, value, fidelity_kind, observed_at, censored) values ($1, 'reach', $2, $3, 'exact', $2, 'below_step')`,
+    [`x:${id}`, new Date(atMs + HOUR).toISOString(), views],
+  );
 }
 
 const PANCAKE = { name: 'Pancake', body: 'Pancake the cat drinks from the fountain again and everyone online is sharing the clip', axis: 1 };
@@ -289,4 +294,40 @@ test('★ the owner\'s calls outrank the same-subject rule: a narrative he calle
   const r = await passAt(NOW);
   assert.equal(r.mergedSame, 0);
   assert.equal(await narrativeOf('x:r0'), 'n-x:r0');
+});
+
+const KOBUSHI = { name: 'Kobushi', body: 'Kobushi the pygmy hippo wore a green mask at the zoo and it looks like a horror film', axis: 20 };
+const MEMEWAR = { name: 'Memewar', body: 'The Turkish and Chinese accounts are at war over one cat picture and the flag joke', axis: 21 };
+
+test('★ the viral floor: two small posts are kept but not listed; a viral post joining lists them', async () => {
+  await post('kob0', NOW - 2 * HOUR, KOBUSHI, 'x:kob0', 60);
+  await post('kob1', NOW - HOUR, KOBUSHI, 'x:kob1', 25);
+  await passAt(NOW);
+  const kobushi = (await narrativeOf('x:kob0')) ?? '';
+  assert.ok(kobushi !== '', 'kept: narratives are permanent');
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(kobushi)}`)).status, 404, 'no post over the views bar: no page');
+
+  await post('kob2', NOW - HOUR / 2, KOBUSHI);
+  await passAt(NOW);
+  assert.equal(await narrativeOf('x:kob2'), kobushi);
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(kobushi)}`)).status, 200, 'listed once a viral post is in it');
+});
+
+test('★ the starting post: a post four days older that the narrative\'s posts quote joins it, and the page says "Started by"', async () => {
+  await post('origin', NOW - 4 * DAY, MEMEWAR, 'x:barkin');
+  await post('w0', NOW - 2 * HOUR, MEMEWAR);
+  await post('w1', NOW - HOUR, MEMEWAR);
+  await db.query(`insert into internal.post_reference (item_id, refers_to, read_at) values ('x:w1', array['x:origin'], now())`);
+  const r = await passAt(NOW);
+  assert.equal(r.traced, 1);
+  const war = (await narrativeOf('x:w0')) ?? '';
+  assert.equal(await narrativeOf('x:origin'), war, 'four days before, outside every gap: joined by the quote');
+  await frameAt(NOW);
+  const page = await read(`/story/${encodeURIComponent(war)}`);
+  assert.equal(page.status, 200);
+  const earliest = JSON.stringify(page.body);
+  assert.match(earliest, /"startedBy":"quoted"/);
+  assert.match(earliest, /"authorLabel":"@xbarkin"/);
 });
