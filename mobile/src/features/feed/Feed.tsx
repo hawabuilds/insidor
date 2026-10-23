@@ -111,6 +111,7 @@ import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
 import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
+import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
 import styles from './feed.module.css';
 
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
@@ -319,6 +320,9 @@ export function Feed({
         <ScreenHeader as="header" gutter>
           <span className={styles['wordmark']}>INSIDOR</span>
         </ScreenHeader>
+
+        {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}
+        <RunningCoins />
 
         <UnderlineTabs tabs={TABS} current={tab} onChange={setTab} label="Feed" />
 
