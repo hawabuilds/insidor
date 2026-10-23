@@ -11,6 +11,9 @@
  * only the first 20 are showing they are read again every minute, and a narrative whose place
  * changed glides to it (each card's move is measured before and after and animated across the gap).
  *
+ * ★ THE ONLINE MEME WARS BETWEEN COUNTRIES are one card, "Twitter World War", standing where the
+ * first of them is in the server's order; it opens their sections (world-war.ts, WorldWar.tsx).
+ *
  * Each card: its place, picture, title; "12 posts   28m old" (and Dead); on the right its views,
  * and under them on Most viewed Today or Week "+8.1M today" / "+3.2M this week"; on Trending a line
  * under the title in For You's words, "394 views a minute, up 1.4x in the last hour"; and the coin
@@ -49,6 +52,8 @@ import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
+import { WarCard } from './WorldWar.tsx';
+import { itemKey, withWarUmbrella, type ListItem } from './world-war.ts';
 import { useIsOwner } from '../owner/hooks.ts';
 import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
@@ -60,7 +65,6 @@ const CARD_GAP_PX = 10;
 /** A card's height before it is measured, and how far beyond the screen cards stay drawn. */
 const CARD_GUESS_PX = 150;
 const CARDS_BEYOND_PX = 1200;
-const storyKey = (s: Story): string => s.id;
 /** How long a card takes to glide to its new place. */
 const MOVE_MS = 320;
 /** How often the first 20 are read again while they are all that is showing. */
@@ -89,8 +93,10 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const owner = useIsOwner();
   const { hidden } = useHiddenNarratives();
   const rows = useMemo(() => (list.rows === null || hidden.size === 0 ? list.rows : list.rows.filter((s) => !hidden.has(s.id))), [list.rows, hidden]);
-  const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
-  const places = useMemo(() => new Map((rows ?? []).map((s, i) => [s.id, i])), [rows]);
+  /* The meme wars gathered under one card where the first of them stood (world-war.ts). */
+  const items = useMemo(() => (rows === null ? null : withWarUmbrella(rows)), [rows]);
+  const glide = useGlide(items?.map(itemKey).join(' ') ?? '');
+  const places = useMemo(() => new Map((items ?? []).map((x, i) => [itemKey(x), i])), [items]);
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
   return (
@@ -142,12 +148,20 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         {/* Only the cards near the screen are drawn (shared/ui/WindowList.tsx), so a list scrolled
             through many pages stays smooth; the gap between cards is each card's own top space,
             the first card's none, as the column's gap was. */}
-        {rows !== null && rows.length > 0 ? (
-          <WindowList
-            items={rows}
-            keyOf={storyKey}
-            render={(s) => {
-              const i = places.get(s.id) ?? 0;
+        {items !== null && items.length > 0 ? (
+          <WindowList<ListItem>
+            items={items}
+            keyOf={itemKey}
+            render={(x) => {
+              const i = places.get(itemKey(x)) ?? 0;
+              if (x.kind === 'war') {
+                return (
+                  <div ref={glide(itemKey(x))} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
+                    <WarCard stories={x.stories} place={i + 1} now={now} />
+                  </div>
+                );
+              }
+              const s = x.story;
               return (
                 <div ref={glide(s.id)} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
                   <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} extra={owner ? <NotANarrativeStrip storyId={s.id} /> : null} />

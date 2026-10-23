@@ -499,6 +499,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     postCount: count(o.postCount),
     foundAt: o.foundAt === undefined || o.foundAt === null ? null : instantAt(o.foundAt, `${path}.foundAt`, 'not_reported'),
     dead: o.dead === true,
+    countries: countriesOf(o.countries),
     viewsPerMinute: decodeSpeeds(o.viewsPerMinute, `${path}.viewsPerMinute`),
     viewsGainedDay: o.viewsGainedDay === undefined || o.viewsGainedDay === null ? null : measured(o.viewsGainedDay, `${path}.viewsGainedDay`, 'not_read_yet'),
     viewsGainedWeek: o.viewsGainedWeek === undefined || o.viewsGainedWeek === null ? null : measured(o.viewsGainedWeek, `${path}.viewsGainedWeek`, 'not_read_yet'),
@@ -513,6 +514,12 @@ function decodeSpeeds(raw: unknown, path: string): { readonly now: number; reado
   if (!ok(o['now'])) throw new WireShapeError(`${path}.now`, o['now']);
   if (!ok(o['before'])) throw new WireShapeError(`${path}.before`, o['before']);
   return { now: o['now'], before: o['before'] };
+}
+
+/** The countries of a meme war: two or more names, or null for anything else (never a page dropped for it). */
+function countriesOf(v: unknown): readonly string[] | null {
+  if (!Array.isArray(v) || v.length < 2 || !v.every((c): c is string => typeof c === 'string' && c.trim() !== '')) return null;
+  return v.map((c) => c.trim());
 }
 
 /** A whole count of posts the server sent, or null when it sent none or something that is not one. */

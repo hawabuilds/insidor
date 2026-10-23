@@ -113,6 +113,8 @@ export interface ShownNarrative {
   readonly title: string | null;
   readonly members: readonly string[];
   readonly firstShownAtMs: number | null;
+  /** The countries of the online meme war the titler said it is (0127); empty or null: not one, or never asked. Absent from an older caller. */
+  readonly fight?: readonly string[] | null;
 }
 
 /**
@@ -176,7 +178,7 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
       return null;
     }
     if (single) singles.add(n.id);
-    return { id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs };
+    return { id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs, fight: n.fight ?? null };
   };
   const shown = newest.flatMap((n) => {
     const h = held(n);
@@ -187,6 +189,17 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
     return h === null ? [] : [h];
   });
   return { shown, pages, dropped, standing: byId, single: singles };
+}
+
+/**
+ * The countries a page says are fighting: the titler's answer (two or more) while it lists at least
+ * `narrative.fight.minPosts` posts and its newest is inside `activeMs`, else null — never for an
+ * unknown post time, never when the question is switched off.
+ */
+export function countriesOf(fight: readonly string[] | null, lastPostAtMs: number | null, nowMs: number, policy: Policy, posts: number): readonly string[] | null {
+  const f = policy.narrative.fight;
+  if (!f.on || fight === null || fight.length < 2 || lastPostAtMs === null || posts < f.minPosts) return null;
+  return nowMs - lastPostAtMs <= f.activeMs ? fight : null;
 }
 
 /** Each post's coin as its own card shows it, and the list behind a card's "See N coins". */
@@ -408,6 +421,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     const newestAt = Math.max(...used.map((r) => toMs(r.posted_at) ?? toMs(r.first_seen_at) ?? 0));
     const lastPostAtMs = Number.isFinite(newestAt) && newestAt > 0 ? newestAt : null;
     const dead = narrativeDead(lastPostAtMs, options.nowMs, policy);
+    const countries = countriesOf(n.fight ?? null, lastPostAtMs, options.nowMs, policy, members.length);
     if (dead) deadIds.add(n.id);
     facts.push({
       storyId: n.id,
@@ -461,6 +475,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       foundAt: instant(foundAtMs, 'not_reported'),
       dead,
       lastPostAt: instant(lastPostAtMs, 'not_reported'),
+      /* ★ An online meme war between countries (Policy.narrative.fight): said while a listed post went up
+         in the last `activeMs`, so the app's umbrella holds only fights still being posted. */
+      ...(countries === null ? {} : { countries }),
       /* ★ The top coin when none is settled (fitting, or several proven equally): shown as "Top coin,
          not checked", never as the narrative's coin. The coins most posts list come first. */
       ...(coin.kind === 'fitting' || (coin.kind === 'proven' && coin.addresses.length > 1) ? topCoinOf(coin.addresses, coinFacts, options) : {}),

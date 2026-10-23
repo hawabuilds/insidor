@@ -47,14 +47,14 @@ const row = (itemId: string, extra: Partial<NarrativePostRow> = {}): NarrativePo
 
 const unit = (angle: number) => Float32Array.from([Math.cos(angle), Math.sin(angle)]);
 
-function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = [], older: readonly NarrativePostRow[] = [], open: () => readonly StoredNarrative[] = () => [], policy = DEFAULT_POLICY) {
+function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = [], older: readonly NarrativePostRow[] = [], open: () => readonly StoredNarrative[] = () => [], policy = DEFAULT_POLICY, more: Record<string, unknown> = {}) {
   const saved: NarrativePass[] = [];
   const reads: string[][] = [];
   const titles: [string, string][] = [];
   const titler: TitlePort = {
     id: 't', model: 'm',
     async title(subjects) {
-      return { value: subjects.map((s) => ({ kind: 'titled' as const, ref: s.ref, title: 'GTA 6 Trailer Two' })), spend: { vendor: 'v', endpoint: 'narrative-title', unit: 'per-call', units: 1, usd: 0.0001, at: NOW } } as never;
+      return { value: subjects.map((s) => ({ kind: 'titled' as const, ref: s.ref, title: 'GTA 6 Trailer Two', fight: s.ref === 'n-war' ? ['China', 'Turkey'] : [] })), spend: { vendor: 'v', endpoint: 'narrative-title', unit: 'per-call', units: 1, usd: 0.0001, at: NOW } } as never;
     },
   };
   const repo = {
@@ -70,6 +70,7 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
     byIds: async (ids: readonly string[]) => open().filter((n) => ids.includes(n.id)),
     setTitle: async (id: string, title: string) => void titles.push([id, title]),
     storedGood: async () => older,
+    ...more,
   };
   const grouper = narrativeGrouper({
     repo, save: async (p) => (saved.push(p), true), block: async () => ({ cutoff: null, chosenOn: null }), titler, embed: null, keepVectors: async () => false,
@@ -285,4 +286,19 @@ test('switched off, nothing is early', async () => {
   const r = await grouper.pass();
   assert.deepEqual(saved[0]?.narratives[0]?.early, []);
   assert.equal(r.early, 0);
+});
+
+test('★ the meme-war answer rides on the title call, and a live narrative never asked (an owner-renamed one too) is asked for it alone', async () => {
+  const fights: [string, readonly string[]][] = [];
+  const war: StoredNarrative = { id: 'n-war', members: ['w1', 'w2'], anchor: 'w1', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: 'His Title', titlePosts: 2, titleModel: 'owner', fight: null, newestPostAtMs: NOW - DAY, early: [] };
+  const more = {
+    fightUnasked: async (sinceMs: number, limit: number) => (assert.equal(sinceMs, NOW - DEFAULT_POLICY.narrative.fight.activeMs), assert.equal(limit, DEFAULT_POLICY.narrative.fight.perPass), [war]),
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { body: 'Chinese and Turkish users roast each other over Patrick Star' })),
+    setFight: async (id: string, countries: readonly string[]) => void fights.push([id, countries]),
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  await s.grouper.pass();
+  const made = s.saved[0]?.narratives[0]?.id ?? '';
+  assert.deepEqual(s.titles, [[made, 'GTA 6 Trailer Two']], 'only the new narrative is titled: his title stands');
+  assert.deepEqual(fights.sort(), [[made, []], ['n-war', ['China', 'Turkey']]], 'both answers are kept: the new one is not a war, his is');
 });

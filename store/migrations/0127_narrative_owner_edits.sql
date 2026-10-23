@@ -1,6 +1,7 @@
 -- 0127_narrative_owner_edits.sql
 --
--- THE OWNER NAMES A NARRATIVE HIMSELF, AND ADDS A POST TO IT.
+-- THE OWNER NAMES A NARRATIVE HIMSELF, AND ADDS A POST TO IT; AND WHICH NARRATIVES ARE A MEME WAR
+-- BETWEEN COUNTRIES.
 --
 -- ── WHY ──────────────────────────────────────────────────────────────────
 --
@@ -27,6 +28,12 @@
 --                           it is stored — a link to a post we do not hold is queued as a missed post
 --                           (0055) and read within a minute — and the pins keep it there. Only his own
 --                           later "Remove this post" or "Split" of it takes it out.
+-- internal.narrative.fight  the countries whose users are trading memes and insults with each other
+--                           in it (policy.v153 Policy.narrative.fight), as the titler answered in the
+--                           same call as its title: two or more names, alphabetical; an empty array
+--                           when it said no; null when it was never asked (the runner asks those,
+--                           a few a pass). `fight_model` is the model that answered, `fight_at` when.
+--                           Kept apart from the title so an owner's title never stops it being asked.
 --
 -- What breaks if changed carelessly: the owner_feedback check is dropped and made again whole (as
 -- 0108 did); a verdict left out of this copy stops being writable. And the column grant: widening it
@@ -49,6 +56,12 @@ alter table internal.owner_feedback add constraint owner_feedback_check check (
 );
 
 grant update (title, title_posts, title_model, titled_at) on internal.narrative to insidor_people;
+
+alter table internal.narrative add column fight text[] check (fight is null or cardinality(fight) = 0 or cardinality(fight) >= 2);
+alter table internal.narrative add column fight_model text;
+alter table internal.narrative add column fight_at timestamptz;
+comment on column internal.narrative.fight is
+  'The countries whose users trade memes in it (an online meme war, 0127), alphabetical; empty: asked, not one; null: never asked.';
 
 comment on column internal.narrative.title_model is
   'The model that wrote the title, or ''owner'' when the owner typed it (0127): the titler never writes over an owner title.';

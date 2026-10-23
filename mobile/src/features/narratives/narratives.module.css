@@ -185,3 +185,55 @@
   box-shadow: inset 0 0 0 1px var(--hairline);
   color: var(--text-1);
 }
+
+/* "Twitter World War" (WorldWar.tsx): the fights on the umbrella card, and its sheet's sections and rows. */
+.warFights {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warNote {
+  margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.warSection + .warSection {
+  margin-top: 8px;
+}
+
+.warName {
+  margin: 12px 0 4px;
+  color: var(--text-2);
+  font-size: var(--type-caption);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.warRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 0;
+  color: var(--text-2);
+  text-align: left;
+}
+
+.warRow + .warRow {
+  border-top: 1px solid var(--hairline);
+}
+
+.warRowTitle {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: var(--type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

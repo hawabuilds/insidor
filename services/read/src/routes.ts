@@ -49,6 +49,7 @@ import {
   PAIR_VIEW_SQL,
   SOURCE_VIEW_SQL,
   NARRATIVES_SQL,
+  FIGHT_NARRATIVES_SQL,
   PERMANENT_NARRATIVES_SQL,
   STORY_ALIAS_SQL,
   STORY_ALIAS_ID_SQL,
@@ -283,6 +284,20 @@ async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promis
   const tick = tickNumber(view['tick']);
   const page = await (deps.narrativeLists ?? createNarrativeLists())(deps.db, tick, ask);
   return json(200, { tick, stories: await withPictureFiles(deps.db, page.stories), provenance: columnOf(view, 'provenance'), next: page.next });
+}
+
+/**
+ * GET /narratives/:viewId/fights
+ *
+ * The narratives that are online meme wars between countries (the projector's `countries`), whole
+ * pages, most viewed first: what the tab's "Twitter World War" opens, one section per pair of
+ * countries drawn by the app. Same envelope and same 404 as /narratives/:viewId.
+ */
+async function fightNarratives(viewId: string, deps: Deps): Promise<Reply> {
+  const [views, rows] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(FIGHT_NARRATIVES_SQL, [])]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+  return json(200, { tick: tickNumber(view['tick']), stories: await withPictureFiles(deps.db, rows.map(payloadOf)), provenance: columnOf(view, 'provenance') });
 }
 
 /**
@@ -602,6 +617,8 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
 
     /* Every narrative, dead ones included, a page at a time: the tab's All time list. */
     if (segments.length === 3 && head === 'narratives' && param !== undefined && segments[2] === 'all') return await allNarratives(param, rawUrl, deps);
+    /* The online meme wars between countries: the tab's umbrella. */
+    if (segments.length === 3 && head === 'narratives' && param !== undefined && segments[2] === 'fights') return await fightNarratives(param, deps);
 
     /* The running coins strip on For You and the Narratives tab (running-coins.ts). */
     if (segments.length === 2 && head === 'running' && param === 'coins') return json(200, await (deps.runningCoins ?? createRunningCoins())(deps.db));

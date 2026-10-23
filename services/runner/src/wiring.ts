@@ -1784,6 +1784,8 @@ export async function withRuntime<T>(
              endpoint; a good post with no vector embedded on the live embeddings line. */
           narratives: (() => {
             const space = precedentsEmbed?.postSpace ?? null;
+            /* The meme-war question rides on the title call (Policy.narrative.fight) and needs room in the answer. */
+            const titleTokens = policy.narrative.fight.on ? Math.max(policy.narrative.title.maxOutputTokens, policy.narrative.fight.maxOutputTokens) : policy.narrative.title.maxOutputTokens;
             const grouper = narrativeGrouper({
               repo: new PgNarrativeRepo(db),
               save: (pass) => withTransaction(pool, (tx) => new PgNarrativeRepo(tx).save(pass)),
@@ -1798,7 +1800,7 @@ export async function withRuntime<T>(
                         baseUrl: openSide.setup.baseUrl,
                         model: openSide.model.id,
                         vision: false,
-                        maxOutputTokens: policy.narrative.title.maxOutputTokens,
+                        maxOutputTokens: titleTokens,
                         timeoutMs: policy.judge.timeoutMs,
                         maxAttempts: policy.judge.maxAttempts,
                         backoffMs: policy.judge.backoffMs,
@@ -1816,8 +1818,9 @@ export async function withRuntime<T>(
                       providers: openSide.setup.providers,
                       router: openSide.setup.router !== false,
                       charsPerToken: policy.judge.charsPerToken,
-                      maxOutputTokens: policy.narrative.title.maxOutputTokens,
+                      maxOutputTokens: titleTokens,
                       maxTitleChars: policy.narrative.title.maxTitleChars,
+                      ...(policy.narrative.fight.on ? { maxCountries: policy.narrative.fight.maxCountries } : {}),
                     }),
               embed: precedentsEmbed,
               keepVectors: (rows, postSpace) => new PgPostEmbeddingRepo(db).putMany(rows, postSpace),

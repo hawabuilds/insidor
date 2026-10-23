@@ -170,6 +170,11 @@ export interface StoredNarrative {
   readonly titlePosts: number | null;
   /** Who wrote the title: the titler's model, or `OWNER_TITLE_MODEL` when the owner typed it (0127). Absent from an older reader. */
   readonly titleModel?: string | null;
+  /**
+   * The countries of the online meme war it is (0127 `fight`): two or more, alphabetical; empty when
+   * the titler said it is not one; null when never asked (and before 0127).
+   */
+  readonly fight?: readonly string[] | null;
   /** Its newest post's time as last counted (narrative.newest_post_at); absent from an older reader. */
   readonly newestPostAtMs?: number | null;
   /** When tools/narrative-rebuild.ts rebuilt it from stored posts (0106); null or absent: the runner made it. */
@@ -387,13 +392,14 @@ export class PgNarrativeRepo {
   /** Open narratives with their posts, as `where` (on `n`) and `tail` (order and limit) choose them. */
   async #narratives(where: string, params: readonly unknown[], tail = ''): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; fight: string[] | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
     const early = (await this.earlyMigrated())
       ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
       : 'null::text[]';
     const restored = (await this.#hasColumn('narrative', 'restored_at')) ? 'n.restored_at' : 'null::timestamptz';
+    const fight = (await this.#hasColumn('narrative', 'fight')) ? 'n.fight' : 'null::text[]';
     const rows = await orEmpty(() => this.#db.query<Row>(
-      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, n.newest_post_at, ${restored} as restored_at,
+      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, ${fight} as fight, n.newest_post_at, ${restored} as restored_at,
               (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
               ${early} as early
          from internal.narrative n
@@ -411,6 +417,7 @@ export class PgNarrativeRepo {
       title: r.title,
       titlePosts: r.title_posts,
       titleModel: r.title_model,
+      fight: r.fight,
       newestPostAtMs: toMs(r.newest_post_at),
       restoredAtMs: toMs(r.restored_at),
       early: r.early ?? [],
@@ -435,6 +442,25 @@ export class PgNarrativeRepo {
    */
   async live(sinceMs: number): Promise<readonly StoredNarrative[]> {
     return this.#narratives('n.shown and n.newest_post_at >= $1', [new Date(sinceMs).toISOString()]);
+  }
+
+  /**
+   * The live shown narratives the meme-war question was never asked of (0127 `fight` null), newest
+   * post first, at most `limit`: the runner's catch-up for narratives titled before it was asked.
+   * Empty before 0127.
+   */
+  async fightUnasked(sinceMs: number, limit: number): Promise<readonly StoredNarrative[]> {
+    if (limit <= 0 || !(await this.migrated()) || !(await this.#hasColumn('narrative', 'fight'))) return [];
+    return this.#narratives('n.shown and n.fight is null and n.newest_post_at >= $1', [new Date(sinceMs).toISOString(), limit], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $2');
+  }
+
+  /**
+   * The titler's meme-war answer for a narrative (0127): the countries, or none for "not one". Written
+   * whatever wrote the title — the owner's title does not stop it — and nothing before 0127.
+   */
+  async setFight(id: string, countries: readonly string[], model: string): Promise<void> {
+    if (!(await this.#hasColumn('narrative', 'fight'))) return;
+    await this.#db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1`, [id, [...countries], model]);
   }
 
   /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */

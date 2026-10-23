@@ -58,3 +58,16 @@ test('★ an owner\'s add moves the post\'s one row into his narrative (stored p
   const recount = seen.find((q) => q.sql.includes('set member_count'));
   assert.deepEqual([...((recount?.params[0] as string[]) ?? [])].sort(), ['n-cat', 'n-war']);
 });
+
+test('★ the meme-war answer is written whoever wrote the title, and nothing before 0127', async () => {
+  const seen: { sql: string; params: readonly unknown[] }[] = [];
+  const has = (ok: boolean) => ({ query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), / as ok/.test(sql) ? [{ ok }] : []) }) as unknown as Db;
+  await new PgNarrativeRepo(has(true)).setFight('n-war', ['China', 'Turkey'], 'nvidia/nemotron');
+  const write = seen.find((q) => q.sql.includes('set fight'));
+  assert.deepEqual(write?.params, ['n-war', ['China', 'Turkey'], 'nvidia/nemotron']);
+  assert.doesNotMatch(write?.sql ?? '', /title_model/, 'an owner title does not stop it');
+  seen.length = 0;
+  await new PgNarrativeRepo(has(false)).setFight('n-war', [], 'm');
+  assert.equal(seen.some((q) => q.sql.includes('set fight')), false);
+  assert.deepEqual(await new PgNarrativeRepo(has(false)).fightUnasked(0, 10), []);
+});
