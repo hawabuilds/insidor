@@ -40,3 +40,44 @@ export function holdZoom(): void {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
   if (meta !== null) meta.content = withoutFocusZoom(meta.content);
 }
+
+/**
+ * How far the visible screen's bottom sits from the page box's bottom, in CSS pixels: 0 when they
+ * agree, which is always the case except in the iPhone quirk below. Pure, for the tests.
+ */
+export function bottomDrift(innerHeight: number, viewportHeight: number, viewportTop: number): number {
+  const drift = viewportTop + viewportHeight - innerHeight;
+  return Math.abs(drift) < 1 ? 0 : Math.round(drift);
+}
+
+/**
+ * ★ THE BOTTOM BARS FOLLOW THE GLASS, NOT THE PAGE (the owner, 2026-10-23: "the navigation is moving
+ * up the page again at times", just scrolling). The tab bar and the Buy and Sell bars are fixed to
+ * the page's own box. On an iPhone that box and the visible screen can come apart mid-scroll, and a
+ * bar fixed to the box rises with it until the app is reopened. The visual viewport says where the
+ * screen really is; the gap is written to `--vv-drift` and the bars move by it (ui.module.css
+ * .tabbar, trade.module.css .bar, narrative.module.css .bar). With no gap it is 0px and nothing moves.
+ */
+export function followVisibleScreen(): void {
+  if (typeof window === 'undefined' || window.visualViewport == null) return;
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  let last = 0;
+  let queued = false;
+  const write = () => {
+    queued = false;
+    const d = bottomDrift(window.innerHeight, vv.height, vv.offsetTop);
+    if (d === last) return;
+    last = d;
+    root.style.setProperty('--vv-drift', `${d}px`);
+  };
+  const soon = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(write);
+  };
+  vv.addEventListener('resize', soon);
+  vv.addEventListener('scroll', soon);
+  window.addEventListener('scroll', soon, { passive: true });
+  write();
+}
