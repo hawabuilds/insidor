@@ -421,6 +421,12 @@ test('the schema and the vocabulary agree on every closed list', () => {
       `${column} has drifted from MARKET_ABSENCE_REASONS`,
     );
   }
+  /* The fifth, the last hour's (0127), checked against the same list for the same reason. */
+  assert.deepEqual(
+    [...checkedValues(read('0127_market_last_hour.sql'), 'last_hour_absent')].sort(),
+    [...MARKET_ABSENCE_REASONS].sort(),
+    'last_hour_absent has drifted from MARKET_ABSENCE_REASONS',
+  );
 });
 
 test('★ the judgement record is append-only, and the app role is not granted it', () => {

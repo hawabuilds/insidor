@@ -7,8 +7,8 @@
  * cap and 24-hour move it knows; an item missing either here (a newer or broken service) is left
  * off the strip rather than drawn as "$0" or "0%". The order is the server's and is kept.
  *
- * What breaks if changed carelessly: re-sorting here. The order is "most dollars gained in 24
- * hours", decided once on the server; a phone that sorts by percent shows a different strip.
+ * What breaks if changed carelessly: re-sorting here. The order is "most dollars traded in the last
+ * hour", decided once on the server; a phone that sorts by percent shows a different strip.
  */
 
 import { assertNoInternalVocabulary } from './decode.ts';

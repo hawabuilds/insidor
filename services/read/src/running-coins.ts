@@ -1,7 +1,7 @@
 /**
  * GET /running/coins — the running coins strip at the top of For You and the Narratives tab (the
  * owner, 2026-10-23, design A of reports/ticker): up to `Policy.runningCoins.maxCoins` coins, each
- * with its ticker, market cap and 24-hour move, biggest dollar gain first.
+ * with its ticker, market cap and 24-hour move, the coins trading hardest in the last hour first.
  *
  * ★ ONLY COINS OF POSTS WE FOUND. A coin is on the strip only as the ONE coin a card names: a For
  * You card's matched coin (public.rising_row, `fyp`, the same `coins.kind` catches.ts reads) or a
@@ -19,15 +19,21 @@
  * coin is left out; so is a coin with no market cap, no 24-hour move, or one the card says is not
  * tradable. When nothing is left the list is empty and the phone hides the strip.
  *
- * ★ ORDERED BY THE DOLLARS ITS MARKET CAP GAINED IN 24 HOURS (cap − cap ÷ (1 + move)). Volume is
- * not on the cards and would mean a new market read; a percentage alone puts a $3K coin that
- * doubled above a $2M coin up a third. Dollars gained is "what is running" in the money people
- * actually put in. Coins that fell sort after, the least fallen first. A tie goes to the address,
- * so two replies of one moment agree.
+ * ★ ONLY COINS TRADING IN THE LAST HOUR, MOST DOLLARS TRADED FIRST (the owner, 2026-10-23: "coins
+ * that have volume right now — I don't want to see few-day-old dead coins"). The 24-hour move kept
+ * a coin that ran yesterday and stopped on the strip all day. The card's coin now carries its last
+ * hour from the same market reading as its price (0127; the market source already sent it, so no
+ * call was added): dollars traded and trades. A coin needs `runningCoins.minVolume1hUsd` dollars
+ * AND `minTrades1h` trades, so a few large fills cannot put a coin on by volume alone. An hour the
+ * reading did not carry is not an hour of zero: such a coin is left out because we cannot say it is
+ * trading, never shown as quiet. No age rule: an old coin trading again is running; a dead one
+ * drops out within one reading of its hour going quiet. A tie goes to the address, so two replies
+ * of one moment agree.
  *
  * What breaks if changed carelessly: reading any coin list but the card's one coin (the strip turns
- * into the random coins the owner forbade), or dropping the freshness check (a stalled projector's
- * last prices run on the strip as if live).
+ * into the random coins the owner forbade), dropping the freshness check (a stalled projector's
+ * last prices and last hour run on the strip as if live), or ordering by the 24-hour move again
+ * (yesterday's runners, dead today, come back).
  */
 
 import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
@@ -65,6 +71,10 @@ export interface RunningCoin {
   readonly marketCapUsd: number;
   /** The 24-hour move in percent, as the card carries it. */
   readonly change24hPct: number;
+  /** Dollars traded in the last hour, as the card carries it. */
+  readonly volume1hUsd: number;
+  /** Buys plus sells in that hour. */
+  readonly trades1h: number;
 }
 
 export interface RunningCoins {
@@ -77,16 +87,12 @@ const known = (m: unknown): number | null => {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 };
 
-/** The dollars a cap of `cap` gained over a move of `pct` percent; null for a move no cap can make. */
-export function dollarsGained(cap: number, pct: number): number | null {
-  const ratio = 1 + pct / 100;
-  return ratio > 0 ? cap - cap / ratio : null;
-}
-
 /** The strip from the rows of RUNNING_COINS_SQL, at `nowMs`. Pure. */
 export function runningCoins(rows: readonly Row[], nowMs: number, policy: Policy = DEFAULT_POLICY): RunningCoins {
   const rule = policy.runningCoins;
-  const best = new Map<string, { readonly coin: RunningCoin; readonly at: number; readonly gained: number }>();
+  /* The coin before its hour is known to be busy: `hour` null is an hour the card did not carry. */
+  type Seen = { readonly coin: Omit<RunningCoin, 'volume1hUsd' | 'trades1h'>; readonly hour: { readonly volume1hUsd: number; readonly trades1h: number } | null; readonly at: number };
+  const best = new Map<string, Seen>();
   for (const r of rows) {
     const at = Number(r['at_ms']);
     if (!Number.isFinite(at) || nowMs - at > rule.freshMs) continue;
@@ -102,18 +108,23 @@ export function runningCoins(rows: readonly Row[], nowMs: number, policy: Policy
     const cap = known(coin['marketCapUsd']);
     const pct = known(coin['priceChange24h']);
     if (cap === null || cap <= 0 || pct === null) continue;
-    const gained = dollarsGained(cap, pct);
-    if (gained === null) continue;
-    /* The same coin on a post and its narrative: the fresher frame's numbers. */
+    /* The same coin on a post and its narrative: the fresher frame's numbers, gated after, so an
+       older frame's busier hour never stands in for the newer frame's quiet one. */
     const had = best.get(address);
     if (had !== undefined && had.at >= at) continue;
     const imageUrl = typeof coin['imageUrl'] === 'string' ? coin['imageUrl'] : null;
-    best.set(address, { coin: { coinId, address, ticker: ticker.trim(), imageUrl, marketCapUsd: cap, change24hPct: pct }, at, gained });
+    const volume1hUsd = known(coin['volume1hUsd']);
+    const trades1h = known(coin['trades1h']);
+    best.set(address, {
+      coin: { coinId, address, ticker: ticker.trim(), imageUrl, marketCapUsd: cap, change24hPct: pct },
+      hour: volume1hUsd === null || trades1h === null ? null : { volume1hUsd, trades1h },
+      at,
+    });
   }
   const coins = [...best.values()]
-    .sort((a, b) => b.gained - a.gained || (a.coin.address < b.coin.address ? -1 : a.coin.address > b.coin.address ? 1 : 0))
-    .slice(0, rule.maxCoins)
-    .map((e) => e.coin);
+    .flatMap((e): RunningCoin[] => (e.hour !== null && e.hour.volume1hUsd >= rule.minVolume1hUsd && e.hour.trades1h >= rule.minTrades1h ? [{ ...e.coin, ...e.hour }] : []))
+    .sort((a, b) => b.volume1hUsd - a.volume1hUsd || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0))
+    .slice(0, rule.maxCoins);
   return { coins };
 }
 

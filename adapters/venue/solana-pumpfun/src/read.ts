@@ -118,6 +118,9 @@ export function toMarketState(raw: unknown, ctx: ReadContext): MarketState {
     // here — any number — is what re-creates the survivorship filter.
     liquidityUsd: null,
 
+    // Null: this read is the curve's current state, and it carries no trades.
+    lastHour: null,
+
     depth:
       reserves === null
         ? null

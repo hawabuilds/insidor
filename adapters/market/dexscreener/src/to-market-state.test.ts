@@ -59,6 +59,15 @@ test('an absent liquidity object is null — a drained pool is zero', () => {
   assert.notEqual(curve.liquidityUsd, drained.liquidityUsd);
 });
 
+test('the last hour is summed over every pair, and one pair that did not report it makes it unknown', () => {
+  const pair = (h1: number, buys: number, sells: number) => ({ dexId: 'pumpswap', volume: { h24: 1, h1 }, txns: { h1: { buys, sells } } });
+  assert.deepEqual(toMarketState({ pairs: [pair(6_000, 50, 40), pair(500, 3, 2)] }, ctx).lastHour, { volumeUsd: 6_500, buys: 53, sells: 42 });
+  assert.deepEqual(toMarketState({ pairs: [pair(0, 0, 0)] }, ctx).lastHour, { volumeUsd: 0, buys: 0, sells: 0 }, 'a reported quiet hour is zero');
+  assert.equal(toMarketState({ pairs: [pair(6_000, 50, 40), { dexId: 'pumpswap' }] }, ctx).lastHour, null);
+  assert.equal(toMarketState({ pairs: [{ dexId: 'pumpswap', volume: { h1: 10 }, txns: { h1: { buys: '3' } } }] }, ctx).lastHour, null);
+  assert.equal(toMarketState(EMPTY_RESPONSE, ctx).lastHour, null);
+});
+
 test('a curve pair still has a price, and is not discarded for lacking a reserve', () => {
   const curve = toMarketState(CURVE_RESPONSE, ctx);
   assert.equal(curve.priceUsd, 0.0000214);

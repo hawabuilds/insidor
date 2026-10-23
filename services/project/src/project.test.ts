@@ -133,6 +133,8 @@ function market(overrides: Partial<CoinMarket> = {}): CoinMarket {
     marketCapBasis: 'fully-diluted',
     liquidityUsd: none('not_reported'),
     priceChange24h: got(23.6),
+    volume1hUsd: got(8_400),
+    trades1h: got(212),
     tradable: true,
     ...overrides,
   };
@@ -606,7 +608,7 @@ test('★ a reading older than the freshness window is not published as the curr
   const stale = priced({ takenAt: T0 - FRESHNESS - 1_000 });
   const wire = projectCoin(stale, OPTIONS);
 
-  for (const field of [wire.priceUsd, wire.marketCapUsd, wire.liquidityUsd, wire.priceChange24h]) {
+  for (const field of [wire.priceUsd, wire.marketCapUsd, wire.liquidityUsd, wire.priceChange24h, wire.volume1hUsd, wire.trades1h]) {
     assert.deepEqual(field, { v: null, why: 'not_read_yet' });
     assert.notDeepEqual(field, { v: 0 });
   }
@@ -626,6 +628,8 @@ test('a reading inside the window is published whole, so the gate is a gate and 
   assert.deepEqual(fresh.priceUsd, { v: 0.000_186 });
   assert.deepEqual(fresh.marketCapUsd, { v: 186_400 });
   assert.deepEqual(fresh.priceChange24h, { v: 23.6 });
+  assert.deepEqual(fresh.volume1hUsd, { v: 8_400 });
+  assert.deepEqual(fresh.trades1h, { v: 212 });
   assert.equal(fresh.marketCapBasis, 'fully-diluted');
   assert.equal(fresh.tradable, true);
 });

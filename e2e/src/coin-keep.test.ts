@@ -96,8 +96,8 @@ before(async () => {
   await db.query(origin, [key('gold'), 'found_by_team', null]);
   await db.query(origin, [key('originPost'), 'viral_after_launch', 'x:9']);
   await db.query(
-    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_absent, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
-     values ('solana', $1, $2, 'solana:pool', now(), 'no_market', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`,
+    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_absent, liquidity_absent, price_change_24h_absent, last_hour_absent, tradable, source_vendor, source_endpoint)
+     values ('solana', $1, $2, 'solana:pool', now(), 'no_market', 'no_market', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`,
     [address('priced'), key('priced')],
   );
 });

@@ -293,6 +293,13 @@ export interface TransferRules {
  * disagreeing is routine; a disagreement you cannot attribute is a bug report nobody
  * can act on.
  */
+/** One hour of a coin's trading: dollars traded, and the buy and sell transactions that did it. */
+export interface LastHourTrading {
+  readonly volumeUsd: number;
+  readonly buys: number;
+  readonly sells: number;
+}
+
 export interface MarketState {
   readonly asset: AssetRef;
   readonly venue: VenueId;
@@ -321,6 +328,14 @@ export interface MarketState {
   /** NULL on a curve. Absence is not illiquidity. NOTHING GATES ON THIS. */
   readonly liquidityUsd: number | null;
   readonly depth: Depth;
+
+  /**
+   * The coin's trading over the hour before `observedAt`, summed over its pools, as the venue
+   * reports it: what says a coin is trading NOW, where the 24-hour move can still be carrying
+   * yesterday. NULL when the venue did not report it, never an hour of zeros; a real zero (a
+   * reported hour with no trade) stays zero.
+   */
+  readonly lastHour: LastHourTrading | null;
 
   /** Copied from the asset record, never derived from market data. */
   readonly mintedAt: MintTime;

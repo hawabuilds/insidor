@@ -92,8 +92,8 @@ before(async () => {
   await coin(LAURA, NOW - 24 * MIN);
   /* Only the coin people bought reached the cap bar. */
   await db.query(
-    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
-     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 48000, 'circulating', 'no_market', 'no_market', false, 'test', 'test')`,
+    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, last_hour_absent, tradable, source_vendor, source_endpoint)
+     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 48000, 'circulating', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`,
     [LAURA, `solana:${LAURA}`, iso(NOW - 15 * MIN)],
   );
 });
@@ -184,8 +184,8 @@ test('★ a post naming the original only by a link (its links kept, 0118) is wa
     [`solana:${DEGEN}`, DEGEN, iso(NOW - 20 * MIN)],
   );
   await db.query(
-    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
-     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 48000, 'circulating', 'no_market', 'no_market', false, 'test', 'test')`,
+    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, last_hour_absent, tradable, source_vendor, source_endpoint)
+     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 48000, 'circulating', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`,
     [DEGEN, `solana:${DEGEN}`, iso(NOW - 10 * MIN)],
   );
   const judged: string[] = [];

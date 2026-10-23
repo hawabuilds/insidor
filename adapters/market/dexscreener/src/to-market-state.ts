@@ -20,7 +20,7 @@
  */
 
 import type { Millis } from '@insidor/contracts';
-import type { MarketState } from '@insidor/contracts/asset.ts';
+import type { LastHourTrading, MarketState } from '@insidor/contracts/asset.ts';
 import type { AssetRef, VenueId } from '@insidor/contracts/ids.ts';
 import { arr, missing, num, rec, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
@@ -51,6 +51,13 @@ export interface PairView {
   readonly priceChange24hPct: number | null;
   readonly pairCreatedAt: Millis | null;
   readonly isCurve: boolean;
+  /**
+   * The pair's last hour: dollars traded and buy and sell transactions. The vendor's keys are
+   * `volume.h1` and `txns.h1.{buys,sells}`; as with `h24`, the spelling stays here. Null unless
+   * all three were reported and readable: a volume without its trade count cannot say how many
+   * hands it took, and a count alone says nothing of size.
+   */
+  readonly lastHour: LastHourTrading | null;
 }
 
 /**
@@ -95,7 +102,42 @@ export function toPairView(raw: unknown): PairView {
     priceChange24hPct: missing(p, 'priceChange') ? null : num(rec(p.priceChange).h24),
     pairCreatedAt: nonNegative(p.pairCreatedAt),
     isCurve: dexId !== null && CURVE_DEX_IDS.has(dexId),
+    lastHour: lastHourOf(p),
   };
+}
+
+/** A count of transactions: a whole number, not negative; anything else is unreadable. */
+const count = (v: unknown): number | null => {
+  const n = nonNegative(v);
+  return n !== null && Number.isInteger(n) ? n : null;
+};
+
+function lastHourOf(p: Rec): LastHourTrading | null {
+  if (missing(p, 'volume') || missing(p, 'txns')) return null;
+  const volumeUsd = nonNegative(rec(p.volume).h1);
+  const hour = rec(rec(p.txns).h1);
+  const buys = count(hour.buys);
+  const sells = count(hour.sells);
+  return volumeUsd === null || buys === null || sells === null ? null : { volumeUsd, buys, sells };
+}
+
+/**
+ * The coin's last hour over ALL its pairs, not the priced one: a coin trades in every pool it has,
+ * and the hour's volume is the sum. ★ A PAIR THAT DID NOT REPORT ITS HOUR MAKES THE WHOLE HOUR
+ * UNKNOWN (null): summing the pairs that did would publish an undercount as a measurement.
+ */
+export function sumLastHour(pairs: readonly PairView[]): LastHourTrading | null {
+  if (pairs.length === 0) return null;
+  let volumeUsd = 0;
+  let buys = 0;
+  let sells = 0;
+  for (const p of pairs) {
+    if (p.lastHour === null) return null;
+    volumeUsd += p.lastHour.volumeUsd;
+    buys += p.lastHour.buys;
+    sells += p.lastHour.sells;
+  }
+  return { volumeUsd, buys, sells };
 }
 
 /**
@@ -155,6 +197,8 @@ export function toMarketState(rawResponse: unknown, ctx: MarketReadContext): Mar
     // Null on a curve, and null wherever the vendor simply did not report it.
     // NOTHING GATES ON THIS FIELD.
     liquidityUsd: chosen?.liquidityUsd ?? null,
+
+    lastHour: sumLastHour(pairs),
 
     depth:
       chosen === null
