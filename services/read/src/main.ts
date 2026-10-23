@@ -38,6 +38,7 @@ import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
+import { createTradeCard } from './trade-card.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
@@ -301,7 +302,9 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const routeDeps = { ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins() };
+  /* The flex card after a sell (trade-card.ts): our own trade record only, no market call. */
+  const tradeCard = createTradeCard({ db: deps.db, log: deps.log, now: Date.now });
+  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */

@@ -35,6 +35,7 @@ import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
 import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
+import type { TradeCard } from './trade-card.ts';
 import type { WalletRoute } from './wallet.ts';
 import {
   BOARD_ROWS_SQL,
@@ -72,6 +73,8 @@ export interface Deps {
   readonly search?: Search;
   /** The Portfolio tab (wallet.ts). Absent: /wallet/:address is a 404. */
   readonly wallet?: WalletRoute;
+  /** The flex card's facts for one sell (trade-card.ts). Absent: /sell/:signature/card is a 404. */
+  readonly tradeCard?: TradeCard;
   /** The phone's post sheet (post-sheet.ts) and narrative sheet (story-sheet.ts). Absent: /post/:id/sheet and /story/:id/sheet are 404s. */
   readonly postSheet?: PostSheet;
   /** For You's Trending and Most viewed (post-sorts.ts), kept per projector run. Absent: worked out on every request. */
@@ -546,6 +549,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       return (await orOpened(param, deps, () => coinAbout(param, { ...about, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
     }
 
+    if (deps.tradeCard !== undefined && segments.length === 3 && head === 'sell' && param !== undefined && segments[2] === 'card') {
+      return await deps.tradeCard.card(param, client);
+    }
     if (deps.wallet !== undefined && segments.length === 3 && head === 'wallet' && param !== undefined && segments[2] === 'catches') {
       return await deps.wallet.catches(param, client);
     }

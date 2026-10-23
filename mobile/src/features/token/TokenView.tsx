@@ -237,7 +237,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
       </div>
 
-      <TradeBar mint={facts.address} ticker={ticker} priceUsd={latestPrice(market) ?? facts.price} off={offBar} />
+      <TradeBar mint={facts.address} ticker={ticker} priceUsd={latestPrice(market) ?? facts.price} subline={pairShown.kind === 'token' && pairShown.stock ? `paired with ${pairShown.ticker}` : named.name} off={offBar} />
     </>
   );
 }

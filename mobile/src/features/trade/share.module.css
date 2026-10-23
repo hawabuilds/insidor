@@ -1,0 +1,145 @@
+/*
+ * The "Share your trade" sheet (ShareTradeSheet.tsx): the card's live preview, the background
+ * chips, the two switches, and the Share and Save buttons in the sheet's fixed foot.
+ *
+ * Its own module, not the ticket's (sheet.module.css), because the Buy and Sell ticket keeps its
+ * look exactly as it is; this is a separate sheet drawn with the app's one bottom sheet.
+ *
+ * The colours are the app's: a chosen chip is white on the lighter grey (--tag-bg), never a purple
+ * wash; an on switch is purple (tokens.css). What breaks if changed carelessly: the preview keeps
+ * its 16:9 box while the card is read and drawn, so nothing under it jumps when it appears.
+ */
+
+.preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.preview canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.waiting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 24px;
+  text-align: center;
+  color: var(--sheet-label);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.notes {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.label {
+  margin: 20px 0 8px;
+  color: var(--sheet-label);
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: var(--sheet-button);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chipOn {
+  background: var(--tag-bg);
+  color: var(--text-1);
+}
+
+.chip input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.rows {
+  margin-top: 16px;
+  display: grid;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  width: 100%;
+  color: var(--sheet-text);
+  font-size: 15px;
+  text-align: left;
+}
+
+.switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.switchOn {
+  background: var(--brand);
+}
+
+.switchOn span {
+  transform: translateX(18px);
+}
+
+.buttons {
+  display: grid;
+  gap: 4px;
+}
+
+.said {
+  margin: 0 0 8px;
+  color: var(--sheet-label);
+  font-size: 13px;
+  text-align: center;
+}
