@@ -11,7 +11,8 @@
  *             (`narrativeTrendingIds`, for when readings are too thin for speeds). Dead ones and
  *             pages made `freshMs` ago or more are not on it
  *   today     views gained over the last 24 hours, the posts' gains added up (the page's
- *   week      `viewsGainedDay` / `viewsGainedWeek`); a page that does not say is left off, never 0
+ *   week      `viewsGainedDay` / `viewsGainedWeek`); a page that does not say is left off, never 0,
+ *             and so is a page measured `GAIN_FRESH_MS` ago or more (`gainNow`)
  *   viewed    every narrative by its views, dead ones included (Most viewed, All)
  *   `on`      only narratives with a post on X, or on TikTok (any of its posts); absent: all of them
  *   `coin`    `none`: only the narratives whose card says "No coin yet" (the owner, 2026-10-18, for
@@ -46,6 +47,18 @@ export type Site = keyof typeof SITE_LABELS;
 const MAX_OFFSET = 100_000;
 /** A ranking is kept no longer than this even when the board's tick has not moved (a stalled projector). */
 const KEEP_MS = 120_000;
+/**
+ * ★ A PAGE'S GAIN IS "TODAY" ONLY WHILE IT IS FRESH. The projector measures `viewsGainedDay` and
+ * `viewsGainedWeek` over the span ending when it wrote the page, and a page it has not written
+ * again keeps that number. On 23 Oct the top of Today was pages written 4 and 5 days before
+ * ("Meguro Clinic Baby Exposure", +11.5M, its posts last read on 19 Oct): their "today" was the
+ * day they were found. A page written longer ago than this does not know what its posts gained
+ * since, so it is left off Today and Week (as one with no gain), never ranked on an old day. The
+ * board's pages are rewritten every minute and the rest a few a minute in turn (narrative-frame.ts,
+ * `narrative.dead.pagesPerFrame`), so a narrative still being read is back once its turn comes.
+ * Widen this and an old day reads as today again; narrow it under that turn and live ones go.
+ */
+export const GAIN_FRESH_MS = 3_600_000;
 
 export interface NarrativeListAsk {
   readonly sort: NarrativeSort;
@@ -142,6 +155,12 @@ export function numbersOf(r: Row): NumbersRow | null {
   return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), hour: num(r['hour']), on, noCoin: r['no_coin'] === true };
 }
 
+/** The page's gain over Today's or Week's span as of `nowMs`, or null: none measured, or measured too long ago (`GAIN_FRESH_MS`). */
+export function gainNow(r: NumbersRow, span: 'today' | 'week', nowMs: number): number | null {
+  if (r.projectedMs === null || nowMs - r.projectedMs >= GAIN_FRESH_MS) return null;
+  return span === 'today' ? r.day : r.week;
+}
+
 /** The list for a ranked sort, in order: ids only. */
 export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY, noCoin = false): readonly string[] {
   const mine = rows.filter((r) => (on === null || r.on.has(on)) && (!noCoin || r.noCoin));
@@ -151,7 +170,7 @@ export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | '
     const gains = mine.flatMap((r) => (r.dead ? [] : [{ id: r.id, gained: r.hour, fresh: fresh(r) }]));
     return narrativeTrendingIds(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy, gains);
   }
-  const key = (r: NumbersRow): number | null => (sort === 'today' ? r.day : r.week);
+  const key = (r: NumbersRow): number | null => gainNow(r, sort, nowMs);
   return mine
     .filter((r) => key(r) !== null)
     .sort((a, b) => (key(b) as number) - (key(a) as number) || (b.views ?? -1) - (a.views ?? -1) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
