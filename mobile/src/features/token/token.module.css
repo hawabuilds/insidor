@@ -365,10 +365,15 @@
 /* ── the tabs: Trador's PanelTabs, stuck under the top ─────────────── */
 
 /* Trades, Comments and Info at their words' width, the trades' "All" menu at the right end. */
+/* While the All menu is open the row rises over the bar, so the menu is never cut by it. */
+.panelTabs:has([role='menu']) {
+  z-index: 45;
+}
+
 .panelTabs {
   position: sticky;
   top: var(--safe-top);
-  /* Above the Buy and Sell bar (30), so the All menu opens over it; under every sheet and the tab bar. */
+  /* Under the Buy and Sell bar (40), which always sits on top; under every sheet and the tab bar. */
   z-index: 35;
   margin: 0 calc(-1 * var(--gutter));
   padding: 0 var(--gutter);
