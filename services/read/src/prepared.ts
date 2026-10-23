@@ -70,6 +70,9 @@ const MARKET = { refreshMs: 4 * SECOND, keepMs: 30 * SECOND };
 /** A coin's facts and its Info tab: links and holders change slowly. */
 const COIN = { refreshMs: 30 * SECOND, keepMs: 10 * MINUTE };
 
+/** The running coins strip: its prices ride For You's and the board's frames, written every minute. */
+const RUNNING = { refreshMs: 30 * SECOND, keepMs: 2 * MINUTE };
+
 /** The longest URL kept: anything longer is answered, never stored. */
 const MAX_KEY_LENGTH = 400;
 
@@ -98,6 +101,7 @@ export function ruleFor(rawUrl: string): Rule | null {
   /* A narrative's page is written with the board's frame (services/project main.ts commits both). */
   if (s.length === 2 && head === 'story') return { key, tick: 'board:default', ...FRAME };
   if (s.length === 3 && (head === 'story' || head === 'post') && tail === 'sheet') return { key, tick: null, ...SHEET };
+  if (s.length === 2 && head === 'running' && id === 'coins') return { key, tick: null, ...RUNNING };
   if (s.length === 2 && head === 'coin') return { key, tick: null, ...COIN };
   if (s.length === 3 && head === 'coin' && tail === 'about') return { key, tick: null, ...COIN };
   if (s.length === 3 && head === 'coin' && tail === 'market') return { key, tick: null, ...MARKET, outage: unavailable };
