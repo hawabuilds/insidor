@@ -76,6 +76,7 @@ export type {
   Asset,
   AssetOrigin,
   Depth,
+  LastHourTrading,
   MarketAbsenceReason,
   MarketCapBasis,
   MarketClass,

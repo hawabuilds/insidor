@@ -854,6 +854,10 @@ interface MarketReadingRow {
   liquidity_absent: MarketAbsenceReason | null;
   price_change_24h_pct: number | null;
   price_change_24h_absent: MarketAbsenceReason | null;
+  volume_1h_usd: number | null;
+  buys_1h: number | null;
+  sells_1h: number | null;
+  last_hour_absent: MarketAbsenceReason | null;
   tradable: boolean;
 }
 
@@ -894,6 +898,7 @@ async function loadMarketReadings(
             market_cap_usd, market_cap_absent, market_cap_basis,
             liquidity_usd, liquidity_absent,
             price_change_24h_pct, price_change_24h_absent,
+            volume_1h_usd, buys_1h, sells_1h, last_hour_absent,
             tradable
        from public.market_reading
       where asset_key = any($1::text[])
@@ -913,10 +918,25 @@ async function loadMarketReadings(
         row.price_change_24h_absent,
         'price_change_24h_pct',
       ),
+      ...lastHourOf(row),
       tradable: row.tradable,
     });
   }
   return byAsset;
+}
+
+/**
+ * The last hour's volume and trade count (0127). ★ A ROW WITH NEITHER A NUMBER NOR A REASON WAS
+ * WRITTEN BEFORE 0127 (its constraints are NOT VALID for older rows): that hour was not read, and it
+ * says `not_read_yet`, never an hour with no trading. Trades are buys plus sells.
+ */
+function lastHourOf(row: MarketReadingRow): Pick<CoinMarket, 'volume1hUsd' | 'trades1h'> {
+  if (row.volume_1h_usd !== null && row.buys_1h !== null && row.sells_1h !== null) {
+    return { volume1hUsd: { known: true, amount: row.volume_1h_usd }, trades1h: { known: true, amount: row.buys_1h + row.sells_1h } };
+  }
+  const why: PendingReason =
+    row.last_hour_absent === null ? 'not_read_yet' : row.last_hour_absent === 'no_market' ? 'no_market' : row.last_hour_absent === 'not_reported' ? 'not_reported' : 'unreadable';
+  return { volume1hUsd: { known: false, why }, trades1h: { known: false, why } };
 }
 
 /**

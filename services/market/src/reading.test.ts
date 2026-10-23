@@ -34,6 +34,7 @@ function state(overrides: Partial<MarketState> = {}): MarketState {
     marketCapBasis: null,
     priceChange24hPct: null,
     liquidityUsd: null,
+    lastHour: null,
     depth: null,
     mintedAt: { at: null, source: 'none', confidence: 'unknown', boundS: null },
     transferRules: null,
@@ -69,6 +70,19 @@ test('a coin the venue has never heard of is no_market on every field, and never
     assert.equal(reasonOf(field), 'no_market');
   }
   assert.equal(reading.marketCapBasis, null);
+});
+
+test('the last hour is kept whole, a quiet hour stays zero, and a missing one keeps its reason', () => {
+  assert.deepEqual(toReading(state({ depth: POOL, lastHour: { volumeUsd: 6_570.45, buys: 70, sells: 31 } }), CTX).lastHour, {
+    kind: 'read',
+    volumeUsd: 6_570.45,
+    buys: 70,
+    sells: 31,
+  });
+  assert.deepEqual(toReading(state({ depth: POOL, lastHour: { volumeUsd: 0, buys: 0, sells: 0 } }), CTX).lastHour, { kind: 'read', volumeUsd: 0, buys: 0, sells: 0 });
+  assert.deepEqual(toReading(state(), CTX).lastHour, { kind: 'absent', why: 'no_market' });
+  assert.deepEqual(toReading(state({ depth: POOL }), CTX).lastHour, { kind: 'absent', why: 'not_reported' });
+  assert.deepEqual(toReading(state({ depth: POOL, lastHour: { volumeUsd: 10, buys: 1.5, sells: 0 } }), CTX).lastHour, { kind: 'absent', why: 'unreadable' });
 });
 
 test('a curve with no reserve says not_reported, which is a different fact from no_market', () => {

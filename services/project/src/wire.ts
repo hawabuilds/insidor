@@ -111,6 +111,10 @@ export interface WireCoin {
    * the far side of the decoder.
    */
   readonly priceChange24h: WireMeasured;
+  /** Dollars traded in the hour before the reading, over the coin's pools. 0 is a measured quiet hour. */
+  readonly volume1hUsd: WireMeasured;
+  /** Buy and sell transactions in that hour. */
+  readonly trades1h: WireMeasured;
   readonly tradable: boolean;
   /** Where the coin came from, with how we know. See `WireCoinOrigin`. */
   readonly origin: WireCoinOrigin;

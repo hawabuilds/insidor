@@ -51,8 +51,8 @@ async function coin(address: string, name: string, symbol: string, launchedMs: n
 
 async function reading(address: string, atMs: number, cap: number): Promise<void> {
   await db.query(
-    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
-     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', $4, 'circulating', 'no_market', 'no_market', false, 'test', 'test')`,
+    `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, last_hour_absent, tradable, source_vendor, source_endpoint)
+     values ('solana', $1, $2, 'solana:curve', $3, 'no_market', $4, 'circulating', 'no_market', 'no_market', 'no_market', false, 'test', 'test')`,
     [address, `solana:${address}`, iso(atMs), cap],
   );
 }
