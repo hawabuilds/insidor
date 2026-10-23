@@ -18,7 +18,8 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--card-line);
+  /* No line of its own: the tabs' line under it already closes the header (the owner, 2026-10-23:
+     two lines between the tape and Watchlist / For You). */
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 18px, #000 calc(100% - 18px), transparent);
   mask-image: linear-gradient(90deg, transparent, #000 18px, #000 calc(100% - 18px), transparent);
   touch-action: pan-y;
