@@ -19,6 +19,13 @@
  * `phraseMaxShare` of the posts read, so "elon·musk" or "pump·fun", which half the stories say, never
  * join anything; and the caller holds the post to the narrative's average at `phraseMeaning` too.
  *
+ * ★ THE STORY'S OWN WORDS (policy.v149, the merge on words of narrative-origin.ts): `storyWords` is a
+ * post's phrases above plus every two-character piece of a Japanese or Chinese run. Such a run has
+ * no spaces inside it, so the same place is written 四ツ谷駅 in one post, 四ツ谷駅前 in another and
+ * JR四ツ谷駅 in a third, and "weeding" is 除草, 除草作業 or 除草目的: the whole runs never match,
+ * their two-character pieces (四ツ·ツ谷·谷駅, 除草) do. Katakana and han are read as one run here, so a
+ * place name with a small kana inside it (四ツ谷, 霞ヶ関) stays one word.
+ *
  * What breaks if changed carelessly: the function words. The posts read are mostly English, so a
  * French or Spanish "quand", "pour" or "cuando" would count as rare; FUNCTION lists the common ones
  * of the languages the stories come in. Removing it lets two posts join on "quand·leurs".
@@ -83,6 +90,30 @@ export function phrasesOf(texts: readonly string[], p: Policy): ReadonlySet<stri
     }
   }
   return out;
+}
+
+/* A run of han and katakana together (a place name keeps its small kana), and the iteration mark. */
+const CJK_RUN = /[\p{Script=Han}\p{Script=Katakana}ー々]+/gu;
+
+/** Every two-character piece of each han or katakana run in the texts (links, mentions and tags out). */
+export function cjkPieces(texts: readonly string[]): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const t of texts) {
+    const clean = t.normalize('NFKC').replace(/https?:\/\/\S+/gi, ' ').replace(/[#@$][\p{L}\p{N}_]+/gu, ' ');
+    for (const run of clean.match(CJK_RUN) ?? []) {
+      const c = [...run];
+      for (let i = 0; i + 1 < c.length; i += 1) {
+        const piece = `${c[i] ?? ''}${c[i + 1] ?? ''}`;
+        if (!/^ー|ーー/u.test(piece)) out.add(piece);
+      }
+    }
+  }
+  return out;
+}
+
+/** The words a post says that may mark its story: its phrases, and the pieces of its han and katakana runs. */
+export function storyWords(texts: readonly string[], p: Policy): ReadonlySet<string> {
+  return new Set([...phrasesOf(texts, p), ...cjkPieces(texts)]);
 }
 
 /**
