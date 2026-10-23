@@ -83,6 +83,8 @@ export const STORY_FIELDS = [
   /* No post in 48 hours (services/project narrative-frame.ts): out of Trending, still everywhere else. */
   'dead',
   'lastPostAt',
+  /* An online meme war between countries: which countries (services/project narrative-frame.ts). */
+  'countries',
   /* The tab's Trending and Most viewed Today and Week (services/project narrative-frame.ts). */
   'viewsPerMinute',
   'viewsGainedDay',

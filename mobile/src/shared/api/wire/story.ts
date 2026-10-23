@@ -154,6 +154,12 @@ export interface Story {
   /** No post it lists went up in the last 48 hours: left out of Trending, still in Most viewed and New. False from a server that does not say. */
   readonly dead: boolean;
   /**
+   * The countries whose users are trading memes and insults in it — an online meme war (services/
+   * project, Policy.narrative.fight), alphabetical, two or more; null when it is not one, has had no
+   * post for a week, or the server does not say. The tab gathers these under "Twitter World War".
+   */
+  readonly countries: readonly string[] | null;
+  /**
    * The tab's Trending: views a minute over the last 30 minutes (`now`) and over the hour before
    * (`before`), its posts' speeds added up over those whose readings measure both. Null when no post
    * was measured, or from a server that does not send it.

@@ -91,7 +91,7 @@ export function edgeLifeFor(rawUrl: string): EdgeLife | null {
   }
   if (s.length === 3) {
     if (head === 'rising' && (tail === 'tick' || tail === 'older' || (id === 'fyp' && tail === 'sorted'))) return FRAME;
-    if (head === 'narratives' && tail === 'all') return FRAME;
+    if (head === 'narratives' && (tail === 'all' || tail === 'fights')) return FRAME;
     if ((head === 'post' || head === 'story') && tail === 'sheet') return SHEET;
     if (head === 'coin' && tail === 'market') return MARKET;
     if (head === 'coin' && tail === 'about') return ABOUT;

@@ -18,6 +18,13 @@
  * ★ A TITLE THAT IS NOT ONE IS NOT KEPT: empty, longer than `maxTitleChars`, a hashtag, a $ticker
  * or a coin address is `absent`, and the narrative keeps its judge's name.
  *
+ * ★ AND, IN THE SAME CALL, WHETHER IT IS AN ONLINE MEME WAR BETWEEN COUNTRIES (policy.v153; the
+ * owner, 2026-10-23: China vs Turkey, France vs Japan). A few more words on a call already paid for,
+ * rather than a second call per narrative. The answer is `fight`: two to `maxCountries` country
+ * names when it is one, an empty list when it is not, and absent when the answer is not readable
+ * (`cleanCountries`). Real wars, riots, politics, diplomacy and sports are said to be "no" in the
+ * prompt itself, because the cost of a wrong yes is a protest shown under a meme-war banner.
+ *
  * What breaks if changed carelessly: the prompt's words. They are hashed into the port id, so a
  * change files new titles under a new id — that is the point; editing them without a new hash
  * would make two wordings indistinguishable in the ledger.
@@ -44,17 +51,26 @@ const SYSTEM = [
   'You are given several posts about one story and the names people gave its subject.',
   'Write a short, clear title for the story: two to six plain words naming who or what it is about and what happened.',
   'No hashtags, no emoji, no quotation marks, no $tickers, no coin talk, no clickbait. Title case.',
-  'Answer only with JSON: {"title": "..."}',
+  'Then say whether the posts are an online meme war: ordinary users from two or more different countries or nationalities trading memes, jokes and insults with each other on social media, for example Chinese and Turkish users roasting each other over a cartoon.',
+  'A real war, battle, attack, riot, protest, election, government, law, diplomatic or trade dispute, or a sports match or rivalry is NOT an online meme war, nor is news about any of these, even when two countries are named.',
+  'A meme that is simply popular in several countries is not one either: the users must be going at each other.',
+  'Say yes only when the posts themselves show people of those countries going at each other: replying in their own languages, mocking each other\'s country, flag, food or people, or calling it a war between them. A post that only mentions a country, or a guess, is a no; when unsure, say no.',
+  'If it is one, list the countries whose users are fighting as plain English country names, such as "China" and "Turkey"; if not, an empty list.',
+  'Answer only with JSON: {"title": "...", "meme_war": true or false, "countries": ["..."]}',
 ].join(' ');
 
 export const TITLE_PROMPT_SHA = createHash('sha256').update(SYSTEM).digest('hex').slice(0, 8);
 
 const SCHEMA = {
   type: 'object',
-  properties: { title: { type: 'string' } },
-  required: ['title'],
+  properties: { title: { type: 'string' }, meme_war: { type: 'boolean' }, countries: { type: 'array', items: { type: 'string' } } },
+  required: ['title', 'meme_war', 'countries'],
   additionalProperties: false,
 };
+
+/** A country name as we keep it: letters, spaces, dots and hyphens, two to this many characters. */
+const MAX_COUNTRY_CHARS = 40;
+const COUNTRY = /^[\p{L}][\p{L} .'-]*[\p{L}.]$/u;
 
 export interface OpenTitlerDeps {
   readonly client: Pick<OpenAsk, 'send'>;
@@ -67,6 +83,8 @@ export interface OpenTitlerDeps {
   readonly charsPerToken: number;
   readonly maxOutputTokens: number;
   readonly maxTitleChars: number;
+  /** Policy.narrative.fight.maxCountries: more countries than this is read as no fight. Absent: the question's answer is not read. */
+  readonly maxCountries?: number;
 }
 
 /** The user message: the posts, numbered, then the names. */
@@ -83,6 +101,26 @@ export function cleanTitle(raw: unknown, maxChars: number): string | null {
   if (t === '' || t.length > maxChars) return null;
   if (/[#$]|https?:\/\//i.test(t) || /[1-9A-HJ-NP-Za-km-z]{32,44}/.test(t)) return null;
   return t;
+}
+
+/**
+ * The model's meme-war answer as countries: two to `maxCountries` names, each once, title-cased and
+ * in alphabetical order (so "Turkey, China" and "china, turkey" are one fight); [] for a "no", or a
+ * "yes" naming fewer than two or more than `maxCountries`; null when the answer is not readable.
+ */
+export function cleanCountries(memeWar: unknown, countries: unknown, maxCountries: number): readonly string[] | null {
+  if (typeof memeWar !== 'boolean' || !Array.isArray(countries)) return null;
+  if (!memeWar) return [];
+  const names = new Map<string, string>();
+  for (const c of countries) {
+    if (typeof c !== 'string') return null;
+    const t = c.replace(/\s+/g, ' ').trim();
+    if (t.length < 2 || t.length > MAX_COUNTRY_CHARS || !COUNTRY.test(t)) return null;
+    const cased = t.split(' ').map((w) => (w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
+    names.set(cased.toLowerCase(), cased);
+  }
+  const out = [...names.values()].sort((a, b) => a.localeCompare(b));
+  return out.length >= 2 && out.length <= maxCountries ? out : [];
 }
 
 export function openTitler(deps: OpenTitlerDeps): TitlePort {
@@ -128,14 +166,16 @@ export function openTitler(deps: OpenTitlerDeps): TitlePort {
           }
           const content = reply.reply['content'];
           const said = Array.isArray(content) ? String((content[0] as { text?: unknown } | undefined)?.text ?? '') : '';
-          let parsed: unknown = null;
+          let parsed: { title?: unknown; meme_war?: unknown; countries?: unknown } = {};
           try {
-            parsed = (JSON.parse(said) as { title?: unknown }).title;
+            const o = JSON.parse(said) as unknown;
+            parsed = typeof o === 'object' && o !== null ? (o as typeof parsed) : {};
           } catch {
-            parsed = null;
+            parsed = {};
           }
-          const title = cleanTitle(parsed, deps.maxTitleChars);
-          out.push(title === null ? { kind: 'absent', ref: s.ref, detail: 'no usable title in the answer' } : { kind: 'titled', ref: s.ref, title });
+          const title = cleanTitle(parsed.title, deps.maxTitleChars);
+          const fight = deps.maxCountries === undefined ? null : cleanCountries(parsed.meme_war, parsed.countries, deps.maxCountries);
+          out.push(title === null ? { kind: 'absent', ref: s.ref, detail: 'no usable title in the answer' } : { kind: 'titled', ref: s.ref, title, ...(fight === null ? {} : { fight }) });
         } catch (error) {
           if (error instanceof BudgetRefused) throw error;
           out.push({ kind: 'absent', ref: s.ref, detail: error instanceof Error ? error.message : String(error) });

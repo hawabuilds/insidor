@@ -315,6 +315,11 @@ export async function fetchAllNarratives(viewId: string, sort: NarrativeListSort
   return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}${on === null ? '' : `&on=${on}`}${noCoin ? '&coin=none' : ''}`, signal));
 }
 
+/** The narratives that are online meme wars between countries, most viewed first (services/read GET /narratives/:view/fights). */
+export async function fetchFightNarratives(viewId: string, signal?: AbortSignal): Promise<NarrativesList> {
+  return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}/fights`, signal));
+}
+
 /** A narrative's page, or null when it has none (a 404): a starred id with no page is left out, never an error. */
 export async function fetchStoryIfAny(storyId: string, signal?: AbortSignal): Promise<Story | null> {
   try {
