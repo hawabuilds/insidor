@@ -334,6 +334,25 @@
   pointer-events: none;
 }
 
+/* ★ IN THE HOME-SCREEN APP THE BAR STANDS ON THE WHOLE SCREEN, NOT THE PAGE BOX (the owner,
+   2026-10-23, a screenshot with the bar a keyboard's height up the page). After a keyboard has been
+   up, an installed iPhone app can keep its page box that much shorter, and `bottom` measured from
+   that box floats the bar mid-screen; the visible screen shrinks with it, so the drift guard sees
+   nothing. 100lvh is the screen's full height, which no keyboard changes, so a full-height layer
+   with the bar at its foot sits on the glass. There is no browser bar in the installed app, so the
+   large and small heights are the same and nothing is hidden. In a browser tab the rule above
+   stands. */
+@media (display-mode: standalone) {
+  .tabbar {
+    top: 0;
+    bottom: auto;
+    height: 100lvh;
+    align-items: flex-end;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    transform: none;
+  }
+}
+
 .tabbarPill {
   pointer-events: auto;
   display: flex;
