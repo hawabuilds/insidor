@@ -253,7 +253,8 @@
   width: 100%;
   max-width: 480px;
   padding: 0 16px;
-  transform: translateX(-50%);
+  /* Down by the visible screen's drift from the page box (shared/viewport.ts). */
+  transform: translate(-50%, var(--vv-drift, 0px));
   pointer-events: none;
 }
 

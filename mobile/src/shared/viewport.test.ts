@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { withoutFocusZoom, zoomsOnFocus } from './viewport.ts';
+import { bottomDrift, withoutFocusZoom, zoomsOnFocus } from './viewport.ts';
 
 const LINE = 'width=device-width, initial-scale=1, viewport-fit=cover';
 
@@ -19,4 +19,11 @@ test('only iPhones and iPads', () => {
   assert.equal(zoomsOnFocus('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', true), true);
   assert.equal(zoomsOnFocus('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', false), false);
   assert.equal(zoomsOnFocus('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile', true), false);
+});
+
+test('the bottom bars move only when the visible screen has drifted from the page box', () => {
+  assert.equal(bottomDrift(852, 852, 0), 0);
+  assert.equal(bottomDrift(852, 852.4, 0), 0);
+  assert.equal(bottomDrift(852, 852, 40), 40);
+  assert.equal(bottomDrift(852, 800, 0), -52);
 });
