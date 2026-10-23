@@ -4,7 +4,8 @@
  * holds, as the owner laid it out (2026-10-17):
  *
  *   NAME    Rename (2026-10-23): type the title; it is the one everywhere from the next refresh,
- *           and the written titles never replace it
+ *           and the written titles never replace it; and Twitter World War: which countries' users
+ *           are fighting in it (it then sits under that card in the tab), or Not a meme war
  *   COIN    Right coin (the coin the page shows is the narrative's), and Wrong coin, which saves
  *           at once and then offers the narrative's other coins to pick, or an address to paste,
  *           as the right one
@@ -39,7 +40,7 @@ import styles from './narrative.module.css';
 /** A pasted coin address: base58, as long as one is. */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split' | 'rename' | 'add';
+type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split' | 'rename' | 'add' | 'war';
 
 /** An X or TikTok post's link, as the server reads one (services/social owner-coin.ts `postIdOf`). */
 const POST_LINK = /^https?:\/\/(?:(?:www|mobile)\.)?(?:(?:x|twitter)\.com\/[^/]+\/status(?:es)?\/\d{5,25}|(?:(?:www|m)\.)?tiktok\.com\/.*\/(?:video|photo)\/\d{5,25})(?:[/?#].*)?$/i;
@@ -65,6 +66,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
           <div className={styles['editBody']}>
             <h3 className={styles['editLabel']}>Name</h3>
             <Row title="Rename" sub={story.title} then={() => setPane('rename')} />
+            <Row title="Twitter World War" sub={story.countries === null ? 'Not in it' : `In it: ${story.countries.join(' vs ')}`} then={() => setPane('war')} />
             <h3 className={styles['editLabel']}>Coin</h3>
             {shown !== null ? (
               <Row call={{ action: 'coin_right', storyId: story.id, coin: shown.address }} title="Right coin" sub={`${name} is the coin for this story`} />
@@ -89,6 +91,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
         {pane === 'split' ? <Split story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'rename' ? <Rename story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'add' ? <AddPost story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'war' ? <MemeWar story={story} onBack={() => setPane('main')} /> : null}
       </SheetBody>
     </Sheet>
   );
@@ -239,6 +242,27 @@ function AddPost({ story, onBack }: { story: Story; onBack: () => void }) {
         {ok ? <Call key={link} call={{ action: 'add_post', storyId: story.id, postUrl: link }} label="Add" small /> : null}
       </div>
       {link !== '' && !ok ? <p className={styles['editNote']}>Paste the full link to an X or TikTok post.</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Whether it is an online meme war between countries, his answer over the written one: the countries
+ * typed ("France, Japan") put it under Twitter World War, Not a meme war takes it out.
+ */
+function MemeWar({ story, onBack }: { story: Story; onBack: () => void }) {
+  const [typed, setTyped] = useState((story.countries ?? []).join(', '));
+  const countries = typed.split(/[,/]| vs /i).map((c) => c.trim()).filter((c) => c !== '');
+  const ok = countries.length >= 2 && countries.length <= 4;
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Twitter World War" />
+      <p className={styles['editNote']}>Which countries' users are fighting in it. Your answer replaces the written one and stays.</p>
+      <div className={styles['editRow']}>
+        <input className={styles['editInput']} placeholder="China, Turkey" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        {ok ? <Call key={countries.join('|')} call={{ action: 'meme_war', storyId: story.id, countries }} label="Save" small /> : null}
+      </div>
+      <Call call={{ action: 'meme_war', storyId: story.id, countries: [] }} label="Not a meme war" />
     </div>
   );
 }

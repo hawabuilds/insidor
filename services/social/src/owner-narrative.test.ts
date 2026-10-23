@@ -25,13 +25,17 @@ function fakeDb(ready: boolean, members: Record<string, string[]>, taken: readon
         if (sql.includes('from internal.narrative_member')) return (members[String(params[0])] ?? []).map((item_id) => ({ item_id })) as R[];
         if (sql.includes('union select other_id')) return taken.filter((id) => (params[0] as string[]).includes(id)).map((id) => ({ id })) as R[];
         if (sql.includes('insert into internal.owner_feedback')) {
-          if (refuseSplit && (params[3] === 'split' || params[3] === 'rename')) throw Object.assign(new Error('violates check constraint'), { code: '23514' });
+          if (refuseSplit && (params[3] === 'split' || params[3] === 'rename' || params[3] === 'fight')) throw Object.assign(new Error('violates check constraint'), { code: '23514' });
           inserts.push([...params]);
           return [{ id: 1, call: params[3] }] as R[];
         }
         if (sql.includes('from public.item')) return items.filter((id) => id === params[0]).map((item_id) => ({ item_id })) as R[];
         if (sql.includes('insert into internal.missed_post')) {
           queued.push([...params]);
+          return [] as R[];
+        }
+        if (sql.includes('update internal.narrative set fight')) {
+          titles.push(['fight', ...params]);
           return [] as R[];
         }
         if (sql.includes('update internal.narrative set title')) {
@@ -51,7 +55,7 @@ test('a call is checked: the action, the narrative, and what each action needs',
   assert.equal(typeof parseNarrativeCall({ action: 'coin_right', storyId: 'n-x:1', coin: 'nope' }), 'string');
   assert.equal(typeof parseNarrativeCall({ action: 'split', storyId: 'n-x:1' }), 'string');
   assert.equal(typeof parseNarrativeCall({ action: 'split', storyId: 'n-x:1', itemIds: ['x:1', 'bad id'] }), 'string');
-  assert.deepEqual(parseNarrativeCall({ action: 'coin_wrong', storyId: 'n-x:1', coin: `solana:${COIN}` }), { action: 'coin_wrong', storyId: 'n-x:1', intoStoryId: null, itemId: null, itemIds: [], coin: COIN, title: null, postUrl: null, note: null });
+  assert.deepEqual(parseNarrativeCall({ action: 'coin_wrong', storyId: 'n-x:1', coin: `solana:${COIN}` }), { action: 'coin_wrong', storyId: 'n-x:1', intoStoryId: null, itemId: null, itemIds: [], coin: COIN, title: null, postUrl: null, countries: [], note: null });
 });
 
 test('★ the server reads the posts and stores them with the call; a merge stores both sides', async () => {
@@ -153,4 +157,19 @@ test('★ an add of a post we do not hold queues its link for the runner to read
   const already = await ownerNarrativeRoute('POST', { action: 'add_post', storyId: 'n-x:1', itemId: 'x:1' }, 'u1', 'wallet:abc', f.db);
   assert.equal(already.status, 400);
   assert.equal(f.inserts.length, 1);
+});
+
+test('★ the owner\'s "Twitter World War": his countries, or none, saved as a call and written as the narrative\'s, marked as his', async () => {
+  assert.equal(typeof parseNarrativeCall({ action: 'meme_war', storyId: 'n-x:1' }), 'string', 'the countries, or an empty list, are needed');
+  assert.equal(typeof parseNarrativeCall({ action: 'meme_war', storyId: 'n-x:1', countries: ['France'] }), 'string', 'one country is not a war');
+  assert.equal(typeof parseNarrativeCall({ action: 'meme_war', storyId: 'n-x:1', countries: ['France', 'J4pan'] }), 'string');
+  const f = fakeDb(true, { 'n-x:1': ['x:1', 'x:2'] });
+  const yes = await ownerNarrativeRoute('POST', { action: 'meme_war', storyId: 'n-x:1', countries: ['japan', ' France '] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(yes.status, 201);
+  assert.deepEqual(f.inserts[0]?.slice(3), ['fight', null, null, null, ['x:1', 'x:2'], null, 'France, Japan']);
+  assert.deepEqual(f.titles[0], ['fight', 'n-x:1', ['France', 'Japan'], 'owner']);
+  const no = await ownerNarrativeRoute('POST', { action: 'meme_war', storyId: 'n-x:1', countries: [] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(no.status, 201);
+  assert.equal(f.inserts[1]?.[9], null, 'not a meme war: no countries');
+  assert.deepEqual(f.titles[1], ['fight', 'n-x:1', [], 'owner']);
 });

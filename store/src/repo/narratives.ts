@@ -456,11 +456,15 @@ export class PgNarrativeRepo {
 
   /**
    * The titler's meme-war answer for a narrative (0127): the countries, or none for "not one". Written
-   * whatever wrote the title — the owner's title does not stop it — and nothing before 0127.
+   * whatever wrote the title — the owner's title does not stop it — but ★ NEVER OVER THE OWNER'S OWN
+   * ANSWER (`fight_model` `OWNER_TITLE_MODEL`, services/social "Twitter World War"). Nothing before 0127.
    */
   async setFight(id: string, countries: readonly string[], model: string): Promise<void> {
     if (!(await this.#hasColumn('narrative', 'fight'))) return;
-    await this.#db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1`, [id, [...countries], model]);
+    await this.#db.query(
+      `update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1 and fight_model is distinct from $4`,
+      [id, [...countries], model, OWNER_TITLE_MODEL],
+    );
   }
 
   /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */
