@@ -18,6 +18,9 @@
  * joiners (`loose`, with which clear the views bar and their stored English). The joins are written
  * as the narrative's own posts (work/narratives.ts), the roots as its early posts.
  *
+ * policy.v149 (the Yotsuya goats): the stored English of every live narrative's posts is read too,
+ * for the merge on the story's own words (core `wordsEvidence`), which needs no other read.
+ *
  * ★ FREE: stored posts, stored links and stored vectors; nothing is embedded, searched or judged.
  * Bounded: one read of the live narratives, the quote links by primary key, and the posts' rows and
  * vectors each read once for the life of the process (a post's quotes, once present, never change;
@@ -212,9 +215,11 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
     const rootable = new Set(startIds.filter((id) => rootCandidates.has(id) && viral.has(id)));
     const looseViral = new Set(looseIds.filter((id) => viral.has(id)));
 
-    /* The stored English of the posts that can be joined and of the posts they would join, for the same-words join. */
+    /* The stored English of the posts that can be joined and of the posts they would join, for the
+       same-words join — and of every narrative's posts for the merge on words (policy.v149). */
     const english = new Map<string, string>();
-    if (p.narrative.origin.joinOn && loose.length > 0 && repo.english !== undefined) {
+    const wordsMerge = o.mergeOn && o.wordsOn;
+    if (((o.joinOn && loose.length > 0) || wordsMerge) && repo.english !== undefined) {
       const ask = [...new Set([...members, ...loose.map((r) => r.itemId), ...free])];
       for (let i = 0; i < ask.length; i += 5_000) for (const [id, t] of await repo.english(ask.slice(i, i + 5_000))) english.set(id, t);
     }

@@ -46,6 +46,7 @@ const quiet = { info: () => {}, warn: (m: string, f?: unknown) => console.warn(m
 interface PostFacts {
   readonly handle: string;
   readonly at: string;
+  readonly atMs: number;
   readonly lang: string;
   readonly views: number | null;
   readonly text: string;
@@ -62,6 +63,7 @@ async function facts(db: Db, ids: readonly string[]): Promise<ReadonlyMap<string
   );
   return new Map(rows.map((r) => [r.item_id, {
     handle: r.handle === null ? '?' : `@${r.handle.replace(/^@/, '')}`,
+    atMs: new Date(r.at).getTime(),
     at: new Date(r.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
     lang: r.lang ?? '?',
     views: r.views === null ? null : Number(r.views),
@@ -109,15 +111,27 @@ try {
     say();
     say(`${live.length} shown narratives with a post in the last ${days} days. The pass took ${ms} ms. Rule: policy ${P.version} narrative.origin.`);
     say();
-    say(`## 1. Merged as one story: ${story.length}`);
-    say();
-    for (const m of plan.merges) say(`- ${t(m.from)} → ${t(m.into)} — ${m.why === 'shared_start' ? 'both quote the same starting post' : `quotes join ${m.via.length} of their posts`}, alike ${m.meaning.toFixed(2)}; via ${m.via.join(' ')}`);
-    if (story.length !== plan.merges.length) say(`(the pass's write lists ${story.length})`);
-    say();
-
     /* Which early posts are the origin step's (the early step's are the ones it also lists). */
     const earlyIds = [...new Set([...plan.starts.values()].flat().map((x) => x.itemId))];
     const f = await facts(db, [...earlyIds, ...[...membersOf.values()].flat()]);
+    say(`## 1. Merged as one story: ${story.length}`);
+    say();
+    for (const m of plan.merges) {
+      const why = m.why === 'shared_start' ? 'both quote the same starting post' : m.why === 'quotes' ? `quotes join ${m.via.length} of their posts` : `both say ${m.words?.length ?? 0} rare words: ${(m.words ?? []).join(' ')}`;
+      say(`- ${t(m.from)} → ${t(m.into)} — ${why}, alike ${m.meaning.toFixed(2)}; via ${m.via.join(' ')}`);
+    }
+    if (story.length !== plan.merges.length) say(`(the pass's write lists ${story.length})`);
+    say();
+    /* Each merged story's first post, as the board will show it: the earliest post of all its sides. */
+    const sidesOf = (id: string): string[] => [id, ...plan.merges.filter((m) => m.into === id).flatMap((m) => sidesOf(m.from))];
+    const into = new Set(plan.merges.map((m) => m.into).filter((id) => !plan.merges.some((m) => m.from === id)));
+    for (const id of into) {
+      const posts = sidesOf(id).flatMap((s) => [...(membersOf.get(s) ?? []), ...(plan.starts.get(s) ?? []).map((x) => x.itemId)]);
+      const first = [...posts].sort((a, b) => (f.get(a)?.atMs ?? Number.POSITIVE_INFINITY) - (f.get(b)?.atMs ?? Number.POSITIVE_INFINITY))[0] ?? '';
+      say(`- ${t(id)} now starts with ${first} ${f.get(first)?.handle ?? '?'} ${f.get(first)?.at ?? '?'}`);
+    }
+    say();
+
     say(`## 2. Narratives given a starting post: ${plan.starts.size} (${earlyIds.length} posts)`);
     say();
     for (const [id, list] of plan.starts) {
