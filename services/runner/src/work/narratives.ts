@@ -543,12 +543,17 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const withEarly: NarrativePass['narratives'][number][] = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
 
     /* Step 6b: the starting posts and one story across languages (work/narrative-origin.ts). The
-       window's good posts the regroup placed nowhere (and no pin holds) may join a narrative there. */
+       window's good posts the regroup placed nowhere (and no pin holds) may join a narrative there. A
+       narrative the owner called (and where it leads now) is never merged away by it, but may still take
+       a newer one in — his merged war keeps growing; one this pass already merged or split is left alone. */
     const grouped = new Set([...withEarly.flatMap((x) => [...x.members, ...(x.early ?? [])]), ...pinned.keys()]);
+    const ownerCalled = new Set(callRows.flatMap((c) => [c.narrativeId, ...(c.verdict === 'merge' && c.otherId !== null ? [c.otherId] : [])]).flatMap((id) => [id, survivorOf(id, states) ?? id]));
+    const busy = new Set([...merges.flatMap((m) => [m.from, m.into]), ...same.merges.flatMap((m) => [m.from, m.into]), ...splits.pending.flatMap((sp) => [sp.from, sp.into])]);
     const origin = await traceOrigins({
       pass: withEarly.map((x) => ({ id: x.id, members: [...new Set([...x.members, ...(storedOf.get(x.id)?.early ?? []), ...(x.early ?? [])])], firstShownAtMs: storedOf.get(x.id)?.firstShownAtMs ?? null })),
       mergedAway: new Set([...merges.map((m) => m.from), ...same.merges.map((m) => m.from)]),
-      untouchable: new Set([...callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]), ...merges.flatMap((m) => [m.from, m.into]), ...same.merges.flatMap((m) => [m.from, m.into]), ...splits.pending.flatMap((sp) => [sp.from, sp.into])]),
+      untouchable: new Set([...ownerCalled, ...busy]),
+      receiveOnly: new Set([...ownerCalled].filter((id) => !busy.has(id))),
       hidden: hideOf,
       stored: stored?.rows ?? [],
       loose: used.filter((r) => !grouped.has(r.itemId)),

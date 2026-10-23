@@ -87,6 +87,20 @@ test('★ never a merge far apart in time, far apart in meaning, or on a narrati
   assert.ok(!called.merges.some((m) => m.from === 'n-ca' || m.into === 'n-ca'));
 });
 
+test('★ a narrative the owner merged still grows: a newer narrative quoting it joins it, never the other way, never against his calls', () => {
+  /* He merged the war into n-tc three days ago; its posts are still coming. (Lele, older than both, left out.) */
+  const merged = beef({ narratives: beef().narratives.filter((x) => x.id !== 'n-le').map((x) => (x.id === 'n-tc' ? { ...x, formedAtMs: T0 - 3 * DAY } : x)), untouchable: new Set(['n-tc']), receiveOnly: new Set(['n-tc']) });
+  const plan = traceStories(merged, P);
+  assert.ok(plan.merges.some((m) => m.from === 'n-ca' && m.into === 'n-tc'), 'Calajo (newer) joins his narrative');
+  const withLele = traceStories({ ...merged, narratives: [...merged.narratives, ...beef().narratives.filter((x) => x.id === 'n-le')] }, P);
+  assert.ok(!withLele.merges.some((m) => m.from === 'n-tc'), 'his narrative is never merged away, even into the older Lele one');
+  const frozen = traceStories(beef({ untouchable: new Set(['n-tc']) }), P);
+  assert.ok(!frozen.merges.some((m) => m.from === 'n-tc' || m.into === 'n-tc'), 'without receiveOnly it stays as before');
+  /* He removed ca1 from beside tc1: the merge would put them back together, so it is not made. */
+  const calls = foldNarrativeCalls([{ id: 1, atMs: 1, narrativeId: 'n-tc', verdict: 'remove_post', otherId: 'ca1', coin: null, members: ['tc1', 'ca1'], otherMembers: [] }]);
+  assert.ok(!traceStories({ ...merged, calls }, P).merges.some((m) => m.into === 'n-tc'));
+});
+
 test('★ a shared start must be one we may start from, inside the lookback: an old famous post ties nothing', () => {
   const old = beef({ posts: new Map([...beef().posts, ['tr', post('tr', T0 - 30 * DAY, ['CATHAT'])]]), refs: new Map([['ca2', ['tr']], ['le2', ['tr']]]) });
   const plan = traceStories(old, P);
