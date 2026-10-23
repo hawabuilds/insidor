@@ -37,6 +37,16 @@
  * ★ WHAT THE PUSH SAYS is facts about the world: the ticker, the post's words and who posted them,
  * its market cap when we have one (text.ts). Nothing of the rule — no buyers, no "picked".
  *
+ * ★ A POST THAT STARTED A NARRATIVE (the owner, 2026-10-23: "find the posts that START the narratives
+ * first, then be notified when they are coined"): when the pushed post is its narrative's starting
+ * post and we had it before the coin (starting-post.ts), the same push says "$DOGZILLA launched from
+ * the post that started Dogzilla" instead. The wording only: the same one push, the same rules, the
+ * same daily cap — never a second push.
+ *
+ * ★ A LAUNCHPAD COIN ONLY (the owner, 2026-10-23: "coins that are launched from pumpfun"): a coin
+ * whose stored row is not the launchpad's seen launch is not pushed (coin-gate.ts). Its keys are
+ * remembered all the same, so the post's later coins never follow as a hand-over.
+ *
  * ★ A TAP OPENS THE COIN'S CHART (`/#/token/solana:<mint>`), not the post (the owner, 2026-10-23:
  * "a notification that a coin launched should open that coin's token chart page"). It linked the
  * post until then, so every launch push opened For You with the post's sheet. The post is still the
@@ -55,10 +65,12 @@
 import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
+import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
 import type { Db } from './deliver.ts';
 import { settledCoin } from './first-coin.ts';
 import { tokenHref } from './pipeline.ts';
 import { lineCoin } from './post-watch.ts';
+import { startedTitle, startRows } from './starting-post.ts';
 
 export const LAUNCH_STREAM = 'launch';
 const SEEDED = '#seeded';
@@ -85,6 +97,9 @@ export interface Picked {
    */
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
 }
+
+/** Whether the coin is a launchpad coin by its stored row; the launch timing is rule 2's, not the gate's. */
+export const onLaunchpad = (f: CoinGateFacts | undefined): boolean => f !== undefined && coinGate(f) !== 'not_launchpad';
 
 /** Where a tap on the push lands: the coin's own chart (mobile shared/route.ts `token`), never the post. */
 export const launchHref = (p: Pick<Picked, 'address'>): string => tokenHref(p.address);
@@ -222,11 +237,17 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     await remember([...[...withLaunch, ...narratives].flatMap((p) => [p.key, `c:${p.address}`]), SEEDED]);
     return 0;
   }
-  const { due, keys } = launchEvents(withLaunch, narratives, seen, ports.now(), L);
+  const events = launchEvents(withLaunch, narratives, seen, ports.now(), L);
+  const keys = events.keys;
+  /* ★ A launchpad coin only (coin-gate.ts). Rule 2 already keeps the timing; the coin is spent either way. */
+  const gate = await coinGateFacts(db, events.due);
+  const due = events.due.filter((d) => onLaunchpad(gate.get(`${d.itemId}|${d.address}`)));
   let queued = 0;
   if (due.length > 0) {
     /* The cap the push says: the card's own when it has one, else a fresh read (free). */
     const caps = await coinFacts(db, ports.quotes, due.filter((d) => d.capUsd === null).map((d) => d.address));
+    /* ★ The post that started a narrative: its public title, said instead of the normal wording (starting-post.ts). */
+    const starts = await startRows(db, due.map((d) => d.itemId));
     for (const d of due) {
       const c = caps.get(d.address);
       const f: Record<string, unknown> = {
@@ -239,6 +260,8 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
         logo: d.logo ?? c?.logo ?? null,
         item: d.itemId,
       };
+      const started = startedTitle(starts.get(d.itemId), d.launchedMs);
+      if (started !== null) f['started'] = started;
       /* Strongest first: one statement per coin, so queue order is cap order. */
       const rows = await db.query<{ n: number }>(
         `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href) select user_id, 'coin_launched', $1, 0, $2, $3 from people.profile returning 1) select count(*)::int as n from q`,
