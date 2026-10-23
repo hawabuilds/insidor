@@ -6,6 +6,11 @@
  *   POST /owner/narrative { action, storyId, intoStoryId?, itemId?, itemIds?, coin?, title?, postUrl?, note? }
  *     action  not_narrative | merge (into `intoStoryId`) | remove_post (`itemId`) | split (`itemIds`)
  *             | coin_right | coin_wrong (`coin`) | rename (`title`) | add_post (`postUrl` or `itemId`)
+ *             | meme_war (`countries`: two to four country names, or none for "not a meme war")
+ *
+ * ★ "TWITTER WORLD WAR" IS HIS TO OVERRULE, as a rename is: the call (verdict 'fight', `name` the
+ * countries or null) and the narrative's own `fight` with `fight_model = 'owner'`, which the titler's
+ * answer never replaces. An empty list takes it out of the umbrella; countries put it in.
  *
  * ★ AN ADD NEEDS NO STORED POST. The link is read as the coin label reads one (owner-coin.ts
  * `postIdOf`: `x:<id>`, `tiktok:<id>`); a post we do not hold is queued in internal.missed_post for
@@ -50,7 +55,7 @@ interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
 }
 
-export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong', 'rename', 'add_post'] as const;
+export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong', 'rename', 'add_post', 'meme_war'] as const;
 export type NarrativeAction = (typeof NARRATIVE_ACTIONS)[number];
 
 const ID = /^[A-Za-z0-9_:.\-]{1,200}$/;
@@ -58,6 +63,9 @@ const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const MAX_NOTE = 200;
 /** The longest title the owner may type: owner_feedback.name's own bound (0054). */
 const MAX_TITLE = 80;
+/** The most countries one meme war names (Policy.narrative.fight.maxCountries' value; the server checks the shape only). */
+const MAX_COUNTRIES = 4;
+const COUNTRY = /^[\p{L}][\p{L} .'-]{0,38}[\p{L}.]$/u;
 /** The titler's mark for a title the owner typed (0127): the runner never writes over it. */
 export const OWNER_TITLE_MODEL = 'owner';
 /** The most posts one split names: far over any narrative's page, a bound on the request only. */
@@ -77,6 +85,8 @@ export interface NarrativeCall {
   readonly title: string | null;
   /** Add a post: the link pasted, when one was (an added post given by id has none). */
   readonly postUrl: string | null;
+  /** Meme war: the countries, alphabetical, each once; empty for "not a meme war". */
+  readonly countries: readonly string[];
   readonly note: string | null;
 }
 
@@ -114,11 +124,26 @@ export function parseNarrativeCall(body: unknown): NarrativeCall | string {
     if (postUrl !== null && added === null) return 'Paste the full link to an X or TikTok post.';
     if (added === null) return '"Add a post" needs the post\'s link.';
   }
+  let countries: string[] = [];
+  if (action === 'meme_war') {
+    const raw = b['countries'];
+    if (!Array.isArray(raw) || !raw.every((c) => typeof c === 'string')) return '"Twitter World War" needs the countries, or none.';
+    const named = new Map<string, string>();
+    for (const c of raw as string[]) {
+      const t = c.replace(/\s+/g, ' ').trim();
+      if (t === '') continue;
+      if (!COUNTRY.test(t)) return `"${t.slice(0, 40)}" is not a country name.`;
+      const cased = t.split(' ').map((w) => (w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
+      named.set(cased.toLowerCase(), cased);
+    }
+    countries = [...named.values()].sort((x, y) => x.localeCompare(y));
+    if (countries.length === 1 || countries.length > MAX_COUNTRIES) return `A meme war is between 2 and ${MAX_COUNTRIES} countries.`;
+  }
   if (action === 'merge' && (intoStoryId === null || intoStoryId === storyId)) return '"Merge with…" names the other narrative.';
   if (action === 'remove_post' && itemId === null) return '"Remove this post" names the post.';
   if (action === 'split' && itemIds.length === 0) return '"Split" names the posts to move.';
   if ((action === 'coin_right' || action === 'coin_wrong') && rawCoin === null) return 'Say which coin.';
-  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : action === 'add_post' ? added : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, title: action === 'rename' ? title : null, postUrl: action === 'add_post' ? postUrl : null, note: note === '' ? null : note };
+  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : action === 'add_post' ? added : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, title: action === 'rename' ? title : null, postUrl: action === 'add_post' ? postUrl : null, countries, note: note === '' ? null : note };
 }
 
 const VERDICT: Readonly<Record<NarrativeAction, string>> = {
@@ -130,6 +155,7 @@ const VERDICT: Readonly<Record<NarrativeAction, string>> = {
   coin_wrong: 'wrong',
   rename: 'rename',
   add_post: 'add_post',
+  meme_war: 'fight',
 };
 
 /** The calls a database may not take yet, and what the owner is told then. */
@@ -137,6 +163,7 @@ const LATER: ReadonlyMap<NarrativeAction, string> = new Map([
   ['split', 'Splitting a narrative'],
   ['rename', 'Renaming a narrative'],
   ['add_post', 'Adding a post to a narrative'],
+  ['meme_war', 'Twitter World War'],
 ]);
 
 /** POST /owner/narrative, for a person `owner.ts` has already checked is the owner (`ref`). */
@@ -194,7 +221,7 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
     `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address, note, other_id, members, other_members, name)
      values ($1, $2, 'narrative', $3, $4, $5, $6, $7, $8::text[], $9::text[], $10)
      returning id, verdict as call, item_id as "storyId", other_id as "otherId", coin_address as coin, name as title, (extract(epoch from created_at) * 1000)::float8 as at`,
-    [ref, userId, call.storyId, VERDICT[call.action], call.coin, call.note, otherId, saved, otherMembers, call.title],
+    [ref, userId, call.storyId, VERDICT[call.action], call.coin, call.note, otherId, saved, otherMembers, call.action === 'meme_war' ? (call.countries.length === 0 ? null : call.countries.join(', ')) : call.title],
   ).catch((e: unknown) => {
     /* Before the database takes a newer call (its owner_feedback check: 'split' 0108, 'rename' 0127), it is "not set up yet", like a 404 before 0093. */
     if (LATER.has(call.action) && (e as { code?: string } | null)?.code === '23514') return null;
@@ -207,6 +234,10 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
       `update internal.narrative set title = $2, title_model = $3, title_posts = $4, titled_at = now() where narrative_id = $1`,
       [call.storyId, call.title, OWNER_TITLE_MODEL, members.length],
     );
+  }
+  /* His answer on the meme war, marked as his, so the next frame shows it and the titler never replaces it. */
+  if (call.action === 'meme_war') {
+    await db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1`, [call.storyId, [...call.countries], OWNER_TITLE_MODEL]);
   }
   return json(201, { saved: row ?? null, ...(call.action === 'add_post' ? { queued } : {}) });
 }

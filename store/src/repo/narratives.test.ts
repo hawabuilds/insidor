@@ -64,8 +64,9 @@ test('★ the meme-war answer is written whoever wrote the title, and nothing be
   const has = (ok: boolean) => ({ query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), / as ok/.test(sql) ? [{ ok }] : []) }) as unknown as Db;
   await new PgNarrativeRepo(has(true)).setFight('n-war', ['China', 'Turkey'], 'nvidia/nemotron');
   const write = seen.find((q) => q.sql.includes('set fight'));
-  assert.deepEqual(write?.params, ['n-war', ['China', 'Turkey'], 'nvidia/nemotron']);
+  assert.deepEqual(write?.params, ['n-war', ['China', 'Turkey'], 'nvidia/nemotron', OWNER_TITLE_MODEL]);
   assert.doesNotMatch(write?.sql ?? '', /title_model/, 'an owner title does not stop it');
+  assert.match(write?.sql ?? '', /fight_model is distinct from \$4/, 'the owner\'s own answer does');
   seen.length = 0;
   await new PgNarrativeRepo(has(false)).setFight('n-war', [], 'm');
   assert.equal(seen.some((q) => q.sql.includes('set fight')), false);

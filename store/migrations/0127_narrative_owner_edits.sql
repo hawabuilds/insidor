@@ -34,6 +34,10 @@
 --                           when it said no; null when it was never asked (the runner asks those,
 --                           a few a pass). `fight_model` is the model that answered, `fight_at` when.
 --                           Kept apart from the title so an owner's title never stops it being asked.
+-- owner_feedback 'fight'    the owner's own answer ("Twitter World War" on the Edit sheet): `name`
+--                           the countries ("China, Turkey"), or null for "not a meme war". Written
+--                           onto `fight` by services/social with `fight_model = 'owner'`, which the
+--                           runner never writes over (store repo/narratives.ts `setFight`), as the title.
 --
 -- What breaks if changed carelessly: the owner_feedback check is dropped and made again whole (as
 -- 0108 did); a verdict left out of this copy stops being writable. And the column grant: widening it
@@ -45,6 +49,7 @@ alter table internal.owner_feedback add constraint owner_feedback_check check (
   or (subject_kind = 'coin_match' and verdict in ('right', 'wrong', 'none', 'cleared') and (verdict not in ('none', 'cleared') or coin_address is null))
   or (subject_kind = 'name' and verdict in ('up', 'down') and name is not null)
   or (subject_kind = 'narrative' and verdict = 'rename' and name is not null and coin_address is null)
+  or (subject_kind = 'narrative' and verdict = 'fight' and coin_address is null)
   or (subject_kind = 'narrative' and name is null and (
         (verdict = 'not_narrative' and coin_address is null)
      or (verdict = 'merge' and other_id is not null and coin_address is null)
@@ -60,6 +65,7 @@ grant update (title, title_posts, title_model, titled_at) on internal.narrative 
 alter table internal.narrative add column fight text[] check (fight is null or cardinality(fight) = 0 or cardinality(fight) >= 2);
 alter table internal.narrative add column fight_model text;
 alter table internal.narrative add column fight_at timestamptz;
+grant update (fight, fight_model, fight_at) on internal.narrative to insidor_people;
 comment on column internal.narrative.fight is
   'The countries whose users trade memes in it (an online meme war, 0127), alphabetical; empty: asked, not one; null: never asked.';
 
