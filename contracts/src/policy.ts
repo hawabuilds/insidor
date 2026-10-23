@@ -4930,7 +4930,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v144',
+  version: 'policy.v145',
 
   admit: {
     maxAgeMin: 240,
@@ -5557,8 +5557,14 @@ const POLICY_V1: Policy = {
          or twice) ~$0.05; `langSplit.bandsDailyUsd` gives up $0.45 for it. $0.55 here: the $0.05 of
          French and Japanese posts on top of English's $0.50, so the shared slow floor holds where it
          was rather than rising against English's older posts. */
-      dailyUsd: 0.55,
-      langs: ['en', 'fr', 'ja'],
+      /* Turkish and Chinese too from 2026-10-23 evening, the owner's "add Turkish and Chinese to older
+         search": the Chinese–Turkish X beef and the first Dogzilla post started in those languages, and
+         the missed-list replay found slow-starting Turkish and Chinese posts (e.g. a Turkish post at ~4k
+         likes, 777k views) that only one newest-band ask could reach. Same arithmetic as French and
+         Japanese: ~$0.37 a day of one-post-minimum asks for the two, plus their few posts over the slow
+         floor (~$0.03); `langSplit.bandsDailyUsd` gives up $0.40 for it, so the X day does not grow. */
+      dailyUsd: 0.6,
+      langs: ['en', 'fr', 'ja', 'tr', 'zh'],
     },
     /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
        6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones
@@ -5675,10 +5681,13 @@ const POLICY_V1: Policy = {
            lose the $0.45 `langSplit.bandsDailyUsd` gave up (2.2 → 1.95, 1.8 → 1.6), and the late band's
            and slow lane's gain it (0.5 → 0.8: three languages' ~850 asks a day each at the one-post
            minimum, ~$0.38, and their posts; 0.6 → 0.75). The four still add to the same $5.10. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.95 },
-        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.6 },
-        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.8 },
-        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.75 },
+        /* And from the same evening (`slow.langs` adds Turkish and Chinese, paid by the bands): the bands
+           give up $0.40 more (1.95 → 1.75, 1.6 → 1.4), the late band and slow lane take it (0.8 → 1.05,
+           0.75 → 0.9). Still $5.10 together. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.75 },
+        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.4 },
+        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.05 },
+        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.9 },
       },
     },
     /* On from 2026-10-19, the owner's "hard daily total for X search, spread evenly". The search bill
@@ -5721,7 +5730,7 @@ const POLICY_V1: Policy = {
     langSplit: {
       on: true,
       shares: { en: 0.7, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005 },
-      bandsDailyUsd: 3.65,
+      bandsDailyUsd: 3.25, // 3.65 → 3.25 on 2026-10-23 evening: Turkish and Chinese in the older search (slow.langs)
       minPostsPerAsk: 2,
       maxEveryMs: 3_600_000, // an hour
     },
