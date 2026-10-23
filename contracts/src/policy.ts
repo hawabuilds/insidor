@@ -4916,7 +4916,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v142',
+  version: 'policy.v143',
 
   admit: {
     maxAgeMin: 240,
@@ -6884,7 +6884,7 @@ const POLICY_V1: Policy = {
       cap: { dailyUsd: 0.5, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
       passDeadlineMs: 120_000,
     },
-    /* ── narrative.origin: the starting post and one story across languages (policy.v142) ── */
+    /* ── narrative.origin: the starting post and one story across languages (policy.v143) ── */
     origin: {
       on: true,
       lookbackMs: 604_800_000, // seven days before the narrative's first post, as the early posts
