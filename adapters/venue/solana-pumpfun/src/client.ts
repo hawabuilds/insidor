@@ -85,20 +85,30 @@ export function readSimulation(raw: unknown): Simulation {
   return { ok: false, message: describeSimulationFailure(err, logs), logs };
 }
 
+/** Said when a failure is none of the known ones: plain, and true of every failed simulation. */
+export const UNKNOWN_FAILURE = "This trade wouldn't go through right now. Try again in a moment.";
+
 /**
  * Why a simulation failed, in words the order sheet can show. Trador's reading of the same
- * logs, kept: the common failures by name, else the program's own last error lines.
+ * logs, kept: the common failures by name.
+ *
+ * ★ NEVER THE PROGRAM'S OWN WORDS. An Anchor error, an error number or a program address reaches
+ * the person as nothing they can act on (the owner saw "AnchorError caused by account:
+ * bonding_curve. Error Code: UnsupportedQuoteMint…" on a Buy, 23 Oct 2026). A failure that is not
+ * one of these is said as `UNKNOWN_FAILURE`; the raw lines stay in the trade service's log.
+ *
+ * Only the program's text lines are read: `Program data:` and `Program return:` lines are base64,
+ * and an error number like 6001 turns up inside them by chance.
  */
 export function describeSimulationFailure(err: unknown, logs: readonly string[]): string {
-  const joined = logs.join('\n');
-  const errJson = JSON.stringify(err);
-  if (/6001|0x1771|TooMuchSolRequired|TooLittleSolReceived|slippage/i.test(joined)) return 'The price moved past your slippage. Get a new quote and try again.';
+  const joined = logs.filter((l) => !/^Program (data|return):/.test(l)).join('\n');
+  const errJson = JSON.stringify(err) ?? '';
+  if (/UnsupportedQuoteMint|Error Number: 6063|0x17af\b/i.test(joined)) return "This coin can't be bought here yet.";
+  if (/6001|0x1771\b|TooMuchSolRequired|TooLittleSolReceived|SlippageToleranceExceeded|slippage/i.test(joined)) return 'The price moved past your slippage. Get a new quote and try again.';
   if (/insufficient lamports|insufficient funds|0x1\b/i.test(joined)) return 'Not enough SOL for this trade, its fees and the account rent.';
   if (/AccountNotFound/i.test(errJson)) return 'This wallet has no SOL yet. Fund it and try again.';
-  if (/BondingCurveComplete|0x1775/i.test(joined)) return 'This coin has left its curve. Get a new quote to trade it in its pool.';
-  const interesting = logs.filter((line) => /failed|error|insufficient|custom program error/i.test(line));
-  if (interesting.length > 0) return interesting.slice(-3).join(' ');
-  return `The transaction would fail: ${errJson.slice(0, 200)}`;
+  if (/BondingCurveComplete|0x1775\b/i.test(joined)) return 'This coin has left its curve. Get a new quote to trade it in its pool.';
+  return UNKNOWN_FAILURE;
 }
 
 /** One batch reply → address → picture link. Pure, so it is tested against a recorded reply. */
