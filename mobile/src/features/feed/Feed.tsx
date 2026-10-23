@@ -112,6 +112,7 @@ import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
 import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
+import { noteTap } from '../../shared/tap-log.ts';
 import styles from './feed.module.css';
 
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
@@ -156,6 +157,7 @@ export function Feed({
     const take = () => {
       const r = parseRoute(window.location.hash);
       if (r.screen !== 'post') return;
+      noteTap('post-sheet', { post: r.postId });
       history.replaceState(history.state, '', hrefFor({ screen: 'feed' }));
       setTab('fyp');
       setSheet({ id: r.postId, start: 'post' });
