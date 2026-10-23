@@ -4637,6 +4637,22 @@ export interface PostPicturePolicy {
 }
 
 /**
+ * THE RUNNING COINS STRIP at the top of For You and the Narratives tab (policy.v148; the owner,
+ * 2026-10-23, design A of reports/ticker). Only the coins of posts and narratives we found — the
+ * one coin a For You card or a board narrative names — launched on the launchpad, tradable, with a
+ * market cap and a 24-hour move from a frame written in the last `freshMs`. Read by services/read
+ * running-coins.ts from prices the projector already wrote: no market source is asked.
+ */
+export interface RunningCoinsPolicy {
+  /** The most coins on the strip. */
+  readonly maxCoins: number;
+  /** A coin's price counts only when the frame that carried it was written this recently. */
+  readonly freshMs: number;
+  /** One list is kept this long and handed to everyone who asks in that time. */
+  readonly keepMs: number;
+}
+
+/**
  * The database host's disk and bill, as the owner's alerts model them (services/runner
  * disk-alarm.ts). Neither the provisioned disk nor the bill is readable from SQL, so both are
  * modelled from the database's hourly size (internal.disk_sample, 0105) and the host's published
@@ -4745,6 +4761,8 @@ export interface Policy {
   readonly postPictures: PostPicturePolicy;
   /** The database host's disk and bill: the owner's alerts when the disk fills or the bill heads over his line. */
   readonly store: StorePolicy;
+  /** The running coins strip on For You and the Narratives tab (services/read running-coins.ts). */
+  readonly runningCoins: RunningCoinsPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -4959,7 +4977,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v146',
+  version: 'policy.v148',
 
   admit: {
     maxAgeMin: 240,
@@ -7206,6 +7224,18 @@ const POLICY_V1: Policy = {
       storageUsdPerGbMonth: 0.0213,
       alertOverUsd: 90,
     },
+  },
+
+  /* policy.v148 adds `runningCoins`. Twelve is about two screen-widths of the strip at 390 points,
+     so one loop shows each coin once in the 34 seconds it takes. Ten minutes: For You's frame is
+     written about every minute and the board's every five to six (measured 23 Oct: 51 s and 5 m 40 s
+     old), so a frame older than ten has missed a beat and its prices (already at most
+     `market.readingFreshnessMs` old when written) are no longer "now". Thirty seconds of keeping:
+     For You's frame moves about once a minute. */
+  runningCoins: {
+    maxCoins: 12,
+    freshMs: 600_000, // 10 minutes
+    keepMs: 30_000,
   },
 
   scorers: {

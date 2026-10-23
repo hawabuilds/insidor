@@ -28,6 +28,7 @@ import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
+import { createRunningCoins } from './running-coins.ts';
 import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-pics.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
@@ -77,6 +78,8 @@ export interface Deps {
   readonly sorts?: ReturnType<typeof createSorts>;
   /** The Narratives tab's lists (narrative-sorts.ts), ranked once per board tick. Absent: ranked on every request. */
   readonly narrativeLists?: ReturnType<typeof createNarrativeLists>;
+  /** The running coins strip (running-coins.ts), kept `runningCoins.keepMs`. Absent: read on every request. */
+  readonly runningCoins?: ReturnType<typeof createRunningCoins>;
 }
 
 /*
@@ -591,6 +594,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
 
     /* Every narrative, dead ones included, a page at a time: the tab's All time list. */
     if (segments.length === 3 && head === 'narratives' && param !== undefined && segments[2] === 'all') return await allNarratives(param, rawUrl, deps);
+
+    /* The running coins strip on For You and the Narratives tab (running-coins.ts). */
+    if (segments.length === 2 && head === 'running' && param === 'coins') return json(200, await (deps.runningCoins ?? createRunningCoins())(deps.db));
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);
