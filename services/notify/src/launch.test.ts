@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { postOfRow } from './faces.ts';
-import { launchEvents, launchHref, type Picked } from './launch.ts';
+import { launchEvents, launchHref, onLaunchpad, type Picked } from './launch.ts';
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;
@@ -85,4 +85,13 @@ test('★ a tap on a launch push opens the coin\'s chart, and the list still dra
   assert.equal(href, '/#/token/solana%3AGhCkyzX8ngPeC4Anq66khJb2jaSPf13T2DSE4bdkpump', 'the token page, as the app routes it');
   assert.equal(postOfRow({ kind: 'coin_launched', subject: p.address, href, facts: { item: p.itemId } }), 'x:2113437949748785214', 'the post rides in the facts');
   assert.equal(postOfRow({ kind: 'coin_launched', subject: 'x:1', href: '/#/post/x%3A9' }), 'x:9', 'a row from before still finds its post by its link');
+});
+
+test('★ only a launchpad coin is pushed: the stored row decides, and launch timing stays rule 2\'s', () => {
+  const f = { venueId: 'solana:pumpfun', origin: 'live_stream', launchedMs: ON_FYP, hadPostMs: ON_FYP };
+  assert.equal(onLaunchpad(f), true);
+  assert.equal(onLaunchpad({ ...f, launchedMs: ON_FYP - 1 }), true, 'a coin-first post\'s coin came first: rule 2, not the venue, decides it');
+  assert.equal(onLaunchpad({ ...f, venueId: null, origin: null }), false, 'no row: not placed on the launchpad');
+  assert.equal(onLaunchpad({ ...f, origin: 'paired_token' }), false);
+  assert.equal(onLaunchpad(undefined), false);
 });

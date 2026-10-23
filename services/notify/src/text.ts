@@ -121,6 +121,8 @@ export function cutWords(raw: unknown, max: number): string | null {
 }
 /** How much of a post's words a push carries: about a line on a lock screen. */
 const EXCERPT_CHARS = 50;
+/** How much of a narrative's title a push's first line carries after "launched from the post that started". */
+const STARTED_CHARS = 40;
 
 /** A span of time as the owner says it: "33m", "5h", "3d"; never "0m". */
 export function span(ms: number): string {
@@ -270,7 +272,10 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const who = s(f['author'], '');
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post on For You' : `A post by ${who}`;
       const mc = cap(f);
-      return { title: `${ticker(f)} launched for a post you may have seen`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
+      /* The post that started a narrative (launch.ts, starting-post.ts): "$DOGZILLA launched from the post that started Dogzilla". */
+      const started = cutWords(f['started'], STARTED_CHARS);
+      const title = started !== null ? `${ticker(f)} launched from the post that started ${started}` : `${ticker(f)} launched for a post you may have seen`;
+      return { title, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
     }
     case 'watched_first_coin': {
       /* "$FALCON is the first coin for a post you saved" / '"Falcon 9 lands…" (@SpaceX). $3K MC.' */

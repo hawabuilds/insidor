@@ -29,7 +29,15 @@ async function setup() {
   await db.query(`insert into people.profile (user_id, name) values ('u1', 'u1')`);
   await db.query(`insert into people.push_subscription (endpoint, user_id, p256dh, auth) values ('https://push.example/u1', 'u1', 'p', 'a')`);
   /* A post first on For You an hour ago; its card's coin as the projector writes a pick. */
-  const post = async (id: string, coin: { address: string; ticker: string; cap: number; launchedAgoMin: number } | null) => {
+  const post = async (id: string, coin: { address: string; ticker: string; cap: number; launchedAgoMin: number; launchpad?: false } | null) => {
+    /* The launchpad's own row for the coin (notify coin-gate.ts): only a coin it saw launch is pushed. */
+    if (coin !== null && coin.launchpad !== false) {
+      await db.query(
+        `insert into public.asset (chain, address, asset_key, venue_id, minted_at, minted_at_source, minted_at_conf, minted_at_bound_s, symbol, name, declared_social, first_seen_at, origin)
+         values ('solana', $1, $2, 'solana:pumpfun', $3, 'vendor_field', 'bounded', 300, $4, $4, '{}'::jsonb, $3, 'live_stream') on conflict do nothing`,
+        [coin.address, `solana:${coin.address}`, iso(NOW - coin.launchedAgoMin * MIN), coin.ticker],
+      );
+    }
     const coins = coin === null ? { kind: 'none' } : { kind: 'matched', coin: { address: coin.address, ticker: coin.ticker, marketCapUsd: { v: coin.cap }, mintedAt: { at: NOW - coin.launchedAgoMin * MIN } }, evidence: { picked: true } };
     await db.query(
       `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at) values ('fyp', $1, $2, $3, $4, $3)
@@ -70,7 +78,7 @@ test('★ a coin older than the post on For You is not pushed, nor that post\'s 
   /* The narrative of x:b picks the same coin: already pushed. Its launch is known, so only the coin rule holds it back. */
   await db.query(
     `insert into public.asset (chain, address, asset_key, venue_id, minted_at, minted_at_source, minted_at_conf, minted_at_bound_s, symbol, name, declared_social, first_seen_at, origin)
-     values ('solana', $1, $2, 'solana:pumpfun', $3, 'vendor_field', 'bounded', 300, 'NEW', 'New', '{}'::jsonb, $3, 'live_stream')`,
+     values ('solana', $1, $2, 'solana:pumpfun', $3, 'vendor_field', 'bounded', 300, 'NEW', 'New', '{}'::jsonb, $3, 'live_stream') on conflict do nothing`,
     [mint(2), `solana:${mint(2)}`, iso(NOW - 5 * MIN)],
   );
   await db.query(`insert into internal.narrative (narrative_id, state, anchor_item, member_count, title) values ('n-x:b', 'open', 'x:b', 1, 'B')`);
@@ -102,4 +110,36 @@ test('★ a coin-first post is pushed on its first pick, launched before For You
   assert.equal(await launches(), 2, 'the first pick of each post, whoever linked it first');
   assert.deepEqual(await deliver(), ['push', 'push']);
   assert.deepEqual([...sent].sort(), ['$LATE launched for a post you may have seen', '$LAURA launched for a post you may have seen']);
+});
+
+test('★ a coin the launchpad never saw launch is not pushed, and its post stays spent', async () => {
+  const { sent, post, launches, deliver } = await setup();
+  await post('x:m', null);
+  assert.equal(await launches(), 0, 'the first look');
+  await post('x:m', { address: mint(11), ticker: 'METEORA', cap: 80_000, launchedAgoMin: 5, launchpad: false });
+  assert.equal(await launches(), 0, 'no launchpad row: not pushed');
+  await post('x:m', { address: mint(12), ticker: 'LATER', cap: 50_000, launchedAgoMin: 2 });
+  assert.equal(await launches(), 0, 'its later coin is a hand-over, never news');
+  assert.deepEqual(await deliver(), []);
+  assert.deepEqual(sent, []);
+});
+
+test('★ the post that started a narrative: the same one push says so, and a later post of it keeps the normal wording', async () => {
+  const { db, sent, post, launches, deliver } = await setup();
+  await post('x:s1', null);
+  await post('x:s2', null);
+  assert.equal(await launches(), 0, 'the first look');
+  await db.query(`insert into public.author (author_key, source, source_author_id, handle) values ('x:tr', 'x', 'tr', 'tr')`);
+  /* x:s1 posted first (the start), x:s2 an hour later; both had by us two hours ago, before either coin. */
+  for (const [id, postedAgoMin] of [['x:s1', 300], ['x:s2', 240]] as const) {
+    await db.query(`insert into public.item (item_id, source, source_item_id, author_key, posted_at, first_seen_at, body, raw_ref, origin) values ($1, 'x', $1, 'x:tr', $2, $3, 'b', 'r', 'observed')`, [id, iso(NOW - postedAgoMin * MIN), iso(NOW - 120 * MIN)]);
+  }
+  await db.query(`insert into internal.narrative (narrative_id, state, anchor_item, member_count, title) values ('n-dog', 'open', 'x:s1', 2, 'Dogzilla')`);
+  await db.query(`insert into internal.narrative_member (narrative_id, item_id) values ('n-dog', 'x:s1'), ('n-dog', 'x:s2')`);
+  await db.query(`insert into public.story_view (story_id, payload, found_at, views_total, dead) values ('n-dog', $1, now(), 1, false)`, [JSON.stringify({ title: 'Dogzilla', provenance: { kind: 'observed' }, coins: { kind: 'none' } })]);
+  await post('x:s1', { address: mint(21), ticker: 'DOGZILLA', cap: 40_000, launchedAgoMin: 5 });
+  await post('x:s2', { address: mint(22), ticker: 'DOGZ', cap: 30_000, launchedAgoMin: 5 });
+  assert.equal(await launches(), 2, 'one push per coin, as before: the wording is the only change');
+  assert.deepEqual(await deliver(), ['push', 'push']);
+  assert.deepEqual(sent, ['$DOGZILLA launched from the post that started Dogzilla', '$DOGZ launched for a post you may have seen']);
 });
