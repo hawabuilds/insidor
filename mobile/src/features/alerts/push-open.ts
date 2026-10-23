@@ -10,8 +10,15 @@
  *   background  the open window is sent { type: 'insidor-open', hash } and focused
  *   or open     (the same message)
  *   fallback    the hash left in the `insidor-open` cache for a minute, for a launch that came up at
- *               the start page instead (iPhone has done so); read on launch and when the app comes
- *               back to the front, deleted by whoever takes it, so it opens once
+ *               the start page instead (iPhone has done so); deleted by whoever takes it, so it opens once
+ *
+ * ★ THE FALLBACK IS LOOKED FOR OVER A FEW SECONDS, NOT ONCE. An installed iPhone app launched by a
+ * tap comes up at the start page and the service worker hears the tap in the same moment, so the
+ * page's first look can come before the worker has left the hash; with no window to message yet,
+ * the tap was lost and the app sat on For You (the owner, 2026-10-23: neither a post nor a coin
+ * notification opened its screen). So the page looks on launch and again at `LOOK_AFTER_MS`, and
+ * the same each time it comes back to the front. One tap heard twice (the message and the cache, in
+ * the same moment) is opened once (`isRepeat`).
  *
  * A post's screen (`#/post/<id>`) needs nothing under it: For You itself takes the address, puts it
  * back to For You and opens the sheet over it (features/feed/Feed.tsx). Any other screen gets a For
@@ -29,8 +36,26 @@ const OPEN_KEY = '/__insidor_open';
 /** A pending open older than this is a tap from long ago, not the one that launched us. */
 const PENDING_MS = 60_000;
 const FYP = '#/';
+/** After a launch or a return to the front, when to look for a pending open again: the worker may still be writing it. */
+const LOOK_AFTER_MS: readonly number[] = [0, 300, 800, 1_500, 3_000, 5_000];
+/** The same screen asked for again within this is the same tap heard two ways, not a second tap. */
+const REPEAT_MS = 5_000;
 /** Set when the launch carried the mark: the pending open is that same tap, already taken. */
 let launchedFromPush = false;
+/** The last screen opened from a tap, and when. */
+let lastOpen: { readonly hash: string; readonly at: number } | null = null;
+
+/** A pending open as the service worker left it, if it is fresh: its hash, else null. */
+export function freshOpen(v: unknown, nowMs: number): string | null {
+  const o = v as { hash?: unknown; at?: unknown } | null;
+  if (typeof o?.hash !== 'string' || !o.hash.startsWith('#/') || typeof o.at !== 'number') return null;
+  return nowMs - o.at >= 0 && nowMs - o.at < PENDING_MS ? o.hash : null;
+}
+
+/** Whether a tap's screen was just opened (the message and the cache carrying the one tap). */
+export function isRepeat(last: { readonly hash: string; readonly at: number } | null, hash: string, nowMs: number): boolean {
+  return last !== null && last.hash === hash && nowMs - last.at < REPEAT_MS;
+}
 
 /** The history a launch from a notification should leave: For You first unless the screen is For You's own. */
 export function launchSteps(hash: string): readonly string[] {
@@ -43,6 +68,7 @@ export function settleLaunch(): void {
   const params = new URLSearchParams(window.location.search);
   if (params.get('push') !== '1') return;
   launchedFromPush = true;
+  lastOpen = { hash: window.location.hash || FYP, at: Date.now() };
   const steps = launchSteps(window.location.hash || FYP);
   /* Numbered (shared/nav.ts) so the screen's Back knows For You is under it. */
   history.replaceState(entryState(0), '', `/${steps[0] ?? FYP}`);
@@ -52,6 +78,8 @@ export function settleLaunch(): void {
 
 /** Go to a notification's screen from wherever the open app is, with For You under anything but a post. */
 export function openFromPush(hash: string): void {
+  if (isRepeat(lastOpen, hash, Date.now())) return;
+  lastOpen = { hash, at: Date.now() };
   const target = parseRoute(hash);
   if (target.screen !== 'post' && target.screen !== 'feed' && parseRoute(window.location.hash).screen !== 'feed') pushEntry(FYP);
   if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -73,8 +101,7 @@ async function takePending(): Promise<string | null> {
     const hit = await cache.match(OPEN_KEY);
     if (hit === undefined) return null;
     await cache.delete(OPEN_KEY);
-    const v = (await hit.json()) as { hash?: unknown; at?: unknown };
-    return typeof v.hash === 'string' && typeof v.at === 'number' && Date.now() - v.at < PENDING_MS ? v.hash : null;
+    return freshOpen(await hit.json(), Date.now());
   } catch {
     return null;
   }
@@ -89,13 +116,24 @@ export function listenForOpens(): void {
     void dropPending();
     openFromPush(d.hash);
   });
+  /* Messages that came while the page was starting are handed over now, not at the end of parsing. */
+  navigator.serviceWorker.startMessages();
   const pending = () =>
     void takePending().then((hash) => {
       if (hash !== null) openFromPush(hash);
     });
+  /* Each look is cheap (one cache read); the timers of an earlier look are dropped, never doubled. */
+  let looks: ReturnType<typeof setTimeout>[] = [];
+  const lookAWhile = () => {
+    looks.forEach(clearTimeout);
+    looks = LOOK_AFTER_MS.map((ms) => setTimeout(pending, ms));
+  };
   if (launchedFromPush) void dropPending();
-  else pending();
+  else lookAWhile();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') pending();
+    if (document.visibilityState === 'visible') lookAWhile();
+  });
+  window.addEventListener('pageshow', (e: PageTransitionEvent) => {
+    if (e.persisted) lookAWhile();
   });
 }
