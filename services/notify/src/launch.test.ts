@@ -5,7 +5,8 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { launchEvents, type Picked } from './launch.ts';
+import { postOfRow } from './faces.ts';
+import { launchEvents, launchHref, type Picked } from './launch.ts';
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;
@@ -76,4 +77,12 @@ test('★ a coin-first post: its coin came first, and its first pick is pushed, 
   assert.deepEqual(notRoute.due, [], 'a post For You took on its views keeps rule 2');
   const stale = launchEvents([pick('p:x:9', 'LAURA', { launchedMs: NOW - L.maxLaunchAgeMs - 1, coinFirst: { firstCoinAddress: 'LAURA' } })], [], new Set(), NOW, L);
   assert.deepEqual(stale.due, [], 'still only a coin that just launched');
+});
+
+test('★ a tap on a launch push opens the coin\'s chart, and the list still draws the post as its card', () => {
+  const p = pick('p:x:2113437949748785214', 'GhCkyzX8ngPeC4Anq66khJb2jaSPf13T2DSE4bdkpump');
+  const href = launchHref(p);
+  assert.equal(href, '/#/token/solana%3AGhCkyzX8ngPeC4Anq66khJb2jaSPf13T2DSE4bdkpump', 'the token page, as the app routes it');
+  assert.equal(postOfRow({ kind: 'coin_launched', subject: p.address, href, facts: { item: p.itemId } }), 'x:2113437949748785214', 'the post rides in the facts');
+  assert.equal(postOfRow({ kind: 'coin_launched', subject: 'x:1', href: '/#/post/x%3A9' }), 'x:9', 'a row from before still finds its post by its link');
 });
