@@ -343,7 +343,7 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
                 ) : (
                   <Line label="Minimum received">{buying ? `${coinOut(quote.bound)} ${ticker}` : `${solText(BigInt(quote.bound))} SOL`}</Line>
                 )}
-                <Line label="Route">{quote.venue === 'curve' ? 'pump.fun curve' : 'Bonded pool, via Jupiter'}</Line>
+                <Line label="Route">{quote.venue === 'curve' ? 'pump.fun curve' : quote.via === 'curve' ? 'pump.fun curve, via Jupiter' : 'Bonded pool, via Jupiter'}</Line>
                 <Line label="Max slippage">{slippageBps / 100}%</Line>
               </div>
             ) : null}
