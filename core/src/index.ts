@@ -69,6 +69,9 @@ export type { KeepInput, KeptPass, NarrativeState, OwnerSplit } from './group/na
 /* One story, one narrative: a new group joins the narrative it is the same subject as; a newer duplicate merges into the older (group/narrative-same.ts). */
 export { joinExisting, sameSubject, sameSubjectMerges, subjectName, subjectOf, subjectPosts } from './group/narrative-same.ts';
 export type { NarrativeSubject, SubjectPost } from './group/narrative-same.ts';
+/* The starting post, one story across languages, and the viral floor (group/narrative-origin.ts). */
+export { barWindowMs, linkReach, standsOnViralPost, traceStories } from './group/narrative-origin.ts';
+export type { OriginInput, OriginNarrative, OriginTie, StoryMerge, StoryPlan, TracedPost } from './group/narrative-origin.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';
 export type { TrendCoin, TrendFacts, TrendInput, TrendPost, TrendStanding } from './group/narrative-trend.ts';
