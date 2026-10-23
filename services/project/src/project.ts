@@ -220,6 +220,10 @@ export interface CoinMarket {
   readonly liquidityUsd: MarketNumber;
   /** The trailing day's move, as a signed percentage. A fall is a reading. */
   readonly priceChange24h: MarketNumber;
+  /** Dollars traded in the hour before the reading, over the coin's pools (0127). 0 is a quiet hour. */
+  readonly volume1hUsd: MarketNumber;
+  /** Buy and sell transactions in that hour. Together with the volume: one answer, both or neither. */
+  readonly trades1h: MarketNumber;
   /** Decided by asking a venue for a quote, never by comparing liquidity to a number. */
   readonly tradable: boolean;
 }
@@ -612,6 +616,9 @@ export function projectCoin(facts: CoinFacts, options: ProjectOptions): WireCoin
     marketCapBasis: marketCapUsd.v === null ? null : (market?.marketCapBasis ?? null),
     liquidityUsd: marketNumber(market?.liquidityUsd),
     priceChange24h: marketNumber(market?.priceChange24h),
+    /* From the same current reading as the price, so a stale hour drops with a stale price. */
+    volume1hUsd: marketNumber(market?.volume1hUsd),
+    trades1h: marketNumber(market?.trades1h),
     /* ★ NO CURRENT READING MEANS NOT TRADABLE, and that is not derived from any number
        above it. Tradability is a claim that a venue will quote this coin RIGHT NOW; the
        only evidence for it is a quote, and a quote taken twenty minutes ago is not

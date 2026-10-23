@@ -4,8 +4,8 @@
  * 24-hour move, sliding slowly left like a stock ticker. A tap opens that coin's page.
  *
  * ★ WHICH COINS IS THE SERVER'S CALL (services/read running-coins.ts): only the one coin of a post
- * or narrative we found, launched on the launchpad, trading with a fresh price, biggest dollar gain
- * first. This file draws them in that order and decides nothing about them.
+ * or narrative we found, launched on the launchpad, with a fresh price and real trading in the last
+ * hour, most dollars traded first. This file draws them in that order and decides nothing about them.
  *
  * ★ NO EMPTY BAR, AND NO JUMP. While the first answer is on its way the strip's height is held (an
  * empty tape, so the tabs under it do not move when it lands); the last answer is kept on the phone,

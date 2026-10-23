@@ -4666,6 +4666,15 @@ export interface RunningCoinsPolicy {
   readonly freshMs: number;
   /** One list is kept this long and handed to everyone who asks in that time. */
   readonly keepMs: number;
+  /** A coin is on the strip only with at least this many dollars traded in its last hour. */
+  readonly minVolume1hUsd: number;
+  /**
+   * …and at least this many trades (buys plus sells) in that hour, so a few large fills from one
+   * wallet cannot put a coin on the strip by volume alone. The market source counts transactions,
+   * not wallets: a wallet that splits its money into many trades still passes this, and only the
+   * dollar floor stands against it.
+   */
+  readonly minTrades1h: number;
 }
 
 /**
@@ -4993,7 +5002,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v149',
+  version: 'policy.v150',
 
   admit: {
     maxAgeMin: 240,
@@ -7265,6 +7274,16 @@ const POLICY_V1: Policy = {
     maxCoins: 12,
     freshMs: 600_000, // 10 minutes
     keepMs: 30_000,
+    /* policy.v150 (the owner, 2026-10-23: "coins that have volume right now — I don't want to see
+       few-day-old dead coins"): only coins trading in the last hour, most dollars traded first.
+       Measured 23 Oct ~22:50 UTC on 590 launchpad coins we read: 91 had no trade in the hour; of
+       the rest the median hour was $420 and 25 trades, the 75th percentile $2,193 and 86 trades.
+       $1,000 is about $17 a minute: 184 of the 590 pass it, against 294 at $100 and 43 at
+       $10,000. Twenty trades costs a $1,000 coin almost nothing (169 of 184 still pass) and drops
+       a coin moved by a handful of fills: the median trade was $19, so $1,000 in under 20 trades
+       is a few large orders, not a market. Of the 20 coins the cards named that night it kept 7. */
+    minVolume1hUsd: 1_000,
+    minTrades1h: 20,
   },
 
   scorers: {
