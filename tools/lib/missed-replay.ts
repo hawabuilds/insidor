@@ -201,6 +201,12 @@ export type Gate = { readonly ok: boolean | null; readonly said: string };
 export interface PassEvidence {
   readonly mainPasses: number;
   readonly floorThenAtMost: number | null;
+  /**
+   * The youngest band's floor TODAY in the post's language (its own floor, `feed.langSplit`), when
+   * known; else the shared main floor is compared. Comparing a Japanese post's evidence with the
+   * shared floor would call a floor ten times lower "no lower".
+   */
+  readonly floorToday?: number | null;
 }
 
 export interface ReplayRow {
@@ -219,6 +225,12 @@ export interface ReplayRow {
 const round = (n: number) => Math.round(n);
 const hm = (min: number): string => (min < 120 ? `${round(min)} min` : min < 2_880 ? `${(min / 60).toFixed(1)} h` : `${round(min / 1_440)} days`);
 const utc = (t: number) => new Date(t).toISOString().slice(0, 16).replace('T', ' ');
+
+/** The slow lane's catch alone (core `verdict` over that lane, its own languages), or null when it would not. */
+function slowCatch(facts: Parameters<typeof verdict>[0], s: DiscoverySettings): { readonly delayMin: number } | null {
+  const v = verdict(facts, { ...s, lanes: s.lanes.filter((l) => l.lane === 'slow') });
+  return v.kind === 'caught' ? { delayMin: v.delayMin } : null;
+}
 
 /** The replay of one post through today's gates. `fresh` is a judge answer asked now, for a post never judged. */
 export function replayOne(m: MissedReplayPost, ctx: ReplayContext, fresh: EvalRow<'missed'> | null, evidence: PassEvidence | null = null): ReplayRow {
@@ -257,11 +269,16 @@ export function replayOne(m: MissedReplayPost, ctx: ReplayContext, fresh: EvalRo
     const sawIt = evidence !== null && evidence.mainPasses > 0 && m.foundBy === null && running.ok === true;
     if (filter !== null) {
       found = { ok: false, lane: null, minutes: null, said: `today's query leaves it out (${filter}${filter === 'language' ? ` '${m.lang}'` : ''})`, why: `not_in_search:${filter}` };
-    } else if (sawIt && main !== null && evidence.floorThenAtMost !== null && main.floor >= evidence.floorThenAtMost) {
+    } else if (sawIt && main !== null && evidence.floorThenAtMost !== null && (evidence.floorToday ?? main.floor) >= evidence.floorThenAtMost && slowCatch(facts, s) !== null) {
+      /* Under the newest lanes' floor when they asked, but the older search asks its language and the model has it over that floor in reach. */
+      const sv = slowCatch(facts, s)!;
+      const minutes = Math.max(sv.delayMin, lag);
+      found = { ok: true, lane: 'slow', minutes, said: `by the record, under the newest lanes' floor when ${evidence.mainPasses} main-lane pass${evidence.mainPasses === 1 ? '' : 'es'} asked (at most ${evidence.floorThenAtMost} then); by the model, the older search (slow lane, floor ${s.lanes.find((l) => l.lane === 'slow')?.floor ?? '—'}, asking '${m.lang}') about ${round(minutes)} min after posting. ${curve}; a slow starter crosses later than it says`, why: 'caught' };
+    } else if (sawIt && main !== null && evidence.floorThenAtMost !== null && (evidence.floorToday ?? main.floor) >= evidence.floorThenAtMost) {
       /* The search asked for it and did not return it: under the floor then, and today's floor is no lower. */
       found = {
         ok: false, lane: null, minutes: null, why: 'under_floor_seen',
-        said: `by the record: ${evidence.mainPasses} main-lane pass${evidence.mainPasses === 1 ? '' : 'es'} asked for posts its age and did not return it, so it had fewer likes than the floor then (at most ${evidence.floorThenAtMost}); today's main floor is ${main.floor}, no lower. The slow lane (floor ${s.lanes.find((l) => l.lane === 'slow')?.floor ?? '—'}, reaching ${round(slowReach)} min) did not return it either. The model alone would say yes at ${round(Math.max(v.kind === 'caught' ? v.delayMin : 0, lag))} min: it overstates early likes for a slow starter`,
+        said: `by the record: ${evidence.mainPasses} main-lane pass${evidence.mainPasses === 1 ? '' : 'es'} asked for posts its age and did not return it, so it had fewer likes than the floor then (at most ${evidence.floorThenAtMost}); today's ${evidence.floorToday === null || evidence.floorToday === undefined ? 'main floor' : `'${m.lang}' floor at the youngest band`} is ${evidence.floorToday ?? main.floor}, no lower. The slow lane (floor ${s.lanes.find((l) => l.lane === 'slow')?.floor ?? '—'}, reaching ${round(slowReach)} min) ${searchFilter(facts, s.lanes.find((l) => l.lane === 'slow') ?? null, s) === 'language' ? `does not ask '${m.lang}'` : 'would not have caught it by the model either'}. The model alone would say yes at ${round(Math.max(v.kind === 'caught' ? v.delayMin : 0, lag))} min: it overstates early likes for a slow starter`,
       };
     } else if (v.kind === 'caught') {
       const minutes = Math.max(v.delayMin, lag);

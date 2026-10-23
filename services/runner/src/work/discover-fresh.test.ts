@@ -34,7 +34,8 @@ const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () 
 /* The fresh bands on and the late bands (`feed.fresh.late`) off, whatever the live switch says: these tests count the fresh bands' asks. */
 const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: true, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
 /* And with one late band at five hours and 6,500 likes on. */
-const LATE: Policy = { ...ON, feed: { ...ON.feed, fresh: { ...ON.feed.fresh, late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] } } } };
+/* One late language, so the band's clock keeps its own key; the languages it asks are discover-languages.test.ts's. */
+const LATE: Policy = { ...ON, feed: { ...ON.feed, slow: { ...ON.feed.slow, langs: ['en'] }, fresh: { ...ON.feed.fresh, late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] } } } };
 
 function item(i: number): Item {
   return {
