@@ -49,7 +49,7 @@ function Item({ coin, hidden }: { coin: RunningCoin; hidden: boolean }) {
   const tone = move.direction === 'up' ? styles['up'] : move.direction === 'down' ? styles['down'] : styles['flat'];
   return (
     <a className={styles['item']} href={hrefFor({ screen: 'token', coinId: coin.coinId })} tabIndex={hidden ? -1 : undefined} aria-hidden={hidden ? true : undefined} draggable={false}>
-      <CoinLogo address={coin.address} ticker={coin.ticker} imageUrl={coin.imageUrl} size={20} small />
+      <CoinLogo address={coin.address} ticker={coin.ticker} imageUrl={coin.imageUrl} size={20} small eager />
       <span className={styles['ticker']}>{tickerText(coin.ticker)}</span>
       <span className={styles['cap']}>{stripCap(coin.marketCapUsd)}</span>
       <span className={`${styles['move']} ${tone}`}>{move.text}</span>

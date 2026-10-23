@@ -44,7 +44,7 @@ const BASE = ((import.meta.env?.['VITE_COIN_LOGO_BASE'] as string | undefined) ?
 /** A picture still loading in view after this long hands over to the next source. */
 const SLOW_MS = 3_000;
 
-export function CoinLogo({ address, ticker, imageUrl = null, size, small = false }: {
+export function CoinLogo({ address, ticker, imageUrl = null, size, small = false, eager = false }: {
   /** The coin's on-chain address; null when the surface knows only its ticker. */
   address: string | null;
   /** For the letter: the ticker, or the name when there is no ticker. */
@@ -53,6 +53,8 @@ export function CoinLogo({ address, ticker, imageUrl = null, size, small = false
   size: number;
   /** A list or card: our 64-pixel copy first. Left out, the 256-pixel copy, as the token page loads. */
   small?: boolean;
+  /** Load now, not when scrolled into view: for the running-coins tape, where every logo slides through the view and a lazy one would pop in mid-slide. */
+  eager?: boolean;
 }) {
   const sources = logoSources(address, imageUrl, BASE, small);
   const { src: shown, tryKey, fail } = usePictureTries(sources);
@@ -81,7 +83,7 @@ export function CoinLogo({ address, ticker, imageUrl = null, size, small = false
         alt=""
         width={size}
         height={size}
-        loading="lazy"
+        loading={eager ? 'eager' : 'lazy'}
         decoding="async"
         onError={() => fail(shown)}
         style={{ width: size, height: size, minWidth: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: 'var(--card)' }}
