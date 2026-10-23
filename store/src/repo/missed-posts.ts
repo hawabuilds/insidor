@@ -120,6 +120,22 @@ export class PgMissedPostRepo {
     return rows.map((r) => ({ id: Number(r.id), url: r.url, ownerRef: r.owner_ref, attempts: r.attempts, addedAt: toMillis(r.added_at) as Millis }));
   }
 
+  /**
+   * The pasted posts read since `sinceMs` that no judge has answered the post question about, oldest
+   * paste first, at most `limit` (policy.v145 `narrative.origin.missedJudge`): what the live judge is
+   * asked once each, whatever the post's age.
+   */
+  async unjudged(sinceMs: number, limit: number): Promise<readonly string[]> {
+    const rows = await this.#db.query<{ item_id: string }>(
+      `select mp.item_id from internal.missed_post mp
+        where mp.status = 'done' and mp.item_id is not null and mp.added_at >= $1
+          and not exists (select 1 from internal.post_judgement pj where pj.item_id = mp.item_id and pj.prompt_id not like 'post-kind%')
+        order by mp.added_at, mp.id limit $2`,
+      [new Date(sinceMs).toISOString(), limit],
+    );
+    return [...new Set(rows.map((r) => r.item_id))];
+  }
+
   /** Another row already holding this post as a "yes", or null. */
   async doneFor(source: string, sourceItemId: string): Promise<number | null> {
     const rows = await this.#db.query<{ id: string }>(

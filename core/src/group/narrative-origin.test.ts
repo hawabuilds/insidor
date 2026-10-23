@@ -132,3 +132,97 @@ test('★ the viral floor: one post over For You\'s bar carries the narrative; s
   const off: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, viralFloor: false } } };
   assert.equal(standsOnViralPost([small], off), true);
 });
+
+/* ── policy.v145: the "Vegeta is Algerian" war of 21–22 Oct as it was stored ── */
+
+/*
+ * A narrative of the Japanese post and the French one quoting it (both named PIG). @liistrk's origin
+ * was judged "not a meme"; @Badr_13Block quotes it; @rayaneAlg00 quotes nothing and says "végéta
+ * est algérien". Their measured distances to the narrative's average: the origin 0.36, Badr 0.59,
+ * Rayane 0.66.
+ */
+function vegeta(over: Partial<OriginInput> = {}): OriginInput {
+  const posts: NarrativePost[] = [
+    { itemId: 'li', atMs: T0 - 22 * H, text: 'les japonais ils sont au courant que végéta est algérien ?', names: [], hasPicture: false },
+    { itemId: 'mo', atMs: T0, text: 'ベジータがアルジェリア人ではない最大の証拠がコチラ https://t.co/x', names: ['PIG'], hasPicture: true },
+    { itemId: 'ra', atMs: T0 + 3 * H, text: 'Les japonais quand tu leurs dit que végéta est algérien et que piccolo est malien https://t.co/y', names: ['HOMER'], hasPicture: true },
+    { itemId: 'ba', atMs: T0 + 10 * H, text: 'Quand ils vont découvrir que Picolo est Malien ils vont serrer https://t.co/z', names: ['VEGETA'], hasPicture: true },
+    { itemId: 'ya', atMs: T0 + 12 * H, text: "C'est pour ca on vous dis de lire le manga avant de regarder l'animé...", names: ['PIG'], hasPicture: true },
+    /* Two hundred other posts, so a phrase two of these say is rare among them. */
+    ...Array.from({ length: 200 }, (_, i) => ({ itemId: `o${i}`, atMs: T0, text: `elon musk posted another dog picture number ${i}`, names: [], hasPicture: false })),
+  ];
+  return {
+    narratives: [{ id: 'n-pig', members: ['mo', 'ya'], formedAtMs: T0 + 12 * H }],
+    posts: new Map(posts.map((x) => [x.itemId, x] as const)),
+    narrativeOf: new Map([['mo', 'n-pig'], ['ya', 'n-pig']]),
+    refs: new Map(),
+    /* The quotes: the Japanese post → the origin, Yanox → the Japanese post, Badr → the origin. */
+    reproductions: new Map([['mo', ['li']], ['ya', ['mo']], ['ba', ['li']]]),
+    eligible: new Set(),
+    rootable: new Set(['li']),
+    loose: ['ra', 'ba'],
+    looseViral: new Set(['ra', 'ba']),
+    shortlist: new Map(),
+    vectors: new Map([['mo', unit(0)], ['ya', unit(0)], ['li', unit(1.2)], ['ba', unit(0.94)], ['ra', unit(0.85)]]),
+    pictures: new Map(),
+    calls: foldNarrativeCalls([]),
+    untouchable: new Set(),
+    ...over,
+  };
+}
+
+test('★ the Vegeta war: one narrative, started by the post the judge said no to, with the two that quote it or say its words', () => {
+  const plan = traceStories(vegeta(), P);
+  assert.deepEqual(plan.starts.get('n-pig'), [{ itemId: 'li', tie: 'root' }]);
+  assert.deepEqual(plan.joins?.get('n-pig'), [{ itemId: 'ra', tie: 'phrase' }, { itemId: 'ba', tie: 'quoted' }]);
+  assert.deepEqual(plan.merges, []);
+});
+
+test('★ the Vegeta war as the regroup really made it: the French pair, the Japanese post and Yanox loose — all five in one', () => {
+  /* On 22 Oct the regroup grouped @rayaneAlg00 and @Badr_13Block; only Badr's quote of the origin is a member's. */
+  const real = vegeta({
+    narratives: [{ id: 'n-fr', members: ['ra', 'ba'], formedAtMs: T0 + 10 * H }],
+    narrativeOf: new Map([['ra', 'n-fr'], ['ba', 'n-fr']]),
+    loose: ['mo', 'ya'],
+    looseViral: new Set(['mo', 'ya']),
+    vectors: new Map([['ra', unit(0)], ['ba', unit(0)], ['li', unit(1.13)], ['mo', unit(0.9)], ['ya', unit(0.86)]]),
+  });
+  const plan = traceStories(real, P);
+  assert.deepEqual(plan.starts.get('n-fr'), [{ itemId: 'li', tie: 'root' }], 'Badr and the two loose posts quoting it make three');
+  assert.deepEqual(plan.joins?.get('n-fr'), [{ itemId: 'mo', tie: 'quoted' }, { itemId: 'ya', tie: 'quoted' }]);
+  const smallLoose = traceStories({ ...real, looseViral: new Set() }, P);
+  assert.equal(smallLoose.starts.size, 0, 'small loose posts never vouch for a root');
+});
+
+test('★ a quote root needs two posts quoting it, and must be one the caller lets root', () => {
+  const once = traceStories(vegeta({ reproductions: new Map([['mo', ['li']]]), loose: [] }), P);
+  assert.equal(once.starts.size, 0, 'one quote is a comparison, not a start');
+  const notRootable = traceStories(vegeta({ rootable: new Set(), loose: [] }), P);
+  assert.equal(notRootable.starts.size, 0, 'not viral, or the owner called it Not a meme: the caller leaves it out');
+  const off: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, rootOn: false } } };
+  assert.equal(traceStories(vegeta({ loose: [] }), off).starts.size, 0);
+});
+
+test('★ the quotes start and join, never merge: two narratives tied only by quotes stay two', () => {
+  const two = vegeta({
+    narratives: [{ id: 'n-pig', members: ['mo', 'ya'], formedAtMs: T0 }, { id: 'n-b', members: ['ba', 'ra'], formedAtMs: T0 }],
+    narrativeOf: new Map([['mo', 'n-pig'], ['ya', 'n-pig'], ['ba', 'n-b'], ['ra', 'n-b']]),
+    reproductions: new Map([['mo', ['ba']], ['ya', ['ra']], ['ba', ['mo']]]),
+    rootable: new Set(),
+    loose: [],
+  });
+  assert.deepEqual(traceStories(two, P).merges, []);
+});
+
+test('★ a loose post joins only when viral, close enough, and quoting the story or saying a rare phrase of it', () => {
+  const small = traceStories(vegeta({ looseViral: new Set() }), P);
+  assert.equal(small.joins?.size ?? 0, 0, 'a small post joins by the regroup, not by these ties');
+  const far = traceStories(vegeta({ vectors: new Map([...vegeta().vectors, ['ra', unit(1.1)], ['ba', unit(1.3)]]) }), P);
+  assert.equal(far.joins?.size ?? 0, 0);
+  /* The same phrase said by every other post is not rare: it ties nothing. */
+  const common = vegeta({
+    loose: ['ra'],
+    posts: new Map([...vegeta().posts].map(([id, x]) => [id, id.startsWith('o') ? { ...x, text: 'végéta est algérien' } : x] as const)),
+  });
+  assert.equal(traceStories(common, P).joins?.size ?? 0, 0);
+});

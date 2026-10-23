@@ -130,6 +130,21 @@ try {
     }
     say();
 
+    /* ── 2b. the loose posts that join (policy.v145 `origin.join*`) ── */
+    const joins = plan.joins ?? new Map();
+    const joinIds = [...new Set([...joins.values()].flat().map((x) => x.itemId))];
+    const fj = await facts(db, joinIds);
+    say(`## 2b. Narratives given loose posts that quote them or say their words: ${joins.size} (${joinIds.length} posts; quoted ${[...joins.values()].flat().filter((x) => x.tie === 'quoted').length}, same words ${[...joins.values()].flat().filter((x) => x.tie === 'phrase').length})`);
+    say();
+    for (const [id, list] of joins) {
+      say(`- ${t(id)}`);
+      for (const x of list) {
+        const p = fj.get(x.itemId);
+        say(`  - ${x.tie}: ${x.itemId} ${p?.handle ?? '?'} ${p?.at ?? '?'} [${p?.lang ?? '?'}] ${views(p?.views ?? null)} — ${p?.text ?? ''}`);
+      }
+    }
+    say();
+
     /* ── 3. the viral floor, over each narrative as the pass leaves it (its starting posts and merges in) ── */
     const goneInto = new Set(plan.merges.map((m) => m.from));
     const after = live.filter((x) => !goneInto.has(x.id)).map((x) => ({

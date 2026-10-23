@@ -11,6 +11,13 @@
  * so it runs over every live narrative (`liveMs`, at most `perPass`), not only the ones a pass grew:
  * a quote stored after a narrative formed still finds its start.
  *
+ * policy.v145 (the "Vegeta is Algerian" war): it also reads what each post QUOTES (public.item
+ * `reproduction_of` — the links table holds only URLs in a post's words), for the starts, the quote
+ * roots and the joins but never the merges; hands the core rule the posts the judge did not pass as
+ * possible quote roots (`rootable`, viral only) and the regroup's loose good posts as possible
+ * joiners (`loose`, with which clear the views bar and their stored English). The joins are written
+ * as the narrative's own posts (work/narratives.ts), the roots as its early posts.
+ *
  * ★ FREE: stored posts, stored links and stored vectors; nothing is embedded, searched or judged.
  * Bounded: one read of the live narratives, the quote links by primary key, and the posts' rows and
  * vectors each read once for the life of the process (a post's quotes, once present, never change;
@@ -22,11 +29,11 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { barWindowMs, earlyShortlist, postPicture, standsOnViralPost, traceStories, type NarrativeCalls, type NarrativePost, type NarrativeStanding, type StoryPlan } from '@insidor/core';
+import { barWindowMs, clearsReachBar, earlyShortlist, postPicture, traceStories, type NarrativeCalls, type NarrativePost, type NarrativeStanding, type StoryPlan } from '@insidor/core';
 import type { NarrativePostRow, PgNarrativeRepo, StoredNarrative } from '@insidor/store';
 
 
-export type OriginRepo = Pick<PgNarrativeRepo, 'live' | 'standingRows' | 'references' | 'coinTied' | 'ofPosts' | 'vectors' | 'barReadings'>;
+export type OriginRepo = Pick<PgNarrativeRepo, 'live' | 'standingRows' | 'references' | 'coinTied' | 'ofPosts' | 'vectors' | 'barReadings' | 'english' | 'quotes'>;
 
 /** The source whose posts are held to the short-video bars (as work/narratives.ts and services/project rising.ts). */
 const SHORT_VIDEO_SOURCE = 'tiktok';
@@ -48,6 +55,8 @@ export interface OriginStepInput {
   readonly hidden: (id: string, members: readonly string[]) => boolean;
   /** The early step's stored good posts in no narrative (the name and picture ties' pool). */
   readonly stored: readonly NarrativePostRow[];
+  /** Good posts in no narrative that may join one (core `joinLoose`): the window's posts the regroup left alone, the owner's pasted posts. */
+  readonly loose?: readonly NarrativePostRow[];
   readonly standing: (r: NarrativePostRow) => NarrativeStanding;
   /** The post as the grouping reads it (work/narratives.ts `asNarrativePost`), handed in so the two files do not import each other. */
   readonly asPost: (r: NarrativePostRow) => NarrativePost;
@@ -61,16 +70,21 @@ export interface OriginStepResult {
   /** Every narrative the plan names, with its posts before the plan. */
   readonly narratives: ReadonlyMap<string, StoredNarrative | PassNarrative>;
   readonly traced: number;
+  /** Loose posts joined to a narrative (core `joinLoose`). */
+  readonly joined: number;
   readonly merged: number;
 }
 
-const EMPTY: OriginStepResult = { plan: { merges: [], starts: new Map() }, narratives: new Map(), traced: 0, merged: 0 };
+const EMPTY: OriginStepResult = { plan: { merges: [], starts: new Map() }, narratives: new Map(), traced: 0, joined: 0, merged: 0 };
 
 /** The step the grouper holds for the life of the process: rows, links and vectors read once per post. */
 export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
   const rows = new Map<string, NarrativePostRow>();
   const refs = new Map<string, readonly string[]>();
   const refsAbsentAt = new Map<string, number>();
+  /* Each post's quoted post (public.item `reproduction_of`): read once per post, a quote never changes. */
+  const quotes = new Map<string, readonly string[]>();
+  const quotesRead = new Set<string>();
   const tied = new Map<string, boolean>();
   const vectors = new Map<string, Float32Array>();
   const pictures = new Map<string, Float32Array>();
@@ -90,6 +104,19 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
         const r = got.get(id);
         if (r === undefined) refsAbsentAt.set(id, nowMs);
         else refs.set(id, r);
+      }
+    }
+  }
+  async function readQuotes(ids: readonly string[]): Promise<void> {
+    const missing = ids.filter((id) => !quotesRead.has(id));
+    if (repo.quotes === undefined || missing.length === 0) return;
+    for (let i = 0; i < missing.length; i += 5_000) {
+      const part = missing.slice(i, i + 5_000);
+      const got = await repo.quotes(part);
+      for (const id of part) {
+        quotesRead.add(id);
+        const q = got.get(id);
+        if (q !== undefined) quotes.set(id, q);
       }
     }
   }
@@ -118,7 +145,8 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
     const reached = new Set<string>();
     for (let hop = 0; hop < o.maxHops && front.length > 0; hop += 1) {
       await readRefs(front, input.nowMs);
-      const next = [...new Set(front.flatMap((id) => refs.get(id) ?? []))].filter((id) => !reached.has(id));
+      await readQuotes(front);
+      const next = [...new Set(front.flatMap((id) => [...(refs.get(id) ?? []), ...(quotes.get(id) ?? [])]))].filter((id) => !reached.has(id));
       for (const id of next) reached.add(id);
       front = next;
     }
@@ -131,26 +159,38 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
     const tiedNow = (await repo.coinTied?.(newTied)) ?? new Set<string>();
     for (const id of newTied) tied.set(id, tiedNow.has(id));
 
-    /* Who may start one: the judge passed it, or a coin is tied to it and the owner never called it Not a meme. */
+    /* Who may start one: the judge passed it, or a coin is tied to it and the owner never called it
+       Not a meme. A post the judge did not pass may still start one as its quote root (core, `rootable`). */
     const eligible = new Set<string>();
+    const rootCandidates = new Set<string>();
     for (const id of free) {
       const r = rows.get(id);
       if (r === undefined) continue;
       const s = input.standing(r);
       if (s === 'good' || (tied.get(id) === true && (s === 'judge_no' || s === 'not_judged'))) eligible.add(id);
+      else if (p.narrative.origin.rootOn && (s === 'judge_no' || s === 'not_judged')) rootCandidates.add(id);
     }
     for (const r of input.stored) {
       rows.set(r.itemId, r);
       if (input.standing(r) === 'good') eligible.add(r.itemId);
     }
 
-    /* The name and picture ties' pool: the stored good posts sharing a name or topic word with a narrative's posts. */
+    /* The loose posts that may join (core `joinLoose`): good, in no narrative now, with what they quote (two steps). */
+    const loose = p.narrative.origin.joinOn ? (input.loose ?? []).filter((r) => !inOne.has(r.itemId) && !own.has(r.itemId) && input.standing(r) === 'good') : [];
+    for (const r of loose) rows.set(r.itemId, r);
+    let looseFront = loose.map((r) => r.itemId);
+    for (let hop = 0; hop < o.maxHops && looseFront.length > 0; hop += 1) {
+      await readRefs(looseFront, input.nowMs);
+      await readQuotes(looseFront);
+      looseFront = [...new Set(looseFront.flatMap((id) => [...(refs.get(id) ?? []), ...(quotes.get(id) ?? [])]))];
+    }
     const posts = new Map<string, NarrativePost>();
     for (const [id, r] of rows) posts.set(id, input.asPost(r));
+    /* The name and picture ties' pool: the stored good posts sharing a name or topic word with a narrative's posts. */
     const pool = input.stored.filter((r) => !inOne.has(r.itemId));
     const shortlist = earlyShortlist({ narratives: narratives.map((x) => ({ id: x.id, members: x.members })), posts, stored: pool.map(input.asPost), calls: input.calls }, p);
     const named = [...new Set([...shortlist.values()].flat())].slice(0, p.narrative.early.maxVectorsPerPass);
-    await readVectors([...members, ...free, ...named], input.space, 'post', vectors);
+    await readVectors([...members, ...free, ...named, ...loose.map((r) => r.itemId)], input.space, 'post', vectors);
     const pictured = [...members, ...named].filter((id) => postPicture(rows.get(id)?.media) !== null);
     await readVectors(pictured, p.group.image.space, 'picture', pictures);
 
@@ -158,17 +198,26 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
        narrative's first post must clear For You's own views bar, as the board's floor asks of every
        listed narrative (services/project narrative-frame.ts). A small post may still join by the
        regroup; it is never made a story's start. Once viral, always viral: kept for the process. */
-    const startIds = [...new Set([...free, ...named])].filter((id) => eligible.has(id));
-    if (p.narrative.origin.viralFloor) {
-      const ask = startIds.filter((id) => !viral.has(id));
-      for (let i = 0; i < ask.length; i += 2_000) {
-        const got = (await repo.barReadings?.(ask.slice(i, i + 2_000), barWindowMs(p))) ?? new Map();
-        for (const [id, b] of got) {
-          if (standsOnViralPost([{ readings: b.readings, postedAtMs: b.postedAtMs, scale: b.source === SHORT_VIDEO_SOURCE ? p.rising.shortVideoReachScale : 1 }], p)) viral.add(id);
-        }
+    /* ★ A quote root is held to the views bar whether or not the floor is on: being viral is half its evidence. */
+    const startIds = [...new Set([...free, ...named])].filter((id) => eligible.has(id) || rootCandidates.has(id));
+    const looseIds = loose.map((r) => r.itemId);
+    const ask = [...new Set([...startIds.filter((id) => p.narrative.origin.viralFloor || rootCandidates.has(id)), ...(p.narrative.origin.joinViral ? looseIds : [])])].filter((id) => !viral.has(id));
+    for (let i = 0; i < ask.length; i += 2_000) {
+      const got = (await repo.barReadings?.(ask.slice(i, i + 2_000), barWindowMs(p))) ?? new Map();
+      for (const [id, b] of got) {
+        if (clearsReachBar('fyp', b.readings, b.postedAtMs, p, b.source === SHORT_VIDEO_SOURCE ? p.rising.shortVideoReachScale : 1)) viral.add(id);
       }
     }
-    const starters = new Set(startIds.filter((id) => !p.narrative.origin.viralFloor || viral.has(id)));
+    const starters = new Set(startIds.filter((id) => eligible.has(id) && (!p.narrative.origin.viralFloor || viral.has(id))));
+    const rootable = new Set(startIds.filter((id) => rootCandidates.has(id) && viral.has(id)));
+    const looseViral = new Set(looseIds.filter((id) => viral.has(id)));
+
+    /* The stored English of the posts that can be joined and of the posts they would join, for the same-words join. */
+    const english = new Map<string, string>();
+    if (p.narrative.origin.joinOn && loose.length > 0 && repo.english !== undefined) {
+      const ask = [...new Set([...members, ...loose.map((r) => r.itemId), ...free])];
+      for (let i = 0; i < ask.length; i += 5_000) for (const [id, t] of await repo.english(ask.slice(i, i + 5_000))) english.set(id, t);
+    }
 
     const narrativeOf = new Map(inOne);
     for (const x of narratives) for (const m of x.members) narrativeOf.set(m, x.id);
@@ -185,10 +234,21 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
         pictures,
         calls: input.calls,
         untouchable: input.untouchable,
+        rootable,
+        loose: looseIds,
+        looseViral,
+        english,
+        reproductions: quotes,
       },
       p,
     );
-    return { plan, narratives: all, traced: [...plan.starts.values()].reduce((s, l) => s + l.length, 0), merged: plan.merges.length };
+    return {
+      plan,
+      narratives: all,
+      traced: [...plan.starts.values()].reduce((s, l) => s + l.length, 0),
+      joined: [...(plan.joins ?? new Map()).values()].reduce((s, l) => s + l.length, 0),
+      merged: plan.merges.length,
+    };
   };
 }
 

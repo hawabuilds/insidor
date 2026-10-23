@@ -17,6 +17,14 @@
  * post (origin `observed`) but gets no `item_found_by` row, so it never reaches For You through
  * this door, and the diagnosis is taken from what we held BEFORE it was stored.
  *
+ * ★ JUDGED ONCE BY THE LIVE JUDGE, WHATEVER ITS AGE (policy.v145 `narrative.origin.missedJudge`,
+ * the owner, 2026-10-23). The five "Vegeta is Algerian" posts he pasted arrived one to two days old,
+ * past every judging queue's window, so no narrative could ever hold them. Each pasted post no judge
+ * has answered is now judged by the runner's own post judge (the instant path's `scorePosts` over a
+ * given queue, `deps.judge`), on the live line, one call a post (about $0.0015), and the answer is
+ * filed as any answer is. Still never credited as found, so it reaches no feed by this door; the
+ * narratives read it (work/narratives.ts, `missedLookbackMs`).
+ *
  * ★ A COIN OF ITS NAME IS LOOKED FOR, NEVER LINKED. Our own coin names first, then the free market
  * searches, by the judge's name for it and any cashtag in its text, keeping coins launched after
  * the post. `coin_address` is set only when exactly one came back — several is a list, not a pick.
@@ -41,6 +49,10 @@ import { errorText, type Logger } from '../log.ts';
 
 /** Rows taken a pass: one paste's worth and then some. */
 const BATCH = 20;
+/** Pasted posts sent to the live judge a pass (one paste is at most `learning.maxMissedPerPaste`), the rows read to find them, and the wait before one it did not answer is asked again. */
+const JUDGE_PER_PASS = 20;
+const PREFETCH = 3;
+const JUDGE_AGAIN_MS = 3_600_000;
 /** Reads of one post tried before its row fails as unreadable. */
 export const MAX_ATTEMPTS = 3;
 /** How long one source read may take. */
@@ -54,7 +66,7 @@ const REPLY_OPENING = /^@\w/;
 const TAG = /#([\p{L}\p{N}_]+)/gu;
 const CASHTAG = /\$([A-Za-z][A-Za-z0-9]{1,15})\b/g;
 
-export type MissedRepo = Pick<PgMissedPostRepo, 'queued' | 'doneFor' | 'held' | 'facts' | 'coinsNamed' | 'finish' | 'retry' | 'diagnosed' | 'writeSuggestion'>;
+export type MissedRepo = Pick<PgMissedPostRepo, 'queued' | 'doneFor' | 'held' | 'facts' | 'coinsNamed' | 'finish' | 'retry' | 'diagnosed' | 'writeSuggestion'> & Partial<Pick<PgMissedPostRepo, 'unjudged'>>;
 
 /** This pass's sources, metered on the learning book. */
 export interface LearningSources {
@@ -77,6 +89,12 @@ export interface MissedDeps {
   readonly outages?: () => Promise<readonly Outage[] | null>;
   /** The floor search's live spend in the last day, for the suggestion's cost; null when unread. */
   readonly searchUsdPerDay: () => Promise<number | null>;
+  /**
+   * ★ THE LIVE POST JUDGE, ONCE A PASTED POST (policy.v145 `narrative.origin.missedJudge`): the posts
+   * no judge has answered, judged as the instant path judges its queue (work/score-posts.ts, any
+   * age) on the live line, so the narratives can group and trace them. Absent: none is judged.
+   */
+  readonly judge?: (itemIds: readonly string[]) => Promise<{ readonly judged: number; readonly usd: number }>;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;
   readonly log: Logger;
@@ -84,6 +102,9 @@ export interface MissedDeps {
 }
 
 export interface MissedResult {
+  /** Pasted posts the live judge answered this pass, and what it cost on the live line (not in `usd`). Absent: none. */
+  readonly judged?: number;
+  readonly judgeUsd?: number;
   readonly done: number;
   readonly failed: number;
   /** Left queued: spending off, a line spent for today, or a read to try again. */
@@ -190,7 +211,7 @@ export async function workMissedPosts(deps: MissedDeps): Promise<MissedResult> {
     }
     throw e;
   }
-  if (rows.length === 0) return { done: 0, failed: 0, waiting: 0, usd: 0 };
+  if (rows.length === 0) return { done: 0, failed: 0, waiting: 0, usd: 0, ...(await judgePasted(deps)) };
 
   const handles = new Map<string, string>();
   const learning = await deps.openLearning((source, id) => handles.get(`${source}:${id}`) ?? null);
@@ -303,8 +324,42 @@ export async function workMissedPosts(deps: MissedDeps): Promise<MissedResult> {
   } finally {
     await learning.close();
   }
-  if (done + failed > 0) deps.log.info('missed posts worked', { done, failed, waiting, usd });
-  return { done, failed, waiting, usd };
+  const j = await judgePasted(deps);
+  if (done + failed > 0) deps.log.info('missed posts worked', { done, failed, waiting, usd, ...j });
+  return { done, failed, waiting, usd, ...j };
+}
+
+/** When each pasted post was last sent to the judge without an answer, so one it never answers is asked again only after `JUDGE_AGAIN_MS`. */
+const judgeTried = new Map<string, number>();
+
+/**
+ * ★ THE PASTED POSTS NO JUDGE HAS ANSWERED, judged once by the live judge (policy.v145
+ * `narrative.origin.missedJudge`), at most `JUDGE_PER_PASS` a pass, pasted in the last
+ * `missedLookbackMs` — the posts pasted before this rule included. AFTER the rows are diagnosed,
+ * so a diagnosis stays what we held before the paste. Live only. A post the judge did not answer
+ * (a budget pause, an outage) is asked again an hour later, never every half minute.
+ */
+async function judgePasted(deps: MissedDeps): Promise<{ judged?: number; judgeUsd?: number }> {
+  const o = deps.policy.narrative.origin;
+  if (deps.judge === undefined || deps.missed.unjudged === undefined || !o.missedJudge || deps.mode !== 'live') return {};
+  const now = deps.now();
+  let ids: readonly string[];
+  try {
+    ids = (await deps.missed.unjudged(now - o.missedLookbackMs, JUDGE_PER_PASS * PREFETCH)).filter((id) => now - (judgeTried.get(id) ?? Number.NEGATIVE_INFINITY) >= JUDGE_AGAIN_MS).slice(0, JUDGE_PER_PASS);
+  } catch (e) {
+    if (!tableMissing(e)) deps.log.warn('the pasted posts to judge could not be read; tried next pass', { err: errorText(e) });
+    return {};
+  }
+  if (ids.length === 0) return {};
+  for (const id of ids) judgeTried.set(id, now);
+  try {
+    const r = await deps.judge(ids);
+    deps.log.info('pasted posts judged', { asked: ids.length, judged: r.judged, usd: r.usd });
+    return { judged: r.judged, judgeUsd: r.usd };
+  } catch (e) {
+    deps.log.warn('pasted posts not judged; asked again in an hour', { posts: ids.length, err: errorText(e) });
+    return { judged: 0, judgeUsd: 0 };
+  }
 }
 
 async function suggest(deps: MissedDeps, sources: readonly PlatformAdapter[], settings: DiscoverySettings | null): Promise<void> {
