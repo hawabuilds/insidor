@@ -388,7 +388,9 @@ export async function fetchTradeQuote(
     return { kind: 'refused', why: 'The price came back unreadable.' };
   }
   const impact = typeof o['priceImpactPct'] === 'number' && Number.isFinite(o['priceImpactPct']) ? o['priceImpactPct'] : null;
-  return { kind: 'quote', quote: { venue: o['venue'], side: q.side, inAmount, outAmount, bound, slippageBps: typeof o['slippageBps'] === 'number' ? o['slippageBps'] : q.slippageBps, priceImpactPct: impact, sent: raw } };
+  /* Beside the quote, not in it (the quote goes back to /build unchanged); only a pool quote has one. */
+  const via = o['venue'] === 'pool' && (r.body['via'] === 'curve' || r.body['via'] === 'pool') ? r.body['via'] : null;
+  return { kind: 'quote', quote: { venue: o['venue'], side: q.side, inAmount, outAmount, bound, slippageBps: typeof o['slippageBps'] === 'number' ? o['slippageBps'] : q.slippageBps, priceImpactPct: impact, ...(via !== null ? { via } : {}), sent: raw } };
 }
 
 /** The quote as an unsigned, simulated transaction — or the reason it would fail, and nothing to sign. */
