@@ -159,7 +159,8 @@ export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean)
 
 /* ── the owner's calls ────────────────────────────────────────────────── */
 
-export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared';
+/** `rename` (0127) is the owner's title: written straight onto the narrative, so grouping folds nothing from it. */
+export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename';
 
 /** One stored call on a narrative (internal.owner_feedback, subject 'narrative', 0093). */
 export interface NarrativeCallRow {
@@ -246,7 +247,7 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
       for (const a of r.members) unremove(a, r.otherMembers);
       for (const b of r.otherMembers) unremove(b, r.members);
       if (r.members.length > 0 && r.otherMembers.length > 0) together.push({ posts: r.members, with: r.otherMembers });
-    } else {
+    } else if (r.verdict === 'right' || r.verdict === 'wrong' || r.verdict === 'cleared') {
       const c = coins.get(r.narrativeId) ?? { right: null, wrong: new Map<string, number>(), members: r.members };
       if (r.verdict === 'cleared') coins.set(r.narrativeId, { right: null, wrong: new Map(), members: r.members });
       else if (r.coin !== null && r.verdict === 'right') {

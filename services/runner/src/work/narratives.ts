@@ -40,7 +40,8 @@
  *      good posts the regroup placed nowhere are offered to the narratives they quote or echo
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
- *      endpoint; a failure leaves the judge's name, asked again next pass
+ *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
+ *      owner renamed (0127): his title stands however much it grows
  *
  * ★ NOTHING HERE IS ON THE FEED'S CLOCK. The projector reads what this wrote; it never waits on
  * this pass, and this pass never holds a lock the projector needs (one short transaction at the
@@ -102,7 +103,7 @@ import {
   type StoryPlan,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
-import type { NarrativePass, NarrativePostRow, PgNarrativeRepo, StoredNarrative } from '@insidor/store';
+import { OWNER_TITLE_MODEL, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -619,6 +620,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       .filter((x) => x.shown && x.members.some((m) => grouped.posts.has(m)))
       .filter((x) => {
         const s = stored.get(x.id);
+        /* ★ A title the owner typed is never asked for again (0127; the store's write refuses it too). */
+        if (s?.titleModel === OWNER_TITLE_MODEL) return false;
         return s === undefined || s.title === null || s.titlePosts === null || x.members.length >= s.titlePosts * (1 + t.retitleGrowth);
       })
       .sort((a, b) => b.members.length - a.members.length || a.id.localeCompare(b.id))

@@ -198,6 +198,20 @@ test('★ only the owner merges: his "Merge with…" moves one narrative into th
   assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two', by: 'owner' }]);
 });
 
+test('★ the owner\'s title stands: a narrative he renamed is never sent to the titler, however much it grows', async () => {
+  const stored: StoredNarrative[] = [
+    { id: 'n-mine', members: ['a'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Twitter World War', titlePosts: 1, titleModel: 'owner', newestPostAtMs: NOW, early: [] },
+    { id: 'n-model', members: ['x'], anchor: 'x', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Old Title', titlePosts: 1, titleModel: 'm', newestPostAtMs: NOW, early: [] },
+  ];
+  const rename: NarrativeCallRow = { id: 11, atMs: NOW - 1, narrativeId: 'n-mine', verdict: 'rename', otherId: null, coin: null, members: ['a'], otherMembers: [] };
+  const other = { body: 'A new cat cafe opened downtown with twenty rescue cats', proposedName: 'Cat Cafe' };
+  const v = { a: unit(0), b: unit(0), c: unit(0), x: unit(1.5), y: unit(1.5), z: unit(1.5) };
+  const s = setup([row('a'), row('b'), row('c'), row('x', other), row('y', other), row('z', other)], v, 'live', [rename], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.narratives.map((n) => [n.id, [...(n.added ?? [])].sort()]).sort(), [['n-mine', ['b', 'c']], ['n-model', ['y', 'z']]], 'both grew threefold');
+  assert.deepEqual(s.titles.map(([id]) => id), ['n-model'], 'only the model\'s title is asked again');
+});
+
 test('★ the owner\'s split: the posts he picked are a new narrative this pass, shown and titled, and it is done once', async () => {
   const before: StoredNarrative[] = [
     { id: 'n-a', members: ['a', 'b', 'c', 'd'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'All', titlePosts: 4, newestPostAtMs: NOW, early: [] },

@@ -11,7 +11,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { fairTurns } from './narratives.ts';
+import { fairTurns, OWNER_TITLE_MODEL, PgNarrativeRepo } from './narratives.ts';
+import type { Db } from '../client.ts';
 
 const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 
@@ -26,4 +27,13 @@ test('a side short of its share gives its places to the other', () => {
   assert.deepEqual(fairTurns(ids('new', 3), ids('old', 900), 25), [...ids('new', 3), ...ids('old', 22)]);
   assert.deepEqual(fairTurns(ids('new', 115), ids('old', 4), 25), [...ids('new', 21), ...ids('old', 4)]);
   assert.deepEqual(fairTurns([], [], 25), []);
+});
+
+test('★ the titler never writes over a title the owner typed (0127): its update skips title_model owner', async () => {
+  const seen: { sql: string; params: readonly unknown[] }[] = [];
+  const db = { query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), []) } as unknown as Db;
+  await new PgNarrativeRepo(db).setTitle('n-x:1', 'Cat Meme War', 12, 'nvidia/nemotron');
+  assert.match(seen[0]?.sql ?? '', /title_model is distinct from \$5/);
+  assert.deepEqual(seen[0]?.params, ['n-x:1', 'Cat Meme War', 12, 'nvidia/nemotron', OWNER_TITLE_MODEL]);
+  assert.equal(OWNER_TITLE_MODEL, 'owner', 'the same mark services/social writes');
 });
