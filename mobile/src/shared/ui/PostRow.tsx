@@ -40,6 +40,11 @@
  * 2026-10-18). It is the fact the list is about, never the list's own key, which is not sent. On
  * Most viewed there is no line: the big views number is what the list is ordered by.
  *
+ * ★ A POST THAT QUOTES ANOTHER SHOWS IT INSIDE THE CARD (QuoteInset.tsx, the owner 2026-10-24): the
+ * quoted account's picture, name and @handle, its words and its picture. A quote with no picture of
+ * its own leads with the quoted post's picture (the server's `thumbUrl`), so the meme shows at a
+ * glance, and the box then shows no second copy of it.
+ *
  * ★ A POST IN A REAL NARRATIVE CARRIES A SMALL TAG ("GTA 6 story, 12 posts", the read service's
  * `inStory`) that opens the narrative, when the screen passes `openStory`; the narrative's own page
  * does not, since the post is already in front of its narrative there.
@@ -50,7 +55,7 @@
 
 import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
-import type { PostInStory } from '../api/wire/rising.ts';
+import { quotePictureLeads, type PostInStory } from '../api/wire/rising.ts';
 import { storyWords } from '../story-words.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { useCoinCap } from '../useCoinCap.ts';
@@ -60,6 +65,7 @@ import { tickerText } from '../format/ticker.ts';
 import { platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
+import { QuoteInset } from './QuoteInset.tsx';
 import { usePosterPic } from './usePosterPic.ts';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
@@ -147,6 +153,9 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
           </div>
         </div>
       </div>
+
+      {/* The post this one quotes, inside the card (QuoteInset.tsx); its picture only when it is not already the card's. */}
+      {post.quote !== undefined ? <QuoteInset quote={post.quote} showPicture={!quotePictureLeads(post)} now={now} /> : null}
 
       {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
 

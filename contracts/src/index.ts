@@ -51,6 +51,7 @@ export type {
   Millis,
   Observation,
   Rate,
+  ReproducedPost,
   StoredRate,
 } from './vocabulary.ts';
 export {

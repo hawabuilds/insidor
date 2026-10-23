@@ -190,7 +190,53 @@ export class PgItemRepo implements ItemRepo {
       await this.#writeFingerprints(item);
     }
     await this.#writeReferences(items);
+    await this.#writeReproduced(items);
     return items.length;
+  }
+
+  /** Whether 0128's public.reproduced_post is there; looked up, never found missing by a failed statement. */
+  #reproducedPresent: boolean | null = null;
+
+  /**
+   * The quoted posts these posts' payloads carried (`Item.reproducedPost`, 0128), one row per quoted
+   * post, the newest read kept. Never a public.item row (the migration says why). Skipped before
+   * 0128, looked up first, for `#writeReferences`' reason.
+   */
+  async #writeReproduced(items: readonly Item[]): Promise<void> {
+    const byId = new Map(items.flatMap((i) => (i.reproducedPost === undefined ? [] : [[i.reproducedPost.itemId, i.reproducedPost] as const])));
+    if (byId.size === 0) return;
+    if (this.#reproducedPresent !== true) {
+      const rows = await this.#db.query<{ t: string | null }>(`select to_regclass('public.reproduced_post')::text as t`);
+      this.#reproducedPresent = (rows[0]?.t ?? null) !== null;
+      if (!this.#reproducedPresent) return;
+    }
+    const posts = [...byId.values()];
+    const https = (u: string | null): string | null => (u !== null && u.startsWith('https://') ? u : null);
+    await this.#db.query(
+      `insert into public.reproduced_post (item_id, source, source_item_id, author_key, author_handle, author_name,
+                                           author_picture_url, posted_at, lang, body, media, read_at)
+       select * from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                            $7::text[], $8::timestamptz[], $9::text[], $10::text[], $11::jsonb[], $12::timestamptz[])
+       on conflict (item_id) do update set
+         author_key = excluded.author_key, author_handle = excluded.author_handle, author_name = excluded.author_name,
+         author_picture_url = excluded.author_picture_url, posted_at = excluded.posted_at, lang = excluded.lang,
+         body = excluded.body, media = excluded.media, read_at = excluded.read_at
+       where excluded.read_at >= public.reproduced_post.read_at`,
+      [
+        posts.map((p) => p.itemId),
+        posts.map((p) => p.source),
+        posts.map((p) => p.sourceItemId),
+        posts.map((p) => p.authorKey),
+        posts.map((p) => p.authorHandle),
+        posts.map((p) => p.authorName),
+        posts.map((p) => https(p.authorPictureUri)),
+        posts.map((p) => (p.postedAt === null ? null : new Date(p.postedAt).toISOString())),
+        posts.map((p) => p.lang),
+        posts.map((p) => p.text),
+        posts.map((p) => JSON.stringify(p.media)),
+        posts.map((p) => new Date(p.readAt).toISOString()),
+      ],
+    );
   }
 
   /** Whether 0118's internal.post_reference is there; looked up, never found missing by a failed statement. */
