@@ -146,13 +146,15 @@ interface ProfileRow {
   /** Their own uploaded picture (0124), tried before `pictureUrl`; null when none. */
   pictureFile: string | null;
   bannerFile: string | null;
+  /** Their X handle from an X sign-in (0125); null for an email or Google member. */
+  xHandle: string | null;
   bio: string;
   wallet: string | null;
   tradesPublic: boolean;
 }
 
 /* The name they typed in Edit profile wins over the sign-in's (0124); the sign-in rewrites `name` only. */
-const PROFILE_COLS = `user_id as "userId", handle, coalesce(display_name, name) as name, picture_url as "pictureUrl", picture_file as "pictureFile", banner_file as "bannerFile", bio, wallet, trades_public as "tradesPublic"`;
+const PROFILE_COLS = `user_id as "userId", handle, coalesce(display_name, name) as name, picture_url as "pictureUrl", picture_file as "pictureFile", banner_file as "bannerFile", x_handle as "xHandle", bio, wallet, trades_public as "tradesPublic"`;
 /** A person as a list shows them: with their own picture first when they uploaded one. */
 const personOf = (r: ProfileRow) => ({ userId: r.userId, handle: r.handle, name: r.name, pictureUrl: r.pictureUrl, pictureFile: r.pictureFile });
 /** How many of the people you follow who follow them are pictured on their profile. */
@@ -164,19 +166,27 @@ const MUTUALS_SHOWN = 3;
  * (handle_chosen_at, 0123) is theirs: the sign-in never overwrites it, and an X handle that matches
  * someone else's chosen name is simply not copied. A picture chosen at sign-up is kept the same way.
  */
+/** An X handle as X allows it (0125's check), or null: anything else is not saved rather than failing the sign-in. */
+const xHandleOf = (h: string | null): string | null => {
+  const bare = h?.replace(/^@/, '') ?? null;
+  return bare !== null && /^[A-Za-z0-9_]{1,15}$/.test(bare) ? bare : null;
+};
+
 export async function syncProfile(db: Db, p: Person): Promise<void> {
   const handle = p.handle?.toLowerCase() ?? null;
   const wallet = p.wallets.find((w) => w.kind === 'embedded')?.address ?? null;
   if (handle !== null) await db.query('update people.profile set handle = null where handle = $1 and user_id <> $2 and handle_chosen_at is null', [handle, p.userId]);
   await db.query(
-    `insert into people.profile (user_id, handle, name, picture_url, wallet)
-     values ($1, case when exists (select 1 from people.profile o where o.handle = $2 and o.user_id <> $1) then null else $2 end, $3, $4, $5)
+    `insert into people.profile (user_id, handle, name, picture_url, wallet, x_handle)
+     values ($1, case when exists (select 1 from people.profile o where o.handle = $2 and o.user_id <> $1) then null else $2 end, $3, $4, $5, $6)
      on conflict (user_id) do update set
        handle = case when people.profile.handle_chosen_at is not null then people.profile.handle else excluded.handle end,
        name = excluded.name,
        picture_url = case when people.profile.picture_chosen_at is not null then people.profile.picture_url else coalesce(excluded.picture_url, people.profile.picture_url) end,
-       wallet = coalesce(excluded.wallet, people.profile.wallet), updated_at = now()`,
-    [p.userId, handle, p.name, p.pictureUrl, wallet],
+       wallet = coalesce(excluded.wallet, people.profile.wallet),
+       x_handle = coalesce(excluded.x_handle, people.profile.x_handle), updated_at = now()`,
+    /* The X handle as X spells it, only from a signed X identity: what the X button links to (0125). */
+    [p.userId, handle, p.name, p.pictureUrl, wallet, xHandleOf(p.handle)],
   );
 }
 
@@ -256,8 +266,8 @@ async function card(deps: SocialDeps, p: ProfileRow, viewer: string | null) {
     pictureUrl: p.pictureUrl,
     pictureFile: p.pictureFile,
     bannerFile: p.bannerFile,
-    /* Their X account, for the X button: the sign-in's X handle, which the handle is today. */
-    xHandle: p.handle,
+    /* Their X account, for the X button: only an X sign-in has one (0125), never the chosen username. */
+    xHandle: p.xHandle,
     bio: p.bio,
     /* Trador's visibleWallet: a private portfolio hides the wallet too, since the address is the
        whole portfolio to anyone with an explorer. Its owner always sees their own. */
