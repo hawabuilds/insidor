@@ -31,7 +31,7 @@ import { afterFirstScreen } from './shared/preload.ts';
 import { listenForNewVersion } from './shared/new-version.ts';
 
 import { App } from './App.tsx';
-import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
+import { listenForOpens, settleLaunch, tapInHand } from './features/alerts/push-open.ts';
 import { trackHistory } from './shared/nav.ts';
 import { noteBeforeMoves } from './shared/entry-scroll.ts';
 import { followVisibleScreen, holdZoom } from './shared/viewport.ts';
@@ -62,8 +62,8 @@ followVisibleScreen();
 document.addEventListener('touchstart', () => undefined, { passive: true });
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  /* A newer build seen while the kept one stood in: taken at the next return to the app. */
-  listenForNewVersion();
+  /* A newer build seen while the kept one stood in: taken at the next return to the app, unless that return is a tapped notification opening its screen. */
+  listenForNewVersion(tapInHand);
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
       console.warn('service worker registration failed', error);
