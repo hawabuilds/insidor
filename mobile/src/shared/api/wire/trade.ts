@@ -33,6 +33,12 @@ export interface TradeQuote {
   readonly bound: string;
   readonly slippageBps: number;
   readonly priceImpactPct: number | null;
+  /**
+   * A pool quote: what the router trades against. 'curve' is a stock pair still on its launchpad
+   * curve (priced in another token, so only the router fills it); 'pool' is a bonded pool. Absent
+   * when the service did not say (an older trade service): the sheet then keeps its old wording.
+   */
+  readonly via?: 'curve' | 'pool';
   /** The quote as the server sent it, returned to the build unchanged. */
   readonly sent: unknown;
 }
