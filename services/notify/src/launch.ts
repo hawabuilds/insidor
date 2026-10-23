@@ -37,6 +37,11 @@
  * ★ WHAT THE PUSH SAYS is facts about the world: the ticker, the post's words and who posted them,
  * its market cap when we have one (text.ts). Nothing of the rule — no buyers, no "picked".
  *
+ * ★ A TAP OPENS THE COIN'S CHART (`/#/token/solana:<mint>`), not the post (the owner, 2026-10-23:
+ * "a notification that a coin launched should open that coin's token chart page"). It linked the
+ * post until then, so every launch push opened For You with the post's sheet. The post is still the
+ * row's card in the list: it rides in the facts as `item` (faces.ts postOfRow reads it there).
+ *
  * The first look remembers every pick already shown and sends nothing, as every pipeline stream
  * does: turning this on must not push yesterday's coins. Cost: our own tables, plus the free
  * market quote coin-facts.ts already makes, only for a pass that has a coin to push.
@@ -52,7 +57,7 @@ import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts'
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import type { Db } from './deliver.ts';
 import { settledCoin } from './first-coin.ts';
-import { postHref } from './pipeline.ts';
+import { tokenHref } from './pipeline.ts';
 import { lineCoin } from './post-watch.ts';
 
 export const LAUNCH_STREAM = 'launch';
@@ -80,6 +85,9 @@ export interface Picked {
    */
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
 }
+
+/** Where a tap on the push lands: the coin's own chart (mobile shared/route.ts `token`), never the post. */
+export const launchHref = (p: Pick<Picked, 'address'>): string => tokenHref(p.address);
 
 /** Whether the push's timing rule passes: launched after For You (rule 2) or, for a coin-first post, its first pick; and just launched (rule 3). */
 export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYouMs' | 'coinFirst'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
@@ -234,7 +242,7 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
       /* Strongest first: one statement per coin, so queue order is cap order. */
       const rows = await db.query<{ n: number }>(
         `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href) select user_id, 'coin_launched', $1, 0, $2, $3 from people.profile returning 1) select count(*)::int as n from q`,
-        [d.address, JSON.stringify(f), postHref(d.itemId)],
+        [d.address, JSON.stringify(f), launchHref(d)],
       );
       queued += rows[0]?.n ?? 0;
     }
