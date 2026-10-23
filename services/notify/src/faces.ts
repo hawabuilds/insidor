@@ -118,8 +118,8 @@ export async function posterPictures(db: Db, itemIds: readonly string[]): Promis
  * Trador's, every row showing what it is about). A post's row carries its picture or video cover
  * (`video` for a still of a video, so the phone draws a play mark) and its site's label for the
  * badge; a narrative's row its own picture. Coin rows show the coin's logo and people rows the
- * person's face (`coinOf`, `peopleOf`), so they get none here. The post is the alert's link
- * (`/#/post/<id>`) or the post part of its subject; the narrative its `/#/story/<id>` link.
+ * person's face (`coinOf`, `peopleOf`), so they get none here. The post is the facts' `item`, the
+ * alert's link (`/#/post/<id>`) or the post part of its subject; the narrative its `/#/story/<id>` link.
  * A lookup that cannot run is no picture, never a failed list.
  */
 export interface RowThumb {
@@ -135,7 +135,7 @@ const POST_KINDS = ['rising_post', 'blowing_up', 'starred_big_account', 'story_p
  * service adds it, so the phone draws the same card as For You under the notification's reason. A
  * post no feed has a card for gets none, and its row is drawn as before.
  */
-export async function cardsOf(db: Db, rows: readonly { readonly id: number; readonly kind: string; readonly subject: string; readonly href: string }[]): Promise<Map<number, unknown>> {
+export async function cardsOf(db: Db, rows: readonly { readonly id: number; readonly kind: string; readonly subject: string; readonly href: string; readonly facts?: Readonly<Record<string, unknown>> }[]): Promise<Map<number, unknown>> {
   const posts = new Map(rows.flatMap((r) => {
     const id = postOfRow(r);
     return id === null ? [] : [[r.id, id] as const];
@@ -162,7 +162,7 @@ export async function cardsOf(db: Db, rows: readonly { readonly id: number; read
  * The copy's file name is the 32 hex characters 0079 writes, nothing else. `to_jsonb(a)` so a
  * database without the column answers no copy rather than failing the list.
  */
-export async function posterFacesOf(db: Db, rows: readonly { readonly id: number; readonly kind: string; readonly subject: string; readonly href: string }[]): Promise<Map<number, { readonly url: string | null; readonly file: string | null }>> {
+export async function posterFacesOf(db: Db, rows: readonly { readonly id: number; readonly kind: string; readonly subject: string; readonly href: string; readonly facts?: Readonly<Record<string, unknown>> }[]): Promise<Map<number, { readonly url: string | null; readonly file: string | null }>> {
   const posts = new Map(rows.flatMap((r) => {
     const id = postOfRow(r);
     return id === null ? [] : [[r.id, id] as const];
@@ -197,9 +197,14 @@ const routeId = (href: string, route: string): string | null => {
   }
 };
 
-/** The post a row is about, or null for a row about no one post. */
-export function postOfRow(r: { readonly kind: string; readonly subject: string; readonly href: string }): string | null {
+/**
+ * The post a row is about, or null for a row about no one post. A row whose link is not the post
+ * (a coin launch opens the coin's chart, launch.ts) names its post in the facts as `item`.
+ */
+export function postOfRow(r: { readonly kind: string; readonly subject: string; readonly href: string; readonly facts?: Readonly<Record<string, unknown>> }): string | null {
   if (!POST_KINDS.includes(r.kind)) return null;
+  const item = r.facts?.['item'];
+  if (typeof item === 'string' && item !== '') return item;
   const linked = routeId(r.href, 'post');
   if (linked !== null) return linked;
   const parts = r.subject.split('|');
