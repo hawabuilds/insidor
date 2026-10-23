@@ -25,12 +25,19 @@ import styles from './trade.module.css';
 /* Read once, at build time: VITE_TRADING is baked into the bundle, so a deploy turns it on, never a page. */
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
 
-export function TradeBar({ mint, ticker, priceUsd, off }: { mint: string; ticker: string; priceUsd: Measured; off: ReactNode }) {
+export function TradeBar({ mint, ticker, priceUsd, subline = null, off }: {
+  mint: string;
+  ticker: string;
+  priceUsd: Measured;
+  /** The flex card's second line after a sell (OrderSheet's `subline`). */
+  subline?: string | null;
+  off: ReactNode;
+}) {
   if (!TRADING) return <>{off}</>;
-  return <OpenBar mint={mint} ticker={ticker} priceUsd={priceUsd} />;
+  return <OpenBar mint={mint} ticker={ticker} priceUsd={priceUsd} subline={subline} />;
 }
 
-function OpenBar({ mint, ticker, priceUsd }: { mint: string; ticker: string; priceUsd: Measured }) {
+function OpenBar({ mint, ticker, priceUsd, subline }: { mint: string; ticker: string; priceUsd: Measured; subline: string | null }) {
   const [venue] = useLoad(`venue:${mint}`, (signal) => fetchTradeVenue(mint, signal), 'memory');
   const [side, setSide] = useState<'buy' | 'sell' | null>(null);
   const a = availability(true, venue.state === 'ready' ? venue.value.venue : venue.state === 'failed' ? 'unavailable' : 'loading');
@@ -46,7 +53,7 @@ function OpenBar({ mint, ticker, priceUsd }: { mint: string; ticker: string; pri
           </div>
         </div>
       )}
-      {side !== null ? <OrderSheet key={side} mint={mint} ticker={ticker} side={side} limits={limits} priceUsd={priceUsd} onClose={() => setSide(null)} /> : null}
+      {side !== null ? <OrderSheet key={side} mint={mint} ticker={ticker} side={side} limits={limits} priceUsd={priceUsd} subline={subline} onClose={() => setSide(null)} /> : null}
     </>
   );
 }

@@ -20,6 +20,7 @@ import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodeCatches, type Catches } from './catches.ts';
 import { decodeRunningCoins, type RunningCoin } from './running.ts';
+import { decodeSellCard, type SellCard } from './sell-card.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodeNarrativesPage, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
@@ -263,6 +264,11 @@ export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '
 /** A profile's stats strip and its "Early" tags: the wallet's catches (services/read catches.ts). */
 export async function fetchCatches(address: string, signal?: AbortSignal): Promise<Catches> {
   return decodeCatches(await read(`/wallet/${encodeURIComponent(address)}/catches`, signal));
+}
+
+/** The flex card's facts for one sell, by its signature (services/read trade-card.ts). */
+export async function fetchSellCard(signature: string, signal?: AbortSignal): Promise<SellCard> {
+  return decodeSellCard(await read(`/sell/${encodeURIComponent(signature)}/card`, signal));
 }
 
 /** The running coins strip on For You and the Narratives tab (GET /running/coins), in the server's order. */
