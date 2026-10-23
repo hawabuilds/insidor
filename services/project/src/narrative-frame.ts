@@ -469,6 +469,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const paged = new Set(pages.map((p) => p.id));
   const rowsWithPages = board.rows.filter((r) => paged.has(r.id));
   for (const n of offBoard) if (!paged.has(n.id)) unwritten.set(n.id, options.nowMs);
+  /* ★ And one the rule dropped (too few posts, no viral post): tried, nothing to write, so it waits
+     `UNWRITTEN_RETRY_MS` instead of taking a place in the page queue every frame. */
+  for (const id of dropped) unwritten.set(id, options.nowMs);
   const boardRows = await writeBoard(db, viewId, tick, rowsWithPages, { kind: 'observed' });
   const storyViews = await writeStories(db, pages);
   /* ★ A PAGE GOES ONLY WITH ITS NARRATIVE: one the owner hid (or left under `minPosts` good posts),

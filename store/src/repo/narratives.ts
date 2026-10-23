@@ -51,6 +51,18 @@ const orEmpty = async <T>(read: () => Promise<T>, empty: T): Promise<T> => {
 };
 const toMs = (v: Date | string | null): number | null => (v === null ? null : v instanceof Date ? v.getTime() : Date.parse(v));
 
+/**
+ * ★ PAGES IN TURNS: of `limit` places, at most half to pages never written and the rest to the
+ * pages written longest ago; a side with fewer than its share gives its places to the other. Never
+ * one side always: the never-written cannot hold every place, and a page written long ago always
+ * gets its turn.
+ */
+export function fairTurns<T>(never: readonly T[], written: readonly T[], limit: number): readonly T[] {
+  const half = Math.ceil(limit / 2);
+  const fresh = never.slice(0, Math.max(half, limit - written.length));
+  return [...fresh, ...written.slice(0, limit - fresh.length)];
+}
+
 /** What decides one post's standing, and what it can be matched on. */
 export interface NarrativePostRow {
   readonly itemId: string;
@@ -418,15 +430,26 @@ export class PgNarrativeRepo {
   }
 
   /**
-   * The shown narratives off the board whose page is due again: never projected first, then the
-   * longest since (public.story_view.projected_at), at most `limit`, none of `skip`.
+   * The shown narratives off the board whose page is due again, at most `limit`, none of `skip`:
+   * TAKEN IN TURNS (`fairTurns`) from the ones never projected and the ones written longest ago
+   * (public.story_view.projected_at). Until 2026-10-23 the never-projected went first, always: about
+   * 115 narratives the listing rule drops every frame (so never written) took all 25 places each
+   * frame, and 751 of 957 pages went more than an hour without being written again — stale `dead`
+   * flags and "today" gains from 18–21 Oct. The caller also skips, for a while, a page it tried and
+   * could not write (services/project narrative-frame.ts `unwritten`).
    */
   async pagesDue(limit: number, skip: readonly string[]): Promise<readonly StoredNarrative[]> {
-    return this.#narratives(
-      'n.shown and not (n.narrative_id = any($2::text[]))',
+    const never = await this.#narratives(
+      'n.shown and not (n.narrative_id = any($2::text[])) and not exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
       [limit, [...skip]],
-      'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc nulls first, n.narrative_id limit $1',
+      'order by n.updated_at, n.narrative_id limit $1',
     );
+    const written = await this.#narratives(
+      'n.shown and not (n.narrative_id = any($2::text[])) and exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
+      [limit, [...skip]],
+      'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc, n.narrative_id limit $1',
+    );
+    return fairTurns(never, written, limit);
   }
 
   /**
