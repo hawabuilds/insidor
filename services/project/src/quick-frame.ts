@@ -192,7 +192,7 @@ export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, po
   const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
   const merged = mergeForYou(showing, changed, frame.fyp, at);
   const cards = merged.map((post) => ({ at: at(post), post }));
-  const fyp = (policy.rising.varietyOn ? await varied(db, cards, rows, policy) : cards).slice(0, policy.rising.maxRows).map((c) => c.post);
+  const fyp = (await varied(db, cards, rows, policy)).slice(0, policy.rising.maxRows).map((c) => c.post);
 
   const before = new Set(showing.map((p) => p.id));
   const after = new Set(fyp.map((p) => p.id));

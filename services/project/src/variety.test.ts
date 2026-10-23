@@ -31,7 +31,7 @@ test('★ at most three of one topic in any twenty consecutive cards; the order 
   /* 30 cards newest first: 22 about one game, 8 about other things. */
   const cards = Array.from({ length: 30 }, (_, i) => card(i % 4 === 0 ? `other${i}` : `game${i}`, 1000 - i, 100 + i));
   const topic = new Map(cards.map((c) => [c.id, c.id.startsWith('game') ? 'game' : c.id] as const));
-  const out = withVariety(cards, topic, 3, 20);
+  const out = withVariety(cards, [{ groupOf: topic, perWindow: 3, window: 20 }]);
   check(out, topic, 3, 20);
   /* Every other post keeps its place, and the list is still newest first. */
   for (const c of cards.filter((c) => !c.id.startsWith('game'))) assert.ok(out.includes(c), c.id);
@@ -41,18 +41,57 @@ test('★ at most three of one topic in any twenty consecutive cards; the order 
 test('★ the strongest posts of a crowded topic keep the places, not merely the newest', () => {
   const cards = [card('g1', 10, 5), card('g2', 9, 50_000), card('g3', 8, 10), card('g4', 7, 900_000), card('g5', 6, 3), card('g6', 5, 70_000)];
   const topic = new Map(cards.map((c) => [c.id, 'game'] as const));
-  assert.deepEqual(withVariety(cards, topic, 3, 20).map((c) => c.id), ['g2', 'g4', 'g6']);
+  assert.deepEqual(withVariety(cards, [{ groupOf: topic, perWindow: 3, window: 20 }]).map((c) => c.id), ['g2', 'g4', 'g6']);
 });
 
 test('a post whose views we have not read is last in line for a crowded topic', () => {
   const cards = [card('a', 3, null), card('b', 2, 1), card('c', 1, 2)];
   const topic = new Map(cards.map((c) => [c.id, 't'] as const));
-  assert.deepEqual(withVariety(cards, topic, 2, 20).map((c) => c.id), ['b', 'c']);
+  assert.deepEqual(withVariety(cards, [{ groupOf: topic, perWindow: 2, window: 20 }]).map((c) => c.id), ['b', 'c']);
 });
 
 test('a small topic and lone posts are never touched', () => {
   const cards = [card('a', 3, 1), card('b', 2, 1), card('c', 1, 1)];
-  assert.deepEqual(withVariety(cards, new Map(), 3, 20), cards);
+  assert.deepEqual(withVariety(cards, [{ groupOf: new Map(), perWindow: 3, window: 20 }]), cards);
+});
+
+test('★ one account takes at most two places on the list: its most-viewed keep them, the next post fills in', () => {
+  /* 62 cards newest first: a news account posts six times among them, everyone else once. */
+  const mario = new Set(['m0', 'm8', 'm16', 'm24', 'm32', 'm40']);
+  const cards = Array.from({ length: 62 }, (_, i) => card(mario.has(`m${i}`) ? `m${i}` : `o${i}`, 1000 - i, mario.has(`m${i}`) ? 1_000 * (i + 1) : 50));
+  const account = new Map(cards.map((c) => [c.id, c.id.startsWith('m') ? 'x:mario' : `x:${c.id}`] as const));
+  const out = withVariety(cards, [{ groupOf: account, perWindow: 2, window: 60 }]);
+  /* His two most-viewed stay, in place; the other four go and nobody else does. */
+  assert.deepEqual(out.filter((c) => c.id.startsWith('m')).map((c) => c.id), ['m32', 'm40']);
+  assert.equal(out.length, 58);
+  /* Cut to the list's sixty, the posts below the old cut move up into the freed places. */
+  assert.ok(out.slice(0, 60).some((c) => c.id === 'o60') && out.slice(0, 60).some((c) => c.id === 'o61'));
+  assert.deepEqual(out, [...out].sort((a, b) => b.at - a.at));
+});
+
+test('★ the account limit is a rolling window: a post far below the account\'s others does not block a new one', () => {
+  const cards = Array.from({ length: 80 }, (_, i) => card(i === 0 || i === 70 || i === 75 ? `m${i}` : `o${i}`, 1000 - i, i === 0 ? 10 : i >= 70 ? 1_000_000 : 50));
+  const account = new Map(cards.map((c) => [c.id, c.id.startsWith('m') ? 'x:mario' : `x:${c.id}`] as const));
+  const out = withVariety(cards, [{ groupOf: account, perWindow: 2, window: 60 }]);
+  /* m0 is the weakest, but m70 and m75 are over sixty cards below it: all three keep a place. */
+  assert.deepEqual(out.filter((c) => c.id.startsWith('m')).map((c) => c.id), ['m0', 'm70', 'm75']);
+});
+
+test('★ topic and account are checked together: a card stays only when it fits both', () => {
+  const cards = [card('a1', 9, 900), card('a2', 8, 800), card('a3', 7, 700), card('b1', 6, 600), card('b2', 5, 500)];
+  const topic = new Map(cards.map((c) => [c.id, c.id === 'b2' ? 'gta' : c.id === 'a3' ? 'gta' : c.id] as const));
+  const account = new Map(cards.map((c) => [c.id, c.id.startsWith('a') ? 'x:a' : `x:${c.id}`] as const));
+  const out = withVariety(cards, [
+    { groupOf: topic, perWindow: 1, window: 20 },
+    { groupOf: account, perWindow: 2, window: 60 },
+  ]);
+  /* a3 is over its account's two; with it gone, b2 is the topic's only card and stays. */
+  assert.deepEqual(out.map((c) => c.id), ['a1', 'a2', 'b1', 'b2']);
+});
+
+test('no rules: every card, as given', () => {
+  const cards = [card('a', 3, 1), card('b', 2, 1)];
+  assert.deepEqual(withVariety(cards, []), cards);
 });
 
 test('★ topics join by story, by normalised name, or by alike meaning, transitively', () => {

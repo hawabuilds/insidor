@@ -34,6 +34,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { Millis } from '../contracts/src/index.ts';
 import { bioAddresses } from '../core/src/match/poster-bio.ts';
+import { bandFloor, startFloors } from '../core/src/sources/feed-floor.ts';
 import { asDb, createPool, DB_ROLE, PgAuthorRepo, PgFeedFloorRepo, PgLearningRepo, PgMissedPostRepo, PgRecallRepo, type Db } from '../store/src/index.ts';
 import { measureDiscovery } from '../services/runner/src/work/discovery-settings.ts';
 import { readOutages } from '../services/runner/src/work/missed-posts.ts';
@@ -54,6 +55,10 @@ const VOLUME_SPAN = '24 hours';
 const SHORT_VIDEO_SOURCES = ['tiktok'];
 const DEFAULT_OUT = 'missed-replay.md';
 const DEFAULT_CAP_USD = 0.5;
+/* The newest band's asks return posts up to about its age plus a language's spacing (an hour at
+   most, `langSplit.maxEveryMs`, but ~4 to 15 minutes for the languages asked most): the 50-minute
+   band's posts are older than this, so they are kept out of the youngest band's evidence. */
+const NEWEST_ASK_MAX_AGE_MIN = 30;
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -98,35 +103,49 @@ async function measured(db: Db): Promise<{ postToShownMin: number | null; search
 }
 
 /**
- * What the main lane's own passes say about a post made while it ran: the passes that asked for
- * posts of its age (posted inside the pass's window, older than the search's lag) and reached the
- * back of their window (so a full page did not cut them short), and the lowest likes among what
- * they returned, read when first seen. The floor then was at most that.
+ * What the newest-posts search's own asks say about a post made while it ran: the ask whose window
+ * held its posting time, and the lowest likes among what that ask and its neighbours returned, read
+ * when first seen. The floor then was at most that.
+ *
+ * ★ IN ITS OWN LANGUAGE. Since 2026-10-19 each language is its own search, with its own floor and
+ * its own spacing (`feed.langSplit`), and a language outside `feed.langs` was not asked at all: an
+ * ask that returned English posts says nothing about a Turkish one. So asks are read from the
+ * posts in the post's language alone; with none, no ask is known to have looked and the model
+ * alone speaks. An ask is told apart by the second its posts were stored, and only posts under
+ * `NEWEST_ASK_MAX_AGE_MIN` old count, so the 50-minute band's, stored the same pass, are not read
+ * as the youngest band's.
+ *
+ * ★ WHICH ASK HELD IT: a language's youngest-band asks tile posting time — each asks from where the
+ * last one ended to the band's age before now — so the post was in the first ask made at least the
+ * band's age after it, provided an earlier ask shows the tiling had begun. A small language returns
+ * a post or two an ask, so one ask's lowest likes is a thin reading of its floor; the ask before
+ * and after it are read with it.
  */
-async function passEvidence(db: Db, postedAtMs: number, lagMin: number): Promise<PassEvidence> {
-  const r = await db.query<{ passes: string; floor: number | null }>(
-    `with p as (
-       select date_trunc('minute', f.found_at) as m, min(f.found_at) as first, min(i.posted_at) as oldest, array_agg(f.item_id) as ids
-         from internal.item_found_by f join public.item i using (item_id)
-        where f.lane = 'all' and f.found_at between $1 and $1::timestamptz + make_interval(mins => $2::int + 1)
-        group by 1),
-     /* When the pass asked: its first paid page just before its posts were stored (a pass's
-        since_time is its request time less the window). */
-     q as (
-       select p.*, (select min(s.at) from internal.spend s
-                     where s.endpoint = 'search' and s.at between p.first - interval '30 seconds' and p.first) as asked_at
-         from p),
-     asked as (
-       select * from q
-        where asked_at is not null
-          and $1 between asked_at - make_interval(mins => $2) and asked_at - make_interval(secs => $3::float8 * 60)
-          and oldest <= asked_at - make_interval(mins => $2) + interval '1 minute')
-     select (select count(*) from asked)::text as passes,
-            (select min(o.value)::float8 from asked, unnest(asked.ids) as id
-               join lateral (select value from public.observation o where o.item_id = id and o.kind = 'approval' order by observed_at limit 1) o on true) as floor`,
-    [new Date(postedAtMs), P.feed.windowMin, lagMin],
+async function passEvidence(db: Db, postedAtMs: number, lang: string | null): Promise<PassEvidence> {
+  const bandMin = Math.min(...P.feed.fresh.bandAgesMin);
+  const asks = await db.query<{ at: Date; low: number | null }>(
+    `select date_trunc('second', f.found_at) as at,
+            min((select o.value from public.observation o where o.item_id = f.item_id and o.kind = 'approval' order by observed_at limit 1))::float8 as low
+       from internal.item_found_by f join public.item i using (item_id)
+      where f.lane = 'all' and i.lang is not distinct from $2
+        and f.found_at between $1::timestamptz - make_interval(mins => $3::int) and $1::timestamptz + make_interval(mins => $3::int * 2)
+        and f.found_at - i.posted_at < make_interval(mins => $3::int)
+      group by 1 order by 1`,
+    [new Date(postedAtMs), lang, NEWEST_ASK_MAX_AGE_MIN],
   );
-  return { mainPasses: Number(r[0]?.passes ?? 0), floorThenAtMost: r[0]?.floor ?? null };
+  const due = postedAtMs + bandMin * 60_000;
+  const k = asks.findIndex((a) => a.at.getTime() >= due);
+  const floorToday = lang === null ? null : await langFloorToday(db, lang);
+  if (k <= 0) return { mainPasses: 0, floorThenAtMost: null, floorToday };
+  const lows = asks.slice(k - 1, k + 2).map((a) => a.low).filter((x): x is number => x !== null);
+  return { mainPasses: 1, floorThenAtMost: lows.length === 0 ? null : Math.min(...lows), floorToday };
+}
+
+/** A language's youngest-band floor as sent today (internal.feed_lang_floor through core `bandFloor`); null when it has none. */
+async function langFloorToday(db: Db, lang: string): Promise<number | null> {
+  const held = (await new PgFeedFloorRepo(db).langFloors().catch(() => ({}) as Record<string, number>))[lang];
+  if (held === undefined || !(held > 0)) return null;
+  return bandFloor(Math.min(...P.feed.fresh.bandAgesMin), { ...startFloors(P), all: held }, P);
 }
 
 const money = (usd: number) => `$${usd < 0.1 ? usd.toFixed(3) : usd.toFixed(2)}`;
@@ -226,7 +245,7 @@ async function main(): Promise<void> {
     }
 
     const ctx = { settings: snap?.settings ?? null, outages, postToShownMin: m.postToShownMin, searchLagMin: m.searchLagMin, shortVideoSources: SHORT_VIDEO_SOURCES };
-    const evidence = await Promise.all(posts.map((p) => (p.postedAtMs === null ? null : passEvidence(db, p.postedAtMs, m.searchLagMin ?? 0))));
+    const evidence = await Promise.all(posts.map((p) => (p.postedAtMs === null ? null : passEvidence(db, p.postedAtMs, p.lang))));
     const rows = posts.map((p, i) => replayOne(p, ctx, fresh.get(p.itemId) ?? null, evidence[i] ?? null));
     const bio = await bioNotes(db, posts);
     const slowLane = snap?.settings.lanes.find((l) => l.lane === 'slow') ?? null;

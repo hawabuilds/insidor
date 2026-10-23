@@ -2781,6 +2781,20 @@ export interface RisingPolicy {
   readonly varietyWindow: number;
   readonly varietySameMeaning: number;
   /**
+   * ★ ONE ACCOUNT'S SHARE OF FOR YOU (the owner, 2026-10-23: "there's too much Mario Nawfal on For
+   * You"). Among any `window` consecutive For You cards at most `perWindow` are from one account; its
+   * most-viewed posts keep the places and the next post in line fills the gap (services/project
+   * variety.ts, the same rule as the topic share). `window` is the live list's length, so it reads as
+   * "at most two per account on the list". Measured over 48h of For You (23 Oct): one news account
+   * held 6 of 60 cards, every other account 1–2, so two takes nothing from an ordinary account.
+   * Off: no account limit.
+   */
+  readonly authorShare: {
+    readonly on: boolean;
+    readonly perWindow: number;
+    readonly window: number;
+  };
+  /**
    * ★ OLDER FEED POSTS' VIDEOS, READ AGAIN (the owner, 2026-10-13: "so older posts play too"). A
    * text-source post on For You, Popular or a Feed alert whose video was stored with no playable
    * file is read again by id (services/runner/src/work/post-refill.ts) on the live posts line: at
@@ -4196,6 +4210,39 @@ export interface NarrativePolicy {
     readonly cap: LaneCapPolicy;
     readonly passDeadlineMs: number;
   };
+  /**
+   * ★ THE STARTING POST AND ONE STORY ACROSS LANGUAGES (the owner, 2026-10-23: "find the posts that
+   * START the narratives first"), core group/narrative-origin.ts. Stored posts and stored links only;
+   * nothing is searched, embedded or judged.
+   *
+   *   trace   a stored post from up to `lookbackMs` before a narrative's first post, judged yes or
+   *           tied to a coin, joins it as an earlier post when the narrative's posts quote it (at
+   *           most `maxHops` quote or link steps) — or shares a name with one of its posts at
+   *           `narrative.nameMeaning` and the narrative's average at `nameAverage` — and, quoted, is
+   *           at `linkMeaning` from the average. At most `maxPerNarrative`
+   *   merge   two narratives formed within `formedWithinMs` of each other, their averages at
+   *           `mergeMeaning`, merge when both quote the same judged starting post, or when quotes
+   *           join them through at least `minLinkPosts` of their posts
+   *   bounded the narratives with a post in `liveMs`, at most `perPass` traced a pass
+   *   floor   `viralFloor`: a narrative is listed only while one of its posts clears For You's own
+   *           views bar (`rising.fypMinReach` and its growth paths, core `clearsReachBar`), and a
+   *           post traced back as a start must clear it too: small posts join, never start
+   */
+  readonly origin: {
+    readonly on: boolean;
+    readonly lookbackMs: number;
+    readonly maxHops: number;
+    readonly linkMeaning: number;
+    readonly nameAverage: number;
+    readonly maxPerNarrative: number;
+    readonly mergeOn: boolean;
+    readonly formedWithinMs: number;
+    readonly mergeMeaning: number;
+    readonly minLinkPosts: number;
+    readonly liveMs: number;
+    readonly perPass: number;
+    readonly viralFloor: boolean;
+  };
 }
 
 /**
@@ -4883,7 +4930,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v141',
+  version: 'policy.v144',
 
   admit: {
     maxAgeMin: 240,
@@ -5415,7 +5462,16 @@ const POLICY_V1: Policy = {
     /* 'ja' from 2026-10-17, the owner's choice: 16 viral Japanese posts were coined in 7 days, judged
        yes, and none held before its coin, because Japanese was never searched. Estimated +$1.75 to
        $3.50 a day; the posts line below was raised so English search is not squeezed. */
-    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko'],
+    /* 'tr' and 'zh' from 2026-10-23, the owner's "whatever is best that won't cost me more": neither was
+       searched, and three of his missed posts were in them (the Chinese-Turkish beef of 19 Oct, 5.0M
+       and 8.9M views, and the first Dogzilla post of 21 Oct, all three found only later through a
+       coin that named them). tools/lang-shares.ts that day: Turkish 11 coined posts over 500k views
+       in 7 days, Chinese 8, more than Portuguese (10), 'qme' (10) or Korean (7). Each is asked on
+       the newest-post bands from its own share of `langSplit.bandsDailyUsd`, which did not grow, so
+       the bands' bill does not move; the new languages are paid by the other languages' floors. A
+       new language starts at the shared floor and climbs 20% an ask to its own, so its first hour
+       or two buys more than its share — inside the bands' own day caps (`paging`). */
+    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko', 'zh', 'tr'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
@@ -5488,8 +5544,21 @@ const POLICY_V1: Policy = {
          were found by this lane (on 18-19 Oct, mostly Japanese and Portuguese viral posts, rarely
          coined), and English ones between the late band's 6,500 and ~10,000 likes at one to four
          hours. A coin that names such a post still brings it in (the coin-link lane). */
-      dailyUsd: 0.5,
-      langs: ['en'],
+      /* English, French and Japanese from 2026-10-23, the owner's "whatever is best that won't cost me
+         more", for the missed "Vegeta is Algerian" meme: four French posts and one Japanese (7.5k to
+         178k likes, 135k to 14.9M views), each a slow starter — the French ones under their newest
+         bands' floors (about 35 to 55 likes at 6 to 10 minutes, about 400 at 50) and the Japanese one
+         under Japan's (about 430 and 2,300) when the bands asked, then viral hours later, when only
+         this English-only lane and the English-only late band were looking. No floor share would have
+         caught them; an older search in their language could have. Paid inside the same X day: the
+         two languages add about 2,470 asks a day (the late band each pass, ~850; four slices every
+         quarter-hour, 384), each billed at least one post ($0.00015), ~$0.37, and their posts over the
+         slow floor (~100 Japanese and a few French a day at 1-6 hours on 21-23 Oct, each returned once
+         or twice) ~$0.05; `langSplit.bandsDailyUsd` gives up $0.45 for it. $0.55 here: the $0.05 of
+         French and Japanese posts on top of English's $0.50, so the shared slow floor holds where it
+         was rather than rising against English's older posts. */
+      dailyUsd: 0.55,
+      langs: ['en', 'fr', 'ja'],
     },
     /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
        6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones
@@ -5602,10 +5671,14 @@ const POLICY_V1: Policy = {
            ~$1.80 and ~$1.40 of their $3.20 (English at 49 and 404 likes), slow $0.50 and the late band
            ~$0.35 in English. 15 pages a band: English's ~37 posts a four-minute pass come in pages of
            about 5, so 9 would cut a busy hour short. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 2.2 },
-        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.8 },
-        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.5 },
-        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.6 },
+        /* From 2026-10-23 (`slow.langs` adds French and Japanese, paid by the bands): the bands' backstops
+           lose the $0.45 `langSplit.bandsDailyUsd` gave up (2.2 → 1.95, 1.8 → 1.6), and the late band's
+           and slow lane's gain it (0.5 → 0.8: three languages' ~850 asks a day each at the one-post
+           minimum, ~$0.38, and their posts; 0.6 → 0.75). The four still add to the same $5.10. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.95 },
+        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.6 },
+        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.8 },
+        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.75 },
       },
     },
     /* On from 2026-10-19, the owner's "hard daily total for X search, spread evenly". The search bill
@@ -5631,10 +5704,24 @@ const POLICY_V1: Policy = {
        from a lower floor) and Portuguese's, the busiest for its share, near 17,600. 2 posts an ask:
        the last short page is at most half a small language's money; it asks Korean every ~34
        minutes, French every ~6 and English every pass. */
+    /* Re-split 2026-10-23, the owner's "whatever is best that won't cost me more", after the missed
+       "Vegeta is Algerian" meme: Japanese was held to a bar about ten times English's (base floors
+       that morning: ja 8,856 likes, en 820, fr 895; 886 against 82 at 6 minutes) on 2.7% of the
+       money. Japanese 0.027 → 0.10, Turkish 0.015 and Chinese 0.012 new (`feed.langs`), paid by
+       English 0.795 → 0.70, 'qme' 0.01 → 0.008 and Korean 0.008 → 0.005; the rest unchanged.
+       `bandsDailyUsd` 4.1 → 3.65: its $0.45 pays for the older searches in French and Japanese
+       (`slow.langs`), so the X search day's parts still add to what they did. Expected floors once
+       settled, scaling each by its money to the power −2/3 (the slope of English's likes at 6 to 16
+       minutes over 48 hours, N(>x) ~ x^−1.5): en ~965 (97 at 6 minutes, 805 at 50), ja ~4,000
+       (400, 3,330), fr ~965, zxx ~810, es ~1,530, pt ~5,300, qme ~3,900, ko ~9,600; Turkish and
+       Chinese are not known until asked (~365 and ~290 posts a day bought). French stays at
+       English's level: its missed posts were under English's floor too. The posts the bands buy
+       a day are the same in all (the same money at the same price), so the judging they feed does
+       not grow either. */
     langSplit: {
       on: true,
-      shares: { en: 0.795, zxx: 0.063, fr: 0.054, ja: 0.027, es: 0.024, pt: 0.019, qme: 0.01, ko: 0.008 },
-      bandsDailyUsd: 4.1,
+      shares: { en: 0.7, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005 },
+      bandsDailyUsd: 3.65,
       minPostsPerAsk: 2,
       maxEveryMs: 3_600_000, // an hour
     },
@@ -6444,6 +6531,7 @@ const POLICY_V1: Policy = {
     varietyPerWindow: 3,
     varietyWindow: 20,
     varietySameMeaning: 0.6,
+    authorShare: { on: true, perWindow: 2, window: 60 },
     /* Two batched reads of 50 a pass; 1,000 posts a day is at most $0.15 at $0.00015 a post. */
     refillPerPass: 100,
     refillPerDay: 1_000,
@@ -6810,6 +6898,22 @@ const POLICY_V1: Policy = {
       perPass: 10,
       cap: { dailyUsd: 0.5, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
       passDeadlineMs: 120_000,
+    },
+    /* ── narrative.origin: the starting post and one story across languages (policy.v143) ── */
+    origin: {
+      on: true,
+      lookbackMs: 604_800_000, // seven days before the narrative's first post, as the early posts
+      maxHops: 2,
+      linkMeaning: 0.45,
+      nameAverage: 0.6,
+      maxPerNarrative: 5,
+      mergeOn: true,
+      formedWithinMs: 43_200_000, // twelve hours
+      mergeMeaning: 0.6,
+      minLinkPosts: 3,
+      liveMs: 172_800_000, // two days, the board's window
+      perPass: 400,
+      viralFloor: true, // the owner, 2026-10-23: never a narrative of small posts
     },
   },
 

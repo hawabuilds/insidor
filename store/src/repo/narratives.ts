@@ -51,6 +51,18 @@ const orEmpty = async <T>(read: () => Promise<T>, empty: T): Promise<T> => {
 };
 const toMs = (v: Date | string | null): number | null => (v === null ? null : v instanceof Date ? v.getTime() : Date.parse(v));
 
+/**
+ * ★ PAGES IN TURNS: of `limit` places, at most half to pages never written and the rest to the
+ * pages written longest ago; a side with fewer than its share gives its places to the other. Never
+ * one side always: the never-written cannot hold every place, and a page written long ago always
+ * gets its turn.
+ */
+export function fairTurns<T>(never: readonly T[], written: readonly T[], limit: number): readonly T[] {
+  const half = Math.ceil(limit / 2);
+  const fresh = never.slice(0, Math.max(half, limit - written.length));
+  return [...fresh, ...written.slice(0, limit - fresh.length)];
+}
+
 /** What decides one post's standing, and what it can be matched on. */
 export interface NarrativePostRow {
   readonly itemId: string;
@@ -186,9 +198,10 @@ export interface NarrativePass {
   /**
    * The merges: `id` moves all its posts to `into` and is kept as merged. `into` null is never
    * written (nothing is retired). `by` is who merged it (0108 `merged_by`): the owner's "Merge
-   * with…" (the default), or the regroup's same-subject rule (core group/narrative-same.ts).
+   * with…" (the default), the regroup's same-subject rule (core group/narrative-same.ts), or its
+   * same-story quote rule (core group/narrative-origin.ts, 0126) — not written before 0126.
    */
-  readonly retired: readonly { readonly id: string; readonly into: string | null; readonly by?: 'owner' | 'same_subject' }[];
+  readonly retired: readonly { readonly id: string; readonly into: string | null; readonly by?: 'owner' | 'same_subject' | 'same_story' }[];
   /** The owner's "Remove this post": the post leaves that narrative. */
   readonly removed?: readonly { readonly narrativeId: string; readonly itemId: string }[];
   /**
@@ -418,15 +431,26 @@ export class PgNarrativeRepo {
   }
 
   /**
-   * The shown narratives off the board whose page is due again: never projected first, then the
-   * longest since (public.story_view.projected_at), at most `limit`, none of `skip`.
+   * The shown narratives off the board whose page is due again, at most `limit`, none of `skip`:
+   * TAKEN IN TURNS (`fairTurns`) from the ones never projected and the ones written longest ago
+   * (public.story_view.projected_at). Until 2026-10-23 the never-projected went first, always: about
+   * 115 narratives the listing rule drops every frame (so never written) took all 25 places each
+   * frame, and 751 of 957 pages went more than an hour without being written again — stale `dead`
+   * flags and "today" gains from 18–21 Oct. The caller also skips, for a while, a page it tried and
+   * could not write (services/project narrative-frame.ts `unwritten`).
    */
   async pagesDue(limit: number, skip: readonly string[]): Promise<readonly StoredNarrative[]> {
-    return this.#narratives(
-      'n.shown and not (n.narrative_id = any($2::text[]))',
+    const never = await this.#narratives(
+      'n.shown and not (n.narrative_id = any($2::text[])) and not exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
       [limit, [...skip]],
-      'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc nulls first, n.narrative_id limit $1',
+      'order by n.updated_at, n.narrative_id limit $1',
     );
+    const written = await this.#narratives(
+      'n.shown and not (n.narrative_id = any($2::text[])) and exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
+      [limit, [...skip]],
+      'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc, n.narrative_id limit $1',
+    );
+    return fairTurns(never, written, limit);
   }
 
   /**
@@ -548,7 +572,9 @@ export class PgNarrativeRepo {
       }
 
       /* The owner's merges: every post moves to the narrative he chose; the merged one stays, pointing there. */
-      const merges = pass.retired.filter((r): r is { id: string; into: string; by?: 'owner' | 'same_subject' } => r.into !== null && r.into !== r.id);
+      /* A quote merge is written only once 0126 lets merged_by say so: before it, it is not made at all. */
+      const storyMerges = pass.retired.some((r) => r.by === 'same_story') && (await this.#mergedByAllows('same_story'));
+      const merges = pass.retired.filter((r): r is { id: string; into: string; by?: 'owner' | 'same_subject' | 'same_story' } => r.into !== null && r.into !== r.id && (r.by !== 'same_story' || storyMerges));
       const withBy = merges.length > 0 && (await this.#hasColumn('narrative', 'merged_by'));
       for (const r of merges) {
         /* Only from an open narrative into an open one: a merge read before another pass wrote is not applied over it. */
@@ -637,6 +663,23 @@ export class PgNarrativeRepo {
 
   readonly #columns = new Map<string, Promise<boolean>>();
   /** Whether internal.<table>.<column> is there; asked once, never caught (as `migrated`). */
+  /** Whether merged_by's check names `value` (0126 adds 'same_story'); asked once. */
+  #mergedByAllows(value: string): Promise<boolean> {
+    const key = `merged_by=${value}`;
+    let p = this.#columns.get(key);
+    if (p === undefined) {
+      p = this.#db
+        .query<{ ok: boolean }>(
+          `select coalesce(bool_or(pg_get_constraintdef(oid) like '%' || $1 || '%'), false) as ok
+             from pg_constraint where conrelid = 'internal.narrative'::regclass and conname = 'narrative_merged_by_check'`,
+          [value],
+        )
+        .then((r) => r[0]?.ok === true);
+      this.#columns.set(key, p);
+    }
+    return p;
+  }
+
   #hasColumn(table: string, column: string): Promise<boolean> {
     const key = `${table}.${column}`;
     let p = this.#columns.get(key);
@@ -691,6 +734,69 @@ export class PgNarrativeRepo {
       [[...itemIds]],
     ), []);
     return new Map(rows.map((r) => [r.item_id, r.narrative_id] as const));
+  }
+
+  /**
+   * ★ THE STARTING POST'S READS (core group/narrative-origin.ts): each post's quoted and linked posts
+   * (internal.post_reference, 0118). A post with no row was never read with its links: absent, not
+   * "none". Empty before 0118. By primary key.
+   */
+  async references(itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await orEmpty(() => this.#db.query<{ item_id: string; refers_to: string[] }>(
+      `select item_id, refers_to from internal.post_reference where item_id = any($1::text[])`,
+      [[...itemIds]],
+    ), []);
+    return new Map(rows.map((r) => [r.item_id, r.refers_to] as const));
+  }
+
+  /**
+   * The posts, of these, that a coin is tied to: a coin's own link names it (internal.coin_post_link)
+   * or the coin-first route tied it (internal.coin_first_post, 0117). Such a post may start a narrative
+   * though the judge never passed it. By the posts' keys; empty before those tables.
+   */
+  async coinTied(itemIds: readonly string[]): Promise<ReadonlySet<string>> {
+    if (itemIds.length === 0) return new Set();
+    const links = await orEmpty(() => this.#db.query<{ item_id: string }>(
+      `select distinct i.item_id from public.item i
+         join internal.coin_post_link l on l.source = i.source and l.source_item_id = i.source_item_id
+        where i.item_id = any($1::text[])`,
+      [[...itemIds]],
+    ), []);
+    const first = await orEmpty(() => this.#db.query<{ item_id: string }>(`select item_id from internal.coin_first_post where item_id = any($1::text[])`, [[...itemIds]]), []);
+    return new Set([...links, ...first].map((r) => r.item_id));
+  }
+
+  /**
+   * ★ WHAT THE VIEWS BAR NEEDS OF A POST (core `clearsReachBar`): its readings up to `windowMs` after
+   * it went up (the growth paths only look there) and its highest reading of all (the total path).
+   * Two statements by the posts' ids, never a post's whole history.
+   */
+  async barReadings(itemIds: readonly string[], windowMs: number): Promise<ReadonlyMap<string, { readonly source: string; readonly postedAtMs: number | null; readonly readings: readonly { readonly atMs: number; readonly reach: number }[] }>> {
+    if (itemIds.length === 0) return new Map();
+    const early = await this.#db.query<{ item_id: string; source: string; posted_at: Date | string | null; captured_at: Date | string | null; value: number | string | null }>(
+      `select i.item_id, i.source, i.posted_at, o.captured_at, o.value
+         from public.item i
+         left join public.observation o
+           on o.item_id = i.item_id and o.kind = 'reach' and o.value is not null and o.fidelity_kind <> 'absent'
+          and i.posted_at is not null and o.captured_at <= i.posted_at + make_interval(secs => $2::double precision / 1000)
+        where i.item_id = any($1::text[])`,
+      [[...itemIds], windowMs],
+    );
+    const most = await this.#db.query<{ item_id: string; captured_at: Date | string; value: number | string }>(
+      `select distinct on (item_id) item_id, captured_at, value from public.observation
+        where item_id = any($1::text[]) and kind = 'reach' and value is not null and fidelity_kind <> 'absent'
+        order by item_id, value desc, captured_at`,
+      [[...itemIds]],
+    );
+    const out = new Map<string, { source: string; postedAtMs: number | null; readings: { atMs: number; reach: number }[] }>();
+    for (const r of early) {
+      const x = out.get(r.item_id) ?? { source: r.source, postedAtMs: toMs(r.posted_at), readings: [] };
+      if (r.captured_at !== null && r.value !== null) x.readings.push({ atMs: toMs(r.captured_at) ?? 0, reach: Number(r.value) });
+      out.set(r.item_id, x);
+    }
+    for (const r of most) out.get(r.item_id)?.readings.push({ atMs: toMs(r.captured_at) ?? 0, reach: Number(r.value) });
+    return out;
   }
 
   /** For the re-tune: narratives first shown since `sinceMs`, and every narrative call since it. */

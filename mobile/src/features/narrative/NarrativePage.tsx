@@ -59,7 +59,7 @@ import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
-import { PAGE, firstPosted, moments, newestFirst, type Moment } from './posts-order.ts';
+import { PAGE, firstPosted, moments, newestFirst, startedByHandle, type Moment } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
@@ -172,6 +172,8 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   const [shownCount, setShownCount] = useState(PAGE);
   const visible = rest.slice(0, shownCount);
   const cards = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
+  const pinnedCard = pinned === null ? undefined : cards.get(pinned.post.evidenceId);
+  const started = startedByHandle(story, pinned?.post ?? null);
   const end = useEndInView(() => setShownCount((n) => (n < rest.length ? n + PAGE : n)));
   /* The owner's screen (features/owner/useSeen.ts): this page's posts in view for two seconds, the owner's sign-in only. */
   const owner = useIsOwner();
@@ -222,6 +224,14 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
       {story.evidence.length > 0 ? (
         <div className={styles['firstCard']}>
+          {started !== null ? (
+            <span className={styles['startedBy']}>
+              Started by
+              {/* Every @handle with its picture (the owner, 2026-10-21). */}
+              <Avatar name={started.replace(/^@/, '')} seed={started} src={pinnedCard?.authorPictureUrl ?? null} file={pinnedCard?.authorPictureFile ?? null} size={20} />
+              <b>{started}</b>
+            </span>
+          ) : null}
           <span className={styles['firstTimes']}>
             <span>First post: <b>{momentText(when.firstPost)}</b></span>
             <span>We found it: <b>{momentText(when.found)}</b></span>

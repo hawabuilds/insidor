@@ -64,7 +64,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { barWindowMs, coinCallFor, foldNarrativeCalls, linkReach, standsOnViralPost, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -102,6 +102,9 @@ interface MemberRow {
   author_key: string;
 }
 
+/** The source whose posts are held to the short-video bars (as rising.ts). */
+const SHORT_VIDEO_SOURCE = 'tiktok';
+
 const toMs = (v: Date | string | null): number | null => (v === null ? null : v instanceof Date ? v.getTime() : Date.parse(v));
 
 /** One narrative this frame shows, with the posts it lists. */
@@ -134,6 +137,16 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
   const all: StoredNarrative[] = [...newest, ...due, ...hideCheck];
   const rows = await repo.standingRows([...new Set(all.flatMap((n) => n.members))]);
   const byId = new Map(rows.map((r) => [r.itemId, r] as const));
+  /* ★ The viral floor's readings (Policy.narrative.origin.viralFloor): each post's early readings and its highest. */
+  const bar = policy.narrative.origin.viralFloor ? await repo.barReadings([...new Set(all.flatMap((n) => n.members))], barWindowMs(policy)) : new Map();
+  const viral = (listed: readonly string[]): boolean =>
+    standsOnViralPost(
+      listed.map((m) => {
+        const b = bar.get(m);
+        return { readings: b?.readings ?? [], postedAtMs: b?.postedAtMs ?? null, scale: b?.source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1 };
+      }),
+      policy,
+    );
   const good = (r: NarrativePostRow | undefined): boolean => {
     if (r === undefined) return false;
     const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
@@ -153,7 +166,10 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
        post whose account is not known counts as its own. Under the rule its page goes (below) and it
        is kept, listed again the frame it grows. */
     const accounts = new Set(listed.map((m) => byId.get(m)?.authorKey ?? `post:${m}`)).size;
-    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy, accounts) !== 'shown') {
+    /* ★ AND ON A VIRAL POST (the owner, 2026-10-23): at least one listed post clears For You's views
+       bar. Small posts may join a viral story; two small posts are never listed as one. Kept, and
+       listed again the frame a viral post joins — a viral starting post traced back late included. */
+    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy, accounts) !== 'shown' || !viral(listed)) {
       dropped.push(n.id);
       return null;
     }
@@ -305,6 +321,16 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     [ids],
   );
   const rowOf = new Map(rows.map((r) => [r.item_id, r] as const));
+  /* ★ "STARTED BY" ONLY ON PROOF (project.ts `projectEarliestPost`): the posts each listed post quotes
+     or links, `origin.maxHops` steps out, so a narrative whose later posts quote its earliest one says
+     so. Read by primary key; a post never read with its links proves nothing. */
+  const refs = new Map<string, readonly string[]>();
+  let front: readonly string[] = ids;
+  for (let hop = 0; hop < policy.narrative.origin.maxHops && front.length > 0; hop += 1) {
+    const got = await new PgNarrativeRepo(db).references(front.filter((id) => !refs.has(id)));
+    for (const [k, v] of got) refs.set(k, v);
+    front = [...new Set([...got.values()].flat())].filter((id) => !refs.has(id));
+  }
   /* Every reading of the narrative window: a post's newest count may be older than the board's reach window. */
   /* ★ Back a week: Most viewed's Week counts each post's gain over the last 7 days (about 12K readings, 18 Oct). */
   const weekMs = policy.rising.forYouSorts.mostViewedSpansMs.week;
@@ -343,6 +369,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const deadIds = new Set<string>();
   for (const n of shown) {
     /* ★ Only posts the page can cite (a link we can build): the list, the count and the summary are one set. */
+    /* The earliest listed post by when it went up, and which of the others lead back to it by quotes. */
+    const earliest = [...n.members].filter((m) => toMs(rowOf.get(m)?.posted_at ?? null) !== null).sort((a, b) => (toMs(rowOf.get(a)?.posted_at ?? null) ?? 0) - (toMs(rowOf.get(b)?.posted_at ?? null) ?? 0) || a.localeCompare(b))[0] ?? null;
+    const quotesFirst = (m: string): boolean => earliest !== null && m !== earliest && linkReach(m, refs, policy.narrative.origin.maxHops).has(earliest);
     const members: MemberFacts[] = n.members.flatMap((m) => {
       const r = rowOf.get(m);
       const link = r === undefined ? null : permalinkFor(r.source, r.handle, r.source_item_id);
@@ -355,7 +384,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
         excerpt: r.body,
         thumbUrl: pictureOf(r.media)?.uri ?? null,
         permalink: link,
-        relation: { kind: 'representation' as const },
+        relation: quotesFirst(m) ? { kind: 'lineage' as const, via: 'reproduction' as const, toItem: earliest } : { kind: 'representation' as const },
         reach: readingsOf(m),
       }];
     });
@@ -469,6 +498,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const paged = new Set(pages.map((p) => p.id));
   const rowsWithPages = board.rows.filter((r) => paged.has(r.id));
   for (const n of offBoard) if (!paged.has(n.id)) unwritten.set(n.id, options.nowMs);
+  /* ★ And one the rule dropped (too few posts, no viral post): tried, nothing to write, so it waits
+     `UNWRITTEN_RETRY_MS` instead of taking a place in the page queue every frame. */
+  for (const id of dropped) unwritten.set(id, options.nowMs);
   const boardRows = await writeBoard(db, viewId, tick, rowsWithPages, { kind: 'observed' });
   const storyViews = await writeStories(db, pages);
   /* ★ A PAGE GOES ONLY WITH ITS NARRATIVE: one the owner hid (or left under `minPosts` good posts),

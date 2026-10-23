@@ -39,6 +39,12 @@ export interface LaneSetting {
   /** Minutes between two passes of this lane. */
   readonly everyMin: number;
   readonly mediaOnly: boolean;
+  /**
+   * The languages THIS lane asks, when narrower than `DiscoverySettings.langs` (the slow lane asks
+   * `feed.slow.langs` only). Absent: the settings' own. Without it a French post under the newest
+   * lanes' floors was "caught by the slow lane" that never asks French.
+   */
+  readonly langs?: readonly string[] | null;
 }
 
 export interface DiscoverySettings {
@@ -89,6 +95,8 @@ export function inSearch(post: PostFacts, lane: LaneSetting | null, s: Discovery
 /** Which part of the query leaves this post out, or null when it matches. */
 export function searchFilter(post: PostFacts, lane: LaneSetting | null, s: DiscoverySettings): 'language' | 'reply' | 'repost' | 'media' | null {
   if (s.langs !== null && (post.lang === null || !s.langs.includes(post.lang))) return 'language';
+  const laneLangs = lane?.langs ?? null;
+  if (laneLangs !== null && (post.lang === null || !laneLangs.includes(post.lang))) return 'language';
   if (s.excludeReplies && post.isReply) return 'reply';
   if (s.excludeRebroadcasts && post.isRebroadcast) return 'repost';
   if (lane !== null && lane.mediaOnly && !post.hasMedia) return 'media';

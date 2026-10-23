@@ -15,7 +15,7 @@ import { FOR_YOU_LOCK, lockForYou } from './for-you-lock.ts';
 import { withNewerCards, type RisingFrame, type WireRisingPost } from './rising.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, varietyOn: false } };
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, varietyOn: false, authorShare: { ...DEFAULT_POLICY.rising.authorShare, on: false } } };
 const card = (id: string, minutesAgo: number, v = 'full'): WireRisingPost => ({ id, postedAt: { at: NOW - minutesAgo * 60_000 }, v }) as unknown as WireRisingPost;
 const frameOf = (fyp: readonly WireRisingPost[]): RisingFrame => ({
   fyp,
