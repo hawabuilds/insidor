@@ -36,6 +36,7 @@ import { createPrepared, type PreparedAnswers } from './prepared.ts';
 import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
+import { createRunningCoins } from './running-coins.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
@@ -300,7 +301,7 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const routeDeps = { ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists() };
+  const routeDeps = { ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */

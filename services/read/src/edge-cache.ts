@@ -84,6 +84,8 @@ export function edgeLifeFor(rawUrl: string): EdgeLife | null {
   if (s.length === 2) {
     if (head === 'board' || head === 'narratives' || head === 'story' || head === 'launches' || head === 'pairs' || head === 'sources') return FRAME;
     if (head === 'coin') return FACTS;
+    /* The running coins strip: the same list for everyone, rebuilt every half minute (prepared.ts). */
+    if (head === 'running' && id === 'coins') return FACTS;
     /* `/rising/:feed` is left out: see the header. `/wallet/:address`, `/ticker/:t` and anything else too. */
     return null;
   }

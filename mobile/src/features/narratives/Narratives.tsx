@@ -52,6 +52,7 @@ import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
+import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
 import styles from './narratives.module.css';
 
 /** The space between two cards (narratives.module.css .cards had it as its gap). */
@@ -99,6 +100,8 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
         {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
       </ScreenHeader>
+      {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}
+      <RunningCoins />
       <div className={feedStyles['sortRow']}>
         <div className={feedStyles['sorts']} role="group" aria-label="Sort">
           {SORTS.map((o) => (
