@@ -258,6 +258,20 @@
   pointer-events: none;
 }
 
+/* In the installed app: on the whole screen, as the tab bar is (shared/ui/ui.module.css .tabbar). */
+@media (display-mode: standalone) {
+  .bar {
+    top: 0;
+    bottom: auto;
+    height: 100lvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+  }
+}
+
 .barPanel {
   pointer-events: auto;
   display: flex;
