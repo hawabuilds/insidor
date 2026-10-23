@@ -1,0 +1,134 @@
+/**
+ * The starting post and one story across languages (narrative-origin.ts), on the Chinese–Turkish
+ * meme war of 19–23 Oct as it was stored: four English narratives, two origin posts four days older
+ * in Turkish and Chinese, joined only by what the posts quote.
+ */
+
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import { DEFAULT_POLICY as P, type Policy } from '@insidor/contracts/policy.ts';
+
+import { foldNarrativeCalls, type NarrativePost } from './narrative.ts';
+import { linkReach, standsOnViralPost, traceStories, type OriginInput } from './narrative-origin.ts';
+
+const H = 3_600_000;
+const DAY = 24 * H;
+const T0 = 100 * DAY;
+const post = (itemId: string, atMs: number, names: readonly string[] = []): NarrativePost => ({ itemId, atMs, text: `post ${itemId}`, names, hasPicture: false });
+const unit = (angle: number) => Float32Array.from([Math.cos(angle), Math.sin(angle)]);
+
+/* Turkey&China (tc1, tc2), Calajo (ca1, ca2), Lele (le1, le2); origins tr (Turkish) and zh (Chinese). */
+function beef(over: Partial<OriginInput> = {}): OriginInput {
+  const posts = [
+    post('tr', T0 - 4 * DAY, ['CATHAT']),
+    post('zh', T0 - 4 * DAY + 3 * H, ['PATRICK']),
+    post('le1', T0 - 20 * H, ['LELE']),
+    post('le2', T0 + H, ['LELE']),
+    post('tc1', T0, ['MEMEWAR']),
+    post('tc2', T0 + H, ['PATRICK']),
+    post('ca1', T0 + 0.5 * H, ['CALAJO']),
+    post('ca2', T0 + H, ['CALAJO']),
+    post('mid', T0 + 0.2 * H),
+  ];
+  const narratives = [
+    { id: 'n-tc', members: ['tc1', 'tc2'], formedAtMs: T0 + H },
+    { id: 'n-ca', members: ['ca1', 'ca2'], formedAtMs: T0 + 1.2 * H },
+    { id: 'n-le', members: ['le1', 'le2'], formedAtMs: T0 + 1.5 * H },
+  ];
+  const narrativeOf = new Map(narratives.flatMap((x) => x.members.map((m) => [m, x.id] as const)));
+  return {
+    narratives,
+    posts: new Map(posts.map((x) => [x.itemId, x] as const)),
+    narrativeOf,
+    /* tc2 quotes the Chinese post; ca2 and le2 quote the Turkish one; ca1 and ca2 quote `mid`, which quotes tc1. */
+    refs: new Map([['tc2', ['zh']], ['ca2', ['tr', 'mid']], ['le2', ['tr']], ['ca1', ['mid']], ['mid', ['tc1']]]),
+    eligible: new Set(['tr', 'zh']),
+    shortlist: new Map(),
+    vectors: new Map([['tc1', unit(0)], ['tc2', unit(0)], ['ca1', unit(0.7)], ['ca2', unit(0.7)], ['le1', unit(0.5)], ['le2', unit(0.5)], ['tr', unit(0.4)], ['zh', unit(0.2)], ['mid', unit(0.3)]]),
+    pictures: new Map(),
+    calls: foldNarrativeCalls([]),
+    untouchable: new Set(),
+    ...over,
+  };
+}
+
+test('quotes are followed at most maxHops steps', () => {
+  const refs = new Map([['a', ['b']], ['b', ['c']], ['c', ['d']]]);
+  assert.deepEqual([...linkReach('a', refs, 2)], ['b', 'c']);
+});
+
+test('★ the beef: one narrative, started by the Turkish post, the Chinese post in it', () => {
+  const plan = traceStories(beef(), P);
+  const leads = new Set(['n-tc', 'n-ca', 'n-le'].map((id) => {
+    let at = id;
+    for (let m = plan.merges.find((x) => x.from === at); m !== undefined; m = plan.merges.find((x) => x.from === at)) at = m.into;
+    return at;
+  }));
+  assert.equal(leads.size, 1, 'all three are one story');
+  const lead = [...leads][0] ?? '';
+  assert.equal(lead, 'n-le', 'into the one whose first post went up first');
+  assert.deepEqual(plan.starts.get(lead)?.map((t) => t.itemId), ['tr', 'zh'], 'earliest first: the Turkish post starts it');
+});
+
+test('★ a single quote between two posts is not one story; a post behind it makes it one', () => {
+  const two = beef({ narratives: [{ id: 'n-tc', members: ['tc1', 'tc2'], formedAtMs: T0 }, { id: 'n-ca', members: ['ca1', 'ca2'], formedAtMs: T0 }], refs: new Map([['ca1', ['tc1']]]) });
+  assert.deepEqual(traceStories(two, P).merges, []);
+  const three = { ...two, refs: new Map([['ca1', ['tc1']], ['ca2', ['tc2']]]) };
+  assert.equal(traceStories(three, P).merges.length, 1);
+});
+
+test('★ never a merge far apart in time, far apart in meaning, or on a narrative the owner called', () => {
+  const late = beef({ narratives: beef().narratives.map((x) => (x.id === 'n-le' ? { ...x, formedAtMs: T0 + 3 * DAY } : x)) });
+  assert.ok(!traceStories(late, P).merges.some((m) => m.from === 'n-le' || m.into === 'n-le'));
+  const far = beef({ vectors: new Map([...beef().vectors, ['le1', unit(2.5)], ['le2', unit(2.5)]]) });
+  assert.ok(!traceStories(far, P).merges.some((m) => m.from === 'n-le' || m.into === 'n-le'));
+  const called = traceStories(beef({ untouchable: new Set(['n-ca']) }), P);
+  assert.ok(!called.merges.some((m) => m.from === 'n-ca' || m.into === 'n-ca'));
+});
+
+test('★ a shared start must be one we may start from, inside the lookback: an old famous post ties nothing', () => {
+  const old = beef({ posts: new Map([...beef().posts, ['tr', post('tr', T0 - 30 * DAY, ['CATHAT'])]]), refs: new Map([['ca2', ['tr']], ['le2', ['tr']]]) });
+  const plan = traceStories(old, P);
+  assert.deepEqual(plan.merges, []);
+  assert.equal(plan.starts.size, 0);
+});
+
+test('a quoted post far from the narrative in meaning is not its start', () => {
+  const plan = traceStories(beef({ vectors: new Map([...beef().vectors, ['zh', unit(1.6)]]), refs: new Map([['tc2', ['zh']]]), narratives: [{ id: 'n-tc', members: ['tc1', 'tc2'], formedAtMs: T0 }] }), P);
+  assert.equal(plan.starts.size, 0);
+});
+
+test('a post the owner removed from beside the narrative is never its start', () => {
+  const calls = foldNarrativeCalls([{ id: 1, atMs: T0, narrativeId: 'n-tc', verdict: 'remove_post', otherId: 'zh', coin: null, members: ['tc1', 'tc2', 'zh'], otherMembers: [] }]);
+  const plan = traceStories(beef({ calls, refs: new Map([['tc2', ['zh']]]), narratives: [{ id: 'n-tc', members: ['tc1', 'tc2'], formedAtMs: T0 }] }), P);
+  assert.equal(plan.starts.size, 0);
+});
+
+test('★ a shared name joins an earlier post days back, at the shared-name bar', () => {
+  const input = beef({
+    narratives: [{ id: 'n-tc', members: ['tc1', 'tc2'], formedAtMs: T0 }],
+    refs: new Map(),
+    eligible: new Set(['zh']),
+    shortlist: new Map([['n-tc', ['zh']]]),
+    vectors: new Map([['tc1', unit(0)], ['tc2', unit(0)], ['zh', unit(0.3)]]),
+  });
+  assert.deepEqual(traceStories(input, P).starts.get('n-tc'), [{ itemId: 'zh', tie: 'name' }]);
+  const unlike = { ...input, vectors: new Map([...input.vectors, ['zh', unit(1.2)]]) };
+  assert.equal(traceStories(unlike, P).starts.size, 0);
+});
+
+test('switched off: no plan', () => {
+  const off: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, on: false } } };
+  assert.deepEqual(traceStories(beef(), off), { merges: [], starts: new Map() });
+});
+
+test('★ the viral floor: one post over For You\'s bar carries the narrative; small or unread posts never do', () => {
+  const big = { readings: [{ atMs: T0 + DAY, reach: P.rising.fypMinReach }], postedAtMs: T0, scale: 1 };
+  const small = { readings: [{ atMs: T0 + DAY, reach: P.rising.fypMinReach - 1 }], postedAtMs: T0, scale: 1 };
+  const unread = { readings: [], postedAtMs: T0, scale: 1 };
+  assert.equal(standsOnViralPost([small, big], P), true);
+  assert.equal(standsOnViralPost([small, small, unread], P), false);
+  const off: Policy = { ...P, narrative: { ...P.narrative, origin: { ...P.narrative.origin, viralFloor: false } } };
+  assert.equal(standsOnViralPost([small], off), true);
+});

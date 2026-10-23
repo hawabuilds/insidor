@@ -36,6 +36,18 @@ export function firstPosted(story: Story): { readonly post: Evidence; readonly p
   return best;
 }
 
+/**
+ * ★ "STARTED BY @handle" (the owner, 2026-10-23: "find the posts that START the narratives"): the
+ * pinned first post's handle, only when the server sends proof that it started the story (its later
+ * posts quote it, or it is the same picture) and names the same account. No proof, or another
+ * account: null, and the card says only "First post", which is always true.
+ */
+export function startedByHandle(story: Story, pinned: Evidence | null): string | null {
+  const e = story.earliestPost;
+  if (pinned === null || !e.known || e.startedBy === null) return null;
+  return e.authorLabel === pinned.authorLabel ? e.authorLabel : null;
+}
+
 /** The page's two moments, each a time or a dash with its reason. */
 export type Moment = { readonly known: true; readonly at: number } | { readonly known: false; readonly why: string };
 

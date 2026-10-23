@@ -8,7 +8,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { Row } from './queries.ts';
-import { LIST_NEW_SQL, cardOf, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
+import { LIST_NEW_SQL, cardOf, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, gainNow, GAIN_FRESH_MS, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
 
 const NOW = Date.parse('2026-10-18T15:00:00Z');
 const MIN = 60_000;
@@ -68,6 +68,21 @@ test('Today and Week: by the gain, a narrative that does not say is left off, ne
   const rows = nums([row('a', { day: '500', week: '9000' }), row('b', { day: '800', week: '100' }), row('c'), row('d', { dead: true, day: '50', week: '20000' })]);
   assert.deepEqual(rankNarratives(rows, 'today', null, NOW), ['b', 'a', 'd']);
   assert.deepEqual(rankNarratives(rows, 'week', null, NOW), ['d', 'a', 'b']);
+});
+
+test('Today and Week: a page measured an hour ago or more is left off, its old day is not today', () => {
+  const rows = nums([
+    row('old', { day: '11503284', week: '11503284', projected_at: new Date(NOW - 4 * 24 * 60 * MIN) }),
+    row('edge', { day: '9000', week: '9000', projected_at: new Date(NOW - GAIN_FRESH_MS) }),
+    row('unwritten', { day: '7000', week: '7000', projected_at: null }),
+    row('fresh', { day: '500', week: '600', projected_at: new Date(NOW - GAIN_FRESH_MS + MIN) }),
+    row('now', { day: '400', week: '9000' }),
+  ]);
+  assert.deepEqual(rankNarratives(rows, 'today', null, NOW), ['fresh', 'now']);
+  assert.deepEqual(rankNarratives(rows, 'week', null, NOW), ['now', 'fresh']);
+  const [old, , , fresh] = rows;
+  assert.equal(gainNow(old as NumbersRow, 'today', NOW), null);
+  assert.equal(gainNow(fresh as NumbersRow, 'today', NOW), 500, 'the sort key is the number the card shows');
 });
 
 test('the site filter keeps only narratives with a post there', () => {

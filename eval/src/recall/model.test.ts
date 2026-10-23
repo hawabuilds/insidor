@@ -65,3 +65,10 @@ test('the growth fit recovers the τ that made the readings', () => {
   const fit = fitGrowthTau(pairs, { fromMin: 5, toMin: 2000, step: 1.01 }) as number;
   assert.ok(Math.abs(fit - tau) / tau < 0.02);
 });
+
+test('a lane that asks fewer languages never catches a post outside them: the slow lane asks its own', () => {
+  /* Over the slow floor at ~6 min (seen ~14, inside its 45), over the main floor only after its 10-min reach. */
+  const s: DiscoverySettings = { ...S, langs: ['en', 'fr'], lanes: [{ ...S.lanes[0]!, floor: 4_900 }, { ...S.lanes[1]!, langs: ['en'] }] };
+  assert.equal(verdict(post(5_000, { lang: 'en' }), s).kind, 'caught');
+  assert.deepEqual(verdict(post(5_000, { lang: 'fr' }), s), { kind: 'missed', reason: 'between_checks' });
+});

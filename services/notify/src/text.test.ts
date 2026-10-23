@@ -229,3 +229,18 @@ test('★ the one push says the coin, the post and its cap, and nothing of why',
   assert.deepEqual(alertText('coin_launched', { symbol: '$KIM', author: '@rawsalerts', mcUsd: null }), { title: '$KIM launched for a post you may have seen', body: 'A post by @rawsalerts.' }, 'no words, no cap: left out, never a zero');
   assert.deepEqual(alertText('coin_launched', {}), { title: '$COIN launched for a post you may have seen', body: 'A post on For You.' });
 });
+
+test('★ a launch from the post that started a narrative says so, in place of the normal first line, with the same body', () => {
+  assert.deepEqual(alertText('coin_launched', { symbol: 'DOGZILLA', started: 'Dogzilla', excerpt: 'Dogzilla is coming for the city', author: '@trpost', mcUsd: 21_000 }), {
+    title: '$DOGZILLA launched from the post that started Dogzilla',
+    body: '"Dogzilla is coming for the city" (@trpost). $21K MC.',
+  });
+  assert.equal(
+    alertText('coin_launched', { symbol: 'VEG', started: 'Vegeta is Algerian and the whole of France is arguing about it tonight' }).title,
+    '$VEG launched from the post that started Vegeta is Algerian and the whole of…',
+    'a long title is cut on a word',
+  );
+  for (const started of [undefined, null, '', '   ', 42]) {
+    assert.equal(alertText('coin_launched', { symbol: 'KIM', started }).title, '$KIM launched for a post you may have seen', `no title (${String(started)}): the normal wording`);
+  }
+});

@@ -17,7 +17,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { fitGrowthTau, sentFloors, startFloors, type DiscoverySettings } from '@insidor/core';
+import { fitGrowthTau, sentFloors, slowLangs, startFloors, type DiscoverySettings } from '@insidor/core';
 import type { LaneMeasured, PgFeedFloorRepo, PgRecallRepo } from '@insidor/store';
 
 const MS_PER_MINUTE = 60_000;
@@ -79,7 +79,7 @@ export async function measureDiscovery(
         { lane: 'media', floor: sent.media, reachMin: round(reach('media')), everyMin: round(mainEvery), mediaOnly: true },
         /* The slow lane looks at a post once an hour of its age (one time slice each, see
            work/discover.ts `slowSliceQueries`), so that is how often it checks any one post. */
-        { lane: 'slow', floor: sent.slow, reachMin: round(reach('slow')), everyMin: P.feed.slow.windowMin / Math.max(1, P.feed.slow.slices), mediaOnly: false },
+        { lane: 'slow', floor: sent.slow, reachMin: round(reach('slow')), everyMin: P.feed.slow.windowMin / Math.max(1, P.feed.slow.slices), mediaOnly: false, langs: [...slowLangs(P)] },
       ],
     },
     measured: { baseFloors: base, lanes, growthPairs: pairs.length, configuredWindowMin: window },
