@@ -65,7 +65,7 @@ export async function fetchSecondChance(): Promise<readonly SecondChancePost[]> 
  * another story (split: they move to a new narrative), its coin is right or wrong. The server checks the owner from the token like every call here; a server that does not
  * take these calls yet answers 404, which the page says in words rather than pretending it saved.
  */
-export type NarrativeAction = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'coin_right' | 'coin_wrong';
+export type NarrativeAction = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'coin_right' | 'coin_wrong' | 'rename';
 
 export interface NarrativeCall {
   readonly action: NarrativeAction;
@@ -78,6 +78,8 @@ export interface NarrativeCall {
   readonly itemIds?: readonly string[];
   /** Right coin or Wrong coin: the coin's address. */
   readonly coin?: string;
+  /** Rename: the title the owner typed (at most 80 characters); it replaces the written one for good. */
+  readonly title?: string;
 }
 
 /** Saves the call; throws a PeopleError, worded for the owner when the server has no such route yet (404). */

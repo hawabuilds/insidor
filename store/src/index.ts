@@ -21,7 +21,7 @@ export { PgAuthorRepo } from './repo/authors.ts';
 export { PgObservationRepo } from './repo/observations.ts';
 export { PgStoryRepo } from './repo/stories.ts';
 /* Narratives (0093): the posts the judge passed, grouped; written by the runner, read by the projector. */
-export { PgNarrativeRepo } from './repo/narratives.ts';
+export { OWNER_TITLE_MODEL, PgNarrativeRepo } from './repo/narratives.ts';
 export type { NarrativeCallRecord, NarrativePass, NarrativePostRow, NarrativeStateRow, StoredNarrative } from './repo/narratives.ts';
 /* Presentation is a column set, not a field set. The type is exported so the one
    stage that writes a title says so in the vocabulary of this package rather than

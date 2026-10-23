@@ -168,6 +168,8 @@ export interface StoredNarrative {
   readonly postsChangedAtMs: number;
   readonly title: string | null;
   readonly titlePosts: number | null;
+  /** Who wrote the title: the titler's model, or `OWNER_TITLE_MODEL` when the owner typed it (0127). Absent from an older reader. */
+  readonly titleModel?: string | null;
   /** Its newest post's time as last counted (narrative.newest_post_at); absent from an older reader. */
   readonly newestPostAtMs?: number | null;
   /** When tools/narrative-rebuild.ts rebuilt it from stored posts (0106); null or absent: the runner made it. */
@@ -224,12 +226,15 @@ export interface NarrativeCallRecord {
   readonly id: number;
   readonly atMs: number;
   readonly narrativeId: string;
-  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared';
+  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename';
   readonly otherId: string | null;
   readonly coin: string | null;
   readonly members: readonly string[];
   readonly otherMembers: readonly string[];
 }
+
+/** `title_model` on a title the owner typed (0127; services/social owner-narrative.ts writes it). */
+export const OWNER_TITLE_MODEL = 'owner';
 
 export class PgNarrativeRepo {
   readonly #db: Db;
@@ -376,13 +381,13 @@ export class PgNarrativeRepo {
   /** Open narratives with their posts, as `where` (on `n`) and `tail` (order and limit) choose them. */
   async #narratives(where: string, params: readonly unknown[], tail = ''): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
     const early = (await this.earlyMigrated())
       ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
       : 'null::text[]';
     const restored = (await this.#hasColumn('narrative', 'restored_at')) ? 'n.restored_at' : 'null::timestamptz';
     const rows = await orEmpty(() => this.#db.query<Row>(
-      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.newest_post_at, ${restored} as restored_at,
+      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, n.newest_post_at, ${restored} as restored_at,
               (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
               ${early} as early
          from internal.narrative n
@@ -399,6 +404,7 @@ export class PgNarrativeRepo {
       postsChangedAtMs: toMs(r.posts_changed_at) ?? 0,
       title: r.title,
       titlePosts: r.title_posts,
+      titleModel: r.title_model,
       newestPostAtMs: toMs(r.newest_post_at),
       restoredAtMs: toMs(r.restored_at),
       early: r.early ?? [],
@@ -718,11 +724,16 @@ export class PgNarrativeRepo {
     return rows.map((r) => r.address);
   }
 
-  /** The cheap model's title for a narrative, with the post count it was written for. */
+  /**
+   * The cheap model's title for a narrative, with the post count it was written for. ★ NEVER OVER
+   * THE OWNER'S: a title he typed (services/social "Rename", 0127) is marked `OWNER_TITLE_MODEL`,
+   * and this writes only where it is not, so a pass that asked before his rename landed cannot undo it.
+   */
   async setTitle(id: string, title: string, posts: number, model: string): Promise<void> {
     await this.#db.query(
-      `update internal.narrative set title = $2, title_posts = $3, title_model = $4, titled_at = now() where narrative_id = $1`,
-      [id, title, posts, model],
+      `update internal.narrative set title = $2, title_posts = $3, title_model = $4, titled_at = now()
+        where narrative_id = $1 and title_model is distinct from $5`,
+      [id, title, posts, model, OWNER_TITLE_MODEL],
     );
   }
 

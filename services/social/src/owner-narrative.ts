@@ -1,10 +1,16 @@
 /**
  * THE OWNER'S CALLS ON A NARRATIVE (the owner, 2026-10-16): "Not a narrative", "Merge with…",
- * "Remove this post", "Split", "Right coin" and "Wrong coin", from the narrative page.
+ * "Remove this post", "Split", "Right coin" and "Wrong coin", from the narrative page, and "Rename"
+ * (2026-10-23).
  *
- *   POST /owner/narrative { action, storyId, intoStoryId?, itemId?, itemIds?, coin?, note? }
+ *   POST /owner/narrative { action, storyId, intoStoryId?, itemId?, itemIds?, coin?, title?, note? }
  *     action  not_narrative | merge (into `intoStoryId`) | remove_post (`itemId`) | split (`itemIds`)
- *             | coin_right | coin_wrong (`coin`)
+ *             | coin_right | coin_wrong (`coin`) | rename (`title`)
+ *
+ * ★ A RENAME IS WRITTEN TWICE, IN ONE GO: the call (verdict 'rename', `name` the title) for the
+ * record, and the title itself on internal.narrative with `title_model = 'owner'` (0127), so the
+ * projector's next frame shows it on the board, the page, the posts' tags and the pushes, and the
+ * runner's titler, which writes only where the title is not the owner's, never replaces it.
  *
  * ★ A SPLIT NAMES ITS NEW NARRATIVE HERE, once: `n-<a moved post>` (else `-1`, `-2`… on the first),
  * never an id stored in internal.narrative in any state nor named by an earlier split, and saved as
@@ -36,12 +42,16 @@ interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
 }
 
-export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong'] as const;
+export const NARRATIVE_ACTIONS = ['not_narrative', 'merge', 'remove_post', 'split', 'coin_right', 'coin_wrong', 'rename'] as const;
 export type NarrativeAction = (typeof NARRATIVE_ACTIONS)[number];
 
 const ID = /^[A-Za-z0-9_:.\-]{1,200}$/;
 const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const MAX_NOTE = 200;
+/** The longest title the owner may type: owner_feedback.name's own bound (0054). */
+const MAX_TITLE = 80;
+/** The titler's mark for a title the owner typed (0127): the runner never writes over it. */
+export const OWNER_TITLE_MODEL = 'owner';
 /** The most posts one split names: far over any narrative's page, a bound on the request only. */
 const MAX_SPLIT = 1_000;
 /** How many `-k` names a split tries on its first post once every `n-<post>` is taken. */
@@ -55,6 +65,8 @@ export interface NarrativeCall {
   /** Split: the posts moved to the new narrative, each once, in the order sent. */
   readonly itemIds: readonly string[];
   readonly coin: string | null;
+  /** Rename: the title, spaces folded, 1 to `MAX_TITLE` characters. */
+  readonly title: string | null;
   readonly note: string | null;
 }
 
@@ -82,11 +94,14 @@ export function parseNarrativeCall(body: unknown): NarrativeCall | string {
   if (rawCoin !== null && !MINT.test(rawCoin)) return 'That coin address is not a coin address.';
   const note = typeof b['note'] === 'string' ? b['note'].replace(/\s+/g, ' ').trim() : null;
   if (note !== null && note.length > MAX_NOTE) return `A note is up to ${MAX_NOTE} characters.`;
+  const title = typeof b['title'] === 'string' ? b['title'].replace(/\s+/g, ' ').trim() : null;
+  if (action === 'rename' && (title === null || title === '')) return '"Rename" needs the new title.';
+  if (action === 'rename' && title !== null && title.length > MAX_TITLE) return `A title is up to ${MAX_TITLE} characters.`;
   if (action === 'merge' && (intoStoryId === null || intoStoryId === storyId)) return '"Merge with…" names the other narrative.';
   if (action === 'remove_post' && itemId === null) return '"Remove this post" names the post.';
   if (action === 'split' && itemIds.length === 0) return '"Split" names the posts to move.';
   if ((action === 'coin_right' || action === 'coin_wrong') && rawCoin === null) return 'Say which coin.';
-  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, note: note === '' ? null : note };
+  return { action, storyId, intoStoryId: action === 'merge' ? intoStoryId : null, itemId: action === 'remove_post' ? itemId : null, itemIds: action === 'split' ? itemIds : [], coin: action === 'coin_right' || action === 'coin_wrong' ? rawCoin : null, title: action === 'rename' ? title : null, note: note === '' ? null : note };
 }
 
 const VERDICT: Readonly<Record<NarrativeAction, string>> = {
@@ -96,7 +111,14 @@ const VERDICT: Readonly<Record<NarrativeAction, string>> = {
   split: 'split',
   coin_right: 'right',
   coin_wrong: 'wrong',
+  rename: 'rename',
 };
+
+/** The calls a database may not take yet, and what the owner is told then. */
+const LATER: ReadonlyMap<NarrativeAction, string> = new Map([
+  ['split', 'Splitting a narrative'],
+  ['rename', 'Renaming a narrative'],
+]);
 
 /** POST /owner/narrative, for a person `owner.ts` has already checked is the owner (`ref`). */
 export async function ownerNarrativeRoute(method: string, body: unknown, userId: string, ref: string, db: Db): Promise<Reply> {
@@ -139,15 +161,22 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
     saved = [...call.itemIds];
   }
   const [row] = await db.query<Record<string, unknown>>(
-    `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address, note, other_id, members, other_members)
-     values ($1, $2, 'narrative', $3, $4, $5, $6, $7, $8::text[], $9::text[])
-     returning id, verdict as call, item_id as "storyId", other_id as "otherId", coin_address as coin, (extract(epoch from created_at) * 1000)::float8 as at`,
-    [ref, userId, call.storyId, VERDICT[call.action], call.coin, call.note, otherId, saved, otherMembers],
+    `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address, note, other_id, members, other_members, name)
+     values ($1, $2, 'narrative', $3, $4, $5, $6, $7, $8::text[], $9::text[], $10)
+     returning id, verdict as call, item_id as "storyId", other_id as "otherId", coin_address as coin, name as title, (extract(epoch from created_at) * 1000)::float8 as at`,
+    [ref, userId, call.storyId, VERDICT[call.action], call.coin, call.note, otherId, saved, otherMembers, call.title],
   ).catch((e: unknown) => {
-    /* Before the database takes 'split' (its owner_feedback check), the call is "not set up yet", like a 404 before 0093. */
-    if (call.action === 'split' && (e as { code?: string } | null)?.code === '23514') return null;
+    /* Before the database takes a newer call (its owner_feedback check: 'split' 0108, 'rename' 0127), it is "not set up yet", like a 404 before 0093. */
+    if (LATER.has(call.action) && (e as { code?: string } | null)?.code === '23514') return null;
     throw e;
   }) ?? [];
-  if (row === undefined && call.action === 'split') return json(404, { error: 'Splitting a narrative is not set up yet.' });
+  if (row === undefined && LATER.has(call.action)) return json(404, { error: `${LATER.get(call.action) ?? 'That'} is not set up yet.` });
+  /* The title itself, marked as his, so the next frame shows it and no titler pass replaces it. */
+  if (call.action === 'rename' && call.title !== null) {
+    await db.query(
+      `update internal.narrative set title = $2, title_model = $3, title_posts = $4, titled_at = now() where narrative_id = $1`,
+      [call.storyId, call.title, OWNER_TITLE_MODEL, members.length],
+    );
+  }
   return json(201, { saved: row ?? null });
 }
