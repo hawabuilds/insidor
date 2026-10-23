@@ -48,7 +48,7 @@
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Author, Item, Millis } from '@insidor/contracts';
-import type { AssetKey } from '@insidor/contracts/ids.ts';
+import type { AssetKey, ItemId } from '@insidor/contracts/ids.ts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { AskWith, Policy } from '@insidor/contracts/policy.ts';
@@ -1556,6 +1556,23 @@ export async function withRuntime<T>(
               outages: () => readOutages(new PgMissedPostRepo(db), policy, Date.now()),
               /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
               searchUsdPerDay: () => new PgMissedPostRepo(db).liveSpendSince(SUPPLIER_VENDORS.posts, 'search', (Date.now() - SPEND_WINDOW_MS) as Millis),
+              /* ★ The live post judge, as the instant path asks it of a given queue, on the live line (policy.v145 `narrative.origin.missedJudge`). */
+              judge: async (ids) => {
+                const queue = [...(await repos.items.byIds(ids.map((id) => id as ItemId))).values()];
+                const r = await scorePosts({
+                  judge: postJudge,
+                  kindJudge,
+                  precedents,
+                  items: instantItems(queue, repos.items),
+                  scores: new PgPostJudgementRepo(db),
+                  meter,
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'missed-judge' }),
+                  now: () => Date.now() as Millis,
+                });
+                return { judged: r.scored, usd: r.spentUsd };
+              },
               mode: cfg.spend.kind,
               policy,
               log: log.child({ step: 'missed-posts' }),

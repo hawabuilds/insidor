@@ -4227,6 +4227,23 @@ export interface NarrativePolicy {
    *   floor   `viralFloor`: a narrative is listed only while one of its posts clears For You's own
    *           views bar (`rising.fypMinReach` and its growth paths, core `clearsReachBar`), and a
    *           post traced back as a start must clear it too: small posts join, never start
+   *
+   * policy.v145 (the owner, 2026-10-23: "all the posts I gave you should come under the same
+   * narrative" — the "Vegeta is Algerian" French–Japanese war):
+   *   root    `rootOn`: a post the judge said no to (or never asked) may still be a narrative's
+   *           starting post when at least `rootMinQuoters` posts quote it (`maxHops`) — its own, or
+   *           loose posts that join through it (below) — it is at `rootMeaning` from their average
+   *           and it clears the views bar above
+   *   join    `joinOn`: a good post in no narrative joins the one whose posts or starting posts it
+   *           quotes (at `linkMeaning`), or whose rare phrase it says — two neighbouring content
+   *           words of at least `phraseMinChars` letters (`phraseMinCjkChars` in katakana or han),
+   *           said by at most `phraseMaxShare` of the posts read, in its words or its stored English
+   *           — at `phraseMeaning`. With `joinViral`, only a post that clears the views bar above
+   *           joins this way (a small post joins by the regroup's own links). At most
+   *           `joinPerNarrative` a narrative a pass
+   *   missed  `missedJudge`: the owner's pasted post is judged by the live post judge once, whatever
+   *           its age; `missedLookbackMs`: a pasted post this recent takes part in the regroup
+   *           (and every rule above) though it is older than the regroup's window
    */
   readonly origin: {
     readonly on: boolean;
@@ -4242,6 +4259,18 @@ export interface NarrativePolicy {
     readonly liveMs: number;
     readonly perPass: number;
     readonly viralFloor: boolean;
+    readonly rootOn: boolean;
+    readonly rootMinQuoters: number;
+    readonly rootMeaning: number;
+    readonly joinOn: boolean;
+    readonly joinViral: boolean;
+    readonly joinPerNarrative: number;
+    readonly phraseMinChars: number;
+    readonly phraseMinCjkChars: number;
+    readonly phraseMaxShare: number;
+    readonly phraseMeaning: number;
+    readonly missedJudge: boolean;
+    readonly missedLookbackMs: number;
   };
 }
 
@@ -4930,7 +4959,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v144',
+  version: 'policy.v145',
 
   admit: {
     maxAgeMin: 240,
@@ -6914,6 +6943,19 @@ const POLICY_V1: Policy = {
       liveMs: 172_800_000, // two days, the board's window
       perPass: 400,
       viralFloor: true, // the owner, 2026-10-23: never a narrative of small posts
+      /* ── policy.v145: the quote root, the loose posts' join and the pasted posts (the Vegeta war) ── */
+      rootOn: true,
+      rootMinQuoters: 2, // two of its posts quote it: one quote of a big post is a comparison, not a start
+      rootMeaning: 0.3, // @liistrk's words-only post is 0.36 from the picture posts answering it
+      joinOn: true,
+      joinViral: true, // only a post that clears For You's views bar joins by a quote or the same words
+      joinPerNarrative: 20,
+      phraseMinChars: 4,
+      phraseMinCjkChars: 2,
+      phraseMaxShare: 0.005, // said by at most 1 post in 200 of those read
+      phraseMeaning: 0.6, // the regroup's own shared-name bar (`nameMeaning`); @rayaneAlg00 is 0.66
+      missedJudge: true, // one live judge call a pasted post, about $0.0015
+      missedLookbackMs: 604_800_000, // seven days, as the early posts
     },
   },
 

@@ -2,7 +2,8 @@
  * The missed-post queue, worked against stand-ins: a link no source takes fails, a second paste of
  * a post fails as a duplicate, a post we held is diagnosed without a read, a post we never had is
  * read once on the learning meter and stored, a gone post is unreadable, a dry run and a spent
- * line leave rows queued, a $0 line fails them, and a failed read is retried before it gives up.
+ * line leave rows queued, a $0 line fails them, a failed read is retried before it gives up, and a
+ * pasted post no judge has answered is judged once by the live judge (policy.v145).
  */
 
 import assert from 'node:assert/strict';
@@ -129,6 +130,26 @@ test('a dry run and a learning line spent for today leave rows queued; a $0 line
   const none = harness({ rows: [row(1, 'https://posts.example/p/1')], lineUsd: 0 });
   await workMissedPosts(none.deps);
   assert.equal(none.finished[0]?.o.diagnosis, 'no_line');
+});
+
+test('★ pasted posts no judge has answered are judged once by the live judge, any age; never on a dry run; not asked again within the hour', async () => {
+  const asked: string[][] = [];
+  const h = harness({ rows: [] });
+  const deps: MissedDeps = {
+    ...h.deps,
+    missed: { ...h.deps.missed, unjudged: async () => ['src:old1', 'src:old2'] },
+    judge: async (ids) => {
+      asked.push([...ids]);
+      return { judged: ids.length, usd: 0.003 };
+    },
+  };
+  const r = await workMissedPosts(deps);
+  assert.deepEqual(asked, [['src:old1', 'src:old2']]);
+  assert.equal(r.judged, 2);
+  await workMissedPosts(deps);
+  assert.equal(asked.length, 1, 'asked again within the hour');
+  await workMissedPosts({ ...deps, mode: 'dry', missed: { ...deps.missed, unjudged: async () => ['src:old3'] } });
+  assert.equal(asked.length, 1, 'a dry run judged');
 });
 
 test('a failed read is tried again, and fails as unreadable on the last attempt', async () => {
