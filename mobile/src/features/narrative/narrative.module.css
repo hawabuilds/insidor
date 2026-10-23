@@ -542,3 +542,18 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* "Started by @handle": the post that began the story, with its account's picture, above its times. */
+.startedBy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.startedBy b {
+  color: var(--text-1);
+  font-weight: 700;
+}

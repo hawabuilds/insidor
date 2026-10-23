@@ -7,7 +7,7 @@ import { decodeStory } from '../../shared/api/decode.ts';
 import type { Evidence, Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { allBucketMs } from '../post-sheet/gain-chart.ts';
-import { firstPosted, moments, newestFirst } from './posts-order.ts';
+import { firstPosted, moments, newestFirst, startedByHandle } from './posts-order.ts';
 
 const base = decodeStory(fixtureStory(sampleNarrativeIds()[0] ?? '')) as Story;
 const template = base.evidence[0] as Evidence;
@@ -43,4 +43,15 @@ test('"All" keeps a two-day story to at most 48 points, never finer than the ser
   assert.equal(allBucketMs(47 * H, 30 * 60_000), H);
   assert.equal(allBucketMs(60 * H, 30 * 60_000), 2 * H);
   assert.equal(allBucketMs(3 * H, 5 * 60_000), 30 * 60_000);
+});
+
+test('★ "Started by @handle" only with the server\'s proof, and only for the pinned post\'s own account', () => {
+  const first = { ...post('first', 100), authorLabel: '@BarkinResmii' };
+  const s = story([first, post('later', 900)], {});
+  const proven: Story = { ...s, earliestPost: { known: true, at: 100, authorLabel: '@BarkinResmii', permalink: null, startedBy: 'quoted' } };
+  assert.equal(startedByHandle(proven, first), '@BarkinResmii');
+  assert.equal(startedByHandle({ ...s, earliestPost: { known: true, at: 100, authorLabel: '@BarkinResmii', permalink: null, startedBy: null } }, first), null, 'the earliest post found is not proof it started the story');
+  assert.equal(startedByHandle({ ...s, earliestPost: { known: true, at: 100, authorLabel: '@someoneElse', permalink: null, startedBy: 'quoted' } }, first), null, 'never another account than the post pinned under it');
+  assert.equal(startedByHandle({ ...s, earliestPost: { known: false, pending: 'not_read_yet' } }, first), null);
+  assert.equal(startedByHandle(proven, null), null);
 });

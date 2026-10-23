@@ -4196,6 +4196,39 @@ export interface NarrativePolicy {
     readonly cap: LaneCapPolicy;
     readonly passDeadlineMs: number;
   };
+  /**
+   * ★ THE STARTING POST AND ONE STORY ACROSS LANGUAGES (the owner, 2026-10-23: "find the posts that
+   * START the narratives first"), core group/narrative-origin.ts. Stored posts and stored links only;
+   * nothing is searched, embedded or judged.
+   *
+   *   trace   a stored post from up to `lookbackMs` before a narrative's first post, judged yes or
+   *           tied to a coin, joins it as an earlier post when the narrative's posts quote it (at
+   *           most `maxHops` quote or link steps) — or shares a name with one of its posts at
+   *           `narrative.nameMeaning` and the narrative's average at `nameAverage` — and, quoted, is
+   *           at `linkMeaning` from the average. At most `maxPerNarrative`
+   *   merge   two narratives formed within `formedWithinMs` of each other, their averages at
+   *           `mergeMeaning`, merge when both quote the same judged starting post, or when quotes
+   *           join them through at least `minLinkPosts` of their posts
+   *   bounded the narratives with a post in `liveMs`, at most `perPass` traced a pass
+   *   floor   `viralFloor`: a narrative is listed only while one of its posts clears For You's own
+   *           views bar (`rising.fypMinReach` and its growth paths, core `clearsReachBar`), and a
+   *           post traced back as a start must clear it too: small posts join, never start
+   */
+  readonly origin: {
+    readonly on: boolean;
+    readonly lookbackMs: number;
+    readonly maxHops: number;
+    readonly linkMeaning: number;
+    readonly nameAverage: number;
+    readonly maxPerNarrative: number;
+    readonly mergeOn: boolean;
+    readonly formedWithinMs: number;
+    readonly mergeMeaning: number;
+    readonly minLinkPosts: number;
+    readonly liveMs: number;
+    readonly perPass: number;
+    readonly viralFloor: boolean;
+  };
 }
 
 /**
@@ -6850,6 +6883,22 @@ const POLICY_V1: Policy = {
       perPass: 10,
       cap: { dailyUsd: 0.5, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
       passDeadlineMs: 120_000,
+    },
+    /* ── narrative.origin: the starting post and one story across languages (policy.v142) ── */
+    origin: {
+      on: true,
+      lookbackMs: 604_800_000, // seven days before the narrative's first post, as the early posts
+      maxHops: 2,
+      linkMeaning: 0.45,
+      nameAverage: 0.6,
+      maxPerNarrative: 5,
+      mergeOn: true,
+      formedWithinMs: 43_200_000, // twelve hours
+      mergeMeaning: 0.6,
+      minLinkPosts: 3,
+      liveMs: 172_800_000, // two days, the board's window
+      perPass: 400,
+      viralFloor: true, // the owner, 2026-10-23: never a narrative of small posts
     },
   },
 
