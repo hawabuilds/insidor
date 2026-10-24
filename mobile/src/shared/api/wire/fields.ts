@@ -89,6 +89,8 @@ export const STORY_FIELDS = [
   'viewsPerMinute',
   'viewsGainedDay',
   'viewsGainedWeek',
+  /* The Narratives card's "See N coins": coins made after its oldest post (services/read coins-made.ts). */
+  'coinsMade',
 ] as const;
 
 /** A single post on the For You or Popular feed. See wire/rising.ts. */

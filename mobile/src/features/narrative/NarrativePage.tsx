@@ -18,7 +18,8 @@
  *            the post sheet (or the post where it lives)
  *   Coin bar above the tab bar where the token page's Buy and Sell sit: the coin line's three
  *            states (story-coin.ts); Buy opens the existing Buy pop-up, a tap on the bar opens the
- *            token page, "All N coins" opens Choose coin
+ *            token page, "All N coins" opens Choose coin. `#/story/<id>/coins` (the Narratives
+ *            card's "See N coins") opens the page with Choose coin already up
  *
  * ★ THE NUMBERS ARE THE PROJECTOR'S (core narrativeReach): the total is each post's newest count,
  * the line and "Last 15m" the posts' gains added up five minutes at a time, so the end label and
@@ -81,8 +82,10 @@ const ALL_FACTS: GainInterval = '15m';
 /** The plot's own height, in px: what is left of a 390x844 screen with the head, posts' top and the coin bar. */
 const PLOT_HEIGHT = 150;
 
-export function NarrativePage({ storyId, onCreate }: {
+export function NarrativePage({ storyId, openCoins = false, onCreate }: {
   storyId: string;
+  /** Open on its Choose coin (`#/story/<id>/coins`): the Narratives card's "See N coins". */
+  openCoins?: boolean;
   /** `from`: the post that started it, so the create popup fills its link and name ideas as For You's does. */
   onCreate: (story: Story, from?: { readonly link: string; readonly postId: string }) => void;
 }) {
@@ -97,7 +100,7 @@ export function NarrativePage({ storyId, onCreate }: {
       <TopBar storyId={storyId} onEdit={owner && ready !== null ? () => setEditing(true) : null} />
       {story.state === 'loading' ? <p className={styles['empty']}>Loading.</p> : null}
       {story.state === 'failed' ? <p className={styles['empty']}>This narrative couldn't be read. It may not be on the read service.</p> : null}
-      {ready !== null ? <Body story={ready} sheet={read} onCreate={onCreate} /> : null}
+      {ready !== null ? <Body story={ready} sheet={read} openCoins={openCoins} onCreate={onCreate} /> : null}
       {editing && ready !== null ? <NarrativeEdit story={ready} sheet={read} onClose={() => setEditing(false)} /> : null}
     </section>
   );
@@ -132,13 +135,16 @@ function sinceText(at: number, now: number): string {
   return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
 }
 
-function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
+function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: StorySheet | null; openCoins: boolean; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
   const now = useNow();
   const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
   const factsAt: GainInterval = interval === 'All' ? ALL_FACTS : interval;
   const [open, setOpen] = useState<string | null>(null);
   const [buying, setBuying] = useState<CoinFace | null>(null);
-  const [choosing, setChoosing] = useState(false);
+  /* Open from the card's "See N coins" (`#/story/<id>/coins`): the pop-up shows once the sheet is
+     read. The link is left as it is (the sheet's own history entry, dismiss.ts, is under it), so a
+     Back from a coin opened in it returns to the list. */
+  const [choosing, setChoosing] = useState(openCoins);
   const [note, setNote] = useState<SheetNote | null>(null);
 
   const posts = story.postCount ?? story.evidence.length;

@@ -18,7 +18,9 @@
  * and under them on Most viewed Today or Week "+8.1M today" / "+3.2M this week"; on Trending a line
  * under the title in For You's words, "394 views a minute, up 1.4x in the last hour"; and the coin
  * line in the owner's three states (narrative/story-coin.ts): the checked coin with its market cap
- * and Buy, a top coin said as "Top coin, not checked" with Buy, or "No coin yet" with Create. Buy
+ * and Buy, a top coin said as "Top coin, not checked" with Buy, or "No coin yet" with Create — and,
+ * left of Create, "See N coins" when coins were made after its oldest post (the server's
+ * `coinsMade`, the count its page's Choose coin lists), which opens the page on that pop-up. Buy
  * opens the existing Buy pop-up.
  *
  * ★ FACTS ONLY. The order is the server's; the number behind it is never sent. A card shows only
@@ -50,7 +52,7 @@ import feedStyles from '../feed/feed.module.css';
 import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
+import { NO_COIN_PILL, SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { WarCard } from './WorldWar.tsx';
 import { itemKey, withWarUmbrella, type ListItem } from './world-war.ts';
@@ -317,6 +319,7 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
  */
 export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, extra = null }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void; extra?: ReactNode }) {
   const coin = storyCoinState(story);
+  const seeCoins = seeCoinsText(story.coinsMade);
   const right = view === undefined ? hourGainText(story) : viewsText(story);
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
   const speeds = view?.sort === 'trending' ? speedsOf(story) : null;
@@ -365,6 +368,13 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
         ) : coin.kind === 'none' ? (
           <>
             <span className={styles['coinNone']}>No coin yet</span>
+            {/* The coins made after its oldest post, as its page's Choose coin lists them (the owner, 2026-10-24). */}
+            {seeCoins !== null ? (
+              <button type="button" className={styles['seeCoins']} onClick={(e) => {
+                e.stopPropagation();
+                window.location.hash = hrefFor({ screen: 'story', storyId: story.id, coins: true });
+              }}>{seeCoins}</button>
+            ) : null}
             <button type="button" className={styles['create']} onClick={(e) => {
               e.stopPropagation();
               onCreate();

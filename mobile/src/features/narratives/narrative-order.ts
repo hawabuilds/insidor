@@ -54,6 +54,15 @@ export const DEFAULT_CHOICE: Choice = { sort: FOR_YOU_DEFAULT.sort, span: FOR_YO
 /** The pill's words, the card's own. */
 export const NO_COIN_PILL = 'No coin yet';
 
+/**
+ * The card's "See N coins", left of Create: null when none were made after its oldest post or the
+ * server did not count (the button is then not drawn, never "See 0 coins").
+ */
+export function seeCoinsText(n: number | null): string | null {
+  if (n === null || n <= 0) return null;
+  return n === 1 ? 'See 1 coin' : `See ${n} coins`;
+}
+
 /** The server's list for the choice (GET /narratives/:view/all?sort=…). */
 export function listOf(c: Choice): NarrativeListSort {
   if (c.sort === 'new') return 'new';
