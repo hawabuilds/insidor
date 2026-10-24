@@ -72,3 +72,16 @@ test('★ the meme-war answer is written whoever wrote the title, and nothing be
   assert.equal(seen.some((q) => q.sql.includes('set fight')), false);
   assert.deepEqual(await new PgNarrativeRepo(has(false)).fightUnasked(0, 10), []);
 });
+
+test('★ once listed, listed (0135): a written page marks its narrative the first time only, and a listed one without a page goes first', async () => {
+  const seen: { sql: string; params: readonly unknown[] }[] = [];
+  const db = { query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), / as ok/.test(sql) ? [{ ok: true }] : []) } as unknown as Db;
+  const repo = new PgNarrativeRepo(db);
+  await repo.markListed(['n-x:1']);
+  const mark = seen.find((s) => s.sql.includes('set listed_at'));
+  assert.match(mark?.sql ?? '', /and listed_at is null/, 'never moved once set');
+  assert.deepEqual(mark?.params, [['n-x:1']]);
+  await repo.pagesDue(25, []);
+  const never = seen.find((s) => s.sql.includes('not exists (select 1 from public.story_view'));
+  assert.match(never?.sql ?? '', /order by \(n\.listed_at is null\), n\.updated_at/);
+});
