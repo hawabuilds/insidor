@@ -4497,6 +4497,19 @@ export interface NarrativeTrendPolicy {
   readonly viralWeight: number;
   readonly steadyWeight: number;
   readonly steadySlots: number;
+  /**
+   * ★ THE TAB'S TRENDING LISTS THE STORIES THAT KEEP HAVING VIRAL POSTS (policy.v162, the owner
+   * 2026-10-24: "I want there to be a way we can know which narratives are having consistent viral
+   * posts — shouldn't that be the purpose of Trending"). The weights above order the board; the tab's
+   * Trending (services/read narrative-sorts.ts, core rank/narrative-sorts.ts) is speed risers, and on
+   * 24 Oct 2 of 71 live narratives had speeds at all. So after the risers it now lists every fresh
+   * narrative with posts from at least `listMinAccounts` accounts that went up in its last
+   * `listWindowHours` window and are at For You's views now (the page's `inWindow` viralAccounts),
+   * most accounts first. ★ The online meme wars (`countries`) are one entry there, their posts and
+   * accounts added up, so the app's one meme-war card stands where they all rank together.
+   */
+  readonly listMinAccounts: number;
+  readonly listWindowHours: number;
 }
 
 /**
@@ -7246,6 +7259,11 @@ const POLICY_V1: Policy = {
       viralWeight: 0.8,
       steadyWeight: 1,
       steadySlots: 6,
+      /* policy.v162. 24 Oct 13:00, the live pages: 11 of 71 had two viral posts or more in their 24 hours
+         (counted by post — accounts were not on the page yet; France vs Japan 8, a mustached newborn 5,
+         the Oregon father 4), while 2 of the 71 had speeds for the tab's Trending at all. */
+      listMinAccounts: 2,
+      listWindowHours: 24,
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
