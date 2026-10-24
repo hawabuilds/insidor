@@ -80,6 +80,10 @@ const PROBE_RETRY_AFTER_MS = 5_000;
 
 /** The trade service's own ceiling on one aggregator quote (services/trade/src/main.ts). */
 const ROUTER_TIMEOUT_MS = 8_000;
+/* The saved posts' tied coins read each pass (db.ts savedPostCoins). A busy saved post had 19 tied
+   coins in three hours on 23 Oct; this leaves room for a few such posts inside the pass's bound
+   (Policy.market.maxAssetsPerPass), and the free source's cost is per call of 30 addresses. */
+const SAVED_COINS_PER_PASS = 60;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 
 const trimmed = (name: string): string | null => {
@@ -179,6 +183,8 @@ async function main(): Promise<void> {
         : null,
       /* The older coins a one-coin pick is weighing, read while it weighs them (db.ts). */
       { nowMs: now(), withinMs: DEFAULT_POLICY.oneCoin.watchMs, limit: DEFAULT_POLICY.oneCoin.existing.readsPerPass },
+      /* The coins tied to saved posts while they are just launched, for the saved-post push (db.ts). */
+      { nowMs: now(), withinMs: DEFAULT_POLICY.notify.launch.maxLaunchAgeMs, limit: SAVED_COINS_PER_PASS },
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,

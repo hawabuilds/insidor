@@ -141,7 +141,7 @@ test('★ a New on FYP post is an in-app row in Notifications; only one that rea
   assert.equal(r.body.bell, 1);
 });
 
-test('★ a saved post (2026-10-24): the first coin tied after the save is pushed at once, the running coin once if another, never a third', async () => {
+test('★ a saved post (2026-10-24): the first coin tied after the save to start running is pushed, the pick once if another, never a third', async () => {
   const { db } = await setup();
   const { checkWatched } = await import('@insidor/notify/watch.ts');
   const as = async (method: string, path: string) => {
@@ -173,21 +173,40 @@ test('★ a saved post (2026-10-24): the first coin tied after the save is pushe
   const ports = { policy: P, now: () => launched + 15_000 };
   const state = { cursor: null };
   assert.equal(await checkWatched(db, ports, state), 0, 'the first look sends nothing, and the coin x:old showed when saved is not news');
+  /* A market reading with its last hour (0127), taken just now. */
+  let at = launched + 5_000;
+  const reading = (address: string, volume: number | null, buys: number, sells: number) =>
+    db.query(
+      `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint, volume_1h_usd, buys_1h, sells_1h, last_hour_absent)
+       values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 9000, 'circulating', 'no_market', 'no_market', false, 'test', 'test', $4, $5, $6, $7)`,
+      [address, `solana:${address}`, iso(at++), volume, volume === null ? null : buys, volume === null ? null : sells, volume === null ? 'not_reported' : null],
+    );
   const before = 'Before1111111111111111111111111111111pump';
-  await coin(before, 'BEFORE', t0 - 60_000);
-  await tied(before, ['link'], t0 - 60_000);
+  await coin(before, 'BEFORE', t0 - 120_000);
+  await tied(before, ['link'], t0 - 120_000);
+  await reading(before, 90_000, 900, 400);
   const pic = 'Picture111111111111111111111111111111pump';
   await coin(pic, 'PIC', launched - 500);
   await tied(pic, ['picture'], launched - 500);
-  assert.equal(await checkWatched(db, ports, state), 0, 'a coin launched before the save, or tied by a picture alone, is not the first');
+  await reading(pic, 90_000, 900, 400);
+  assert.equal(await checkWatched(db, ports, state), 0, 'running, but launched before the save, or tied by a picture alone: not the first');
   const first = 'FerryHorn1111111111111111111111111111111pump';
   await coin(first, 'FERRY', launched);
   await tied(first, ['link', 'name_guess'], launched);
-  assert.equal(await checkWatched(db, ports, state), 1, 'the first coin after the save, as soon as it is tied: no pick yet');
   const second = 'Second11111111111111111111111111111111pump';
   await coin(second, 'SECOND', launched + 2_000);
   await tied(second, ['name_judge'], launched + 2_000);
-  assert.equal(await checkWatched(db, ports, state), 0, 'a later tied coin is not news');
+  /* The market reader keeps reading both: 0129's function names them, and not the picture's or the earlier coin. */
+  const toRead = await db.query<{ address: string }>(`select address from internal.saved_post_coins(now() + interval '1 minute', 10800000, 10)`);
+  assert.deepEqual(toRead.map((r) => r.address).sort(), [first, second].sort());
+  assert.equal(await checkWatched(db, ports, state), 0, 'tied, but no reading yet: not running');
+  await reading(first, null, 0, 0);
+  await reading(second, 800, 30, 10);
+  assert.equal(await checkWatched(db, ports, state), 0, 'a reading without its hour is not running; nor is $800 traded');
+  await reading(first, 5_000, 25, 5);
+  assert.equal(await checkWatched(db, ports, state), 1, 'the first tied coin to start running, no pick yet: pushed');
+  await reading(second, 50_000, 300, 100);
+  assert.equal(await checkWatched(db, ports, state), 0, 'a later coin running is not news');
   await pick(second);
   assert.equal(await checkWatched(db, ports, state), 1, 'the pick is another coin: the one running, once');
   assert.equal(await checkWatched(db, ports, state), 0, 'and only once');

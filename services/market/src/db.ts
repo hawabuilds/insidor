@@ -90,21 +90,53 @@ export async function assetsToRead(
   limit: number,
   hour: PictureHour | null = null,
   weighing: OlderCandidates | null = null,
+  saved: SavedCoins | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
+  const savedCoins = saved === null ? [] : await savedPostCoins(db, chain, saved);
   const rest = await onScreenThenNewest(db, chain, limit);
-  /* The older coins a pick is weighing, then the hour's coins, go first among the newest, never
-     ahead of the coins on screen: those are what a card shows. Each list has its own limit, and the
-     pass its bound. */
+  /* The coins tied to saved posts, then the older coins a pick is weighing, then the hour's coins,
+     go first among the newest, never ahead of the coins on screen: those are what a card shows.
+     Each list has its own limit, and the pass its bound. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...rest.filter((r) => r.tier === 0), ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...rest.filter((r) => r.tier === 0), ...savedCoins, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
   }
   return out;
+}
+
+/** The coins tied to saved posts, launched in the last `withinMs` of `nowMs`: at most `limit` a pass. */
+export interface SavedCoins {
+  readonly nowMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+}
+
+/**
+ * ★ A COIN TIED TO A SAVED POST IS READ EVERY PASS WHILE IT IS JUST LAUNCHED (the owner, 2026-10-24:
+ * a saved post's push goes when its first tied coin starts running, services/notify saved-post.ts).
+ * "Running" is the coin's last hour in a fresh reading, and the newest-first bound reads a new coin
+ * only in its first minutes: on 23 Oct $KURIBO, tied to the owner's saved post, was read at 22:51 and
+ * then not again until 23:53. 0129's internal.saved_post_coins names the addresses (never who saved
+ * them); the origin allowlist holds here as on every other list. A failed read — a database before
+ * 0129 — is an empty list: the pass reads its usual coins.
+ */
+async function savedPostCoins(db: Db, chain: string, w: SavedCoins): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 4 as tier
+         from internal.saved_post_coins($2::timestamptz, $3::double precision, $4::integer) s
+         join public.asset a on a.chain = $1 and a.address = s.address
+        where a.origin = any($5::text[])`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** The older coins the one-coin pick is weighing (Policy.oneCoin.existing): found since `nowMs - withinMs`, at most `limit`. */
