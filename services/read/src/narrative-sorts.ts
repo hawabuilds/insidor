@@ -27,6 +27,9 @@
  * statement, about 400 rows and 25 ms on 18 Oct), rank them once per board tick, and cut each page
  * from that one ranking, so pages of one tick never overlap.
  *
+ * Each card also carries `coinsMade`, how many coins its "See N coins" opens (coins-made.ts, one
+ * statement a page, kept for the board tick); a card it could not count for has none, never 0.
+ *
  * ★ THE ORDER IS NEVER SENT. The reply is the pages in order; the speeds and gains on each page are
  * facts a reader can check. The ratio, the floor and the list's groups stay in this process.
  *
@@ -38,6 +41,7 @@
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts';
 import { narrativeTrendingIds, type NarrativeSpeeds } from '@insidor/core';
 
+import { coinsMade } from './coins-made.ts';
 import { rankScale } from './post-sorts.ts';
 import type { Db, Row } from './queries.ts';
 
@@ -268,12 +272,16 @@ export interface ListPage {
  */
 export function createNarrativeLists(now: () => number = Date.now, policy: Policy = DEFAULT_POLICY) {
   const kept = new Map<string, { readonly tick: number; readonly at: number; readonly ids: readonly string[] }>();
-  return async function list(db: Db, tick: number, ask: NarrativeListAsk): Promise<ListPage> {
+  /* The counts of this board tick (kept at most `KEEP_MS`), so a page read again within the minute costs no statement. */
+  let counted: { readonly tick: number; readonly at: number; readonly n: Map<string, number> } = { tick: -1, at: 0, n: new Map() };
+  return list;
+
+  async function list(db: Db, tick: number, ask: NarrativeListAsk): Promise<ListPage> {
     const size = policy.rising.forYouSorts.pageSize;
     const label = ask.on === null ? null : SITE_LABELS[ask.on];
     if (ask.sort === 'new' || ask.sort === 'viewed') {
       const rows = await db.query(ask.sort === 'viewed' ? LIST_VIEWED_SQL : LIST_NEW_SQL, [size, ask.offset, label, ask.noCoin]);
-      return { stories: rows.map((r) => cardOf(r['payload'])), next: rows.length < size ? null : ask.offset + rows.length };
+      return { stories: await withCoinsMade(db, tick, rows.map((r) => cardOf(r['payload']))), next: rows.length < size ? null : ask.offset + rows.length };
     }
     const nowMs = now();
     const key = `${ask.sort}:${ask.on ?? 'all'}:${ask.noCoin ? 'no-coin' : 'any'}`;
@@ -287,6 +295,37 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     const pages = ids.length === 0 ? [] : await db.query(LIST_PAGES_SQL, [ids]);
     const byId = new Map(pages.flatMap((p) => (typeof p['story_id'] === 'string' ? [[p['story_id'], p['payload']] as const] : [])));
     const end = ask.offset + ids.length;
-    return { stories: ids.flatMap((id) => (byId.has(id) ? [cardOf(byId.get(id))] : [])), next: end < hit.ids.length ? end : null };
-  };
+    return { stories: await withCoinsMade(db, tick, ids.flatMap((id) => (byId.has(id) ? [cardOf(byId.get(id))] : []))), next: end < hit.ids.length ? end : null };
+  }
+
+  /**
+   * Each card with `coinsMade`, the coins its "See N coins" opens (coins-made.ts): one statement
+   * for the page's narratives not counted this board tick. A failed count leaves the cards without
+   * it, never the list unserved and never a 0.
+   */
+  async function withCoinsMade(db: Db, tick: number, cards: readonly unknown[]): Promise<readonly unknown[]> {
+    const nowMs = now();
+    if (counted.tick !== tick || nowMs - counted.at >= KEEP_MS) counted = { tick, at: nowMs, n: new Map() };
+    const mine = counted;
+    const idOf = (c: unknown): string | null => {
+      const id = typeof c === 'object' && c !== null ? (c as Record<string, unknown>)['id'] : null;
+      return typeof id === 'string' ? id : null;
+    };
+    const wanted = cards.flatMap((c) => {
+      const id = idOf(c);
+      return id === null || mine.n.has(id) ? [] : [id];
+    });
+    if (wanted.length > 0) {
+      try {
+        for (const [id, n] of await coinsMade(db, wanted)) mine.n.set(id, n);
+      } catch {
+        return cards;
+      }
+    }
+    return cards.map((c) => {
+      const id = idOf(c);
+      const n = id === null ? undefined : mine.n.get(id);
+      return n === undefined ? c : { ...(c as Record<string, unknown>), coinsMade: n };
+    });
+  }
 }
