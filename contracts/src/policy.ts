@@ -3574,6 +3574,14 @@ export interface NotifyPolicy {
     readonly perDay: number;
     readonly dayMs: number;
     readonly maxLaunchAgeMs: number;
+    /**
+     * ★ A COIN PICKED LATE STILL PUSHES WHILE IT RUNS (policy.v164; the owner, 2026-10-24: "sometimes
+     * narratives get coined much later than 3hrs"; "include coins that pumped then died then started
+     * pumping again within 24hrs"). Past `maxLaunchAgeMs` and up to this age, a first pick is pushed
+     * only while its last hour clears `savedPost`'s running bars; till then its post waits, unspent, and
+     * is looked at again every pass. $baldcat (24 Oct) was picked 5h50m after its launch and never pushed.
+     */
+    readonly lateRunningMs: number;
     readonly postsWithinMs: number;
     readonly ownerAlarmsPush: boolean;
   };
@@ -5234,7 +5242,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v161',
+  version: 'policy.v164',
 
   admit: {
     maxAgeMin: 240,
@@ -6644,6 +6652,7 @@ const POLICY_V1: Policy = {
       perDay: 15,
       dayMs: 86_400_000,
       maxLaunchAgeMs: 10_800_000, // three hours
+      lateRunningMs: 86_400_000, // a day, while running (policy.v164)
       postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
       ownerAlarmsPush: true,
     },

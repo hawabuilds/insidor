@@ -118,3 +118,22 @@ test('★ only a launchpad coin is pushed: the stored row decides, and launch ti
   assert.equal(onLaunchpad({ ...f, origin: 'paired_token' }), false);
   assert.equal(onLaunchpad(undefined), false);
 });
+
+test('★ a coin picked late is pushed while it runs, up to a day old; quiet, its post waits unspent; a day old, it is spent', () => {
+  /* Launched 6 hours ago, after the post was on For You (baldcat was picked 5h50m after its launch). */
+  const late = { onForYouMs: NOW - 8 * 60 * MIN, launchedMs: NOW - 6 * 60 * MIN };
+  const quiet = launchEvents([pick('p:x:late', 'BALD', { ...late, runningNow: false })], [], new Set(), NOW, L);
+  assert.deepEqual(quiet.due, []);
+  assert.deepEqual(quiet.keys, [], 'not spent: looked at again next pass');
+  /* It dies and runs again inside the day: pushed then. */
+  const running = launchEvents([pick('p:x:late', 'BALD', { ...late, runningNow: true })], [], new Set(quiet.keys), NOW, L);
+  assert.deepEqual(running.due.map((d) => d.address), ['BALD']);
+  /* Past a day: spent, never pushed. */
+  const old = { onForYouMs: NOW - 30 * 60 * MIN, launchedMs: NOW - 25 * 60 * MIN };
+  const gone = launchEvents([pick('p:x:old', 'OLD', { ...old, runningNow: true })], [], new Set(), NOW, L);
+  assert.deepEqual(gone.due, []);
+  assert.deepEqual(gone.keys, ['p:x:old']);
+  /* Launched before For You showed the post: still not "caught early", late or not. */
+  const before = launchEvents([pick('p:x:b', 'B', { onForYouMs: NOW - 5 * 60 * MIN, launchedMs: NOW - 6 * 60 * MIN, runningNow: true })], [], new Set(), NOW, L);
+  assert.deepEqual(before.due, []);
+});

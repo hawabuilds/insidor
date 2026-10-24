@@ -24,7 +24,10 @@
  *      first to link: in the Laura case (20 Oct) a dud copycat linked Saylor's repost four seconds
  *      before $Laura launched, and a "first to link" rule would have kept $Laura from being pushed.
  *      Rules 1, 3 and 4 hold as for any post.
- *   3. the coin is still "just launched": seen within Policy.notify.launch.maxLaunchAgeMs of its launch.
+ *   3. the coin is still "just launched": seen within Policy.notify.launch.maxLaunchAgeMs of its launch —
+ *      or, picked later, within `lateRunningMs` while its last hour clears the saved-post running bars;
+ *      a late pick that is quiet leaves its post unspent, so a coin that dies and runs again is pushed
+ *      when it runs (once a coin, as ever).
  *      A coin whose launch time we do not know is not pushed (we cannot say it came after).
  *   4. the coin was never pushed before (`c:<address>`), so a post and its narrative picking the
  *      same coin, or two posts picking it, is one push. The deliverer's claim is keyed by the
@@ -80,6 +83,7 @@ import { settledCoin } from './first-coin.ts';
 import { tokenHref } from './pipeline.ts';
 import { lineCoin } from './post-watch.ts';
 import { startedTitle, startRows } from './starting-post.ts';
+import { isRunning, lastHours } from './saved-post.ts';
 
 export const LAUNCH_STREAM = 'launch';
 const SEEDED = '#seeded';
@@ -107,6 +111,25 @@ export interface Picked {
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
   /** The pick on the card is the runner hand-over's (services/runner work/runner-handover.ts): pushed as "a new coin … is running". */
   readonly runner?: boolean;
+  /** Its coin's last hour clears the running bars now (only read for a coin past `maxLaunchAgeMs`). */
+  readonly runningNow?: boolean;
+}
+
+/** The timing rule's ages: three hours as launched, and up to `lateRunningMs` while running. */
+type LaunchAges = Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'> & Partial<Pick<NotifyPolicy['launch'], 'lateRunningMs'>>;
+
+/** Young enough: within `maxLaunchAgeMs`, or past it within `lateRunningMs` while it runs. */
+function youngEnough(p: Pick<Picked, 'launchedMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
+  if (p.launchedMs === null) return false;
+  const age = nowMs - p.launchedMs;
+  return age <= rule.maxLaunchAgeMs || (rule.lateRunningMs !== undefined && age <= rule.lateRunningMs && p.runningNow === true);
+}
+
+/** A first pick that may still run inside `lateRunningMs`: its post is not spent yet, and is looked at again next pass. */
+export function waitsToRun(p: Pick<Picked, 'launchedMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
+  if (p.launchedMs === null || rule.lateRunningMs === undefined || p.runningNow === true) return false;
+  const age = nowMs - p.launchedMs;
+  return age > rule.maxLaunchAgeMs && age <= rule.lateRunningMs;
 }
 
 /** A post's hand-over push, remembered once per post whatever coin it went to. */
@@ -115,8 +138,8 @@ export const runnerKey = (itemId: string): string => `h:${itemId}`;
 export const runnerSubject = (itemId: string): string => `${itemId}|#runner`;
 
 /** A hand-over push's timing: the coin launched after the post was on For You, and is still just launched. No coin-first exception: the new coin always came after. */
-export function runnerEarlyEnough(p: Pick<Picked, 'launchedMs' | 'onForYouMs'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
-  return p.launchedMs !== null && nowMs - p.launchedMs <= rule.maxLaunchAgeMs && p.launchedMs >= p.onForYouMs;
+export function runnerEarlyEnough(p: Pick<Picked, 'launchedMs' | 'onForYouMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
+  return p.launchedMs !== null && youngEnough(p, nowMs, rule) && p.launchedMs >= p.onForYouMs;
 }
 
 /** Whether the coin is a launchpad coin by its stored row; the launch timing is rule 2's, not the gate's. */
@@ -126,8 +149,8 @@ export const onLaunchpad = (f: CoinGateFacts | undefined): boolean => f !== unde
 export const launchHref = (p: Pick<Picked, 'address'>): string => tokenHref(p.address);
 
 /** Whether the push's timing rule passes: launched after For You (rule 2) or, for a coin-first post, its first pick; and just launched (rule 3). */
-export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYouMs' | 'coinFirst'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
-  if (p.launchedMs === null || nowMs - p.launchedMs > rule.maxLaunchAgeMs) return false;
+export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYouMs' | 'coinFirst' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
+  if (p.launchedMs === null || !youngEnough(p, nowMs, rule)) return false;
   if (p.launchedMs >= p.onForYouMs) return true;
   /* A coin-first post: its first pick is the first coin to run; rule 1 keeps it to one. */
   return p.coinFirst !== undefined;
@@ -142,7 +165,7 @@ export function launchEvents(
   narratives: readonly Picked[],
   seen: ReadonlySet<string>,
   nowMs: number,
-  rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>,
+  rule: LaunchAges,
   runners: ReadonlyMap<string, string> = new Map(),
 ): { readonly due: readonly Picked[]; readonly keys: readonly string[] } {
   const due: Picked[] = [];
@@ -162,9 +185,11 @@ export function launchEvents(
       continue;
     }
     if (seen.has(p.key) || keys.includes(p.key)) continue;
-    keys.push(p.key);
     const early = earlyEnough(p, nowMs, rule);
     const coin = `c:${p.address}`;
+    /* ★ Picked late and quiet now: the post is not spent, so the coin is pushed if it runs before it is a day old. */
+    if (!early && !seen.has(coin) && !pushed.has(coin) && (p.coinFirst !== undefined || (p.launchedMs ?? -Infinity) >= p.onForYouMs) && waitsToRun(p, nowMs, rule)) continue;
+    keys.push(p.key);
     if (!early || seen.has(coin) || pushed.has(coin)) continue;
     pushed.add(coin);
     keys.push(coin);
@@ -297,7 +322,12 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     return 0;
   }
   const runners = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
-  const events = launchEvents(withLaunch, narratives, seen, ports.now(), L, runners);
+  /* ★ Late picks (past maxLaunchAgeMs, inside lateRunningMs): each coin's last hour, read only for these. */
+  const nowMs = ports.now();
+  const late = [...withLaunch, ...narratives].filter((p) => p.launchedMs !== null && nowMs - p.launchedMs > L.maxLaunchAgeMs && nowMs - p.launchedMs <= L.lateRunningMs);
+  const hours = late.length === 0 ? new Map() : await lastHours(db, [...new Set(late.map((p) => p.address))], nowMs, DEFAULT_POLICY.market.readingFreshnessMs);
+  const mark = (p: Picked): Picked => (late.includes(p) ? { ...p, runningNow: isRunning(hours.get(p.address), ports.policy.savedPost) } : p);
+  const events = launchEvents(withLaunch.map(mark), narratives.map(mark), seen, nowMs, L, runners);
   const keys = events.keys;
   /* ★ A launchpad coin only (coin-gate.ts). Rule 2 already keeps the timing; the coin is spent either way. */
   const gate = await coinGateFacts(db, events.due);
