@@ -58,6 +58,7 @@ import {
 import { sellLanded } from './sell-landed.ts';
 import { ShareTradeSheet } from './ShareTradeSheet.tsx';
 import styles from './sheet.module.css';
+import { handOffSell, type LateSell } from './late-flex.tsx';
 
 const SOL_DECIMALS = 9;
 /** Every launchpad coin has six decimals; a held balance's own decimals win when read. */
@@ -124,7 +125,12 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
   const [sharing, setSharing] = useState<string | null>(null);
   /* The wait for a sent sell to land, so the share sheet opens by itself; one per ticket, ended when it closes. */
   const watching = useRef<AbortController | null>(null);
-  useEffect(() => () => watching.current?.abort(), []);
+  /* Closed while a sent sell is still landing: the wait is handed on (late-flex.tsx), so its card still opens. */
+  const pendingSell = useRef<LateSell | null>(null);
+  useEffect(() => () => {
+    watching.current?.abort();
+    if (pendingSell.current !== null) handOffSell(pendingSell.current);
+  }, []);
   const buying = activeSide === 'buy';
 
   useEffect(() => {
@@ -204,12 +210,14 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
     if (watching.current !== null) return;
     const ac = new AbortController();
     watching.current = ac;
+    pendingSell.current = { signature, mint, ticker, subline, signedIn: account !== null };
     void sellLanded(signature, {
       ask: fetchSellCard,
       wait: (ms) => new Promise((done) => setTimeout(done, ms)),
       now: Date.now,
       signal: ac.signal,
     }).then((landed) => {
+      if (!ac.signal.aborted) pendingSell.current = null;
       if (landed && !ac.signal.aborted) setSharing((s) => s ?? signature);
     });
   };
