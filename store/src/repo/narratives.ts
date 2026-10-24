@@ -183,6 +183,12 @@ export interface StoredNarrative {
   readonly restoredAtMs?: number | null;
   /** Of `members`, the early posts (0100): matched back in by the runner, never made by the regroup. Empty before 0100. */
   readonly early?: readonly string[];
+  /**
+   * ★ When the projector first wrote its page (0135 `listed_at`): once set, the narrative is held only
+   * to the owner's own calls, never to a listing rule again. Null: never listed (it must clear the
+   * rules first). Absent or null before 0135.
+   */
+  readonly listedAtMs?: number | null;
 }
 
 /** What one grouping pass writes: only what it adds, and the owner's merges and removals. */
@@ -431,7 +437,7 @@ export class PgNarrativeRepo {
   /** Open narratives with their posts, as `where` (on `n`) and `tail` (order and limit) choose them. */
   async #narratives(where: string, params: readonly unknown[], tail = ''): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; fight: string[] | null; fight_model: string | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; fight: string[] | null; fight_model: string | null; newest_post_at: Date | string | null; restored_at: Date | string | null; listed_at: Date | string | null; members: string[] | null; early: string[] | null };
     const early = (await this.earlyMigrated())
       ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
       : 'null::text[]';
@@ -439,8 +445,9 @@ export class PgNarrativeRepo {
     const withFight = await this.#hasColumn('narrative', 'fight');
     const fight = withFight ? 'n.fight' : 'null::text[]';
     const fightModel = withFight ? 'n.fight_model' : 'null::text';
+    const listed = (await this.#hasColumn('narrative', 'listed_at')) ? 'n.listed_at' : 'null::timestamptz';
     const rows = await orEmpty(() => this.#db.query<Row>(
-      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, ${fight} as fight, ${fightModel} as fight_model, n.newest_post_at, ${restored} as restored_at,
+      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, ${fight} as fight, ${fightModel} as fight_model, n.newest_post_at, ${restored} as restored_at, ${listed} as listed_at,
               (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
               ${early} as early
          from internal.narrative n
@@ -463,6 +470,7 @@ export class PgNarrativeRepo {
       newestPostAtMs: toMs(r.newest_post_at),
       restoredAtMs: toMs(r.restored_at),
       early: r.early ?? [],
+      listedAtMs: toMs(r.listed_at),
     }));
   }
 
@@ -658,12 +666,17 @@ export class PgNarrativeRepo {
    * frame, and 751 of 957 pages went more than an hour without being written again — stale `dead`
    * flags and "today" gains from 18–21 Oct. The caller also skips, for a while, a page it tried and
    * could not write (services/project narrative-frame.ts `unwritten`).
+   *
+   * ★ Among the pageless, a LISTED one first (0135 `listed_at`): its page went missing (0135's seed of
+   * the ~840 the viral floor deleted on 23-24 Oct), so it is owed a page; an unlisted one is only asking
+   * to be listed, and the rules usually say no. Before 0135 the order is as it was.
    */
   async pagesDue(limit: number, skip: readonly string[]): Promise<readonly StoredNarrative[]> {
+    const listedFirst = (await this.#hasColumn('narrative', 'listed_at')) ? '(n.listed_at is null), ' : '';
     const never = await this.#narratives(
       'n.shown and not (n.narrative_id = any($2::text[])) and not exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
       [limit, [...skip]],
-      'order by n.updated_at, n.narrative_id limit $1',
+      `order by ${listedFirst}n.updated_at, n.narrative_id limit $1`,
     );
     const written = await this.#narratives(
       'n.shown and not (n.narrative_id = any($2::text[])) and exists (select 1 from public.story_view v where v.story_id = n.narrative_id)',
@@ -671,6 +684,16 @@ export class PgNarrativeRepo {
       'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc, n.narrative_id limit $1',
     );
     return fairTurns(never, written, limit);
+  }
+
+  /**
+   * ★ ONCE LISTED, LISTED (0135): the narratives whose page the projector just wrote, marked the first
+   * time only — the column is never cleared by code, so a later rule never un-lists one. A no-op before
+   * 0135 (the projector then holds every page to the rules, as it did).
+   */
+  async markListed(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0 || !(await this.#hasColumn('narrative', 'listed_at'))) return;
+    await this.#db.query(`update internal.narrative set listed_at = now() where narrative_id = any($1::text[]) and listed_at is null`, [[...ids]]);
   }
 
   /**
