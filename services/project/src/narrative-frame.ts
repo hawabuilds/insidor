@@ -45,8 +45,15 @@
  * then the longest since), so an old narrative's page, its posts' tags and its search entry stay,
  * and its numbers are never more than one turn of that queue old. A page is deleted only when its
  * narrative is no longer one: the owner said "Not a narrative" (or hid enough of its posts that
- * fewer than `minPosts` are left), or it was merged — then public.story_alias sends its link to
- * the narrative it was merged into.
+ * fewer than `minPosts` are left), his "Not a meme" and removals left it no post, or it was merged —
+ * then public.story_alias sends its link to the narrative it was merged into.
+ *
+ * ★ ONCE LISTED, LISTED (0135 `listed_at`; the owner, 2026-10-24: "never remove narratives, bring
+ * them back"). The rules above (two accounts, `minPosts`, the viral floor) decide only whether a
+ * narrative is listed the FIRST time. Until then each re-check held every page to that frame's rules,
+ * so the viral floor of 23 Oct deleted ~940 older pages on their next turn in the queue, and the tab's
+ * oldest narrative became a day old. A narrative with `listed_at` is held to the owner's calls only;
+ * its page is rewritten with whatever posts it can still cite, even one.
  *
  * ★ DEAD (core `narrativeDead`): its newest listed post went up `narrative.dead.afterMs` ago or
  * more. Said on the page (`dead`, `lastPostAt`), given no trending place, and so left out of
@@ -115,6 +122,8 @@ export interface ShownNarrative {
   readonly firstShownAtMs: number | null;
   /** The countries of the online meme war the titler said it is (0130); empty or null: not one, or never asked. Absent from an older caller. */
   readonly fight?: readonly string[] | null;
+  /** ★ Listed before (0135 `listed_at`): held only to the owner's calls, and its page is written with any post it can still cite. */
+  readonly kept?: boolean;
 }
 
 /**
@@ -164,6 +173,21 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
     /* ★ A post the owner added ("Add a post", 0130) is listed whatever its kind or the shill rule say; only his own "Not a meme" takes it off. */
     const ownerAdded = (m: string) => calls.added.has(m) && byId.get(m) !== undefined && byId.get(m)?.ownerCall !== 'not';
     const listed = n.members.filter((m) => (good(byId.get(m)) || ownerAdded(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
+    /* ★ ONCE LISTED, LISTED (the owner, 2026-10-24: "never remove narratives, bring them back"): a
+       narrative whose page was ever written is held to his own calls only — his "Not a narrative" (or
+       hiding enough of its posts), or his "Not a meme" and removals leaving it no post. A rule that
+       moved since (the viral floor of 23 Oct deleted ~940 pages on their next turn), two posts from
+       one account, a post judged an ad since: none takes the page. With no post it can cite now, it is
+       not written and its last page stays. Merges never reach here: a merged narrative is not open. */
+    if (n.listedAtMs !== null && n.listedAtMs !== undefined) {
+      const ownerLeft = n.members.filter((m) => byId.get(m)?.ownerCall !== 'not' && !removed(m)).length;
+      if (hiddenByOwner(n.id, listed, calls, policy) || ownerLeft === 0) {
+        dropped.push(n.id);
+        return null;
+      }
+      if (listed.length === 0) return null;
+      return { id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs, fight: n.fight ?? null, kept: true };
+    }
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
     const single = n.members.length === 1 && n.shown;
     /* ★ Two accounts at least (the owner, 2026-10-18): one account's two posts are not a narrative; a
@@ -408,7 +432,8 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
         reach: readingsOf(m),
       }];
     });
-    if (members.length < policy.narrative.minPosts && !(members.length === 1 && single.has(n.id))) continue;
+    /* A listed one is written with any post it can cite: its page must not wait for a rule to pass again. */
+    if (members.length < (n.kept === true ? 1 : policy.narrative.minPosts) && !(members.length === 1 && single.has(n.id))) continue;
     const latest = (m: MemberFacts): number => {
       const last = [...m.reach].reverse().find((x) => x.count !== undefined && x.count !== null);
       return last?.count ?? -1;
@@ -527,6 +552,8 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   for (const id of dropped) unwritten.set(id, options.nowMs);
   const boardRows = await writeBoard(db, viewId, tick, rowsWithPages, { kind: 'observed' });
   const storyViews = await writeStories(db, pages);
+  /* ★ Every page written is listed from now on (0135): no later rule takes it. */
+  await new PgNarrativeRepo(db).markListed([...paged]);
   /* ★ A PAGE GOES ONLY WITH ITS NARRATIVE: one the owner hid (or left under `minPosts` good posts),
      one merged, and anything that is not a narrative at all. Every other page stays — the board
      moving on is not a reason — so a story page, search, the post sheet and alerts keep serving it. */
