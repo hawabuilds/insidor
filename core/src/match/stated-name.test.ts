@@ -71,7 +71,7 @@ test('★ matcher: the stated coin ties as name_stated, past the six-hour window
   assert.deepEqual(launchMatches(coin(late, REAL), [NAMED], MATCH)[0]?.evidence, ['name_judge', 'name_stated']);
   assert.equal(launchMatches(coin(late, COPYCAT), [ORIGIN], MATCH).length, 0);
   assert.equal(launchMatches(coin(1_000 * MIN + S.withinMs + MIN, REAL), [NAMED], MATCH).length, 0);
-  /* Without the stated bars, as before v153: an exact name still ties, the stated tie does not exist. */
+  /* Without the stated bars, as before v154: an exact name still ties, the stated tie does not exist. */
   const { stated: _, ...plain } = MATCH;
   assert.deepEqual(launchMatches(coin(1_071 * MIN, REAL), [NAMED], plain)[0]?.evidence, ['name_judge']);
 });

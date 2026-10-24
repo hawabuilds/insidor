@@ -107,7 +107,7 @@ export interface LaunchMatchBars {
   readonly minVariantLength: number;
   /**
    * The stated-name tie (stated-name.ts): a coin carrying the post's whole stated name and ticker.
-   * Absent: no such tie, as before policy.v153.
+   * Absent: no such tie, as before policy.v154.
    */
   readonly stated?: StatedBars & {
     /** A stated coin ties a post up to this long after it, past `postWindowMs` (the window binds a shared name, not a stated one). */

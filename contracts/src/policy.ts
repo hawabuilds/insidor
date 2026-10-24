@@ -4381,7 +4381,7 @@ export interface FindersPolicy {
     /** A text-source post is credited only at this many approvals: most coins name a post nobody saw. */
     readonly textMinApprovals: number;
     /**
-     * …or at this many views (policy.v153): a post already past For You's views bar when a coin names
+     * …or at this many views (policy.v154): a post already past For You's views bar when a coin names
      * it was seen, whatever its approvals. Without it such a post is stored with no lane and can
      * never be a For You candidate.
      */
@@ -4718,7 +4718,7 @@ export interface RunningCoinsPolicy {
 }
 
 /**
- * THE COIN THAT RUNS, AND ITS POST (policy.v153, after the $BITCHES miss of 23 Oct): three layers
+ * THE COIN THAT RUNS, AND ITS POST (policy.v154, after the $BITCHES miss of 23 Oct): three layers
  * that tie a running coin back to the post it came from when the one-coin pick missed it.
  *
  *   stated   a coin carrying the post's whole stated name and ticker (core match/stated-name.ts)
@@ -4885,7 +4885,7 @@ export interface Policy {
   readonly runningCoins: RunningCoinsPolicy;
   /** Posts found late with no running coin yet, on For You (services/project late-no-coin.ts). */
   readonly lateNoCoin: LateNoCoinPolicy;
-  /** A running coin tied back to its post: the stated name, the running pick, the missed-runner net (policy.v153). */
+  /** A running coin tied back to its post: the stated name, the running pick, the missed-runner net (policy.v154). */
   readonly runnerLink: RunnerLinkPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
@@ -5101,7 +5101,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v153',
+  version: 'policy.v154',
 
   admit: {
     maxAgeMin: 240,
@@ -7148,7 +7148,7 @@ const POLICY_V1: Policy = {
       /* 5,000: about 61 coined X posts a day we did not already have clear it (48 hours to 2026-10-15
          17:00 UTC), against 119 at 1,000 — half the judging, inside the room left on the live book. */
       textMinApprovals: 5_000,
-      /* policy.v153: For You's own views bar (`rising.fypMinReach`). 3 days to 24 Oct: 564 coin-named X
+      /* policy.v154: For You's own views bar (`rising.fypMinReach`). 3 days to 24 Oct: 564 coin-named X
          posts had 40k+ views and no lane; 337 were judged anyway (113 yes), so about 76 a day more are
          judged — two questions at the open judge's ~$0.0003, about $0.02 a day. @TocRadio was one. */
       textMinReach: 40_000,
@@ -7412,7 +7412,7 @@ const POLICY_V1: Policy = {
     nearBar: true,
   },
 
-  /* policy.v153 adds `runnerLink` (RunnerLinkPolicy above), after v152's `lateNoCoin`. The miss: on
+  /* policy.v154 adds `runnerLink` (RunnerLinkPolicy above), after v152's `lateNoCoin` and v153's saved-post push. The miss: on
      23 Oct "You Missed Coin" ($BITCHES) launched 71 minutes after the post that stated that name,
      ran to about $3.7M, and never took the post's pick from the copycat "You Missed Bitches" ($YMB):
      it had no market reading at all (the reader reads the newest 300 coins a pass; 3,026 of the
