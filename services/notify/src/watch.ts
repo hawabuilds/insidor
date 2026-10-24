@@ -39,13 +39,10 @@
  * later line coin — stays `watch_coin`, which is listed, not pushed (core `LIST_ONLY`): a coin that
  * merely shares the post's name is not its coin.
  *
- * ★ ONE POST, ONE COIN (Policy.oneCoin.mode 'live', `onPick`): the push fires on the PICK, not on
- * any coin tied to the post. The line's coin is then the coin the runner picked by who is buying it
- * (or the owner's), so only it is tied: no list coins, no name or link matches off the mint stream.
- * Its first coin is `watched_first_coin` as above; a later, different line coin is the pick handed
- * over, pushed once as `watched_first_coin` with `handover` ("$X is now the coin for a post you
- * saved"). The first live look marks every line coin already shown as seen, sending nothing, so the
- * switch from shadow to live is not itself news.
+ * ★ ONE POST, ONE COIN (Policy.oneCoin.mode 'live', `onPick`): a saved post is saved-post.ts's.
+ * The owner, 2026-10-24: "a saved post always pushes" — on the first coin tied to it that launched
+ * after the save, not on the pick, and once more if the pick is another coin. This file then only
+ * hands it the watches and the posts; none of the steps above run.
  *
  * Cost: our own tables, plus one free read of a new coin's metadata document (at most
  * Policy.notify.watchMetadataPerPass a look), only while someone watches a post that has an id to
@@ -58,15 +55,14 @@ import { coinFacts, type Quotes } from './coin-facts.ts';
 import { queue, type Db } from './deliver.ts';
 import { tokenHref } from './pipeline.ts';
 import { firstKey, lineCoin, watchStream } from './post-watch.ts';
+import { checkSavedPosts } from './saved-post.ts';
 
 /** Marks that the first look has remembered every watched post's existing line coin. */
 const FIRST_STREAM = 'watch-first';
-/** Marks that the first look on the pick (live mode) has remembered every line coin already shown. */
-const PICK_STREAM = 'watch-pick';
 
 export interface WatchPorts {
   readonly policy: NotifyPolicy;
-  /** Push on the one-coin pick only (Policy.oneCoin.mode 'live'); absent: read from the policy in force. */
+  /** Policy.oneCoin.mode 'live': a saved post is saved-post.ts's; absent: read from the policy in force. */
   readonly onPick?: boolean;
   readonly now: () => number;
   readonly quotes?: Quotes;
@@ -206,21 +202,12 @@ export async function checkWatched(db: Db, ports: WatchPorts, state: WatchState)
   if (watches.length === 0) return 0;
   const itemIds = [...new Set(watches.map((w) => w.itemId))];
   const posts = await postsOf(db, itemIds);
+  if (ports.onPick ?? DEFAULT_POLICY.oneCoin.mode === 'live') return checkSavedPosts(db, ports, watches, posts);
   const firstLook = (await db.query(`select 1 from people.pipeline_seen where stream = $1 and key = '#seeded'`, [FIRST_STREAM])).length === 0;
   if (firstLook) {
     /* The first look: every watched post that already shows a line coin has had its first. */
     for (const w of watches) if (lineCoin(posts.get(w.itemId)?.payload ?? null) !== null) await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), firstKey(w.itemId)]);
     await db.query(`insert into people.pipeline_seen (stream, key) values ($1, '#seeded') on conflict do nothing`, [FIRST_STREAM]);
-  }
-
-  const onPick = ports.onPick ?? DEFAULT_POLICY.oneCoin.mode === 'live';
-  if (onPick && (await db.query(`select 1 from people.pipeline_seen where stream = $1 and key = '#seeded'`, [PICK_STREAM])).length === 0) {
-    /* The first look on the pick: what each card already shows is not a hand-over. */
-    for (const w of watches) {
-      const line = lineCoin(posts.get(w.itemId)?.payload ?? null);
-      if (line !== null) await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), `${w.itemId}|${line.address}`]);
-    }
-    await db.query(`insert into people.pipeline_seen (stream, key) values ($1, '#seeded') on conflict do nothing`, [PICK_STREAM]);
   }
 
   /* post → coins tied to it this look, and whether each came off the mint stream. */
@@ -234,10 +221,9 @@ export async function checkWatched(db: Db, ports: WatchPorts, state: WatchState)
     const line = lineCoin(posts.get(id)?.payload ?? null);
     if (line !== null) tie(id, line.address, false);
   }
-  /* On the pick, the line's coin is the only coin of the post: no list, no name match. */
-  if (!onPick) for (const l of await listed(db, itemIds)) tie(l.itemId, l.address, false);
+  for (const l of await listed(db, itemIds)) tie(l.itemId, l.address, false);
 
-  if (fresh.length > 0 && !onPick) {
+  if (fresh.length > 0) {
     const guesses = await guessesOf(db, itemIds);
     const unmatched: Fresh[] = [];
     for (const c of fresh) {
@@ -304,9 +290,6 @@ export async function checkWatched(db: Db, ports: WatchPorts, state: WatchState)
       /* The post's first settled coin: the one push. */
       await queue(db, { userId: w.userId, kind: 'watched_first_coin', subject: w.itemId, rung: 0, facts, href: tokenHref(address) });
       await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), firstKey(w.itemId)]);
-    } else if (onPick && line?.address === address) {
-      /* The pick handed over to another coin: pushed once, as the post's coin now. */
-      await queue(db, { userId: w.userId, kind: 'watched_first_coin', subject: `${w.itemId}|${address}`, rung: 0, facts: { ...facts, handover: true }, href: tokenHref(address) });
     } else {
       await queue(db, { userId: w.userId, kind: 'watch_coin', subject: `${w.itemId}|${address}`, rung: 0, facts, href: tokenHref(address) });
     }

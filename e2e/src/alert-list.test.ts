@@ -141,7 +141,7 @@ test('★ a New on FYP post is an in-app row in Notifications; only one that rea
   assert.equal(r.body.bell, 1);
 });
 
-test('★ a watched post: what it showed when starred is not news; each coin after that is, once; the list names it', async () => {
+test('★ a saved post (2026-10-24): the first coin tied after the save to start running is pushed, the pick once if another, never a third', async () => {
   const { db } = await setup();
   const { checkWatched } = await import('@insidor/notify/watch.ts');
   const as = async (method: string, path: string) => {
@@ -149,28 +149,71 @@ test('★ a watched post: what it showed when starred is not news; each coin aft
     const r = await handle({ method, url: path, body: null, token: ME.userId, client: 't' }, deps as never);
     return JSON.parse(r.body) as { watching?: boolean; posts?: { itemId: string }[] };
   };
-  const mint = 'FerryHorn1111111111111111111111111111111pump';
-  const other = 'HornHorn11111111111111111111111111111111pump';
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const t0 = Date.now();
+  await db.query(`insert into public.author (author_key, source, source_author_id, handle) values ('x:ferry', 'x', 'ferry', 'ferrycat')`);
+  for (const id of ['new', 'old']) await db.query(`insert into public.item (item_id, source, source_item_id, author_key, posted_at, first_seen_at, body, raw_ref, origin) values ($1, 'x', $2, 'x:ferry', $3, $3, 'the ferry cat', 'r', 'observed')`, [`x:${id}`, id, iso(t0 - 3_600_000)]);
   await db.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
   const line = (id: string, coins: unknown) => db.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', $1, 0, $2) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [id, JSON.stringify({ authorLabel: '@ferrycat', excerpt: 'the ferry cat', coins })]);
+  const coin = (address: string, symbol: string, launchedMs: number) =>
+    db.query(`insert into public.asset (chain, address, asset_key, venue_id, minted_at, minted_at_source, minted_at_conf, minted_at_bound_s, symbol, name, declared_social, first_seen_at, origin)
+              values ('solana', $1, $2, 'solana:pumpfun', $3, 'vendor_field', 'bounded', 300, $4, $4, '{}'::jsonb, $3, 'live_stream')`, [address, `solana:${address}`, iso(launchedMs), symbol]);
+  const tied = (address: string, ties: string[], launchedMs: number) =>
+    db.query(`insert into internal.one_coin_candidate (item_id, address, path, evidence, launched_at, found_at, updated_at) values ('x:new', $1, 'launch', $2, $3, $4, $4)`, [address, JSON.stringify({ ties }), iso(launchedMs), iso(launchedMs + 7_000)]);
+  const pick = (address: string) =>
+    db.query(`insert into internal.post_coin_pick (item_id, address, outcome, decided_at, evidence, updated_at) values ('x:new', $1, 'picked', now(), '{}', now()) on conflict (item_id) do update set address = excluded.address`, [address]);
   await line('x:new', { kind: 'unsure', claimCount: 3 });
-  await line('x:old', { kind: 'matched', coin: { address: other, ticker: 'OLD' }, evidence: { linksPost: true } });
+  await line('x:old', { kind: 'matched', coin: { address: 'HornHorn11111111111111111111111111111111pump', ticker: 'OLD' }, evidence: { linksPost: true } });
   assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: false });
   assert.deepEqual(await as('PUT', '/post-watch/x%3Anew'), { watching: true });
   assert.deepEqual(await as('PUT', '/post-watch/x%3Aold'), { watching: true });
   assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: true });
   assert.deepEqual((await as('GET', '/post-watch')).posts?.map((p) => p.itemId).sort(), ['x:new', 'x:old']);
-  const ports = { policy: P, now: () => BASE };
+  const launched = Date.now() + 1_000;
+  const ports = { policy: P, now: () => launched + 15_000 };
   const state = { cursor: null };
-  assert.equal(await checkWatched(db, ports, state), 0, 'no coin yet, and the coin x:old already showed is not news');
-  await line('x:new', { kind: 'matched', coin: { address: mint, ticker: 'FERRY' }, evidence: { linksPost: true } });
-  assert.equal(await checkWatched(db, ports, state), 1, 'a coin now: one alert');
+  assert.equal(await checkWatched(db, ports, state), 0, 'the first look sends nothing, and the coin x:old showed when saved is not news');
+  /* A market reading with its last hour (0127), taken just now. */
+  let at = launched + 5_000;
+  const reading = (address: string, volume: number | null, buys: number, sells: number) =>
+    db.query(
+      `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint, volume_1h_usd, buys_1h, sells_1h, last_hour_absent)
+       values ('solana', $1, $2, 'solana:curve', $3, 'no_market', 9000, 'circulating', 'no_market', 'no_market', false, 'test', 'test', $4, $5, $6, $7)`,
+      [address, `solana:${address}`, iso(at++), volume, volume === null ? null : buys, volume === null ? null : sells, volume === null ? 'not_reported' : null],
+    );
+  const before = 'Before1111111111111111111111111111111pump';
+  await coin(before, 'BEFORE', t0 - 120_000);
+  await tied(before, ['link'], t0 - 120_000);
+  await reading(before, 90_000, 900, 400);
+  const pic = 'Picture111111111111111111111111111111pump';
+  await coin(pic, 'PIC', launched - 500);
+  await tied(pic, ['picture'], launched - 500);
+  await reading(pic, 90_000, 900, 400);
+  assert.equal(await checkWatched(db, ports, state), 0, 'running, but launched before the save, or tied by a picture alone: not the first');
+  const first = 'FerryHorn1111111111111111111111111111111pump';
+  await coin(first, 'FERRY', launched);
+  await tied(first, ['link', 'name_guess'], launched);
+  const second = 'Second11111111111111111111111111111111pump';
+  await coin(second, 'SECOND', launched + 2_000);
+  await tied(second, ['name_judge'], launched + 2_000);
+  /* The market reader keeps reading both: 0129's function names them, and not the picture's or the earlier coin. */
+  const toRead = await db.query<{ address: string }>(`select address from internal.saved_post_coins(now() + interval '1 minute', 10800000, 10)`);
+  assert.deepEqual(toRead.map((r) => r.address).sort(), [first, second].sort());
+  assert.equal(await checkWatched(db, ports, state), 0, 'tied, but no reading yet: not running');
+  await reading(first, null, 0, 0);
+  await reading(second, 19_000, 300, 100);
+  assert.equal(await checkWatched(db, ports, state), 0, 'a reading without its hour is not running; nor is $19,000 traded');
+  await reading(first, 25_000, 25, 5);
+  assert.equal(await checkWatched(db, ports, state), 1, 'the first tied coin to start running, no pick yet: pushed');
+  await reading(second, 50_000, 300, 100);
+  assert.equal(await checkWatched(db, ports, state), 0, 'a later coin running is not news');
+  await pick(second);
+  assert.equal(await checkWatched(db, ports, state), 1, 'the pick is another coin: the one running, once');
   assert.equal(await checkWatched(db, ports, state), 0, 'and only once');
-  const [q] = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string; found: string } }>('select kind, subject, href, facts from people.alert_queue');
-  /* Its line's first coin: the one push (watch.ts), once per person and post. */
-  assert.equal(q?.kind, 'watched_first_coin');
-  assert.equal(q?.subject, 'x:new');
-  assert.equal(q?.facts.address, mint);
-  assert.equal(q?.href, `/#/token/${encodeURIComponent(`solana:${mint}`)}`);
+  await pick(first);
+  assert.equal(await checkWatched(db, ports, state), 0, 'never a third');
+  const rows = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string; saved: string } }>('select kind, subject, href, facts from people.alert_queue order by queue_id');
+  assert.deepEqual(rows.map((r) => [r.kind, r.subject, r.facts.saved, r.facts.symbol]), [['watched_first_coin', 'x:new|#launched', 'launched', 'FERRY'], ['watched_first_coin', 'x:new|#running', 'running', 'SECOND']]);
+  assert.equal(rows[0]?.href, `/#/token/${encodeURIComponent(`solana:${first}`)}`);
   assert.deepEqual(await as('DELETE', '/post-watch/x%3Anew'), { watching: false });
 });

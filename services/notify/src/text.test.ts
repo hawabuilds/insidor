@@ -221,6 +221,11 @@ test('★ the notification design in its own words (2026-10-18)', () => {
   assert.equal(alertText('starred_big_account', { author: '@elonmusk', title: 'Pancake', followers: 220_000_000, excerpt: 'lol' }).body, '220M followers: lol');
 });
 
+test('★ a saved post\'s two pushes (2026-10-24): launched from it, then the one running if another', () => {
+  assert.deepEqual(alertText('watched_first_coin', { saved: 'launched', symbol: 'KURIBO', excerpt: 'インスタ最高の瞬間', author: '@AOYAN_xD', mcUsd: null }), { title: '$KURIBO launched from a post you saved', body: '"インスタ最高の瞬間" (@AOYAN_xD).' });
+  assert.deepEqual(alertText('watched_first_coin', { saved: 'running', symbol: 'KURIBO', excerpt: 'インスタ最高の瞬間', author: '@AOYAN_xD', mcUsd: 206_800 }), { title: '$KURIBO is the one running for a post you saved', body: '"インスタ最高の瞬間" (@AOYAN_xD). $206.8K MC.' });
+});
+
 test('★ the one push says the coin, the post and its cap, and nothing of why', () => {
   assert.deepEqual(alertText('coin_launched', { symbol: 'FALCON', excerpt: 'Falcon 9 lands on the drone ship again tonight, the tenth time', author: '@SpaceX', mcUsd: 48_200 }), {
     title: '$FALCON launched for a post you may have seen',

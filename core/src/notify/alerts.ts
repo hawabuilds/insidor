@@ -47,10 +47,16 @@
  *      picks for a For You post or a narrative, launched after it was on For You — is the only kind
  *      that reaches a person's phone (`PUSHED_KINDS`), on for everyone, nothing to star, at most
  *      Policy.notify.launch.perDay a day. Every other kind above is still written to the list, so
- *      the Notifications tab keeps showing it, and is never pushed: a saved post's or starred
+ *      the Notifications tab keeps showing it, and is never pushed (a saved post's coin since 4j excepted): a starred
  *      narrative's first coin, blowing up, speed, big accounts, replies, holdings, follows and likes
  *      included. The owner's own alarms (4, 4b, 4f, the namer, 5) stay pushed while
  *      Policy.notify.launch.ownerAlarmsPush is on, and the settings screen's test always is.
+ *   4j. ★ A SAVED POST ALWAYS PUSHES (the owner, 2026-10-24, after $KURIBO was only listed for him):
+ *      `watched_first_coin` is pushed again — the first coin that launched after you saved the post,
+ *      and once more if the coin that runs is another (services/notify saved-post.ts). It is past the
+ *      hourly limit, has no daily cap, and is not counted against either (`UNCOUNTED_PUSH_KINDS`):
+ *      the person asked for it by saving the post, so it must never cost them a launch push. Mute,
+ *      its switch and quiet hours still hold — those are the person's own choices.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -256,12 +262,18 @@ const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_acco
 export const LIST_ONLY: readonly AlertKind[] = ['rank_up', 'rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched', 'fyp_coin', 'fyp_proven', 'watch_coin'];
 
 /**
- * ★ THE ONLY KINDS THAT REACH A PHONE (4i). A kind not here is listed and never pushed, whatever its
+ * ★ THE ONLY KINDS THAT REACH A PHONE (4i, 4j). A kind not here is listed and never pushed, whatever its
  * switch says — a kind added later is quiet until someone decides it is worth a phone. The owner's
  * alarms are pushed while Policy.notify.launch.ownerAlarmsPush is on (absent policy: on, so a
  * caller that forgets the policy never silences an outage).
  */
-export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'push_test'];
+export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin', 'push_test'];
+
+/**
+ * ★ PUSHES THAT USE UP NO ALLOWANCE (4j): not counted in the hourly limit or any daily cap of the
+ * person's other pushes. The deliverer leaves them out of both counts.
+ */
+export const UNCOUNTED_PUSH_KINDS: readonly AlertKind[] = ['watched_first_coin'];
 export const OWNER_ALARM_KINDS: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'outage', 'retune_summary'];
 export const pushable = (kind: AlertKind, P?: NotifyPolicy): boolean => PUSHED_KINDS.includes(kind) || (OWNER_ALARM_KINDS.includes(kind) && (P?.launch.ownerAlarmsPush ?? true));
 
