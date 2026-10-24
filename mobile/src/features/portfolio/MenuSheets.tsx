@@ -23,6 +23,26 @@ import { BellIcon, ChevronIcon, ExternalIcon, LockIcon, UserIcon, WalletIcon } f
 import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
 import styles from './profile-menu.module.css';
 
+/**
+ * Runs `then` once the sheet's own history entry is gone (shared/ui/dismiss.ts takes it back off when a
+ * sheet closes). The provider's export window closes itself on a history change, and on a phone the
+ * sheet's step back landed just after the window opened, so it vanished at once (the owner,
+ * 2026-10-24: "on mobile no pop up appears, but it works on desktop"). After the step, or at most
+ * `wait` ms if none comes.
+ */
+function afterSheetClosed(then: () => void, wait = 700): void {
+  let done = false;
+  const go = (): void => {
+    if (done) return;
+    done = true;
+    window.removeEventListener('popstate', step);
+    window.setTimeout(then, 60);
+  };
+  const step = (): void => go();
+  window.addEventListener('popstate', step);
+  window.setTimeout(go, wait);
+}
+
 /** "86xCnP…2MMY": six and four, as Trador's wallet card shows it. */
 export const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 6)}…${a.slice(-4)}`);
 
@@ -38,7 +58,7 @@ export function WalletsSheet({ onClose, exportKey, linked }: { readonly onClose:
               className={styles['sheetRow']}
               onClick={() => {
                 onClose();
-                exportKey();
+                afterSheetClosed(exportKey);
               }}
             >
               <LockIcon size={16} /> <span>Export private key</span> <ChevronIcon size={14} />
