@@ -220,4 +220,21 @@ export interface NarrativesList {
   readonly tick: number;
   readonly stories: readonly Story[];
   readonly provenance: BoardProvenance;
+  /** The meme wars' list only (GET /narratives/:view/fights): the one coin the owner chose for the whole Twitter World War, or null. */
+  readonly warCoin: WarCoin | null;
+}
+
+/**
+ * The Twitter World War's coin (services/read war-coin.ts): the coin's own facts and its current
+ * market reading, each number an absence with its reason when there is none (an old reading is
+ * "not read yet", never yesterday's cap).
+ */
+export interface WarCoin {
+  readonly address: string;
+  readonly ticker: string | null;
+  readonly name: string | null;
+  readonly imageUrl: string | null;
+  readonly marketCapUsd: Measured;
+  readonly changePct: Delta;
+  readonly tradable: boolean;
 }

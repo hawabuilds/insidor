@@ -28,7 +28,7 @@ import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -360,6 +360,22 @@ export function decodeNarratives(raw: unknown, path = '$'): NarrativesList {
     tick: int(o['tick'], `${path}.tick`),
     stories: arr(o['stories'], `${path}.stories`).map((s, i) => decodeStory(s, `${path}.stories[${i}]`)),
     provenance: decodeBoardProvenance(o['provenance'], `${path}.provenance`),
+    warCoin: decodeWarCoin(o['warCoin'], `${path}.warCoin`),
+  };
+}
+
+/** The Twitter World War's coin, or null: absent (an older server, or another list) is no coin, never an error. */
+export function decodeWarCoin(raw: unknown, path = '$.warCoin'): WarCoin | null {
+  if (raw === null || raw === undefined) return null;
+  const o = obj(raw, path);
+  return {
+    address: str(o['address'], `${path}.address`),
+    ticker: optStr(o['ticker']),
+    name: optStr(o['name']),
+    imageUrl: httpsOrNull(o['imageUrl']),
+    marketCapUsd: measured(o['marketCapUsd'], `${path}.marketCapUsd`, 'not_read_yet'),
+    changePct: delta(o['priceChange24h'], `${path}.priceChange24h`, 'not_read_yet'),
+    tradable: o['tradable'] === true,
   };
 }
 
