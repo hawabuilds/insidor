@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -1112,14 +1112,16 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (key !== null && listed?.full === true) {
       const ledgerLane: CappedLane = `search:${key}`;
       const spent = deps.ledger === undefined ? null : await deps.ledger.spent(ledgerLane, now);
+      /* A paced search (policy.v158) may have spent only its day's share so far; held back, it waits a pass rather than the day. */
+      const capNow = listed.paced === true ? pacedDailyUsd(listed.dailyUsd, deps.now(), deps.policy) : listed.dailyUsd;
       if (spent === null) {
         deps.log.warn('a search set to read past short pages has no readable day; it keeps the old rule', { source, search: key });
-      } else if (spent + estimate.usd > listed.dailyUsd) {
-        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: Math.max(0, listed.dailyUsd - spent), spentUsd: spent, capUsd: listed.dailyUsd });
-        deps.log.info('a search has spent its day; not asked', { source, search: key, spentUsd: spent, capUsd: listed.dailyUsd });
+      } else if (spent + estimate.usd > capNow) {
+        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: Math.max(0, capNow - spent), spentUsd: spent, capUsd: capNow });
+        deps.log.info(listed.paced === true ? 'a paced search is ahead of its day; not asked this pass' : 'a search has spent its day; not asked', { source, search: key, spentUsd: spent, capUsd: capNow, dailyUsd: listed.dailyUsd });
         return;
       } else {
-        rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: listed.dailyUsd, spentUsd: spent } };
+        rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: capNow, spentUsd: spent } };
       }
     }
 

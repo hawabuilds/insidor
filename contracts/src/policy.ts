@@ -1437,6 +1437,15 @@ export interface SearchPagingPolicy {
   readonly passDeadlineMs: number;
   /** Its search bill a UTC day, at most: today's measured spend when it was set. */
   readonly dailyUsd: number;
+  /**
+   * ★ SPREAD OVER THE DAY (policy.v158): with `paced`, the search may have spent only `dailyUsd` ×
+   * (the share of the UTC day gone, plus `feed.searchDay.aheadMs`) at any moment (core
+   * `pacedDailyUsd`), so it asks less often instead of stopping for the day. A pass held back is not
+   * lost: its band's next window starts where the last answered one ended (core `bandWindow`).
+   * Without it the newest band spent its $1.55 by 14:40 UTC on 23 Oct, and posts found after were
+   * found at a median 52 minutes old instead of 9.
+   */
+  readonly paced?: boolean;
 }
 
 /**
@@ -5173,7 +5182,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v157',
+  version: 'policy.v158',
 
   admit: {
     maxAgeMin: 240,
@@ -5937,7 +5946,9 @@ const POLICY_V1: Policy = {
            0.75 → 0.9). Still $5.10 together. */
         /* 2026-10-24 (`slow.langs` adds Spanish and Portuguese): the bands give up $0.40 more (1.75 → 1.55,
            1.4 → 1.2), the late band and slow lane take it (1.05 → 1.3, 0.9 → 1.05). Still $5.10 together. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55 },
+        /* `paced` from policy.v158 (the owner, 2026-10-24: "spread it"): the same $1.55, spread over the
+           whole UTC day instead of spent by mid-afternoon. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55, paced: true },
         band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.2 },
         late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3 },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
