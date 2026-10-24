@@ -26,6 +26,7 @@
 
 import type { Db, Row } from './queries.ts';
 import { withPictureFiles } from './post-pics.ts';
+import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { withTranslations } from './translations.ts';
 
 /** The most posts one narrative's sheet carries. */
@@ -137,10 +138,13 @@ async function membersOut(db: Db, rows: readonly Row[]) {
   /* The English of each post written in another language, as the feed shows it (translations.ts),
      and our copy of its picture (post-pics.ts): the two reads sent at once, then put together. */
   const posts = rows.map((r) => r['post'] ?? null).filter((p) => p !== null);
-  const [translated, pictured] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts)]);
+  const [translated, pictured, faces] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts), quoteFaces(db, posts)]);
   const cards = translated.map((p, i) => {
     const file = rec(pictured[i])['thumbFile'];
-    return typeof file === 'string' ? { ...rec(p), thumbFile: file } : p;
+    const quote = rec(pictured[i])['quote'];
+    /* The quoted post with our copy of its picture (post-pics.ts) and its account's face (quote-faces.ts). */
+    const withQuote = quote === undefined ? p : { ...rec(p), quote };
+    return withQuoteFace(typeof file === 'string' ? { ...rec(withQuote), thumbFile: file } : withQuote, faces);
   });
   const byId = new Map(cards.map((p) => [str(rec(p)['id']) ?? '', p] as const));
   return rows.flatMap((r) => {

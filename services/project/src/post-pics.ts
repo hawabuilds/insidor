@@ -9,7 +9,8 @@
  * looks first.
  *
  * Which pictures: every picture a card shows — For You and Popular now (public.rising_row), the
- * scroll (public.feed_post), and every narrative's own picture and its posts' (public.story_view)
+ * scroll (public.feed_post), a quoted post's inside either card, and every narrative's own picture
+ * and its posts' (public.story_view)
  * — read from the projected payloads, the links the app is handed. Copied soon after they first
  * appear, while the link still loads: a link already expired when first seen is recorded as such
  * and not fetched, and taken up again only when a newer read brings a link that loads.
@@ -47,6 +48,10 @@ with shown as (
   select r.payload ->> 'thumbUrl' as link, 0 as surface from public.rising_row r
   union all
   select f.payload ->> 'thumbUrl', 1 from public.feed_post f where f.withdrawn_at is null
+  union all
+  select r.payload -> 'quote' ->> 'thumbUrl', 0 from public.rising_row r
+  union all
+  select f.payload -> 'quote' ->> 'thumbUrl', 1 from public.feed_post f where f.withdrawn_at is null
   union all
   select v.payload ->> 'thumbUrl', 2 from public.story_view v
   union all

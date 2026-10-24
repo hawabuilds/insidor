@@ -8,6 +8,7 @@ import { test } from 'node:test';
 
 import { WireLeakError, decodeCoinLink, decodeRisingFeed, decodeRisingPost } from './decode.ts';
 import { fixtureBoard, fixtureRising } from '../../test-fixtures/fixtures.ts';
+import { quotePictureLeads } from './wire/rising.ts';
 
 const COIN = {
   coinId: 'solana:abc', ticker: 'DOCK', name: 'dock', address: 'abc', venueLabel: 'Pump.fun', imageUrl: null,
@@ -105,4 +106,34 @@ test('★ a post written in another language carries its English and language; a
   assert.equal('translation' in decodeRisingPost(POST), false);
   assert.equal('translation' in decodeRisingPost({ ...POST, translation: { text: '', from: 'pt' } }), false);
   assert.equal('translation' in decodeRisingPost({ ...POST, translation: { text: 'x', from: 'Portuguese' } }), false);
+});
+
+/* The owner's example (2026-10-24): a quote with no picture of its own; the server put the quoted
+   post's picture on the card and the quoted post in `quote`. */
+const CAT = 'https://pbs.twimg.com/media/cat.jpg';
+const QUOTE = {
+  id: 'x:2113297675160613289', authorLabel: '@catowner', authorName: 'Cat Owner',
+  authorPictureUrl: 'https://pbs.twimg.com/profile_images/1/me_400x400.jpg', authorPictureFile: '0123456789abcdef0123456789abcdef',
+  permalink: 'https://x.com/catowner/status/2113297675160613289', excerpt: 'my cat after the groomer',
+  thumbUrl: CAT, thumbFile: 'abcdefabcdefabcdefabcdefabcdef01', thumbIsVideo: false, postedAt: { at: 500 },
+};
+
+test('★ a quoted post decodes with its face, words and picture, and leads the card when the post has no picture', () => {
+  const post = decodeRisingPost({ ...POST, thumbUrl: CAT, quote: QUOTE });
+  assert.deepEqual(post.quote, { ...QUOTE, postedAt: { known: true, at: 500 } });
+  assert.equal(quotePictureLeads(post), true, 'the card\'s picture is the quoted one: the inset shows no second copy');
+  const own = decodeRisingPost({ ...POST, thumbUrl: 'https://pbs.twimg.com/media/own.jpg', quote: QUOTE });
+  assert.equal(quotePictureLeads(own), false, 'a picture of its own leads; the quoted one shows in the inset');
+});
+
+test('a quote that cannot be drawn is dropped, never the card; a bad face or file is none', () => {
+  assert.equal(decodeRisingPost(POST).quote, undefined, 'no quote: no key');
+  assert.equal(decodeRisingPost({ ...POST, quote: { ...QUOTE, id: '' } }).quote, undefined);
+  assert.equal(decodeRisingPost({ ...POST, quote: { ...QUOTE, excerpt: '', thumbUrl: null } }).quote, undefined, 'nothing to draw');
+  assert.equal(decodeRisingPost({ ...POST, quote: 'junk' }).quote, undefined);
+  const odd = decodeRisingPost({ ...POST, quote: { ...QUOTE, authorPictureUrl: 'http://x/me.jpg', authorPictureFile: '../x', thumbFile: 'nope', postedAt: 'junk' } }).quote;
+  assert.equal(odd?.authorPictureUrl, null);
+  assert.equal(odd?.authorPictureFile, null);
+  assert.equal(odd?.thumbFile, null);
+  assert.deepEqual(odd?.postedAt, { known: false, pending: 'not_reported' });
 });

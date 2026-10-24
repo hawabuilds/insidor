@@ -145,3 +145,48 @@ test("the posts a post's own links name are read from the expanded links; none s
   assert.deepEqual(toItem(PLAIN, AT).refersTo, []);
   assert.equal(toItem(DEGRADED, AT).refersTo, undefined);
 });
+
+/* The vendor nests the quoted post whole inside a quote post. Shaped on the owner's example
+   (2026-10-24): a quote with no picture of its own, whose quoted post carries the meme. */
+const QUOTE_WITH_POST: unknown = {
+  id: '2113365660697084315',
+  text: 'Turned him into a exotic bengal cat',
+  createdAt: 'Thu Oct 22 20:23:32 +0000 2026',
+  lang: 'en',
+  author: { id: '615938424', userName: 'ApplaudAhhJones' },
+  entities: {},
+  quoted_tweet: {
+    id: '2113297675160613289',
+    text: 'my cat after the groomer https://t.co/abc123',
+    createdAt: 'Thu Oct 22 15:53:21 +0000 2026',
+    lang: 'en',
+    viewCount: 5_000_000,
+    author: { id: '777', userName: '@catowner', name: 'Cat Owner', profilePicture: 'https://pbs.twimg.com/profile_images/1/me_normal.jpg' },
+    extendedEntities: { media: [{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/cat.jpg', sizes: { large: { w: 900, h: 1200 } } }] },
+    quoted_tweet: { id: '1', text: 'a third level', author: { id: '2' } },
+  },
+};
+
+test('★ the quoted post the payload carries is kept with the quote, at no extra read', () => {
+  const q = toItem(QUOTE_WITH_POST, AT);
+  assert.equal(q.reproductionOf, 'x:2113297675160613289');
+  const r = q.reproducedPost;
+  assert.ok(r !== undefined, 'the inline post is read');
+  assert.equal(r.itemId, 'x:2113297675160613289', 'keyed as a search would key it, so the two meet');
+  assert.equal(r.authorKey, 'x:777');
+  assert.equal(r.authorHandle, 'catowner', 'the sigil is stripped once, as for any account');
+  assert.equal(r.authorName, 'Cat Owner');
+  assert.equal(r.authorPictureUri, 'https://pbs.twimg.com/profile_images/1/me_400x400.jpg');
+  assert.equal(r.text, 'my cat after the groomer https://t.co/abc123');
+  assert.deepEqual(r.media.map((m) => m.uri), ['https://pbs.twimg.com/media/cat.jpg']);
+  assert.equal(r.postedAt, Date.parse('2026-10-22T15:53:21Z'));
+  assert.equal(r.readAt, AT);
+  assert.equal('reproducedPost' in r, false, "one level only: the quoted post's own quote is dropped");
+});
+
+test('a quote whose payload names only the id, an empty post or no account carries no quoted post', () => {
+  assert.equal(toItem(QUOTE, AT).reproducedPost, undefined);
+  const base = QUOTE_WITH_POST as Record<string, unknown>;
+  assert.equal(toItem({ ...base, quoted_tweet: { id: '9', text: '', author: { id: '8' } } }, AT).reproducedPost, undefined);
+  assert.equal(toItem({ ...base, quoted_tweet: { id: '9', text: 'words' } }, AT).reproducedPost, undefined);
+});

@@ -8,7 +8,7 @@
  * test rather than a sentence in a vendor file.
  */
 
-import type { Author, Counter, CounterSet, Fingerprint, Item, ItemId, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterSet, Fingerprint, Item, ItemId, MediaRef, Millis, ReproducedPost } from '@insidor/contracts';
 import { authorKey, itemId } from '@insidor/contracts/ids.ts';
 import { arr, cashtagKey, dateToMillis, hashtagKey, num, rec, shingles, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
@@ -146,6 +146,38 @@ function refersTo(r: Rec, ownId: string): readonly ItemId[] | undefined {
   return out;
 }
 
+/* ── the quoted post, as the payload carried it ───────────────────────── */
+
+/**
+ * The quoted post the vendor nests whole inside a quote post (`quoted_tweet`): the same object a
+ * search returns, so it is read by the same two functions, at no extra call. Null when the vendor
+ * sent only the id, or a post with no account or nothing to show (a deleted or withheld post comes
+ * back that way): a quote with nothing in it is not a quote to draw. The nested post's own quote is
+ * dropped: the card shows one level, as the source does.
+ */
+export function reproducedPost(raw: unknown, at: Millis): ReproducedPost | null {
+  const q = rec(raw);
+  if ((str(q.id) ?? str(q.id_str)) === null) return null;
+  const author = toAuthor(q, at);
+  if (author === null) return null;
+  const item = toItem({ ...q, quoted_tweet: undefined }, at);
+  if (item.text.trim() === '' && item.media.length === 0) return null;
+  return {
+    itemId: item.itemId,
+    source: item.source,
+    sourceItemId: item.sourceItemId,
+    authorKey: item.authorKey,
+    authorHandle: author.handle,
+    authorName: author.displayName ?? null,
+    authorPictureUri: author.pictureUri ?? null,
+    postedAt: item.postedAt,
+    lang: item.lang,
+    text: item.text,
+    media: item.media,
+    readAt: at,
+  };
+}
+
 /* ── the translation ──────────────────────────────────────────────────── */
 
 /**
@@ -198,6 +230,11 @@ export function toItem(raw: unknown, at: Millis): Item {
     ...(() => {
       const refs = refersTo(r, id);
       return refs === undefined ? {} : { refersTo: refs };
+    })(),
+
+    ...(() => {
+      const quoted = reproducedPost(r.quoted_tweet, at);
+      return quoted === null ? {} : { reproducedPost: quoted };
     })(),
 
     // This source has no reusable format object — no shared sound, no template

@@ -30,6 +30,7 @@ import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
 import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-pics.ts';
+import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
@@ -315,16 +316,17 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
- * A feed's cards with their English (translations.ts), their narrative (story-tags.ts) and our copy
- * of their picture (post-pics.ts), the three reads sent at once. Each leaves a card it adds nothing
+ * A feed's cards with their English (translations.ts), their narrative (story-tags.ts), our copy
+ * of their picture (post-pics.ts) and the face of the account a card quotes (quote-faces.ts), the
+ * four reads sent at once. Each leaves a card it adds nothing
  * to as the same object, so the answers are put together card by card.
  */
 async function withCardAdditions(db: Deps['db'], cards: readonly unknown[]): Promise<readonly unknown[]> {
-  const [translated, tagged, files] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards), pictureFiles(db, cards.flatMap(pictureLinks))]);
+  const [translated, tagged, files, faces] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards), pictureFiles(db, cards.flatMap(pictureLinks)), quoteFaces(db, cards)]);
   return translated.map((card, i) => {
     const tag = tagged[i];
     const out = tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
-    return withFile(out, files);
+    return withQuoteFace(withFile(out, files), faces);
   });
 }
 
