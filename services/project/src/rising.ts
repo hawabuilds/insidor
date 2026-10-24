@@ -455,6 +455,19 @@ export async function loadPostLookups(
  * A finished search for a post's name — the coins it kept that we can list, newest launch first,
  * and whether it found more than it kept — or none in time.
  */
+/** How long before a post a coin may launch and still be counted as made from it (mobile shared/coins-made.ts COIN_LEAD_MS). */
+export const COIN_LEAD_MS = 10 * 60_000;
+
+/** Each address's launch time in ms, where the asset row has one. */
+async function loadLaunches(db: Db, addresses: readonly string[]): Promise<ReadonlyMap<string, number>> {
+  if (addresses.length === 0) return new Map();
+  const rows = await db.query<{ address: string; at: number | string | null }>(
+    `select address, (extract(epoch from minted_at) * 1000)::float8 as at from public.asset where chain = 'solana' and address = any($1::text[]) and minted_at is not null`,
+    [[...addresses]],
+  );
+  return new Map(rows.flatMap((r) => (r.at === null || !Number.isFinite(Number(r.at)) ? [] : [[r.address, Number(r.at)] as const])));
+}
+
 export type PostLookup = { readonly coins: readonly string[]; readonly more: boolean; readonly match?: PostLookupMatch } | { readonly gaveUp: true };
 
 /**
@@ -957,6 +970,19 @@ export async function buildRising(
   const promotions = promotionOn(policy) ? await loadPromotions(db, rowIds, ownReachOf) : new Map();
   const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address] : [])))]) : new Map();
   const pickOptions = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
+  /* ★ THE OWNER'S "SEE N COINS" COUNTS ONLY COINS MADE AFTER THE POST (the owner, 2026-10-24: the
+     count said 5 and the list, which leaves out older same-name coins — mobile shared/coins-made.ts —
+     was empty). Launched no earlier than COIN_LEAD_MS before the post; a coin of unknown launch is
+     not counted, as the list does not show it. */
+  const launchOf = live ? await loadLaunches(db, [...new Set([...lookups.values()].flatMap((l) => ('coins' in l ? l.coins : [])))]) : new Map<string, number>();
+  const madeAfter = (row: RisingRow, coins: readonly string[]): number => {
+    const posted = toMs(row.posted_at);
+    if (posted === null) return 0;
+    return coins.filter((a) => {
+      const at = launchOf.get(a);
+      return at !== undefined && at >= posted - COIN_LEAD_MS;
+    }).length;
+  };
   const withPick = (row: RisingRow, post: WireRisingPost, lookup: PostLookup | null): WireRisingPost => {
     if (!live) return post;
     const check = checks.get(row.item_id);
@@ -964,7 +990,7 @@ export async function buildRising(
     if (check?.none === true || owners) return post;
     const pick = picks.get(row.item_id);
     const f = pick?.address === null || pick?.address === undefined ? undefined : pickedFacts.get(pick.address);
-    const listed = lookup !== null && 'coins' in lookup ? { count: lookup.coins.length, more: lookup.more } : { count: 0, more: false };
+    const listed = lookup !== null && 'coins' in lookup ? { count: madeAfter(row, lookup.coins), more: false } : { count: 0, more: false };
     const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set());
     const out: WireRisingPost = { ...post, coins, storyId: coins === post.coins ? post.storyId : null };
     assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);
