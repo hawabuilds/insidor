@@ -77,6 +77,8 @@ const REQUEST_TIMEOUT_MS = 15_000;
  */
 const PROBE_GAP_MS = 1_200;
 const PROBE_RETRY_AFTER_MS = 5_000;
+/** A coin this pass cannot ask keeps a route the aggregator gave it this recently (reading.ts `keptRoute`). */
+const KEPT_ROUTE_MS = 3_600_000;
 
 /** The trade service's own ceiling on one aggregator quote (services/trade/src/main.ts). */
 const ROUTER_TIMEOUT_MS = 8_000;
@@ -225,6 +227,7 @@ async function main(): Promise<void> {
         maxProbes: DEFAULT_POLICY.market.maxPoolProbesPerPass,
         probeGapMs: PROBE_GAP_MS,
         retryAfterMs: PROBE_RETRY_AFTER_MS,
+        keepMs: KEPT_ROUTE_MS,
       },
     );
 
@@ -267,7 +270,7 @@ async function main(): Promise<void> {
       `read venue=${String(VENUE_ID)} asked=${refs.length} calls=${batches.length} ` +
         `written=${written} priced=${priced} no_market=${noMarket} unread=${failed} ` +
         `spent_usd=${meter.spentUsd().toFixed(4)} ` +
-        `route curve=${routeCounts.curve} pool=${routeCounts.pool} none=${routeCounts.none} ` +
+        `route curve=${routeCounts.curve} pool=${routeCounts.pool} kept=${routeCounts.kept} none=${routeCounts.none} ` +
         `not_asked=${routeCounts.notAsked} unavailable=${routeCounts.unavailable} ` +
         `probed=${routeCounts.probed} reused=${routeCounts.reused}${rpcUrl === null ? ' (no HELIUS_API_KEY: nobody asked)' : ''}`,
     );

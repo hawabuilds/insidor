@@ -209,6 +209,10 @@ test('tradable is true only beside the name of the route that would fill it', ()
   assert.deepEqual(tradeAnswer('pool'), { tradable: true, quotedBy: 'solana:pool' });
 });
 
+test('a kept route is tradable and names the kept venue, never the answering one', () => {
+  assert.deepEqual(tradeAnswer('kept'), { tradable: true, quotedBy: 'solana:pool:kept' });
+});
+
 test('"no route" names who was asked and is not tradable; it is a different row from "not asked"', () => {
   assert.deepEqual(tradeAnswer('none'), { tradable: false, quotedBy: 'solana:pool' });
   assert.notDeepEqual(tradeAnswer('none'), tradeAnswer(null));
