@@ -14,7 +14,7 @@
  * about the two vendors rather than a filing preference: TikTok's observe actor is
  * ADDRESSED by URL, so building one there is part of talking to it. This vendor
  * takes ids at both endpoints, so nothing in this package's HTTP surface needs this
- * function. Its only caller is citation.
+ * function. Its callers are citation and the adapter's `postLink` (a coin's post recorded by id).
  */
 
 /**
