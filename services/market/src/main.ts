@@ -185,6 +185,10 @@ async function main(): Promise<void> {
       { nowMs: now(), withinMs: DEFAULT_POLICY.oneCoin.watchMs, limit: DEFAULT_POLICY.oneCoin.existing.readsPerPass },
       /* The coins tied to saved posts while they are just launched, for the saved-post push (db.ts). */
       { nowMs: now(), withinMs: DEFAULT_POLICY.notify.launch.maxLaunchAgeMs, limit: SAVED_COINS_PER_PASS },
+      /* The coins picked for posts and narratives, and the stated-name coins, read every pass (db.ts). */
+      DEFAULT_POLICY.runnerLink.running.on
+        ? { nowMs: now(), withinMs: DEFAULT_POLICY.runnerLink.running.pickWithinMs, limit: DEFAULT_POLICY.runnerLink.running.marketReadsPerPass }
+        : null,
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,
