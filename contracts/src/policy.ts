@@ -4310,7 +4310,7 @@ export interface NarrativePolicy {
    * same call that writes a narrative's title, also says whether the narrative is users of two or more
    * countries trading memes and insults with each other online, and which countries. Real wars,
    * riots, politics, diplomacy and sports rivalries are not. The answer is stored with the narrative
-   * (0127) and every narrative so tagged with a post in the last `activeMs` is shown under one
+   * (0129) and every narrative so tagged with a post in the last `activeMs` is shown under one
    * umbrella in the app, one section per pair of countries.
    *
    *   on            ask it (with every title, and for the live narratives never asked)

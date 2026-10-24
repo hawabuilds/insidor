@@ -1,4 +1,4 @@
--- 0127_narrative_owner_edits.sql
+-- 0129_narrative_owner_edits.sql
 --
 -- THE OWNER NAMES A NARRATIVE HIMSELF, AND ADDS A POST TO IT; AND WHICH NARRATIVES ARE A MEME WAR
 -- BETWEEN COUNTRIES.
@@ -67,7 +67,7 @@ alter table internal.narrative add column fight_model text;
 alter table internal.narrative add column fight_at timestamptz;
 grant update (fight, fight_model, fight_at) on internal.narrative to insidor_people;
 comment on column internal.narrative.fight is
-  'The countries whose users trade memes in it (an online meme war, 0127), alphabetical; empty: asked, not one; null: never asked.';
+  'The countries whose users trade memes in it (an online meme war, 0129), alphabetical; empty: asked, not one; null: never asked.';
 
 comment on column internal.narrative.title_model is
-  'The model that wrote the title, or ''owner'' when the owner typed it (0127): the titler never writes over an owner title.';
+  'The model that wrote the title, or ''owner'' when the owner typed it (0129): the titler never writes over an owner title.';

@@ -20,7 +20,7 @@
  * `ownerAdds`). A post already in this narrative is refused; one in another narrative moves here.
  *
  * ★ A RENAME IS WRITTEN TWICE, IN ONE GO: the call (verdict 'rename', `name` the title) for the
- * record, and the title itself on internal.narrative with `title_model = 'owner'` (0127), so the
+ * record, and the title itself on internal.narrative with `title_model = 'owner'` (0129), so the
  * projector's next frame shows it on the board, the page, the posts' tags and the pushes, and the
  * runner's titler, which writes only where the title is not the owner's, never replaces it.
  *
@@ -66,7 +66,7 @@ const MAX_TITLE = 80;
 /** The most countries one meme war names (Policy.narrative.fight.maxCountries' value; the server checks the shape only). */
 const MAX_COUNTRIES = 4;
 const COUNTRY = /^[\p{L}][\p{L} .'-]{0,38}[\p{L}.]$/u;
-/** The titler's mark for a title the owner typed (0127): the runner never writes over it. */
+/** The titler's mark for a title the owner typed (0129): the runner never writes over it. */
 export const OWNER_TITLE_MODEL = 'owner';
 /** The most posts one split names: far over any narrative's page, a bound on the request only. */
 const MAX_SPLIT = 1_000;
@@ -223,7 +223,7 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
      returning id, verdict as call, item_id as "storyId", other_id as "otherId", coin_address as coin, name as title, (extract(epoch from created_at) * 1000)::float8 as at`,
     [ref, userId, call.storyId, VERDICT[call.action], call.coin, call.note, otherId, saved, otherMembers, call.action === 'meme_war' ? (call.countries.length === 0 ? null : call.countries.join(', ')) : call.title],
   ).catch((e: unknown) => {
-    /* Before the database takes a newer call (its owner_feedback check: 'split' 0108, 'rename' 0127), it is "not set up yet", like a 404 before 0093. */
+    /* Before the database takes a newer call (its owner_feedback check: 'split' 0108, 'rename' 0129), it is "not set up yet", like a 404 before 0093. */
     if (LATER.has(call.action) && (e as { code?: string } | null)?.code === '23514') return null;
     throw e;
   }) ?? [];

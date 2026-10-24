@@ -160,8 +160,8 @@ export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean)
 /* ── the owner's calls ────────────────────────────────────────────────── */
 
 /**
- * `rename` (0127) is the owner's title: written straight onto the narrative, so grouping folds
- * nothing from it. `add_post` (0127) is his "Add a post": `otherId` the post, which the runner moves
+ * `rename` (0129) is the owner's title: written straight onto the narrative, so grouping folds
+ * nothing from it. `add_post` (0129) is his "Add a post": `otherId` the post, which the runner moves
  * into the narrative and keeps there (narrative-keep.ts `ownerAdds`).
  */
 export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared' | 'rename' | 'add_post';
