@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { WireLeakError, decodeBoardTick, decodeCoinLink, decodeStory } from './decode.ts';
+import { WireLeakError, decodeBoardTick, decodeCoinLink, decodeNarratives, decodeStory, decodeWarCoin } from './decode.ts';
 import { fixtureBoard, fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 
 const row = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -91,4 +91,11 @@ test('★ a coin\'s origin decodes with its post; a post after launch stays "aft
   assert.deepEqual(after?.kind === 'afterLaunch' ? after.offset : null, { known: true, amount: 7_200_000 });
   assert.deepEqual(one({ kind: 'probably', post: {} }), { kind: 'unknown', pending: 'not_read_yet' }, 'an unknown kind is never shown as an origin');
   assert.deepEqual(one(undefined), { kind: 'unknown', pending: 'not_read_yet' }, 'an older server: a dash');
+});
+
+test('★ the Twitter World War coin: the coin\'s facts, an absence keeps its reason, and no coin is null', () => {
+  const coin = decodeWarCoin({ address: 'COIN1111111111111111111111111111111', ticker: 'MWW', name: 'Meme World War', imageUrl: 'ipfs://x', marketCapUsd: { v: 13987 }, priceChange24h: { v: null, why: 'not_read_yet' }, tradable: false });
+  assert.deepEqual(coin, { address: 'COIN1111111111111111111111111111111', ticker: 'MWW', name: 'Meme World War', imageUrl: null, marketCapUsd: { known: true, amount: 13987 }, changePct: { known: false, pending: 'not_read_yet' }, tradable: false });
+  assert.equal(decodeWarCoin(null), null);
+  assert.equal(decodeNarratives({ tick: 1, stories: [], provenance: { kind: 'observed' } }).warCoin, null, 'an older server sends none: no coin, not an error');
 });

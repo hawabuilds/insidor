@@ -96,6 +96,20 @@ export async function saveNarrativeCall(c: NarrativeCall): Promise<void> {
   }
 }
 
+/**
+ * "Coin for Twitter World War": the one coin of the whole war (the owner, 2026-10-24), or null to
+ * take it off. One call on the war, not on a narrative (services/social owner-narrative.ts
+ * `war_coin`); the newest wins, and the war's card shows it on the next read.
+ */
+export async function saveWarCoin(coin: string | null): Promise<void> {
+  try {
+    await socialCall('POST', '/owner/narrative', { action: 'war_coin', coin });
+  } catch (e) {
+    if (e instanceof PeopleError && e.status === 404) throw new PeopleError(404, "Not saved: the server doesn't take this call yet");
+    throw e;
+  }
+}
+
 /** Which post a pasted coin is for: the card's own id, or the link the owner pasted. */
 export type PostRef = { readonly itemId: string } | { readonly postUrl: string };
 
