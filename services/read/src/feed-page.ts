@@ -1,7 +1,7 @@
 /**
  * GET /rising/:feed/older?before=<cursor> (or ?after=<post id> for the first page) — For You's and
- * Popular's infinite scroll: every post that was ever on the feed (public.feed_post, 0075), twenty
- * at a time. The phone shows the frame (`GET /rising/:feed`) at the top and appends these pages
+ * Popular's infinite scroll: the posts that were on the feed (public.feed_post, 0075; For You's
+ * last three days, below), twenty at a time. The phone shows the frame (`GET /rising/:feed`) at the top and appends these pages
  * under it as the person scrolls.
  *
  * ★ FOR YOU IS ONE LIST, NEWEST POSTED FIRST, FRAME AND SCROLL ALIKE (the owner, 2026-10-17: "feed
@@ -14,6 +14,14 @@
  * the frame — is not on the scroll yet; it appears in its place once the frame's oldest card is
  * newer than it. This used to go by when the post first joined (`first_shown_at`), which put an
  * old post that joined late above newer ones: the mix the owner saw.
+ *
+ * ★ FOR YOU'S SCROLL REACHES BACK THREE DAYS (the owner, 2026-10-24: "keep it 3 days";
+ * `rising.scrollKeepMs`). A page holds the members that first went on For You within that long of
+ * the read; one that joined earlier is still a member (feed-members.ts never removes one) and comes
+ * back the day the window is lengthened. The bound is on when each joined, not on when it was
+ * posted, so a post that was found late and joined two days ago is still there, under its own
+ * posted time. It is an index range (0075 `feed_post_scroll_idx`): about 630 rows on 2026-10-24,
+ * 30 ms a page, where the unbounded read walked all 2,100 members and took 120 ms, growing daily.
  *
  * Popular keeps the join order: its frame is by views, not time, so there is no time order to
  * continue. Its cursor is when the post joined, which is written once and never moved
@@ -41,6 +49,9 @@ import type { Row } from './queries.ts';
 
 /** Posts per page: the phone asks for the next page about ten cards before the end. */
 export const FEED_PAGE_SIZE = 20;
+
+/** The oldest join For You's scroll serves at `nowMs`: its first page and every later one. */
+export const forYouKeptFrom = (nowMs: number, keepMs: number = DEFAULT_POLICY.rising.scrollKeepMs): string => new Date(nowMs - keepMs).toISOString();
 
 export const FEED_PAGE_FEEDS: readonly string[] = ['fyp', 'popular'];
 
@@ -71,12 +82,12 @@ const FOR_YOU_AT = `date_trunc('milliseconds', coalesce(i.posted_at, i.first_see
 
 /**
  * One page of For You's members strictly older than the cursor, newest posted first, ties by id in
- * byte order (`collate "C"`, as the projector's comparison is). No frame exclusion: under the
- * cursor a frame post is one the phone does not hold, or one it de-duplicates by id.
+ * byte order (`collate "C"`, as the projector's comparison is), among those that joined at or after
+ * `$4` (`forYouKeptFrom`). No frame exclusion: under the cursor a frame post is one the phone does
+ * not hold, or one it de-duplicates by id.
  * The page is chosen first from the narrow columns and only its twenty cards are then read whole
- * with their authors. Choosing it reads every member's post row (feed_post has no posted time),
- * which at a few thousand members is tens of milliseconds; a key on feed_post would only pay off
- * at hundreds of thousands.
+ * with their authors. Choosing it reads the post row of every member inside the window (feed_post
+ * has no posted time): the join bound is the index range that keeps that to three days of members.
  */
 export const FOR_YOU_PAGE_SQL = `
 with page as (
@@ -86,6 +97,7 @@ with page as (
    where f.feed_id = 'fyp'
      and f.withdrawn_at is null
      and f.payload is not null
+     and f.first_shown_at >= $4::timestamptz
      and (${FOR_YOU_AT} < $1::timestamptz or (${FOR_YOU_AT} = $1::timestamptz and f.item_id collate "C" > $2::text collate "C"))
    order by cursor_at desc, f.item_id collate "C" asc
    limit $3

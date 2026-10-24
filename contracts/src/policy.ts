@@ -2555,6 +2555,16 @@ export interface RisingPolicy {
   /** Rows per feed. */
   readonly maxRows: number;
   /**
+   * ★ HOW FAR BACK FOR YOU'S SCROLL REACHES (the owner, 2026-10-24: "older For You disappeared —
+   * keep it 3 days"; policy.v168). The scroll's pages (services/read feed-page.ts) serve the members
+   * that first went on For You (`public.feed_post.first_shown_at`) within this long of the read,
+   * newest posted first. Only what the scroll READS: membership, re-reads, translations and storage
+   * keep going by membership as before, so lengthening this brings older members straight back. It
+   * is also what keeps a page's cost flat as the table grows: an index range on when each joined,
+   * about 630 rows at three days on 2026-10-24, instead of every member ever (2,100 then).
+   */
+  readonly scrollKeepMs: number;
+  /**
    * Posts sent to the judge per discovery pass, newest first. The rest wait for the next.
    * Above what one pass brings in, so the queue drains: at 20 a pass that found 180 posts left
    * 160 unscored for good. The judge's own line (`budget.supplierLines.judge`, paced over the
@@ -5358,7 +5368,7 @@ const POLICY_V1: Policy = {
 
      v167 adds `rising.promotion` (a promotion post — a small post pointing at someone else's bigger
      one — is never on For You or Popular; its coin goes to the original). */
-  version: 'policy.v167',
+  version: 'policy.v168',
 
   admit: {
     maxAgeMin: 240,
@@ -6958,6 +6968,7 @@ const POLICY_V1: Policy = {
     windowMs: 86_400_000, // a day
     /* 60: the rows on each feed, and so the posts on it that are re-read. */
     maxRows: 60,
+    scrollKeepMs: 259_200_000, // three days
     postsPerPass: 200,
     maxNameWords: 3,
     fypMinReach: 40_000,
