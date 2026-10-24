@@ -178,6 +178,28 @@ test('a database without 0129: the saved posts\' list is empty and the pass read
   assert.deepEqual((await assetsToRead(db, 'solana', 3, null, null, { nowMs: 0, withinMs: 1, limit: 1 })).map((r) => r.address), ['new1']);
 });
 
+test('★ the coins picked for posts and the stated-name coins are read every pass, after the screen and the saved posts\' coins, longest unread first', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes('internal.saved_post_coins')) return [{ chain: 'solana', address: 'saved1', tier: 4 }] as R[];
+      if (s.includes('internal.post_coin_pick')) return [{ chain: 'solana', address: 'bitches', tier: 5 }] as R[];
+      if (s.includes('internal.one_coin_candidate')) return [{ chain: 'solana', address: 'older1', tier: 3 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  const now = Date.UTC(2026, 9, 23, 20, 30);
+  const rows = await assetsToRead(db, 'solana', 5, null, { nowMs: now, withinMs: 3_600_000, limit: 50 }, { nowMs: now, withinMs: 10_800_000, limit: 60 }, { nowMs: now, withinMs: 172_800_000, limit: 60 });
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'saved1', 'bitches', 'older1', 'new1']);
+  const picked = statements.find((s) => s.sql.includes('internal.post_coin_pick'));
+  assert.ok(picked !== undefined);
+  assert.match(picked.sql, /internal\.narrative_coin_pick/);
+  assert.match(picked.sql, /evidence->'ties' \? 'name_stated'/);
+  assert.match(picked.sql, /order by r\.taken_at asc nulls first/);
+  assert.equal(picked.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+});
+
 test('without the hour, the pass reads exactly what it read before', async () => {
   let calls = 0;
   const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;
