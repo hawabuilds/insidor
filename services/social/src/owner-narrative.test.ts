@@ -7,7 +7,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ownerNarrativeRoute, parseNarrativeCall } from './owner-narrative.ts';
+import { WAR_ID, ownerNarrativeRoute, parseNarrativeCall, parseWarCoin } from './owner-narrative.ts';
 
 const COIN = '6omoGgUH5zDgd5Xwf3K7u56qn1JgMnV9njaNCAejpump';
 
@@ -172,4 +172,20 @@ test('★ the owner\'s "Twitter World War": his countries, or none, saved as a c
   assert.equal(no.status, 201);
   assert.equal(f.inserts[1]?.[9], null, 'not a meme war: no countries');
   assert.deepEqual(f.titles[1], ['fight', 'n-x:1', [], 'owner']);
+});
+
+test('★ "Coin for Twitter World War": a call on the whole war, the coin or none, with no narrative and no posts', async () => {
+  assert.equal(typeof parseWarCoin({ action: 'war_coin', coin: 'nope' }), 'string');
+  assert.deepEqual(parseWarCoin({ action: 'war_coin', coin: `solana:${COIN}` }), { coin: COIN });
+  assert.deepEqual(parseWarCoin({ action: 'war_coin', coin: ' ' }), { coin: null });
+  const f = fakeDb(true, {});
+  const set = await ownerNarrativeRoute('POST', { action: 'war_coin', coin: COIN }, 'u1', 'wallet:abc', f.db);
+  assert.equal(set.status, 201);
+  assert.deepEqual(f.inserts[0], ['wallet:abc', 'u1', WAR_ID, 'right', COIN]);
+  const off = await ownerNarrativeRoute('POST', { action: 'war_coin' }, 'u1', 'wallet:abc', f.db);
+  assert.equal(off.status, 201);
+  assert.deepEqual(f.inserts[1], ['wallet:abc', 'u1', WAR_ID, 'cleared', null]);
+  const bad = await ownerNarrativeRoute('POST', { action: 'war_coin', coin: 'nope' }, 'u1', 'wallet:abc', f.db);
+  assert.equal(bad.status, 400);
+  assert.equal(f.inserts.length, 2);
 });
