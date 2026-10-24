@@ -2,7 +2,8 @@
  * The square picture at the start of a row, or a placeholder tile when there is none.
  *
  * A missing picture is a tile with an image glyph — the honest render of a picture we do not
- * have — never a borrowed one. The platform badge sits on the bottom-right corner when the
+ * have — never a borrowed one. Or nothing at all, with `hideEmpty` (the owner, 2026-10-24: a narrative
+ * without a picture, and a post without one inside a narrative, show no empty box): the row closes up. The platform badge sits on the bottom-right corner when the
  * caller knows the platform, and is simply absent when it does not. A picture that fails to
  * load is a missing picture: it falls back to the same tile, never a broken-image box.
  *
@@ -44,6 +45,7 @@ export function Thumb({
   letter = null,
   video = false,
   more = [],
+  hideEmpty = false,
 }: {
   url: string | null;
   /** Our storage's copy of the picture, by file name (the reply's `thumbFile`); null when there is none yet. */
@@ -61,6 +63,8 @@ export function Thumb({
   letter?: string | null;
   /** The picture is a still of a video: a play icon sits on it. */
   video?: boolean;
+  /** No picture, or none that loads: draw nothing instead of the empty tile. */
+  hideEmpty?: boolean;
   /** Further pictures of the same thing, tried in order after this one fails (a narrative's posts': storyPictures in post-pic.ts). */
   more?: readonly PictureRef[];
 }) {
@@ -69,6 +73,7 @@ export function Thumb({
   const each = (u: string | null, f: string | null) => postPicSources(f, u === null ? [] : [cardPictureUrl(u, box), u], POST_PIC_BASE, 'card');
   const sources = [...new Set([...each(url, file), ...more.flatMap((p) => each(p.url, p.file))])];
   const { src: shown, tryKey, fail } = usePictureTries(sources);
+  if (shown === null && hideEmpty) return null;
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>
       {shown !== null ? (

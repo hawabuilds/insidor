@@ -185,7 +185,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   return (
     <>
       <header className={styles['head']}>
-        <Thumb url={story.thumbUrl} file={story.thumbFile} size={52} radius={14} />
+        <Thumb url={story.thumbUrl} file={story.thumbFile} size={52} radius={14} hideEmpty />
         <div className={styles['headText']}>
           <h1>{story.title}</h1>
           <span className={styles['meta']}>
@@ -275,7 +275,7 @@ function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: 
   };
   return (
     <button type="button" className={styles['row']} onClick={tap} ref={rowRef}>
-      <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} file={e.thumbUrl !== null ? e.thumbFile : (card?.thumbFile ?? null)} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} />
+      <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} file={e.thumbUrl !== null ? e.thumbFile : (card?.thumbFile ?? null)} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} hideEmpty />
       <span className={styles['rowText']}>
         <span className={styles['rowLine']}>{e.excerpt}</span>
         <span className={styles['rowBy']}>
