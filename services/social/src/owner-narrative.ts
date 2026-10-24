@@ -7,6 +7,12 @@
  *     action  not_narrative | merge (into `intoStoryId`) | remove_post (`itemId`) | split (`itemIds`)
  *             | coin_right | coin_wrong (`coin`) | rename (`title`) | add_post (`postUrl` or `itemId`)
  *             | meme_war (`countries`: two to four country names, or none for "not a meme war")
+ *             | war_coin (`coin`, or none to take it off: no `storyId`)
+ *
+ * ★ "COIN FOR TWITTER WORLD WAR" IS ONE CALL ON THE WHOLE WAR, NOT ON A NARRATIVE (the owner,
+ * 2026-10-24): verdict 'right' with the coin, or 'cleared' with none, on the fixed id `WAR_ID` and
+ * with no posts stored, so the runner's fold never applies it to a narrative (0134). The read
+ * service shows it on the war's card through public.war_coin; the newest call wins.
  *
  * ★ "TWITTER WORLD WAR" IS HIS TO OVERRULE, as a rename is: the call (verdict 'fight', `name` the
  * countries or null) and the narrative's own `fight` with `fight_model = 'owner'`, which the titler's
@@ -158,6 +164,19 @@ const VERDICT: Readonly<Record<NarrativeAction, string>> = {
   meme_war: 'fight',
 };
 
+/** The war's fixed id in internal.owner_feedback: public.war_coin (0134) reads exactly this. */
+export const WAR_ID = 'twitter-world-war';
+
+/** "Coin for Twitter World War": the coin (no `solana:`), null to take it off, or the sentence saying what is wrong. */
+export function parseWarCoin(body: unknown): { readonly coin: string | null } | string {
+  const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+  const raw = b['coin'];
+  if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) return { coin: null };
+  if (typeof raw !== 'string') return 'That coin address is not a coin address.';
+  const coin = raw.replace(/^solana:/, '').trim();
+  return MINT.test(coin) ? { coin } : 'That coin address is not a coin address.';
+}
+
 /** The calls a database may not take yet, and what the owner is told then. */
 const LATER: ReadonlyMap<NarrativeAction, string> = new Map([
   ['split', 'Splitting a narrative'],
@@ -174,6 +193,17 @@ export async function ownerNarrativeRoute(method: string, body: unknown, userId:
         and exists (select 1 from information_schema.columns where table_schema = 'internal' and table_name = 'owner_feedback' and column_name = 'members') as ok`,
   );
   if (ready?.ok !== true) return json(404, { error: 'Narrative calls are not set up yet.' });
+  if (typeof body === 'object' && body !== null && (body as Record<string, unknown>)['action'] === 'war_coin') {
+    const war = parseWarCoin(body);
+    if (typeof war === 'string') return json(400, { error: war });
+    const [saved] = await db.query<Record<string, unknown>>(
+      `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address)
+       values ($1, $2, 'narrative', $3, $4, $5)
+       returning id, verdict as call, item_id as "storyId", coin_address as coin, (extract(epoch from created_at) * 1000)::float8 as at`,
+      [ref, userId, WAR_ID, war.coin === null ? 'cleared' : 'right', war.coin],
+    );
+    return json(201, { saved: saved ?? null });
+  }
   const call = parseNarrativeCall(body);
   if (typeof call === 'string') return json(400, { error: call });
   const membersOf = async (id: string): Promise<string[]> =>
