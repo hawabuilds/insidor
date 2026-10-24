@@ -78,10 +78,14 @@ export class PgReadingsRepo {
                        where f.feed_id = 'fyp' and f.withdrawn_at is null and f.item_id = any($${forYouOnly ? 2 : 3}::text[])),
             pool as (select item_id from fyp union select item_id from asked union select item_id from extra)
        select i.item_id, i.source, i.source_item_id, a.handle, i.posted_at,
-              (select max((select o.captured_at from public.observation o
-                             where o.item_id = i.item_id and o.kind = k.kind
-                             order by o.captured_at desc limit 1))
-                 from unnest($1::text[]) as k(kind)) as last_read_at,
+              /* A read the source answered without the post (0131's post_unreturned) counts as a read:
+                 a deleted post never gains a reading, so without this it was the stalest post on every
+                 30-second pass, asked about 2,900 times a day (~$0.43 a day each). It now waits its step. */
+              greatest((select max((select o.captured_at from public.observation o
+                                     where o.item_id = i.item_id and o.kind = k.kind
+                                     order by o.captured_at desc limit 1))
+                          from unnest($1::text[]) as k(kind)),
+                       (select u.last_at from internal.post_unreturned u where u.item_id = i.item_id)) as last_read_at,
               exists (select 1 from fyp where fyp.item_id = i.item_id) as on_for_you,
               (select k.asked_at from asked k where k.item_id = i.item_id) as opened_at
          from pool p
