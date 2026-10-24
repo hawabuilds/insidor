@@ -10,7 +10,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { keepNarratives, narrativeDead, ownerMerges, ownerSplits, removedPosts, survivorOf, type NarrativeState } from './narrative-keep.ts';
+import { keepNarratives, narrativeDead, ownerAdds, ownerMerges, ownerSplits, removedPosts, survivorOf, type NarrativeState } from './narrative-keep.ts';
 import { foldNarrativeCalls, groupNarratives, type NarrativeCallRow, type NarrativePair, type NarrativePost } from './narrative.ts';
 
 const P = DEFAULT_POLICY;
@@ -104,4 +104,29 @@ test('★ the owner\'s split applies once, from where his narrative leads now, a
   assert.ok(!calls.apart.has('c|d'), 'the moved posts stay together');
   assert.deepEqual([...(calls.removed.get('c') ?? [])].sort(), ['a', 'b']);
   assert.equal(calls.coins.size, 0, 'a split is not a coin call');
+});
+
+test('★ the owner\'s "Add a post" stands into where his narrative leads now, until his own later remove or split of it', () => {
+  const open = (id: string): [string, NarrativeState] => [id, { state: 'open', mergedInto: null }];
+  const states = new Map<string, NarrativeState>([open('n-war'), ['n-old', { state: 'merged', mergedInto: 'n-war' }], open('n-cat')]);
+  assert.deepEqual(ownerAdds([call(1, 'add_post', 'n-old', 'x:9')], states), [{ itemId: 'x:9', into: 'n-war' }], 'merged since: it goes where the merge leads');
+  assert.deepEqual(ownerAdds([call(1, 'add_post', 'n-war', 'x:9'), call(2, 'remove_post', 'n-war', 'x:9')], states), [], 'removed later: the remove wins');
+  assert.deepEqual(ownerAdds([call(1, 'remove_post', 'n-war', 'x:9'), call(2, 'add_post', 'n-war', 'x:9')], states), [{ itemId: 'x:9', into: 'n-war' }], 'added after a remove: the add wins');
+  const split = { ...call(3, 'split', 'n-war', 'n-x:9'), members: ['x:9'] };
+  assert.deepEqual(ownerAdds([call(1, 'add_post', 'n-war', 'x:9'), split], states), [], 'split out later');
+  assert.deepEqual(ownerAdds([call(1, 'add_post', 'n-war', 'x:9'), call(2, 'add_post', 'n-cat', 'x:9')], states), [{ itemId: 'x:9', into: 'n-cat' }], 'the newest add decides');
+  assert.deepEqual(ownerAdds([call(1, 'add_post', 'n-gone', 'x:9')], states), [], 'a narrative that leads nowhere open takes nothing');
+});
+
+test('★ an add after a remove undoes the remove: no longer deleted each pass, and the posts are no longer kept apart', () => {
+  const states = new Map<string, NarrativeState>([['n-war', { state: 'open', mergedInto: null }]]);
+  const remove = { ...call(1, 'remove_post', 'n-war', 'x:9'), members: ['x:1', 'x:9'] };
+  const add = { ...call(2, 'add_post', 'n-war', 'x:9'), members: ['x:1'] };
+  assert.equal(removedPosts([remove], states).get('x:9')?.has('n-war'), true);
+  assert.equal(removedPosts([remove, add], states).has('x:9'), false);
+  const folded = foldNarrativeCalls([remove, add]);
+  assert.equal(folded.apart.size, 0);
+  assert.equal(folded.removed.get('x:9')?.size ?? 0, 0);
+  assert.equal(folded.added.get('x:9'), 'n-war');
+  assert.equal(foldNarrativeCalls([add, { ...remove, id: 3, atMs: 3 }]).added.has('x:9'), false, 'a later remove takes the add back');
 });

@@ -4305,6 +4305,31 @@ export interface NarrativePolicy {
     readonly wordsMeaning: number;
     readonly wordsFormedWithinMs: number;
   };
+  /**
+   * ★ ONLINE MEME WARS BETWEEN COUNTRIES (the owner, 2026-10-23, policy.v155): the titler, in the
+   * same call that writes a narrative's title, also says whether the narrative is users of two or more
+   * countries trading memes and insults with each other online, and which countries. Real wars,
+   * riots, politics, diplomacy and sports rivalries are not. The answer is stored with the narrative
+   * (0130) and every narrative so tagged with a post in the last `activeMs` is shown under one
+   * umbrella in the app, one section per pair of countries.
+   *
+   *   on            ask it (with every title, and for the live narratives never asked)
+   *   activeMs      a tagged narrative is under the umbrella while its newest post is this recent
+   *   perPass       live shown narratives never asked, asked a pass beside the titles (newest first)
+   *   maxCountries  the most countries one fight names; more is read as no fight (a world-wide meme)
+   *   minPosts      the fewest posts a narrative lists to be shown as a fight: the copy test of
+   *                 2026-10-23 found the only wrong yeses on two-post narratives with little to read
+   *   maxOutputTokens  the title call's answer allowance while the question rides on it (the title's
+   *                 own `title.maxOutputTokens` leaves no room for the countries)
+   */
+  readonly fight: {
+    readonly on: boolean;
+    readonly activeMs: number;
+    readonly perPass: number;
+    readonly maxCountries: number;
+    readonly minPosts: number;
+    readonly maxOutputTokens: number;
+  };
 }
 
 /**
@@ -5038,7 +5063,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v153',
+  version: 'policy.v155',
 
   admit: {
     maxAgeMin: 240,
@@ -7066,6 +7091,17 @@ const POLICY_V1: Policy = {
       wordsMinCoverage: 0.25, // said by a quarter of each side's posts: its own word, not one post in a blob
       wordsMeaning: 0.6, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
       wordsFormedWithinMs: 345_600_000, // four days
+    },
+    /* ── narrative.fight: online meme wars between countries (policy.v155) ──
+       Fields: on, activeMs, perPass, maxCountries, minPosts, maxOutputTokens. The question rides on the title call, a few
+       hundredths of a cent each; `perPass` bounds the one-time catch-up of narratives titled before. */
+    fight: {
+      on: true,
+      activeMs: 604_800_000, // seven days, the owner's "active in the last week"
+      perPass: 10,
+      maxCountries: 4,
+      minPosts: 3,
+      maxOutputTokens: 100,
     },
   },
 

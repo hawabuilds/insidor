@@ -11,7 +11,8 @@
  * add new posts to the one narrative it holds or be a new one (core group/narrative-keep.ts); a
  * narrative no group touched is not written at all. Only the owner merges (his "Merge with…"
  * moves its posts to the one he chose), splits (his "Split" moves the posts he picked to a new
- * narrative, written this pass and titled by step 7 like any new one) and removes posts, and his
+ * narrative, written this pass and titled by step 7 like any new one), removes posts and adds them
+ * (his "Add a post" moves the post into the narrative and the pins keep it there), and his
  * "Not a narrative" hides one.
  *
  * One pass, in order:
@@ -40,7 +41,10 @@
  *      good posts the regroup placed nowhere are offered to the narratives they quote or echo
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
- *      endpoint; a failure leaves the judge's name, asked again next pass
+ *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
+ *      owner renamed (0130): his title stands however much it grows. The same call answers whether
+ *      it is an online meme war between countries (Policy.narrative.fight, 0130 `fight`); live
+ *      narratives never asked are asked a few a pass, for that answer only
  *
  * ★ NOTHING HERE IS ON THE FEED'S CLOCK. The projector reads what this wrote; it never waits on
  * this pass, and this pass never holds a lock the projector needs (one short transaction at the
@@ -88,6 +92,7 @@ import {
   subjectPosts,
   narrativeShown,
   narrativeStanding,
+  ownerAdds,
   ownerMerges,
   ownerSplits,
   postPicture,
@@ -102,7 +107,7 @@ import {
   type StoryPlan,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
-import type { NarrativePass, NarrativePostRow, PgNarrativeRepo, StoredNarrative } from '@insidor/store';
+import { OWNER_TITLE_MODEL, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -121,7 +126,7 @@ const outOfEither = (a: ReadonlyMap<string, ReadonlySet<string>>, b: ReadonlyMap
 };
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english'>>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english' | 'fightUnasked' | 'setFight'>>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -457,7 +462,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const calls = foldNarrativeCalls(callRows);
     /* ★ WHAT IS ALREADY MADE STAYS MADE: each window post's narrative, the owner's merges and removals. */
     const pinnedNow = await deps.repo.ofPosts(used.map((r) => r.itemId));
-    const callIds = callRows.flatMap((c) => ((c.verdict === 'merge' || c.verdict === 'split') && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' ? [c.narrativeId] : []));
+    const byWindow = new Set(used.map((r) => r.itemId));
+    const callIds = callRows.flatMap((c) => ((c.verdict === 'merge' || c.verdict === 'split') && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' || c.verdict === 'add_post' ? [c.narrativeId] : []));
     const states = new Map((await deps.repo.states([...new Set([...callIds, ...pinnedNow.values()])])).map((s) => [s.id, { state: s.state, mergedInto: s.mergedInto }] as const));
     const merges = ownerMerges(callRows, states);
     for (const m of merges) states.set(m.from, { state: 'merged', mergedInto: m.into });
@@ -470,6 +476,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const splits = ownerSplits(callRows, states);
     for (const sp of splits.pending) for (const m of sp.members) if (pinned.get(m) === sp.from) pinned.set(m, sp.into);
     const removedFrom = outOfEither(ownerRemoved, splits.movedFrom);
+    /* ★ The owner's adds: each post he added belongs to where his narrative leads now; only the ones
+       not there yet are written (a post still queued for reading waits, the write skips it), and a
+       window post among them is pinned there, so this pass's regroup groups it as that narrative's. */
+    const standingAdds = ownerAdds(callRows, states);
+    const addedWhere = standingAdds.length === 0 ? new Map<string, string>() : await deps.repo.ofPosts(standingAdds.map((a) => a.itemId));
+    const added = standingAdds.filter((a) => addedWhere.get(a.itemId) !== a.into);
+    for (const a of standingAdds) if (pinned.has(a.itemId) || byWindow.has(a.itemId)) pinned.set(a.itemId, a.into);
 
     const posts: NarrativePost[] = used.map(asNarrativePost);
     const formed = groupNarratives({ posts, pairs, calls, previous: new Map(), single, vectors: postVectors, pinned }, p);
@@ -532,12 +545,17 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const withEarly: NarrativePass['narratives'][number][] = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
 
     /* Step 6b: the starting posts and one story across languages (work/narrative-origin.ts). The
-       window's good posts the regroup placed nowhere (and no pin holds) may join a narrative there. */
+       window's good posts the regroup placed nowhere (and no pin holds) may join a narrative there. A
+       narrative the owner called (and where it leads now) is never merged away by it, but may still take
+       a newer one in — his merged war keeps growing; one this pass already merged or split is left alone. */
     const grouped = new Set([...withEarly.flatMap((x) => [...x.members, ...(x.early ?? [])]), ...pinned.keys()]);
+    const ownerCalled = new Set(callRows.flatMap((c) => [c.narrativeId, ...(c.verdict === 'merge' && c.otherId !== null ? [c.otherId] : [])]).flatMap((id) => [id, survivorOf(id, states) ?? id]));
+    const busy = new Set([...merges.flatMap((m) => [m.from, m.into]), ...same.merges.flatMap((m) => [m.from, m.into]), ...splits.pending.flatMap((sp) => [sp.from, sp.into])]);
     const origin = await traceOrigins({
       pass: withEarly.map((x) => ({ id: x.id, members: [...new Set([...x.members, ...(storedOf.get(x.id)?.early ?? []), ...(x.early ?? [])])], firstShownAtMs: storedOf.get(x.id)?.firstShownAtMs ?? null })),
       mergedAway: new Set([...merges.map((m) => m.from), ...same.merges.map((m) => m.from)]),
-      untouchable: new Set([...callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]), ...merges.flatMap((m) => [m.from, m.into]), ...same.merges.flatMap((m) => [m.from, m.into]), ...splits.pending.flatMap((sp) => [sp.from, sp.into])]),
+      untouchable: new Set([...ownerCalled, ...busy]),
+      receiveOnly: new Set([...ownerCalled].filter((id) => !busy.has(id))),
       hidden: hideOf,
       stored: stored?.rows ?? [],
       loose: used.filter((r) => !grouped.has(r.itemId)),
@@ -579,7 +597,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       withEarly.push({ id, members: all, added: joined, early: starts, anchor: s.anchor, newestPostAtMs: Math.max(s.newestPostAtMs ?? 0, newestJoined) || null, shown: s.shown, changed: true });
     }
     return {
-      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending },
+      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending, added },
       posts: byId,
       reach: readings.latest,
       stored: storedOf,
@@ -609,9 +627,15 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     };
   }
 
-  /** The judge's most common name among a narrative's posts: its title until the model writes one. */
+  /**
+   * Step 7: titles, and with each the meme-war answer (Policy.narrative.fight) — the narratives due a
+   * title, then up to `fight.perPass` live ones never asked (titled before the question existed, or
+   * renamed by the owner), whose posts are read from the store; for those only the answer is kept,
+   * never the title. The judge's most common name stands until the model writes a title.
+   */
   async function titles(grouped: GroupedPass): Promise<{ titled: number; usd: number }> {
     const t = deps.policy.narrative.title;
+    const f = deps.policy.narrative.fight;
     const titler = deps.titler;
     if (!t.on || titler === null || deps.mode !== 'live') return { titled: 0, usd: 0 };
     const stored = grouped.stored;
@@ -619,24 +643,40 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       .filter((x) => x.shown && x.members.some((m) => grouped.posts.has(m)))
       .filter((x) => {
         const s = stored.get(x.id);
+        /* ★ A title the owner typed is never asked for again (0130; the store's write refuses it too). */
+        if (s?.titleModel === OWNER_TITLE_MODEL) return false;
         return s === undefined || s.title === null || s.titlePosts === null || x.members.length >= s.titlePosts * (1 + t.retitleGrowth);
       })
       .sort((a, b) => b.members.length - a.members.length || a.id.localeCompare(b.id))
       .slice(0, t.perPass);
-    if (due.length === 0) return { titled: 0, usd: 0 };
-    const subjects = due.map((x) => {
-      const members = x.members.map((m) => grouped.posts.get(m)).filter((r): r is NarrativePostRow => r !== undefined);
-      const seen = [...members].sort((a, b) => (grouped.reach.get(b.itemId) ?? -1) - (grouped.reach.get(a.itemId) ?? -1));
-      const names = [...new Set(members.map((m) => m.proposedName).filter((x): x is string => x !== null && x.trim() !== ''))];
-      return { ref: x.id, posts: seen.slice(0, t.postsSent).map((m) => m.body.slice(0, t.maxChars)), names, size: x.members.length };
-    });
+    /* The catch-up: live narratives the meme-war question was never asked of, their posts read from the store. */
+    const dueIds = new Set(due.map((x) => x.id));
+    const unasked = f.on && deps.repo.fightUnasked !== undefined && deps.repo.standingRows !== undefined
+      ? (await deps.repo.fightUnasked(deps.now() - f.activeMs, f.perPass)).filter((x) => !dueIds.has(x.id))
+      : [];
+    const rowsOf = new Map(grouped.posts);
+    const missing = [...new Set(unasked.flatMap((x) => x.members))].filter((m) => !rowsOf.has(m));
+    if (missing.length > 0 && deps.repo.standingRows !== undefined) for (const r of await deps.repo.standingRows(missing)) rowsOf.set(r.itemId, r);
+    const all = [...due.map((x) => ({ id: x.id, members: x.members, titling: true })), ...unasked.map((x) => ({ id: x.id, members: x.members, titling: false }))];
+    if (all.length === 0) return { titled: 0, usd: 0 };
+    const subjects = all.map((x) => {
+      const members = x.members.map((m) => rowsOf.get(m)).filter((r): r is NarrativePostRow => r !== undefined);
+      const seen = [...members].sort((a, b) => (grouped.reach.get(b.itemId) ?? -1) - (grouped.reach.get(a.itemId) ?? -1) || b.atMs - a.atMs);
+      const names = [...new Set(members.map((m) => m.proposedName).filter((n): n is string => n !== null && n.trim() !== ''))];
+      return { ref: x.id, posts: seen.slice(0, t.postsSent).map((m) => m.body.slice(0, t.maxChars)), names, size: x.members.length, titling: x.titling };
+    }).filter((s) => s.posts.length > 0);
+    if (subjects.length === 0) return { titled: 0, usd: 0 };
     try {
       const r = await titler.title(subjects.map(({ ref, posts, names }) => ({ ref, posts, names })), budgetOf(deps.meter, deps.now(), deps.policy.judge.timeoutMs));
       let titled = 0;
       for (const o of r.value) {
         if (o.kind !== 'titled') continue;
-        await deps.repo.setTitle(o.ref, o.title, subjects.find((s) => s.ref === o.ref)?.size ?? 0, titler.model);
-        titled += 1;
+        const s = subjects.find((x) => x.ref === o.ref);
+        if (s?.titling === true) {
+          await deps.repo.setTitle(o.ref, o.title, s.size, titler.model);
+          titled += 1;
+        }
+        if (f.on && o.fight !== undefined && deps.repo.setFight !== undefined) await deps.repo.setFight(o.ref, o.fight, titler.model);
       }
       return { titled, usd: r.spend.usd };
     } catch (e) {

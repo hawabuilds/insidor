@@ -48,6 +48,14 @@
  * owner made a call on (`untouchable`), and never a post he removed from beside, or kept apart from,
  * the narrative's posts.
  *
+ * ★ BUT A NARRATIVE HE MERGED STILL GROWS (`receiveOnly`, 2026-10-23). Once he merged the war's
+ * narratives into one, it was untouchable, so a new narrative quoting its posts the next day could
+ * never join it — the merge he made froze the story. A narrative in `receiveOnly` is never merged
+ * away and never merged by a rule into anything, but a newer narrative may be merged INTO it on the
+ * same evidence, unless that would put back together posts he kept apart or removed from beside each
+ * other. For it, "formed within `formedWithinMs`" is read against its newest post rather than when
+ * it formed: a story he merged days ago that is still being posted is live, not old.
+ *
  * What breaks if changed carelessly: the shared start's own age. Two narratives quoting the same
  * three-year-old famous post are not one story ("Larp Final Boss" and "Tinfoil Cat" both quote one
  * from 2023); only a post inside the lookback, that the judge passed or a coin is tied to, is a
@@ -85,7 +93,7 @@ export interface OriginInput {
   readonly vectors: ReadonlyMap<string, ArrayLike<number>>;
   readonly pictures: ReadonlyMap<string, ArrayLike<number>>;
   readonly calls: NarrativeCalls;
-  /** The narratives the owner made a call on: never merged, never merged into. */
+  /** The narratives the owner made a call on: never merged, never merged into (but see `receiveOnly`). */
   readonly untouchable: ReadonlySet<string>;
   /**
    * Posts the judge did not pass (said no, or never asked) that may still START a narrative as its
@@ -107,6 +115,8 @@ export interface OriginInput {
    * roots and the joins — never for the merges, which read `refs` alone. Absent: `refs` only.
    */
   readonly reproductions?: ReadonlyMap<string, readonly string[]>;
+  /** Of `untouchable`, the ones a newer narrative may still be merged into (the owner's merged and called narratives). Absent: none. */
+  readonly receiveOnly?: ReadonlySet<string>;
 }
 
 /** `refs` with each post's quoted post added: what the starts, roots and joins follow. */
@@ -255,12 +265,17 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
     }
   }
   /* Which pairs the evidence allows, before any closeness: the owner's calls and the formed times. */
+  const receives = (id: string): boolean => input.receiveOnly?.has(id) ?? false;
+  const fixed = (id: string): boolean => input.untouchable.has(id) && !receives(id);
+  const newestOf = (members: readonly string[]): number => Math.max(...members.map((m) => atOf(m) ?? Number.NEGATIVE_INFINITY));
   const allowed = [...evidence.values()].filter((e) => {
     const xa = byId.get(e.a);
     const xb = byId.get(e.b);
     if (!o.mergeOn || xa === undefined || xb === undefined) return false;
-    if (input.untouchable.has(e.a) || input.untouchable.has(e.b)) return false;
-    if (Math.abs(xa.formedAtMs - xb.formedAtMs) > o.formedWithinMs) return false;
+    if (fixed(e.a) || fixed(e.b) || (input.untouchable.has(e.a) && input.untouchable.has(e.b))) return false;
+    /* A narrative the owner called is live while it is posted to: its newest post, not when it formed. */
+    const when = (x: OriginNarrative, other: OriginNarrative): number => (receives(x.id) ? Math.min(Math.max(x.formedAtMs, newestOf(x.members)), other.formedAtMs) : x.formedAtMs);
+    if (Math.abs(when(xa, xb) - when(xb, xa)) > o.formedWithinMs) return false;
     return e.shared.size > 0 || e.posts.size >= o.minLinkPosts;
   });
   /* ★ THE MERGE ON THE STORY'S OWN WORDS (`origin.words*`, policy.v149) — see `wordsEvidence`. */
@@ -298,6 +313,13 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
       if (va === null || vb === null) continue;
       const meaning = dot(va, vb);
       if (meaning < e.bar) continue;
+      /* A narrative the owner called only ever takes the newer one in, never against his calls. */
+      if (input.untouchable.has(a) || input.untouchable.has(b)) {
+        const ma = membersOf.get(a) ?? [];
+        const mb = membersOf.get(b) ?? [];
+        const newerOne = oldestOf(ma) < oldestOf(mb) || (oldestOf(ma) === oldestOf(mb) && a < b) ? b : a;
+        if (input.untouchable.has(newerOne) || keptApart(input.calls, ma, mb)) continue;
+      }
       const better =
         best === null ||
         STRENGTH.indexOf(e.why) < STRENGTH.indexOf(best.why) ||

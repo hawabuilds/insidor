@@ -72,6 +72,16 @@ export const STORY_SQL = 'select payload from public.story_view where story_id =
 export const NARRATIVES_SQL =
   'select s.payload from public.board_row r join public.story_view s on s.story_id = r.story_id where r.view_id = $1 order by r."position" asc';
 
+/**
+ * The narratives that are an online meme war between countries (the projector's `countries`, 0130),
+ * most viewed first, at most 100: what the Narratives tab's umbrella opens. The projector says
+ * `countries` only while the war is still being posted (Policy.narrative.fight.activeMs); this read
+ * decides nothing about it.
+ */
+export const FIGHT_NARRATIVES_SQL = `select payload from public.story_view
+  where jsonb_typeof(payload -> 'countries') = 'array' and jsonb_array_length(payload -> 'countries') >= 2
+  order by (payload #>> '{viewsTotal,v}')::float8 desc nulls last, story_id limit 100`;
+
 /** Whether 0106 is applied: the All time list and the merged-narrative links need its columns and table. */
 export const PERMANENT_NARRATIVES_SQL = `select to_regclass('public.story_alias') is not null as ok`;
 

@@ -28,6 +28,7 @@ export {
   fetchPostSheet,
   fetchNarratives,
   fetchAllNarratives,
+  fetchFightNarratives,
   fetchRising,
   fetchRisingOlder,
   fetchRisingSorted,

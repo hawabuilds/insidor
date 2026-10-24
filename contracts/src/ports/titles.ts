@@ -11,6 +11,12 @@
  * a usable title) — absent is asked again on a later pass and meanwhile the narrative keeps the
  * name its posts' judge gave it, never a placeholder.
  *
+ * ★ ONE MORE QUESTION ON THE SAME CALL (policy.v155, Policy.narrative.fight): whether the posts are
+ * users of two or more countries trading memes and insults with each other online, and which
+ * countries. `fight` on a `titled` answer: the countries (two or more, each a plain country name),
+ * an empty list for "no", or absent when the answer said nothing usable about it — absent is asked
+ * again with the next title; an empty list is an answer and is kept.
+ *
  * What breaks if changed carelessly: the subject `ref` is what answers are matched back by.
  */
 
@@ -26,7 +32,7 @@ export interface TitleSubject {
 }
 
 export type TitleOutcome =
-  | { readonly kind: 'titled'; readonly ref: string; readonly title: string }
+  | { readonly kind: 'titled'; readonly ref: string; readonly title: string; readonly fight?: readonly string[] }
   | { readonly kind: 'absent'; readonly ref: string; readonly detail: string };
 
 export interface TitlePort {

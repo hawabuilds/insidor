@@ -3,10 +3,14 @@
  * page (the owner's wallet only, `useIsOwner`, as on posts). It says "Only you can see this." and
  * holds, as the owner laid it out (2026-10-17):
  *
+ *   NAME    Rename (2026-10-23): type the title; it is the one everywhere from the next refresh,
+ *           and the written titles never replace it; and Twitter World War: which countries' users
+ *           are fighting in it (it then sits under that card in the tab), or Not a meme war
  *   COIN    Right coin (the coin the page shows is the narrative's), and Wrong coin, which saves
  *           at once and then offers the narrative's other coins to pick, or an address to paste,
  *           as the right one
- *   POSTS   Merge with another (pick the narrative it is the same as), Remove a post (pick it),
+ *   POSTS   Add a post (paste an X or TikTok post's link: it joins and stays, read first if we
+ *           do not hold it), Merge with another (pick the narrative it is the same as), Remove a post (pick it),
  *           and Split (tick the posts that are another story, then "Move N posts to a new
  *           narrative"; the server refuses none or all of them, and names the new one)
  *   and, on its own at the bottom, a red Not a narrative
@@ -36,7 +40,13 @@ import styles from './narrative.module.css';
 /** A pasted coin address: base58, as long as one is. */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split';
+type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split' | 'rename' | 'add' | 'war';
+
+/** An X or TikTok post's link, as the server reads one (services/social owner-coin.ts `postIdOf`). */
+const POST_LINK = /^https?:\/\/(?:(?:www|mobile)\.)?(?:(?:x|twitter)\.com\/[^/]+\/status(?:es)?\/\d{5,25}|(?:(?:www|m)\.)?tiktok\.com\/.*\/(?:video|photo)\/\d{5,25})(?:[/?#].*)?$/i;
+
+/** The longest title the server takes (services/social owner-narrative.ts). */
+const MAX_TITLE = 80;
 
 export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: StorySheet | null; onClose: () => void }) {
   const [pane, setPane] = useState<Pane>('main');
@@ -54,6 +64,9 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
       <SheetBody last>
         {pane === 'main' ? (
           <div className={styles['editBody']}>
+            <h3 className={styles['editLabel']}>Name</h3>
+            <Row title="Rename" sub={story.title} then={() => setPane('rename')} />
+            <Row title="Twitter World War" sub={story.countries === null ? 'Not in it' : `In it: ${story.countries.join(' vs ')}`} then={() => setPane('war')} />
             <h3 className={styles['editLabel']}>Coin</h3>
             {shown !== null ? (
               <Row call={{ action: 'coin_right', storyId: story.id, coin: shown.address }} title="Right coin" sub={`${name} is the coin for this story`} />
@@ -65,6 +78,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
               then={() => setPane('pick')}
             />
             <h3 className={styles['editLabel']}>Posts</h3>
+            <Row title="Add a post" sub="Paste an X or TikTok link" then={() => setPane('add')} />
             <Row title="Merge with another" sub="Same story, two narratives" then={() => setPane('merge')} />
             <Row title="Remove a post" sub="A post here doesn't belong" then={() => setPane('remove')} />
             <Row title="Split" sub="Some posts here are another story" then={() => setPane('split')} />
@@ -75,6 +89,9 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
         {pane === 'merge' ? <Merge story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'remove' ? <Remove story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'split' ? <Split story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'rename' ? <Rename story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'add' ? <AddPost story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'war' ? <MemeWar story={story} onBack={() => setPane('main')} /> : null}
       </SheetBody>
     </Sheet>
   );
@@ -190,6 +207,62 @@ function PickCoin({ story, sheet, wrong, onBack }: { story: Story; sheet: StoryS
         <input className={styles['editInput']} placeholder="Paste the coin's address" value={pasted} onChange={(e) => setPasted(e.target.value)} spellCheck={false} autoCapitalize="off" />
         {ok ? <Call key={pasted.trim()} call={{ action: 'coin_right', storyId: story.id, coin: pasted.trim() }} label="Save" small /> : null}
       </div>
+    </div>
+  );
+}
+
+/** His own title for it: saved once typed and different, shown everywhere from the next refresh. */
+function Rename({ story, onBack }: { story: Story; onBack: () => void }) {
+  const [typed, setTyped] = useState(story.title);
+  const title = typed.replace(/\s+/g, ' ').trim();
+  const ok = title !== '' && title.length <= MAX_TITLE && title !== story.title;
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Rename" />
+      <p className={styles['editNote']}>Your title replaces the written one everywhere, and stays when the narrative grows.</p>
+      <div className={styles['editRow']}>
+        <input className={styles['editInput']} placeholder="New title" value={typed} maxLength={MAX_TITLE} onChange={(e) => setTyped(e.target.value)} />
+        {ok ? <Call key={title} call={{ action: 'rename', storyId: story.id, title }} label="Save" small /> : null}
+      </div>
+    </div>
+  );
+}
+
+/** A post that belongs here: its link pasted, saved at once; it joins on the next pass and stays. */
+function AddPost({ story, onBack }: { story: Story; onBack: () => void }) {
+  const [pasted, setPasted] = useState('');
+  const link = pasted.trim();
+  const ok = POST_LINK.test(link);
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Add a post" />
+      <p className={styles['editNote']}>It joins this narrative within a few minutes and stays. A post we don't have yet is read first.</p>
+      <div className={styles['editRow']}>
+        <input className={styles['editInput']} placeholder="Paste the post's link" value={pasted} onChange={(e) => setPasted(e.target.value)} spellCheck={false} autoCapitalize="off" inputMode="url" />
+        {ok ? <Call key={link} call={{ action: 'add_post', storyId: story.id, postUrl: link }} label="Add" small /> : null}
+      </div>
+      {link !== '' && !ok ? <p className={styles['editNote']}>Paste the full link to an X or TikTok post.</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Whether it is an online meme war between countries, his answer over the written one: the countries
+ * typed ("France, Japan") put it under Twitter World War, Not a meme war takes it out.
+ */
+function MemeWar({ story, onBack }: { story: Story; onBack: () => void }) {
+  const [typed, setTyped] = useState((story.countries ?? []).join(', '));
+  const countries = typed.split(/[,/]| vs /i).map((c) => c.trim()).filter((c) => c !== '');
+  const ok = countries.length >= 2 && countries.length <= 4;
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Twitter World War" />
+      <p className={styles['editNote']}>Which countries' users are fighting in it. Your answer replaces the written one and stays.</p>
+      <div className={styles['editRow']}>
+        <input className={styles['editInput']} placeholder="China, Turkey" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        {ok ? <Call key={countries.join('|')} call={{ action: 'meme_war', storyId: story.id, countries }} label="Save" small /> : null}
+      </div>
+      <Call call={{ action: 'meme_war', storyId: story.id, countries: [] }} label="Not a meme war" />
     </div>
   );
 }
