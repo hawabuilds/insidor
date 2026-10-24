@@ -120,7 +120,7 @@ test('★ follows and likes are each listed, never pushed, and never held for a 
   assert.deepEqual((await listed()).slice(0, 3), [['New follower', '@ann followed you'], ['New follower', '@bob followed you'], ['New follower', '@cyd followed you']]);
 });
 
-test('★ a saved post\'s first settled coin is listed at once; a post that showed a coin when saved, or an unsure one, is not', async () => {
+test('★ shadow mode: a saved post\'s first settled coin is pushed at once (2026-10-24, a saved post always pushes); a post that showed a coin when saved, or an unsure one, is not', async () => {
   const { db, sent, deliver, listed } = await people(2);
   await db.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
   const line = (id: string, coins: unknown) =>
@@ -136,8 +136,8 @@ test('★ a saved post\'s first settled coin is listed at once; a post that show
   assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 0, 'unsure is not a coin');
   await line('x:1', { kind: 'one', coin: { address: 'Fal111', ticker: 'FALCON', marketCapUsd: { v: 3_000 } }, evidence: { linksPost: true } });
   assert.equal(await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state), 1);
-  assert.deepEqual(await deliver(), ['list-only'], 'listed: the one push is a coin launched for a For You post (launch.ts)');
-  assert.equal(sent.length, 0);
+  assert.deepEqual(await deliver(), ['push'], 'a saved post\'s coin reaches the phone');
+  assert.equal(sent.length, 1);
   assert.deepEqual((await listed()).at(-1), ['$FALCON is the first coin for a post you saved', '"Falcon 9 lands again" (@SpaceX). $3K MC.']);
   await line('x:1', { kind: 'one', coin: { address: 'Two111', ticker: 'TWO' }, evidence: { linksPost: true } });
   await checkWatched(db, { policy: P, now: () => NOW, onPick: false }, state);
