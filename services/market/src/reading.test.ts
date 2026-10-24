@@ -229,6 +229,17 @@ test('★ an aggregator answer is reused only inside the window it was written i
   assert.equal(reusableRoute(undefined, start, WINDOW), null);
 });
 
+test('★ each coin falls due at its own moment, so a pass is not left with every coin at once', () => {
+  const WINDOW = 1_800_000;
+  const now = 50 * WINDOW + 123_456;
+  const keys = Array.from({ length: 110 }, (_, i) => `solana:coin${i}pump`);
+  /* Every coin answered one pass (six minutes) ago: only the coins whose own window began in those six minutes are due. */
+  const due = keys.filter((k) => reusableRoute({ takenAt: now - 360_000, tradable: true, quotedBy: 'solana:pool' }, now, WINDOW, k) === null).length;
+  assert.ok(due > 5 && due < 40, `due ${due}`);
+  /* An answer a whole window old is due for every coin, whatever its offset. */
+  assert.ok(keys.every((k) => reusableRoute({ takenAt: now - WINDOW, tradable: true, quotedBy: 'solana:pool' }, now, WINDOW, k) === null));
+});
+
 /* ── provenance and the instant ───────────────────────────────────────── */
 
 test('the reading is stamped when it was TAKEN, not when it is written', () => {

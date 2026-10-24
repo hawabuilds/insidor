@@ -107,7 +107,7 @@ export async function routesFor(
       settle(address, 'curve');
       continue;
     }
-    const reused = reusableRoute(last.get(keyOf(address)), opts.nowMs, opts.reuseMs);
+    const reused = reusableRoute(last.get(keyOf(address)), opts.nowMs, opts.reuseMs, keyOf(address));
     if (reused !== null) {
       counts.reused += 1;
       settle(address, reused);

@@ -5126,7 +5126,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v155',
+  version: 'policy.v156',
 
   admit: {
     maxAgeMin: 240,
@@ -5576,7 +5576,11 @@ const POLICY_V1: Policy = {
        took its Buy away. Eight covers one ordinary gap; a missed pass still shows the dash. */
     readingFreshnessMs: 480_000,
     maxAssetsPerPass: 300,
-    poolRouteReuseMs: 900_000, // fifteen minutes
+    /* Thirty minutes from policy.v156 (2026-10-24), each coin on its own clock (market reading.ts
+       `reusableRoute`): at fifteen, with one clock for all, 70 of ~110 coins off their curve fell due on
+       one pass of 40 asks and showed "can't be traded yet". A coin off its curve rarely loses its
+       route, and the Buy sheet asks again before any order. */
+    poolRouteReuseMs: 1_800_000, // thirty minutes
     maxPoolProbesPerPass: 40,
   },
 
