@@ -12,7 +12,7 @@
  * vendor's provider around the app again would rebuild every open tab when it loads.
  */
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 export interface KeyImportProps {
   readonly onDone: (outcome: 'imported' | 'cancelled' | 'failed') => void;
@@ -45,11 +45,18 @@ export function useKeyImportSlot(): Slot | null {
 /** Marks where the key import box goes; the vendor's side fills it. */
 export function KeyImportSlot(props: KeyImportProps) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
-  const { onDone, classes } = props;
+  /* ★ THE SLOT IS SET ONCE PER PLACE, NOT ONCE PER RENDER. The screen passes a fresh onDone and
+     classes on every render; publishing them each time made the vendor side redraw the box, which
+     re-rendered the screen, which published again: React gave up with "maximum update depth"
+     (error #185) the moment "I understand" opened the box (the owner, 2026-10-24). The latest props
+     are read through a ref instead, so the box is drawn once and still calls the current onDone. */
+  const latest = useRef(props);
+  latest.current = props;
   useEffect(() => {
     if (node === null) return;
-    set({ node, props: { onDone, ...(classes === undefined ? {} : { classes }) } });
+    const classes = latest.current.classes;
+    set({ node, props: { onDone: (outcome) => latest.current.onDone(outcome), ...(classes === undefined ? {} : { classes }) } });
     return () => set(null);
-  }, [node, onDone, classes]);
+  }, [node]);
   return <div ref={setNode} style={{ display: 'contents' }} />;
 }
