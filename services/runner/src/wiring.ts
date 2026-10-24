@@ -89,6 +89,7 @@ import {
   PgCryptoAttentionRepo,
   PgPostRefillRepo,
   PgReadingsRepo,
+  PgGonePostRepo,
   PgFeedFloorRepo,
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
@@ -1274,6 +1275,7 @@ export async function withRuntime<T>(
           log: log.child({ step: 'track' }),
           now: () => Date.now() as Millis,
           spentSince: (vendor, endpoint, sinceMs) => new PgSpendRepo(db).usdSince(vendor, endpoint, sinceMs),
+          gone: { repo: new PgGonePostRepo(db), log: log.child({ step: 'gone-posts' }) },
         },
         /* GROUP's picture evidence: stored image vectors, the judge's names, and the
            same-subject question for borderline pictures (asked with QUALIFY's judge). */
@@ -1395,6 +1397,7 @@ export async function withRuntime<T>(
                 log: log.child({ step: 'readings' }),
                 now: () => Date.now() as Millis,
                 sortTop: sortTopPosts,
+                gone: { repo: new PgGonePostRepo(db), log: log.child({ step: 'gone-posts' }) },
               },
               readingNotes,
             ),
