@@ -1940,6 +1940,10 @@ export interface FeedPolicy {
    * Its own day in internal.lane_spend ('search:fight_words', `cap`), and every ask also inside the
    * X search day's pace (`searchDay`) and the meter's line: it never raises either.
    *
+   * ★ A LANGUAGE MAY HAVE ITS OWN BAR (`byLang`, policy.v169): its like floor and how many of its
+   * words are asked, in place of `minApproval` and `wordsPerSide` for that language's asks only. A
+   * side whose posts draw fewer likes is asked lower (Japanese answering the French, 2026-10-24).
+   *
    * What breaks if changed carelessly: `lookbackMs` against `everyMs`. A post is returned (and billed)
    * on every ask while it is inside the window; three asks a post at 90 minutes and 30.
    */
@@ -1949,6 +1953,7 @@ export interface FeedPolicy {
     readonly lookbackMs: number;
     readonly minApproval: number;
     readonly wordsPerSide: number;
+    readonly byLang: Readonly<Record<string, { readonly minApproval: number; readonly wordsPerSide: number }>>;
     readonly maxWars: number;
     readonly maxPagesPerAsk: number;
     readonly passDeadlineMs: number;
@@ -4491,6 +4496,14 @@ export interface NarrativePolicy {
      *               the same name must be (`narrative.nameMeaning`). Measured 23-24 Oct at 40k+: the
      *               posts about the French–Japanese beef sit 0.61-0.76 from the war, the news naming
      *               both (a PHP bug, the riots, a K-pop tour) 0.29-0.49
+     *   answersOn    ★ A QUOTE OF THE WAR IN THE OTHER SIDE'S LANGUAGE (policy.v169, the owner
+     *               2026-10-24: France vs Japan had 24 French posts and no Japanese one). A stored post
+     *               at `minReach` views that quotes or links a post of a live war (titled by the titler
+     *               or the owner, not a waiting seed), in the language of one of its countries other
+     *               than the quoted post's, joins it though it names no country: the Japanese answer to
+     *               the 14.9M "végéta est algérien" post (4.9M views). Same window and guards as the
+     *               words; read on the catch-up's cadence. A quote in the same language, or in English,
+     *               does not join by this
      *   moveMaxPosts  a war post in another narrative: a narrative all of whose posts are that war's
      *               (one of its own included) is merged into the war; one of at most this many posts
      *               with other posts too gives up only that post. Never a narrative the owner made a
@@ -4505,6 +4518,7 @@ export interface NarrativePolicy {
       readonly catchUpEveryMs: number;
       readonly warLeadMs: number;
       readonly moveMaxPosts: number;
+      readonly answersOn: boolean;
       readonly seedMinPosts: number;
       readonly seedMinAccounts: number;
       readonly seedWithinMs: number;
@@ -5367,8 +5381,14 @@ const POLICY_V1: Policy = {
      listWindowHours).
 
      v167 adds `rising.promotion` (a promotion post — a small post pointing at someone else's bigger
-     one — is never on For You or Popular; its coin goes to the original). */
-  version: 'policy.v168',
+     one — is never on For You or Popular; its coin goes to the original).
+
+     v168 adds `rising.scrollKeepMs` (For You's scroll reaches back 72 hours).
+
+     v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西)
+     and the meme-war word search's per-language bar (`feed.fightWords.byLang`, Japanese at 100),
+     and the quote of a war post in the other side's language (`narrative.fight.native.answersOn`). */
+  version: 'policy.v169',
 
   admit: {
     maxAgeMin: 240,
@@ -6315,6 +6335,14 @@ const POLICY_V1: Policy = {
       lookbackMs: 5_400_000, // ninety minutes
       minApproval: 300,
       wordsPerSide: 2,
+      /* policy.v169, the owner's yes (2026-10-24): France vs Japan had 24 French posts and no Japanese
+         one; in the 4 days to then only 6 stored Japanese posts named フランス, all under 10k views and
+         none the war, and this search's Japanese ask found 2 posts at 300 likes in its first 6 hours.
+         Japanese at 100, and its three words (フランス, フランス人, 仏人) asked, not one. Estimated: 2
+         more asks a pass at the one-post minimum, 96 a day, ~$0.015; about 3 times the Japanese posts
+         at a third of the likes, ~25 a day returned ~3 times, ~$0.011, and judged, ~$0.010 — about
+         $0.035 a day more, inside the $0.10 cap (the day of 24 Oct had spent $0.021 by 17:30 UTC). */
+      byLang: { ja: { minApproval: 100, wordsPerSide: 3 } },
       maxWars: 6,
       maxPagesPerAsk: 2,
       passDeadlineMs: 120_000,
@@ -7511,6 +7539,10 @@ const POLICY_V1: Policy = {
         catchUpEveryMs: 600_000,
         warLeadMs: 172_800_000, // two days, the regroup's window
         moveMaxPosts: 3,
+        /* policy.v169. Free: stored posts, their stored quotes and links. Replayed read-only 2026-10-24
+           over 7 days: France vs Japan gains 1 post (the 4.9M Japanese Vegeta answer, as early), China
+           vs Turkey none (its Chinese quote of a Turkish post, 8.9M, was in already). 0.4-0.9 s a read. */
+        answersOn: true,
         seedMinPosts: 3,
         seedMinAccounts: 3,
         seedWithinMs: 86_400_000, // a day
@@ -7519,7 +7551,12 @@ const POLICY_V1: Policy = {
         home: { fr: 'France', ja: 'Japan', zh: 'China', tr: 'Turkey', ko: 'South Korea' },
         names: {
           fr: { Japan: ['japon', 'japonais*', 'japonnais*'], China: ['chine', 'chinois*'], Turkey: ['turquie', 'turc', 'turcs', 'turque', 'turques'], 'South Korea': ['corée', 'coréen*'] },
-          ja: { France: ['フランス'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
+          /* policy.v169 (the owner, 2026-10-24): "French people" as Japanese writes it, in katakana
+             and in the old kanji short form, and France in kanji. フランス人 holds フランス, so the join
+             matched it already; it is here for the words search, which asks a word as written. Not
+             仏 alone: on 14-24 Oct its 18 stored Japanese posts were news (仏で, 仏大統領, 仏独合意) and
+             Buddhism (神社仏閣, 仏滅), none the war. Not おフランス: it holds フランス too. */
+          ja: { France: ['フランス', 'フランス人', '仏人', '仏蘭西'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
           zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
           tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
           ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },

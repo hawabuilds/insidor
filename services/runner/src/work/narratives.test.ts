@@ -356,6 +356,34 @@ test('★ the catch-up: an older war post joins as early, an English post alike 
   assert.equal(asked.length, 1);
 });
 
+test('★ the catch-up: a Japanese quote of a French war post joins it; the owner\'s "Not a meme" and a waiting seed\'s quotes do not', async () => {
+  const war: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: 'French and Japanese users trade memes', titlePosts: 3, fight: ['France', 'Japan'], fightModel: 'm', newestPostAtMs: NOW - 3_600_000, early: [] };
+  const seed: StoredNarrative = { ...war, id: 'n-seed', members: ['s1'], anchor: 's1', shown: false, fight: ['China', 'Japan'], fightModel: 'native-names' };
+  const own = [warPost('w1', 'fr', 'Les japonais ils sont au courant que végéta est algérien ?', 14_880_528), warPost('w2', 'fr', 'Le japonais qui remercie son patron', 288_592), warPost('w3', 'fr', 'Les touristes japonais', 316_567)];
+  const quotes = [
+    { ...warPost('ja1', 'ja', 'ベジータがアルジェリア人ではない最大の証拠がコチラ', 4_946_842), narrativeId: null, refersTo: ['w1'] },
+    { ...warPost('ja-not', 'ja', 'これは草', 120_000), narrativeId: null, refersTo: ['w2'] },
+    { ...warPost('ja-seed', 'ja', 'これは草', 120_000), narrativeId: null, refersTo: ['s1'] },
+  ];
+  const asked: unknown[][] = [];
+  const more = {
+    fightPosts: async () => [],
+    fightWarPosts: async () => [],
+    fightQuotes: async (...args: unknown[]) => (asked.push(args), quotes.filter((q) => (args[1] as readonly string[]).some((t) => q.refersTo.includes(t)))),
+    fightRowsOf: async (ids: readonly string[]) => own.filter((c) => ids.includes(c.itemId)),
+    ownStarts: async () => new Map([['n-war', NOW - DAY]]),
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { coinable: false, confidence: 0.9, ownerCall: id === 'ja-not' ? 'not' : null, body: 'a post' })),
+    fights: async () => [war, seed],
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [war, seed], DEFAULT_POLICY, more);
+  const r = await s.grouper.pass();
+  const entry = s.saved[0]?.narratives.find((x) => x.id === 'n-war');
+  assert.deepEqual(entry?.added, ['ja1']);
+  assert.equal(r.joinedFight, 1);
+  assert.deepEqual(asked[0]?.[1], ['w1', 'w2', 'w3'], 'only a named war\'s posts are quoted targets, never a seed\'s');
+  assert.deepEqual(asked[0]?.[2], Object.keys(DEFAULT_POLICY.narrative.fight.native.home));
+});
+
 test('★ a pair no war holds seeds a narrative off the board; the titler naming both countries shows it', async () => {
   const shownNow: string[] = [];
   const seed: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: false, firstShownAtMs: null, postsChangedAtMs: NOW - DAY, title: null, titlePosts: null, fight: ['China', 'Turkey'], fightModel: 'native-names', newestPostAtMs: NOW - DAY, early: [] };
