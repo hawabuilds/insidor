@@ -55,7 +55,12 @@ update internal.narrative n
  where n.state = 'open'
    and n.first_shown_at is not null
    and (exists (select 1 from public.story_view v where v.story_id = n.narrative_id)
-        or (n.shown and n.first_shown_at < timestamptz '2026-10-23 13:37:30+00'));
+        or (n.shown and n.first_shown_at < timestamptz '2026-10-23 13:37:30+00'
+            -- …and only those with a post read at 40,000 views or more (For You's bar): the owner,
+            -- 2026-10-24, "1" — the small-post narratives the 23 Oct viral floor took off stay off.
+            and exists (select 1 from internal.narrative_member m
+                          join public.observation o on o.item_id = m.item_id and o.kind = 'reach'
+                         where m.narrative_id = n.narrative_id and o.value >= 40000)));
 
 update internal.narrative n
    set listed_at = coalesce(n.first_shown_at, v.projected_at)
