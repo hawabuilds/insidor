@@ -9,7 +9,7 @@
  * owner's rule for the whole flow.
  */
 
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 import styles from './signup.module.css';
 
@@ -87,13 +87,25 @@ export function TextLink({ onClick, strong = false, children }: { readonly onCli
   );
 }
 
-/** Insidor's mark at any size: an eye, seeing it first. */
+/**
+ * Insidor's mark at any size: the Keyhole Eye (the owner's choice, 2026-10-23; reports/brand/logo-keyhole-eye.svg)
+ * — a dark keyhole in a violet tile, an eye looking out of its round top. Gradient ids are per
+ * drawing (`useId`), so two marks on one screen never borrow each other's fills.
+ */
 export function Mark({ size = 40 }: { readonly size?: number }) {
+  const id = useId().replace(/:/g, '');
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" rx="11" fill="var(--brand)" />
-      <path d="M8 20c3.4-5.6 7.4-8.4 12-8.4s8.6 2.8 12 8.4c-3.4 5.6-7.4 8.4-12 8.4S11.4 25.6 8 20Z" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
-      <circle cx="20" cy="20" r="4.2" fill="#fff" />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true" style={{ borderRadius: size * 0.23, flex: 'none' }}>
+      <defs>
+        <linearGradient id={`v${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#a47bff" /><stop offset="1" stopColor="#6d3df0" /></linearGradient>
+        <radialGradient id={`s${id}`} cx=".32" cy=".2" r=".8"><stop offset="0" stopColor="#fff" stopOpacity=".3" /><stop offset=".55" stopColor="#fff" stopOpacity="0" /></radialGradient>
+      </defs>
+      <rect width="100" height="100" fill={`url(#v${id})`} />
+      <rect width="100" height="100" fill={`url(#s${id})`} />
+      <path d="M50 12 a24 24 0 0 1 14.6 43 L71 88 H29 l6.4-33 A24 24 0 0 1 50 12 Z" fill="#0d0b16" />
+      <ellipse cx="50" cy="36" rx="16" ry="10.5" fill="#fff" />
+      <circle cx="54" cy="36" r="6.8" fill="#0d0b16" />
+      <circle cx="56.2" cy="33.6" r="2.1" fill="#fff" />
     </svg>
   );
 }
