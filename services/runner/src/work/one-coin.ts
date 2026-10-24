@@ -34,6 +34,9 @@
  *            evidence says which, with the reason "no trade data" — written with every change of
  *            coin recorded (coin_pick_change). A post whose pick the runner hand-over wrote is
  *            left to that rule.
+ *   early    on the same pass, before the posts' picks are written: a coin made for the post, under
+ *            $20K and rising five times every rival of its launch wave, takes the pick and the owner
+ *            is told (work/early-pick.ts, Policy.oneCoin.early); held against this rule's "waiting".
  *   hand over every Policy.runnerLink.handover.everyMs, each held post pick against the later coins
  *            made for the post that run now (work/runner-handover.ts): a pick held on a dead first
  *            coin goes to the runner.
@@ -63,6 +66,7 @@ import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, 
 
 import { errorText, type Logger } from '../log.ts';
 import { HASH_VERSION } from './picture-hash.ts';
+import { decideEarly, holdEarly, tellEarly, type EarlyDecision, type EarlyPickDeps, type EarlyRecord } from './early-pick.ts';
 import { heldByRunner, runnerHandoverPass, type Handover, type RunnerHandoverDeps } from './runner-handover.ts';
 
 /** The recent posts are read again this often, not every pass: a launch is rematched for minutes, so a post judged since is still met. */
@@ -101,6 +105,11 @@ export interface OneCoinDeps {
    * post picks and the coins' last hours. Absent: no hand-over step, as before policy.v160.
    */
   readonly handover?: Pick<RunnerHandoverDeps, 'heldPostPicks' | 'lastHours'>;
+  /**
+   * The early pick's reads and its push (work/early-pick.ts, Policy.oneCoin.early). Absent: no early
+   * pick is made, as before policy.v163 — an early pick already held is still kept by its discipline.
+   */
+  readonly early?: EarlyPickDeps;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -129,6 +138,8 @@ export interface OneCoinResult {
   readonly basis: 'trades' | 'market_readings' | null;
   /** The runner hand-overs this pass wrote (empty on a pass the step did not run). */
   readonly handovers: readonly Handover[];
+  /** The early picks this pass wrote. */
+  readonly early: readonly { readonly itemId: string; readonly address: string; readonly capUsd: number; readonly ageMs: number }[];
 }
 
 const evidenceOf = (m: LaunchMatch): Record<string, unknown> => ({ ties: m.evidence, hashDistance: m.hashDistance, similarity: m.similarity, launchedAfterMs: m.launchedAfterMs, ...(m.linkedThrough === null ? {} : { linkedThrough: m.linkedThrough }) });
@@ -320,8 +331,26 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
 
   const prevPosts = await repo.picks('post', [...byPost.keys()]);
   /* ★ A pick the runner hand-over wrote is that rule's (work/runner-handover.ts): judged here again on first-hour buying, it would go straight back. */
-  const postPicks = [...byPost].filter(([id]) => !heldByRunner(prevPosts.get(id))).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
+  const open1 = [...byPost].filter(([id]) => !heldByRunner(prevPosts.get(id)));
+  /* ★ The early pick (work/early-pick.ts): a coin made for the post, under $20K and rising five times every rival. Never over his call. */
+  let early: readonly EarlyDecision[] = [];
+  if (deps.early !== undefined && deps.policy.oneCoin.early.on) {
+    try {
+      early = await decideEarly(new Map(open1.filter(([id]) => !called.has(id))), market, prevPosts, deps.early, deps.policy, now);
+    } catch (e) {
+      deps.log.error('one coin: the early pick failed; the posts are judged as before', { err: errorText(e) });
+    }
+  }
+  const earlyIds = new Set(early.map((d) => d.itemId));
+  /* ★ An early pick is held against this rule's "waiting", and its record kept on every later write (early-pick.ts `holdEarly`). */
+  const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
+  const launchedOf = new Map(open.filter((r) => r.launchedAtMs !== null).map((r) => [r.address, r.launchedAtMs] as const));
+  const postPicks = [...holdEarly(judged, prevPosts, launchedOf, deps.policy.oneCoin.early.rivalWithinMs), ...early.map((d) => d.write)];
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);
+  if (early.length > 0 && deps.early !== undefined) {
+    for (const d of early) deps.log.info('early pick', { itemId: d.itemId, address: d.pick.address, capUsd: d.pick.capUsd, ageMs: d.pick.ageMs, riseUsd: d.pick.riseUsd, rivalRiseUsd: d.pick.rivalRiseUsd, rivals: d.pick.rivals, rivalsUnread: d.pick.rivalsUnread, told: (d.write.evidence['earlyPick'] as EarlyRecord).told });
+    await tellEarly(early, deps.early, deps.log);
+  }
 
   const rowsByItem = new Map<string, CandidateRow[]>();
   for (const r of allRows) rowsByItem.set(r.itemId, [...(rowsByItem.get(r.itemId) ?? []), r]);
@@ -357,5 +386,5 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   if (rows.length > 0 || changed > 0) {
     deps.log.info('one coin: launches matched and picks judged', { launches: launches.length, candidates: rows.length, existing, posts: postPicks.length, narratives: narrativePicks.length, changed, basis, mode: P.mode });
   }
-  return { launches: launches.length, candidates: rows.length, existing, judged: postPicks.length + narrativePicks.length, changed, basis, handovers };
+  return { launches: launches.length, candidates: rows.length, existing, judged: postPicks.length + narrativePicks.length, changed, basis, handovers, early: early.map((d) => ({ itemId: d.itemId, address: d.pick.address, capUsd: d.pick.capUsd, ageMs: d.pick.ageMs })) };
 }

@@ -243,6 +243,17 @@ test('★ the runner hand-over: "A new coin from @X\'s post is running", facts o
   assert.deepEqual(alertText('coin_launched', { runner: true, symbol: 'RUN', mcUsd: null }), { title: 'A new coin from a post on For You is running: $RUN', body: 'A post on For You.' }, 'no cap: left out, never a zero');
 });
 
+test('★ the early pick: "$TICKER from @X\'s post: $14K cap, 9 min old, 5× the other coins", facts only', () => {
+  const facts = { what: 'early-pick', symbol: 'baldcat', excerpt: 'this cat doesnt even know how stupid it looks', author: '@queasy_f_bby', mcUsd: 14_275, ageMs: 528_000, rivals: 4, multiple: 9.49 };
+  assert.deepEqual(alertText('outage', facts), {
+    title: "$baldcat from @queasy_f_bby's post: $14.3K cap, 9 min old, 9× the other coins",
+    body: '"this cat doesnt even know how stupid it looks".',
+  });
+  assert.deepEqual(alertText('coin_launched', { ...facts, what: undefined, early: true }), alertText('outage', facts), 'widened to everyone, the same words');
+  assert.equal(alertText('outage', { ...facts, multiple: null }).title, "$baldcat from @queasy_f_bby's post: $14.3K cap, 9 min old, the other 4 coins flat");
+  assert.equal(alertText('outage', { ...facts, rivals: 0, multiple: null, author: null, mcUsd: null }).title, '$baldcat from a post on For You: 9 min old, the only coin for it', 'no cap: left out, never a zero');
+});
+
 test('★ a launch from the post that started a narrative says so, in place of the normal first line, with the same body', () => {
   assert.deepEqual(alertText('coin_launched', { symbol: 'DOGZILLA', started: 'Dogzilla', excerpt: 'Dogzilla is coming for the city', author: '@trpost', mcUsd: 21_000 }), {
     title: '$DOGZILLA launched from the post that started Dogzilla',

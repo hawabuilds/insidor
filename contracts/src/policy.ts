@@ -2378,6 +2378,26 @@ export interface OneCoinPolicy {
    * The market service reads at most `readsPerPass` of these coins each pass while they are weighed.
    */
   readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number; readonly lookbackMs: number; readonly lookbackCoins: number; readonly readsPerPass: number };
+  /**
+   * ★ THE EARLY PICK (policy.v163, core match/early-pick.ts, services/runner work/early-pick.ts): a
+   * coin made for the post (a link, one hop through a promotion included, or its stated name) whose
+   * fresh reading is in [`minCapUsd`, `maxCapUsd`) and whose rise over `openingCapUsd` is `lead`
+   * times every rival launched in the `rivalWithinMs` before, judged `fromMs` to `withinMs` after its
+   * launch, takes the post's pick — never over the owner's coin call or the runner hand-over's pick,
+   * once a post. `push`: told at once with plain facts, to the owner's profiles only while `everyone`
+   * is false, and only for a post on For You before the coin launched (or a coin-first post).
+   */
+  readonly early: {
+    readonly on: boolean;
+    readonly minCapUsd: number;
+    readonly maxCapUsd: number;
+    readonly lead: number;
+    readonly fromMs: number;
+    readonly withinMs: number;
+    readonly rivalWithinMs: number;
+    readonly readingWithinMs: number;
+    readonly push: { readonly on: boolean; readonly everyone: boolean };
+  };
   /** Per pass at most: launches matched, posts looked at by the second path, pictures embedded, subjects judged. */
   readonly perPass: { readonly launches: number; readonly posts: number; readonly embeds: number; readonly subjects: number };
   /**
@@ -5248,7 +5268,8 @@ const POLICY_V1: Policy = {
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter.
 
-     v163 adds `market.firstHour`: the first hour of a tied candidate read every pass, and a light pass. */
+     v163 adds `oneCoin.early` (the early pick under $20K and its owner-only push) and
+     `market.firstHour` (the first hour of a tied candidate read every pass, and a light pass). */
   version: 'policy.v163',
 
   admit: {
@@ -6775,6 +6796,23 @@ const POLICY_V1: Policy = {
        on the 40 coinable posts the owner called on 16-19 Oct, the lookback added 4.6 a post. 50 of
        the market pass's 300 reads go to them, so the newest coins keep most of the bound. */
     existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000, lookbackMs: 172_800_000, lookbackCoins: 5, readsPerPass: 50 },
+    /* policy.v163 (the owner, 2026-10-24: "make sure I would've caught the right baldcat coin early
+       before it took off"). The bar is the read-only replay's best under $20K (tools/sub20k-replay.ts,
+       21-24 Oct, "climb 5x cap≥12K ≤30m link"): 12.7 picks a day, 9.3 on posts on For You before the
+       coin, of which 5 ran past $50K and 23 died. $baldcat: taken at +8.8 min and $14.3K, against
+       the live pick at +5.8 h and the launch push at $50K. Its reading must be one pass fresh (the
+       market pass's own freshness). Owner only until he widens it. */
+    early: {
+      on: true,
+      minCapUsd: 12_000,
+      maxCapUsd: 20_000,
+      lead: 5,
+      fromMs: 120_000, // two minutes
+      withinMs: 1_800_000, // half an hour
+      rivalWithinMs: 3_600_000, // the watch: the hour before
+      readingWithinMs: 480_000,
+      push: { on: true, everyone: false },
+    },
     perPass: { launches: 2_000, posts: 200, embeds: 20, subjects: 500 },
     refit: {
       everyMs: 604_800_000, // a week
