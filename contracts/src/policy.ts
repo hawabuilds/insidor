@@ -1914,6 +1914,34 @@ export interface FeedPolicy {
     readonly cap: LaneCapPolicy;
   };
   /**
+   * ★ THE MEME-WAR WORD SEARCH (the owner, 2026-10-24, policy.v159): each live meme war (a narrative
+   * whose `fight` the titler or the owner set, with a post inside `narrative.fight.activeMs`) is
+   * searched in each side's own language for the other country's name — 土耳其 in Chinese, "çin" in
+   * Turkish, "japon" in French, フランス in Japanese — from `narrative.fight.native.names`, the first
+   * `wordsPerSide` words of each (a word's `*` dropped: the source matches whole words). Every
+   * `everyMs`, over the last `lookbackMs` of posts, at `minApproval` likes, one language a search.
+   * Its posts are credited to the 'narrative_name' lane, judged like any found post, and joined to
+   * their war by `narrative.fight.native`. A seed still waiting for the titler is not searched.
+   *
+   * Runs in the narrative-name search's loop, every `everyMs` (that search keeps its own cadence).
+   * Its own day in internal.lane_spend ('search:fight_words', `cap`), and every ask also inside the
+   * X search day's pace (`searchDay`) and the meter's line: it never raises either.
+   *
+   * What breaks if changed carelessly: `lookbackMs` against `everyMs`. A post is returned (and billed)
+   * on every ask while it is inside the window; three asks a post at 90 minutes and 30.
+   */
+  readonly fightWords: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly lookbackMs: number;
+    readonly minApproval: number;
+    readonly wordsPerSide: number;
+    readonly maxWars: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly cap: LaneCapPolicy;
+  };
+  /**
    * ★ THE QUOTE SEARCH ON BIG ACCOUNTS (the owner, 2026-10-18): a held text post by an account with
    * at least `minFollowers` followers whose likes have reached `minApproval` has its quotes searched
    * at about each age in `askAtMin` (within `askGraceMin` after it), at `reproductionMinApproval` likes. The
@@ -5182,7 +5210,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v158',
+  version: 'policy.v159',
 
   admit: {
     maxAgeMin: 240,
@@ -6103,6 +6131,25 @@ const POLICY_V1: Policy = {
       ],
       /* The middle lane's judging figures: the same judge, on the same kind of post. */
       cap: { dailyUsd: 0.35, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+    },
+    /* policy.v159, the owner's yes (2026-10-24, ~$0.60 a month a war). 300 likes: of the stored posts of
+       the 8 days to 24 Oct naming the other country in their own language with 40k views or more, the
+       10th percentile of likes was 460 (Chinese naming Turkey), 1,119 (Turkish naming China), 1,671
+       (Japanese naming France) and 7,585 (French naming Japan) — 300 is under every side's, so a post
+       on its way to For You's bar is found within its first 90 minutes. Two wars, about 3 words a war,
+       48 passes a day: ~290 asks at the one-post minimum ($0.00015), ~$0.04, and each post over 300
+       likes returned about 3 times (~10 to 40 a side a day), ~$0.02 to $0.07; about $0.03 a war a day,
+       ~$1 a month. $0.10 a day caps it whatever a busy war brings. */
+    fightWords: {
+      on: true,
+      everyMs: 1_800_000, // half an hour
+      lookbackMs: 5_400_000, // ninety minutes
+      minApproval: 300,
+      wordsPerSide: 2,
+      maxWars: 6,
+      maxPagesPerAsk: 2,
+      passDeadlineMs: 120_000,
+      cap: { dailyUsd: 0.1, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
     },
     /* The owner, 2026-10-18: "build ... the quote search on 10M+ accounts ... $1.00". Over the three
        days to 2026-10-18, 325 held text posts by 10M+ accounts reached 5,000 likes within 3 hours by our
