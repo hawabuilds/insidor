@@ -196,11 +196,17 @@ export function Feed({
   useEffect(() => readTabsAhead(), []);
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp' && !sortedOn, fyp, reloadFyp, postsOf, true, newestPosted);
+  /* A post the owner hid stays out of the list, live or older, until "Is a meme"; the projection
+     drops it on its next run, minutes later (features/owner/owner-store.ts). */
+  const headPosts = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
+  const headIds = useMemo(() => (headPosts === null ? null : headPosts.map((p) => p.id)), [headPosts]);
   /* For You's older pages, kept while Watchlist is open. They start under the card the list shows
-     last and join it newest posted first (feed-order.ts). */
+     last and join it newest posted first (feed-order.ts); when the frame moves on past where they
+     start, the posts between are read in (older-feed.ts `needsBridge`). */
   const lastFyp = useRef<string | null>(null);
+  lastFyp.current = headPosts?.[headPosts.length - 1]?.id ?? null;
   const lastFypShown = useCallback(() => lastFyp.current, []);
-  const older = useOlderPosts('fyp', lastFypShown, newestPosted);
+  const older = useOlderPosts('fyp', lastFypShown, newestPosted, headIds);
   /* The narratives starred on this phone (the narrative page's star, shared/watchlist.ts), each read
      by its own id, only while Watchlist is open and something is starred. */
   const starred = useWatchlist();
@@ -268,10 +274,6 @@ export function Feed({
   const onPosts = tab === 'fyp';
   const notice = boardNotice(board.state === 'ready' ? board.value.provenance : null);
   const feed = fyp;
-  /* A post the owner hid stays out of the list, live or older, until "Is a meme"; the projection
-     drops it on its next run, minutes later (features/owner/owner-store.ts). */
-  const headPosts = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
-  lastFyp.current = headPosts?.[headPosts.length - 1]?.id ?? null;
   const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, newestPosted)), [headPosts, older.posts]);
   /* The ranked list in place of the feed while Trending or Most viewed is chosen; New is the feed. */
   const ranked = sortedOn ? sortedPages.list : null;
