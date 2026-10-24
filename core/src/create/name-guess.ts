@@ -141,7 +141,10 @@ export function cleanGuesses(raw: readonly { readonly name?: unknown; readonly t
     const name = typeof r.name === 'string' ? r.name.replace(/\s+/g, ' ').replace(/^\$+/, '').trim() : '';
     const given = typeof r.ticker === 'string' ? cleanTicker(r.ticker, p.maxTickerChars) : '';
     const ticker = given !== '' ? given : cleanTicker(name, p.maxTickerChars);
-    if (name === '' && ticker === '') continue;
+    /* ★ No ticker, no guess (2026-10-24): a name in a script with no Latin letters (苦根, フランス) left an
+       empty ticker, which the store refuses (0076: ^[A-Z0-9]{1,10}$) — and one refused row failed the
+       whole pass's write, so the same posts were asked again every pass: $5.51 of names in a day. */
+    if (ticker === '') continue;
     if (seen.has(ticker)) continue;
     seen.add(ticker);
     out.push({ name: name === '' ? ticker : name, ticker });

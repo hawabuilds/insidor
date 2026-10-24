@@ -38,6 +38,11 @@ test('raw guesses come out clean: no $, a ticker made when none came, one per ti
   assert.equal(out[0]?.name, 'Altai');
 });
 
+test('★ a guess with no Latin ticker is dropped, never stored empty (the store refuses it and fails the pass)', () => {
+  const out = cleanGuesses([{ name: '苦根', ticker: '' }, { name: 'フランス', ticker: 'フランス' }, { name: 'Kugen', ticker: '' }], P);
+  assert.deepEqual(out.map((g) => g.ticker), ['KUGEN']);
+});
+
 test('a post is never its own example, and examples come closest first', () => {
   const ex = (itemId: string, values: number[]): ExampleVector => ({ itemId, text: itemId, seen: null, coins: [{ name: itemId, ticker: itemId.toUpperCase() }], postedAtMs: null, values });
   const all = [ex('self', [1, 0]), ex('near', [0.9, 0.1]), ex('far', [0, 1])];
