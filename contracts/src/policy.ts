@@ -5234,7 +5234,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v160',
+  version: 'policy.v161',
 
   admit: {
     maxAgeMin: 240,
@@ -6637,8 +6637,11 @@ const POLICY_V1: Policy = {
        UTC: 7 coins qualified (4 on the 19th, 3 on the 20th), so six a day never cut a real day and
        still stops a burst. Picks came 5 to 117 minutes after launch; three hours keeps those and
        drops the one narrative pick of a coin 40 hours old ("BENNY"). */
+    /* 15 from policy.v161 (the owner, 2026-10-24: "raise it from 6 — I want to be notified when posts
+       like the one I just sent get coined, so do my friends"). On 23 Oct a person with a phone was
+       sent ~21 coin pushes and six reached them, all by 16:50 London; the rest only listed. */
     launch: {
-      perDay: 6,
+      perDay: 15,
       dayMs: 86_400_000,
       maxLaunchAgeMs: 10_800_000, // three hours
       postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
