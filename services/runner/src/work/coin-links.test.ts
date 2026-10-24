@@ -66,6 +66,14 @@ test('a short video is credited when it was young at the launch; a text post onl
   assert.equal(creditable(item('vid:1', NOW - HOUR, 0), v, null, ON), false);
 });
 
+test('★ a text post under the approvals bar is credited when it is already past For You\'s views bar (@TocRadio, 84.5k views, 950 likes)', () => {
+  const t = adapter('txt', 'text.example', true);
+  const c = ON.finders.coinLinks;
+  const seen = (views: number): Item => ({ ...item('txt:2113693141609886045', NOW - 98 * 60_000, 950), counters: { approval: { value: 950, fidelity: { kind: 'exact' }, observedAt: NOW }, reach: { value: views, fidelity: { kind: 'exact' }, observedAt: NOW } } }) as unknown as Item;
+  assert.equal(creditable(seen(84_508), t, NOW, ON), true);
+  assert.equal(creditable(seen(c.textMinReach - 1), t, NOW, ON), false);
+});
+
 function harness(o: { policy?: Policy; mode?: 'dry' | 'live'; held?: Item[] } = {}) {
   const recorded: CoinPostLink[] = [];
   const credited: ItemId[] = [];
