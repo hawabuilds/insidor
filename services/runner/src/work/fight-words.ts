@@ -1,8 +1,8 @@
 /**
  * THE MEME-WAR WORD SEARCH (`feed.fightWords`, policy.v158): each live meme war searched in each
  * side's own language for the other country's name — 土耳其 in Chinese and "çin" in Turkish for China
- * vs Turkey, "japon" in French and フランス in Japanese for France vs Japan — at a like floor, over the
- * last `lookbackMs`. Its posts are stored under the 'narrative_name' lane, judged like any found post,
+ * vs Turkey, "japon" in French and フランス in Japanese for France vs Japan — at a like floor (a
+ * language's own in `byLang`: Japanese at 100, policy.v169), over the last `lookbackMs`. Its posts are stored under the 'narrative_name' lane, judged like any found post,
  * and joined to their war by the narratives pass (core group/fight-native.ts).
  *
  * Why it exists: on 23-24 Oct three of the owner's six missed war posts were never stored at all —
@@ -38,16 +38,18 @@ import { laneSearch, type LaneAskEnd } from './lane-search.ts';
 /** This search's own day in internal.lane_spend. */
 export const FIGHT_WORDS_LANE = 'search:fight_words' as const;
 
-/** One ask: a language and the word for the other country in it. */
+/** One ask: a language, the word for the other country in it, and the like floor it is asked at. */
 export interface FightWord {
   readonly war: string;
   readonly lang: string;
   readonly word: string;
+  readonly minApproval: number;
 }
 
 /**
  * The words a war is searched by: for each of its countries that is a language's home, the first
- * `wordsPerSide` words that language names each other country of the war with, `*` dropped. Pure.
+ * `wordsPerSide` words that language names each other country of the war with, `*` dropped, at
+ * `minApproval` likes — each the language's own in `byLang` when it has one. Pure.
  */
 export function fightWords(war: { readonly id: string; readonly countries: readonly string[] }, p: Policy): readonly FightWord[] {
   const n = p.narrative.fight.native;
@@ -55,10 +57,11 @@ export function fightWords(war: { readonly id: string; readonly countries: reado
   const out: FightWord[] = [];
   for (const [lang, home] of Object.entries(n.home)) {
     if (!countries.has(home)) continue;
+    const bar = p.feed.fightWords.byLang[lang] ?? p.feed.fightWords;
     for (const [other, words] of Object.entries(n.names[lang] ?? {})) {
       if (other === home || !countries.has(other)) continue;
-      const picked = [...new Set(words.map((w) => w.replace(/\*$/, '').trim()).filter((w) => w !== ''))].slice(0, p.feed.fightWords.wordsPerSide);
-      for (const word of picked) out.push({ war: war.id, lang, word });
+      const picked = [...new Set(words.map((w) => w.replace(/\*$/, '').trim()).filter((w) => w !== ''))].slice(0, bar.wordsPerSide);
+      for (const word of picked) out.push({ war: war.id, lang, word, minApproval: bar.minApproval });
     }
   }
   return out;
@@ -118,7 +121,7 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
       untilMs: null,
       limit: p.feed.pageLimit,
       cursor: null,
-      filter: { minApproval: Math.round(fw.minApproval), mediaOnly: false, langs: [w.lang], excludeRebroadcasts: true },
+      filter: { minApproval: Math.round(w.minApproval), mediaOnly: false, langs: [w.lang], excludeRebroadcasts: true },
     };
     /* ★ The X search day's pace first, as the discover pass checks it: an unreadable bill asks nothing. */
     if (p.feed.searchDay.on) {

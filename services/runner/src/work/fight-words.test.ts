@@ -47,7 +47,7 @@ test('a war is searched in each side\'s own language for the other country, the 
   const ct = fightWords({ id: 'n-ct', countries: ['China', 'Türkiye'] }, P).map((w) => `${w.lang}:${w.word}`);
   assert.deepEqual(ct, ['zh:土耳其', 'tr:çin', 'tr:çinli']);
   const fj = fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, P).map((w) => `${w.lang}:${w.word}`);
-  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス']);
+  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス', 'ja:フランス人', 'ja:仏人']);
   assert.deepEqual(fightWords({ id: 'n-x', countries: ['Brazil', 'Argentina'] }, P), [], 'no home language for either: nothing to ask');
 });
 
@@ -63,6 +63,13 @@ test('★ each word one language at the floor over the last 90 minutes; posts cr
   }
   assert.ok(s.stored.every((l) => l === 'narrative_name'));
   assert.ok(([...s.ledger.totals.entries()].find(([k]) => k.endsWith(FIGHT_WORDS_LANE))?.[1] ?? 0) > 0);
+});
+
+test('★ a language with its own bar is asked at it: Japanese at 100 likes and three words, French at 300 and two', async () => {
+  const s = setup([war('n-fj', ['France', 'Japan'])]);
+  await fightWordsPass(s.deps);
+  assert.deepEqual(s.seen.map((q) => `${q.filter?.langs.join()}:${q.term}:${q.filter?.minApproval}`), ['fr:japon:300', 'fr:japonais:300', 'ja:フランス:100', 'ja:フランス人:100', 'ja:仏人:100']);
+  assert.equal(P.feed.fightWords.byLang.ja?.minApproval, 100);
 });
 
 test('★ the X search day\'s pace stops it before any ask; an unreadable bill asks nothing', async () => {

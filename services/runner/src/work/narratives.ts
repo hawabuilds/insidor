@@ -47,7 +47,8 @@
  *      `catchUpEveryMs` (policy.v162) the live wars' words are also searched back to each war's
  *      start, in or out of a small narrative: an older post joins as an early one, an English post
  *      naming both sides joins when alike to the war, and a small narrative wholly the war's is folded
- *      into it — never one the owner touched
+ *      into it — never one the owner touched. With it (policy.v169 `answersOn`), the stored posts
+ *      quoting or linking a named war's post: one in the other side's language joins it
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
@@ -140,7 +141,7 @@ const outOfEither = (a: ReadonlyMap<string, ReadonlySet<string>>, b: ReadonlyMap
 };
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english' | 'fightUnasked' | 'setFight' | 'fights' | 'fightPending' | 'fightPosts' | 'showFight' | 'fightWarPosts' | 'fightRowsOf' | 'ownStarts'>>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english' | 'fightUnasked' | 'setFight' | 'fights' | 'fightPending' | 'fightPosts' | 'showFight' | 'fightWarPosts' | 'fightQuotes' | 'fightRowsOf' | 'ownStarts'>>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -476,10 +477,25 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const due = wars.length > 0 && repo.fightWarPosts !== undefined && repo.ownStarts !== undefined && repo.fightRowsOf !== undefined && input.nowMs - lastCatchUp >= n.catchUpEveryMs;
     const starts = due && repo.ownStarts !== undefined ? await repo.ownStarts(wars.map((w) => w.id)) : new Map<string, number>();
     let caught: readonly (FightPostRow & { readonly narrativeId: string | null })[] = [];
+    /* ★ The quote rule's reads (policy.v169 `answersOn`): the posts of the wars the titler or the owner
+       named — never a waiting seed's, which may be the news — with their languages, and the stored
+       posts quoting or linking one, with what each refers to. */
+    const quoteWars = wars.filter((w) => w.shown && w.fightModel !== FIGHT_SEED_MODEL);
+    const refsOf = new Map<string, readonly string[]>();
+    let warPostLangs: ReadonlyMap<string, string | null> | null = null;
     if (due && repo.fightWarPosts !== undefined) {
       lastCatchUp = input.nowMs;
       const earliest = Math.min(input.nowMs - n.lookbackMs, ...wars.map((w) => (starts.get(w.id) ?? input.nowMs) - n.warLeadMs));
-      caught = await repo.fightWarPosts(Math.max(input.nowMs - f.activeMs, earliest), warWords(wars.map((w) => ({ countries: w.fight ?? [] })), p), n.minReach, n.maxRead, n.moveMaxPosts);
+      const since = Math.max(input.nowMs - f.activeMs, earliest);
+      caught = await repo.fightWarPosts(since, warWords(wars.map((w) => ({ countries: w.fight ?? [] })), p), n.minReach, n.maxRead, n.moveMaxPosts);
+      if (n.answersOn && repo.fightQuotes !== undefined && repo.fightRowsOf !== undefined && quoteWars.length > 0) {
+        const targets = [...new Set(quoteWars.flatMap((w) => w.members))];
+        warPostLangs = new Map((await repo.fightRowsOf(targets)).map((r) => [r.itemId, r.lang] as const));
+        const quotes = await repo.fightQuotes(since, targets, Object.keys(n.home), n.minReach, n.maxRead, n.moveMaxPosts);
+        for (const q of quotes) refsOf.set(q.itemId, q.refersTo);
+        const had = new Set(caught.map((r) => r.itemId));
+        caught = [...caught, ...quotes.filter((q) => !had.has(q.itemId))];
+      }
     }
     const lightIds = new Set(light.map((r) => r.itemId));
     const looseCaught = caught.filter((r) => r.narrativeId === null && !input.placed.has(r.itemId) && !lightIds.has(r.itemId));
@@ -504,7 +520,12 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     /* Vectors for the alike rule: the wars' posts and every caught post with no pair of its own language. */
     const needVector = [...looseCaught, ...memberRows.values()].filter((r) => fightPairsOf({ lang: r.lang, text: r.body }, p).length === 0).map((r) => r.itemId);
     if (needVector.length > 0) await vectorsFor([...needVector, ...wars.flatMap((w) => w.members)], input.space, 'post', postVectors);
-    const asPost = (r: FightPostRow) => ({ itemId: r.itemId, authorKey: r.authorKey, lang: r.lang, text: r.body, atMs: r.atMs, reach: r.reach, vector: postVectors.get(r.itemId) ?? null });
+    const asPost = (r: FightPostRow) => {
+      const refersTo = refsOf.get(r.itemId);
+      return { itemId: r.itemId, authorKey: r.authorKey, lang: r.lang, text: r.body, atMs: r.atMs, reach: r.reach, vector: postVectors.get(r.itemId) ?? null, ...(refersTo === undefined ? {} : { refersTo }) };
+    };
+    const quoted = new Set(quoteWars.map((w) => w.id));
+    const postsOf = (x: StoredNarrative) => (warPostLangs === null || !quoted.has(x.id) ? {} : { posts: new Map(x.members.map((m) => [m, warPostLangs?.get(m) ?? null] as const)) });
     /* An unfit member stays in its narrative and keeps it from folding: it is offered with no words, no views and no vector. */
     const asMember = (id: string) => {
       const r = memberRows.get(id);
@@ -512,7 +533,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     };
     const plan = planFights({
       posts: [...light, ...looseCaught].filter((r) => isFit(r.itemId)).map(asPost),
-      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null, startAtMs: starts.get(x.id) ?? null, vectors: x.members.flatMap((m) => postVectors.get(m) ?? []) })),
+      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null, startAtMs: starts.get(x.id) ?? null, vectors: x.members.flatMap((m) => postVectors.get(m) ?? []), ...postsOf(x) })),
       placed: candidates.map((x) => ({ id: x.id, members: x.members.map(asMember) })),
       nowMs: input.nowMs,
     }, p);
