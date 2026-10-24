@@ -43,6 +43,15 @@
  * the post that started Dogzilla" instead. The wording only: the same one push, the same rules, the
  * same daily cap — never a second push.
  *
+ * ★ EXCEPT A RUNNER HAND-OVER (the owner, 2026-10-24: "I want to be notified and catch the runner
+ * early", option 2 — everyone). When the post's pick moved to a later coin by the runner hand-over
+ * (services/runner work/runner-handover.ts: running now at three times the first coin's hour; the
+ * pick's evidence `runner_handover`) and the card shows it, that coin is pushed past rule 1, ONCE PER
+ * POST (`h:<item>`, and the deliverer's claim `<item>|#runner`): "A new coin from @X's post is
+ * running: $TICKER, $45K cap". Rules 3 and 4 and the coin gate hold, the daily cap is the launch
+ * push's own, and rule 2 holds without the coin-first exception: the new coin always came after.
+ * A second hand-over on the same post is never pushed.
+ *
  * ★ A LAUNCHPAD COIN ONLY (the owner, 2026-10-23: "coins that are launched from pumpfun"): a coin
  * whose stored row is not the launchpad's seen launch is not pushed (coin-gate.ts). Its keys are
  * remembered all the same, so the post's later coins never follow as a hand-over.
@@ -96,6 +105,18 @@ export interface Picked {
    * null when none is known. Absent for every other post and every narrative: rule 2 holds for them.
    */
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
+  /** The pick on the card is the runner hand-over's (services/runner work/runner-handover.ts): pushed as "a new coin … is running". */
+  readonly runner?: boolean;
+}
+
+/** A post's hand-over push, remembered once per post whatever coin it went to. */
+export const runnerKey = (itemId: string): string => `h:${itemId}`;
+/** The deliverer's claim for a hand-over push: one per person and post (0044), beside the coin's own. */
+export const runnerSubject = (itemId: string): string => `${itemId}|#runner`;
+
+/** A hand-over push's timing: the coin launched after the post was on For You, and is still just launched. No coin-first exception: the new coin always came after. */
+export function runnerEarlyEnough(p: Pick<Picked, 'launchedMs' | 'onForYouMs'>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): boolean {
+  return p.launchedMs !== null && nowMs - p.launchedMs <= rule.maxLaunchAgeMs && p.launchedMs >= p.onForYouMs;
 }
 
 /** Whether the coin is a launchpad coin by its stored row; the launch timing is rule 2's, not the gate's. */
@@ -116,11 +137,30 @@ export function earlyEnough(p: Pick<Picked, 'address' | 'launchedMs' | 'onForYou
  * The pure step. `posts` before `narratives`: a post's own card is the better push. Returns what to
  * push, strongest first, and every key to remember (each subject seen, each coin pushed).
  */
-export function launchEvents(posts: readonly Picked[], narratives: readonly Picked[], seen: ReadonlySet<string>, nowMs: number, rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>): { readonly due: readonly Picked[]; readonly keys: readonly string[] } {
+export function launchEvents(
+  posts: readonly Picked[],
+  narratives: readonly Picked[],
+  seen: ReadonlySet<string>,
+  nowMs: number,
+  rule: Pick<NotifyPolicy['launch'], 'maxLaunchAgeMs'>,
+  runners: ReadonlyMap<string, string> = new Map(),
+): { readonly due: readonly Picked[]; readonly keys: readonly string[] } {
   const due: Picked[] = [];
   const keys: string[] = [];
   const pushed = new Set<string>();
   for (const p of [...posts, ...narratives]) {
+    /* ★ The runner hand-over: the post's coin moved to a later coin running now. Once per post, past rule 1. */
+    const rk = runnerKey(p.itemId);
+    if (p.key.startsWith('p:') && runners.get(p.itemId) === p.address && !seen.has(rk) && !keys.includes(rk)) {
+      keys.push(rk);
+      if (!seen.has(p.key) && !keys.includes(p.key)) keys.push(p.key);
+      const coin = `c:${p.address}`;
+      if (!runnerEarlyEnough(p, nowMs, rule) || seen.has(coin) || pushed.has(coin)) continue;
+      pushed.add(coin);
+      keys.push(coin);
+      due.push({ ...p, runner: true });
+      continue;
+    }
     if (seen.has(p.key) || keys.includes(p.key)) continue;
     keys.push(p.key);
     const early = earlyEnough(p, nowMs, rule);
@@ -191,6 +231,25 @@ export interface LaunchPorts {
   readonly quotes?: Quotes;
   /** Read the pick at all (Policy.oneCoin.mode 'live'); absent: from the policy in force. */
   readonly onPick?: boolean;
+  /** Push the runner hand-over (Policy.runnerLink.handover on and push); absent: from the policy in force. */
+  readonly runnerPush?: boolean;
+}
+
+/**
+ * The posts of these whose pick the runner hand-over wrote, with the coin it went to. Empty without
+ * 0129's grant on internal.post_coin_pick: looked up first, so no failed statement is ever sent.
+ */
+async function runnerPicks(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  if (itemIds.length === 0) return new Map();
+  const [r] = await db.query<{ ok: boolean | null }>(
+    `select case when to_regclass('internal.post_coin_pick') is null then false else has_table_privilege('internal.post_coin_pick', 'select') end as ok`,
+  );
+  if (r?.ok !== true) return new Map();
+  const rows = await db.query<{ item_id: string; address: string }>(
+    `select item_id, address from internal.post_coin_pick where item_id = any($1::text[]) and outcome = 'picked' and evidence ->> 'runner_handover' = 'true'`,
+    [[...itemIds]],
+  );
+  return new Map(rows.map((x) => [x.item_id, x.address] as const));
 }
 
 /** One pass. Returns how many alerts were queued (one per profile per coin). */
@@ -237,7 +296,8 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     await remember([...[...withLaunch, ...narratives].flatMap((p) => [p.key, `c:${p.address}`]), SEEDED]);
     return 0;
   }
-  const events = launchEvents(withLaunch, narratives, seen, ports.now(), L);
+  const runners = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
+  const events = launchEvents(withLaunch, narratives, seen, ports.now(), L, runners);
   const keys = events.keys;
   /* ★ A launchpad coin only (coin-gate.ts). Rule 2 already keeps the timing; the coin is spent either way. */
   const gate = await coinGateFacts(db, events.due);
@@ -261,11 +321,12 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
         item: d.itemId,
       };
       const started = startedTitle(starts.get(d.itemId), d.launchedMs);
-      if (started !== null) f['started'] = started;
+      if (d.runner === true) f['runner'] = true;
+      else if (started !== null) f['started'] = started;
       /* Strongest first: one statement per coin, so queue order is cap order. */
       const rows = await db.query<{ n: number }>(
         `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href) select user_id, 'coin_launched', $1, 0, $2, $3 from people.profile returning 1) select count(*)::int as n from q`,
-        [d.address, JSON.stringify(f), launchHref(d)],
+        [d.runner === true ? runnerSubject(d.itemId) : d.address, JSON.stringify(f), launchHref(d)],
       );
       queued += rows[0]?.n ?? 0;
     }
