@@ -3540,6 +3540,23 @@ export interface NotifyPolicy {
     readonly postsWithinMs: number;
     readonly ownerAlarmsPush: boolean;
   };
+  /**
+   * ★ A SAVED POST'S FIRST PUSH WAITS FOR ITS COIN TO RUN (the owner, 2026-10-24; services/notify
+   * saved-post.ts). The first coin tied to a saved post after the save is pushed only once its
+   * latest market reading's last hour reaches BOTH bars. Its own bars, not the running coins
+   * strip's ($1,000 there): measured on the tied coins launched 23:25–23:51 UTC on 23 Oct (all
+   * posts), $1,000 let through 53 coins of which 46 never passed $10K; $20,000 let through 8, with
+   * 1 under $10K, and kept both that passed $50K. Lower it and duds like $KURIBOO (a $729 coin that
+   * rugged in five minutes, 23:28 on 23 Oct) reach the saver's phone as "launched from a post you
+   * saved"; raise it and the real coin's push comes later or not at all inside three hours.
+   *
+   *   minVolume1hUsd   dollars traded in the coin's last hour
+   *   minTrades1h      buys plus sells in that hour, so a few large fills cannot pass on volume alone
+   */
+  readonly savedPost: {
+    readonly minVolume1hUsd: number;
+    readonly minTrades1h: number;
+  };
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
@@ -6406,6 +6423,9 @@ const POLICY_V1: Policy = {
       postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
       ownerAlarmsPush: true,
     },
+    /* The owner, 2026-10-24: a saved post's first push at $20,000 traded in the last hour, the
+       strip's 20 trades kept (see the type for the measurement). */
+    savedPost: { minVolume1hUsd: 20_000, minTrades1h: 20 },
     perClient: 60,
     windowMs: 60_000,
     /* The owner, 2026-10-18: "if any language's X finds per hour drop by more than 70% ... alert me",
