@@ -54,7 +54,7 @@ const SYSTEM = [
   'Then say whether the posts are an online meme war: ordinary users from two or more different countries or nationalities trading memes, jokes and insults with each other on social media, for example Chinese and Turkish users roasting each other over a cartoon.',
   'A real war, battle, attack, riot, protest, election, government, law, diplomatic or trade dispute, or a sports match or rivalry is NOT an online meme war, nor is news about any of these, even when two countries are named.',
   'A meme that is simply popular in several countries is not one either: the users must be going at each other.',
-  'Say yes only when the posts themselves show people of those countries going at each other: replying in their own languages, mocking each other\'s country, flag, food or people, or calling it a war between them. A post that only mentions a country, or a guess, is a no; when unsure, say no.',
+  'Say yes when the posts themselves show ordinary users of one country or nationality mocking, roasting or insulting another country\'s people, flag, food or culture as memes or jokes, even when only one side is in the posts, or people of both going at each other or calling it a war between them, for example French users mocking Japanese people. A post that only mentions a country, or a guess, is a no.',
   'If it is one, list the countries whose users are fighting as plain English country names, such as "China" and "Turkey"; if not, an empty list.',
   'Answer only with JSON: {"title": "...", "meme_war": true or false, "countries": ["..."]}',
 ].join(' ');

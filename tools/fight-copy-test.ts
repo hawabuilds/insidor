@@ -1,5 +1,6 @@
 /**
- * `node --env-file=.env.local --experimental-strip-types tools/fight-copy-test.ts [--days 5] [--cap 0.10] [--out <file>] [--resume <file>]`
+ * `node --env-file=.env.local --experimental-strip-types tools/fight-copy-test.ts [--days 5] [--cap 0.10] [--also <id,id>] [--out <file>] [--resume <file>]`
+ * (`--also`: narratives to ask about besides the shown ones, such as a held-back seed.)
  *
  * THE MEME-WAR QUESTION, COPY-TESTED ON REAL NARRATIVES (policy.v155 Policy.narrative.fight; the
  * owner, 2026-10-23: one "Twitter World War" for the country beefs on X). Every shown narrative with
@@ -83,7 +84,8 @@ try {
   await withTransaction(pool, async (db) => {
     await db.query('set transaction read only');
     const repo = new PgNarrativeRepo(db);
-    const live = await repo.live(nowMs - days * DAY_MS);
+    const also = (arg('--also') ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+    const live = [...(await repo.live(nowMs - days * DAY_MS)), ...(await repo.byIds(also))];
     const states = await repo.states([BEEF]);
     if (states[0]?.state === 'merged' && states[0].mergedInto !== null) beefLead = states[0].mergedInto;
     const ids = [...new Set(live.flatMap((x) => x.members))];
