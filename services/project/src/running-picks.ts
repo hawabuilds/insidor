@@ -29,12 +29,20 @@
  * Replayed over the three days to 24 Oct, the route pulls back 45 posts (one per running coin) that
  * For You never showed; without the rule it was 248.
  *
+ * ★ A PROMOTION'S PICK PULLS ITS ORIGINAL (promotions.ts, Policy.rising.promotion). A coin picked for
+ * a post that only points at another account's bigger post pulls back that original instead, on the
+ * original's own judge's yes — and an original older than the coin-link age only while the coin runs
+ * by the saved-post bars. Moved before the one-post-a-coin choice, so the original competes for the
+ * coin as its promotion would have.
+ *
  * What breaks if changed carelessly: the judge's yes. Without it a copycat picked for any post the
  * matcher once met would put that post on For You the moment the copycat traded.
  */
 
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import type { Db } from '@insidor/store';
+
+import { carries, type PromotedPick } from './promotions.ts';
 
 /** A recent pick's coin and its newest reading. Every absent fact is null. */
 export interface RunningPickRow {
@@ -77,7 +85,14 @@ const num = (x: unknown): number | null => (x === null || x === undefined ? null
  * The posts picked a coin within `running.pickWithinMs` whose coin is running now (or only these
  * posts', for a frame over a few), keyed by post. Empty when the route is off or before 0113.
  */
-export async function loadRunningPicks(db: Db, nowMs: number, policy: Policy = DEFAULT_POLICY, only: readonly string[] | null = null): Promise<ReadonlyMap<string, RunningPickRow>> {
+export async function loadRunningPicks(
+  db: Db,
+  nowMs: number,
+  policy: Policy = DEFAULT_POLICY,
+  only: readonly string[] | null = null,
+  /** The recent picks on promotions, by the promotion (promotions.ts): each moves to its original. */
+  promoted: ReadonlyMap<string, PromotedPick> = new Map(),
+): Promise<ReadonlyMap<string, RunningPickRow>> {
   if (!runningOn(policy)) return new Map();
   let rows: { item_id: string; address: string; judged_yes: boolean; cap: unknown; vol: unknown; trades: unknown; at: string | Date | null; reach: unknown; posted: string | Date | null }[];
   try {
@@ -100,10 +115,17 @@ export async function loadRunningPicks(db: Db, nowMs: number, policy: Policy = D
   /* ★ ONE POST A COIN: the most seen of the posts the coin is picked for, then the earliest. */
   const best = new Map<string, { row: RunningPickRow; reach: number; at: number }>();
   for (const r of rows) {
-    const row: RunningPickRow = { itemId: r.item_id, address: r.address, judgedYes: r.judged_yes, capUsd: num(r.cap), volume1hUsd: num(r.vol), trades1h: num(r.trades), readAtMs: r.at === null ? null : new Date(r.at).getTime() };
+    /* ★ A promotion's pick is its original's, or nobody's while an old original's coin is not running. */
+    const moved = promoted.get(r.item_id);
+    if (moved !== undefined && !carries(moved)) continue;
+    const row: RunningPickRow = {
+      itemId: moved?.original.itemId ?? r.item_id, address: r.address, judgedYes: moved?.originalJudgedYes ?? r.judged_yes,
+      capUsd: num(r.cap), volume1hUsd: num(r.vol), trades1h: num(r.trades), readAtMs: r.at === null ? null : new Date(r.at).getTime(),
+    };
     if (!row.judgedYes || !isRunning(row, nowMs, policy)) continue;
-    const reach = num(r.reach) ?? Number.NEGATIVE_INFINITY;
-    const at = r.posted === null ? Number.POSITIVE_INFINITY : new Date(r.posted).getTime();
+    const reach = (moved === undefined ? num(r.reach) : moved.original.reach) ?? Number.NEGATIVE_INFINITY;
+    const postedMs = moved === undefined ? (r.posted === null ? null : new Date(r.posted).getTime()) : moved.original.postedAtMs;
+    const at = postedMs ?? Number.POSITIVE_INFINITY;
     const had = best.get(row.address);
     if (had === undefined || reach > had.reach || (reach === had.reach && (at < had.at || (at === had.at && row.itemId < had.row.itemId)))) best.set(row.address, { row, reach, at });
   }
