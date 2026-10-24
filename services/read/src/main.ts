@@ -227,7 +227,9 @@ async function main(): Promise<void> {
     ...deps,
     policy: DEFAULT_POLICY.search,
     sources: [
-      { name: 'dexscreener', source: dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }) },
+      /* `launchpadToo`: a second question so a common word's other-chain pairs do not crowd the
+         launchpad's coins out of the vendor's 30 (adapters/market/dexscreener search.ts). */
+      { name: 'dexscreener', source: dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, launchpadToo: true }) },
       { name: 'geckoterminal', source: marketData },
     ],
     curveProgress: market.curveProgress,
