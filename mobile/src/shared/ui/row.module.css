@@ -36,6 +36,7 @@
     'title spark views'
     'trans trans views'
     'byline byline views'
+    'gone gone gone'
     'sortline sortline sortline';
   column-gap: 8px;
   align-items: start;
@@ -141,6 +142,16 @@
 }
 
 .speed {
+  color: var(--text-3);
+}
+
+/* A post deleted from its source (RisingPost.deletedAt): one quiet line under the byline, the
+   byline's own size and colour — a fact about the post, not an alarm. */
+.gone {
+  grid-area: gone;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-3);
 }
 

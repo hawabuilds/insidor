@@ -191,6 +191,13 @@ export interface WireRisingPost {
    * own, `thumbUrl` above is this post's picture, so the meme leads the card.
    */
   readonly quote?: WireQuotedPost;
+  /**
+   * ★ When the post was found deleted from its source, as ms: absent while it is not known to be.
+   * Only ever set with proof (0131): the source stopped returning the post while the same account
+   * was still readable. A post merely not returned (its account private or suspended, or one short
+   * answer) carries nothing, because "we cannot tell" is not "deleted". The card keeps what we stored.
+   */
+  readonly deletedAt?: number;
 }
 
 /**
@@ -275,6 +282,8 @@ export interface RisingRow {
   net_add?: boolean | null;
   /** A catch-all lane credited the post (internal.item_found_by); false for a late post loaded by id alone. Absent on a row built by hand. */
   credited?: boolean;
+  /** When the post was found deleted from its source (0131, `loadDeleted`); absent or null when it is not known to be. */
+  deleted_at?: Date | string | null;
 }
 
 /**
@@ -314,7 +323,7 @@ export async function loadCandidates(
      (Policy.judge.coinModel.liveTarget, 0099): a shadowed target never lets a post through. The
      target is one of COIN_MODEL_TARGETS, so it is spelled into the query rather than bound. */
   const netColumn = net !== null && COIN_MODEL_TARGETS.includes(net) ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add and cms.target = '${net}') as net_add` : `null::boolean as net_add`;
-  return db.query<RisingRow>(
+  const rows = await db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media, i.reproduction_of,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name, j.judge_id,
@@ -378,6 +387,26 @@ export async function loadCandidates(
         and ($3::text[] is null or f.item_id = any($3::text[]))`,
     [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only], [...uncredited]],
   );
+  const gone = await loadDeleted(db, rows.map((r) => r.item_id));
+  return gone.size === 0 ? rows : rows.map((r) => (gone.has(r.item_id) ? { ...r, deleted_at: gone.get(r.item_id) ?? null } : r));
+}
+
+/**
+ * The posts among these known to be deleted from their source (0131 `public.item.deleted_at`, set by
+ * the runner's work/gone-posts.ts only with proof), with when. Its own query, so a database without
+ * 0131 projects every card as before rather than failing the frame: the card then says nothing.
+ */
+export async function loadDeleted(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, Date | string>> {
+  if (itemIds.length === 0) return new Map();
+  try {
+    const rows = await db.query<{ item_id: string; deleted_at: Date | string }>(
+      `select item_id, deleted_at from public.item where item_id = any($1::text[]) and deleted_at is not null`,
+      [[...itemIds]],
+    );
+    return new Map(rows.map((r) => [r.item_id, r.deleted_at] as const));
+  } catch {
+    return new Map();
+  }
 }
 
 /**
@@ -590,6 +619,7 @@ export function projectRisingPost(
   const quote = quoted === null ? null : projectQuote(quoted);
   /* ★ The post's own picture first; with none, the quoted post's leads the card (quoted.ts). */
   const picture = mainPicture(row.media, quote);
+  const deletedMs = toMs(row.deleted_at ?? null);
   const post: WireRisingPost = {
     id: row.item_id,
     sourceLabel: sourceLabel(row.source),
@@ -607,6 +637,7 @@ export function projectRisingPost(
     runningOlder,
     ...(sheet === null ? {} : { sheet }),
     ...(quote === null ? {} : { quote }),
+    ...(deletedMs === null ? {} : { deletedAt: deletedMs }),
   };
   assertNoInternalVocabulary(post, `$.rising[${row.item_id}]`);
   return post;

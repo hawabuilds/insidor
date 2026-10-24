@@ -647,7 +647,17 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     ...decodeTranslation(o.translation, `${path}.translation`),
     ...decodeInStory(o.inStory),
     ...decodeQuote(o.quote, `${path}.quote`),
+    ...decodeDeleted(o.deletedAt),
   };
+}
+
+/**
+ * When the post was found deleted from its source. Only a whole positive time in ms counts: absent,
+ * null or anything else is "not known to be deleted", and the card shows as it always did — a
+ * malformed field never refuses the card, and never marks a live post deleted.
+ */
+export function decodeDeleted(raw: unknown): { deletedAt?: number } {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? { deletedAt: raw } : {};
 }
 
 /**

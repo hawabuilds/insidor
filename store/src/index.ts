@@ -48,6 +48,8 @@ export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
 export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';
 export { PgPostRefillRepo } from './repo/post-refill.ts';
 export { PgReadingsRepo, type ReadingCandidate } from './repo/readings.ts';
+/* Posts a re-read stopped returning, and the ones known deleted (0131, services/runner work/gone-posts.ts). */
+export { PgGonePostRepo, type UnreturnedPost } from './repo/gone-posts.ts';
 export type { RefillDue } from './repo/post-refill.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
