@@ -615,6 +615,13 @@ export interface GroupPolicy {
      * You's variety), so a vector of another model's posts is never one of their neighbours.
      */
     readonly postSpace: string;
+    /**
+     * ★ THE FILL INTO OUR OWN MODEL'S SPACE (policy.v171; the owner, 2026-10-24): with this on and the
+     * embed service configured, the runner re-embeds what is stored once at each boot, in its own
+     * process (services/runner reembed-on-boot.ts over work/reembed.ts). Resumable and idempotent;
+     * turn it off once the switch has settled.
+     */
+    readonly backfill?: boolean;
     readonly nearIdentical: number;
     readonly likely: number;
     readonly borderline: number;
@@ -5407,8 +5414,11 @@ const POLICY_V1: Policy = {
 
      v170 adds `group.image.postSpace`, the post vectors' space, read by every post-vector lookup
      instead of each one's own copy of the name. No value changes: the switch to the self-hosted
-     model is a later version that changes `space`, `postSpace` and the bars together. */
-  version: 'policy.v170',
+     model is a later version that changes `space`, `postSpace` and the bars together.
+
+     v171 adds `group.image.backfill`, on: the runner re-embeds what is stored into our own
+     model's space at each boot, ahead of the switch. No value read by a decision changes. */
+  version: 'policy.v171',
 
   admit: {
     maxAgeMin: 240,
@@ -5591,7 +5601,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'multimodal-3.1024', postSpace: 'multimodal-3.1024.post', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
+    image: { space: 'multimodal-3.1024', postSpace: 'multimodal-3.1024.post', backfill: true, nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,

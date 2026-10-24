@@ -52,6 +52,7 @@ import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
 import { resolveLoop } from './loops/resolve.ts';
 import { trackLoop } from './loops/track.ts';
+import { startReembed } from './reembed-on-boot.ts';
 
 const log = createLogger({ svc: 'runner' });
 
@@ -149,6 +150,9 @@ async function main(): Promise<void> {
     const server = startHealthServer(cfg.healthPort, health, () => Date.now(), log);
 
     const ac = new AbortController();
+    /* The one-off fill into our own embedding model's space (reembed-on-boot.ts), when the policy
+       asks for it. NOT awaited here: it runs beside the loops and is settled at shutdown with them. */
+    const reembedding = startReembed({ cfg, db: runtime.db, log, signal: ac.signal });
     const supervisorDeps: SupervisorDeps = {
       stageRuns: runtime.stageRuns,
       heartbeat: createHeartbeat(cfg.heartbeat, log),
@@ -302,7 +306,7 @@ async function main(): Promise<void> {
        finished runner open for six hours. Settled here so the pool does not close under
        an in-flight CREATE TABLE. */
     await Promise.race([
-      Promise.allSettled([...running, maintaining]),
+      Promise.allSettled([...running, maintaining, reembedding]),
       delay(cfg.shutdownGraceMs),
     ]);
 
