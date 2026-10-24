@@ -56,7 +56,7 @@ import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { useSeenOnScreen } from '../owner/useSeen.ts';
-import { BuyOpen, CHART_INTERVALS, ChooseCoin, CoinLine, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
+import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
 import { PAGE, firstPosted, moments, newestFirst, startedByHandle, type Moment } from './posts-order.ts';
@@ -65,6 +65,7 @@ import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import styles from './narrative.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
+import { COIN_LEAD_MS, coinsMadeAfter } from '../../shared/coins-made.ts';
 
 /* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
    carry hundreds of posts, and each row has a picture. A row's height before it is measured, and
@@ -131,9 +132,6 @@ function sinceText(at: number, now: number): string {
   return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
 }
 
-/** How long before a narrative's first post a coin may launch and still be listed as made from it. */
-const COIN_LEAD_MS = 10 * 60_000;
-
 function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
   const now = useNow();
   const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
@@ -168,12 +166,12 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
       : [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launch time not known`, at: null }]),
   ];
 
-  /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, every coin its posts
-     made is listed on the page itself, oldest first, and the bar offers Create — never a sheet to open. */
+  /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, the bar says so, offers
+     Create, and beside it "All N coins" opens the coins its posts made, oldest first. */
   /* Only coins made after the narrative's first post (a few minutes' lead for a coin launched as it went
      up): an older coin of the same name was not made from these posts (the owner, 2026-10-24: "really
      old coins … that don't closely match the post"). A coin whose launch we do not know is left out too. */
-  const madeHere = useMemo(() => (sheet === null || firstPost === null ? [] : sheet.coins.filter((c) => c.launchedAt.known && c.launchedAt.at >= firstPost - COIN_LEAD_MS)), [sheet, firstPost]);
+  const madeHere = useMemo(() => (sheet === null ? [] : coinsMadeAfter(sheet.coins, firstPost)), [sheet, firstPost]);
   const unclear = coin.kind !== 'checked' && madeHere.length > 0;
   /* An unchecked top coin older than the narrative is no offer either: the bar says No coin yet, with Create. */
   const oldTop = coin.kind === 'top' && firstPost !== null && coin.coin.sheet !== null && coin.coin.sheet.launchedAt.known && coin.coin.sheet.launchedAt.at < firstPost - COIN_LEAD_MS;
@@ -239,20 +237,6 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
       <Notice notice={noticeFor(story)} />
 
-      {unclear ? (
-        <>
-          <div className={styles['postsHead']}>
-            <h2>Coins from these posts</h2>
-            <span>Oldest first</span>
-          </div>
-          <p className={styles['why']}>No clear runner yet. Tap a coin to check its chart.</p>
-          <div className={styles['posts']}>
-            {oldestFirst.map((c) => (
-              <CoinLine key={c.address} coin={c} now={now} onOpen={() => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} action={null} />
-            ))}
-          </div>
-        </>
-      ) : null}
 
       {story.evidence.length > 0 ? (
         <div className={styles['firstCard']}>
@@ -281,12 +265,12 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 
-      <CoinBar state={barState} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
+      <CoinBar state={barState} coins={madeHere.length} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
 
       {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
       {choosing && sheet !== null ? (
         <Sheet label="Choose coin" onClose={() => setChoosing(false)}>
-          <ChooseCoin data={{ coins: sheet.coins, coinName: story.title, sourcesMissing: sheet.sourcesMissing }} onBack={() => setChoosing(false)} onOpenCoin={(c: SheetCoin) => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} onCreate={create} onNote={setNote} />
+          <ChooseCoin data={{ coins: oldestFirst, coinName: story.title, sourcesMissing: sheet.sourcesMissing }} order="Oldest first" onBack={() => setChoosing(false)} onOpenCoin={(c: SheetCoin) => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} onCreate={create} onNote={setNote} />
         </Sheet>
       ) : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
@@ -416,6 +400,7 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
           <>
             <span className={styles['barNone']}>
               <b>No clear runner yet</b>
+              {all}
             </span>
             <button type="button" className={styles['buy']} onClick={onCreate}>Create</button>
           </>

@@ -37,13 +37,15 @@ import { effectiveChoice, outcomeLine, quickAmounts, quickBuy, quickSlippages, r
 import { BoltIcon } from './sheet-icons.tsx';
 import styles from './post-sheet.module.css';
 
-export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
+export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote, order = 'Highest MC first' }: {
   /* The post sheet's reply, or the narrative page's coins in its shape: only these three are read. */
   data: Pick<PostSheetData, 'coins' | 'coinName' | 'sourcesMissing'>;
   onBack: () => void;
   onOpenCoin: (c: SheetCoin) => void;
   onCreate: () => void;
   onNote: (n: SheetNote) => void;
+  /** How `data.coins` is ordered, said under the title: the post sheet's highest cap first, a narrative's oldest first. */
+  order?: string;
 }) {
   const now = useNow();
   const { wallet, state } = useWallet();
@@ -99,7 +101,7 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
         <button type="button" className={styles['round']} aria-label="Back to the post" onClick={onBack}><BackIcon size={20} /></button>
         <span className={styles['chooseTitle']}>
           <b>{name} coins</b>
-          <span>Highest MC first</span>
+          <span>{order}</span>
         </span>
         {choice !== null ? (
           <button type="button" className={styles['chip']} aria-expanded={panel} onClick={() => setPanel((p) => !p)}>
