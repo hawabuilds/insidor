@@ -38,6 +38,7 @@ import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
 import type { TradeCard } from './trade-card.ts';
 import type { WalletRoute } from './wallet.ts';
+import { readWarCoin } from './war-coin.ts';
 import {
   BOARD_ROWS_SQL,
   BOARD_VIEW_SQL,
@@ -291,13 +292,14 @@ async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promis
  *
  * The narratives that are online meme wars between countries (the projector's `countries`), whole
  * pages, most viewed first: what the tab's "Twitter World War" opens, one section per pair of
- * countries drawn by the app. Same envelope and same 404 as /narratives/:viewId.
+ * countries drawn by the app. Same envelope and same 404 as /narratives/:viewId, plus `warCoin`: the
+ * one coin the owner chose for the whole war, or null (war-coin.ts).
  */
 async function fightNarratives(viewId: string, deps: Deps): Promise<Reply> {
-  const [views, rows] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(FIGHT_NARRATIVES_SQL, [])]);
+  const [views, rows, warCoin] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(FIGHT_NARRATIVES_SQL, []), readWarCoin(deps.db, Date.now())]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
-  return json(200, { tick: tickNumber(view['tick']), stories: await withPictureFiles(deps.db, rows.map(payloadOf)), provenance: columnOf(view, 'provenance') });
+  return json(200, { tick: tickNumber(view['tick']), stories: await withPictureFiles(deps.db, rows.map(payloadOf)), provenance: columnOf(view, 'provenance'), warCoin });
 }
 
 /**
