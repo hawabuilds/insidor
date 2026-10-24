@@ -146,7 +146,7 @@ test('★ the live card shows the pick with its facts, or Create; the list is th
   assert.deepEqual(liveCoinLine({ kind: 'unsure', claimCount: 2 }, picks.get('x:1002'), null, { count: 2, more: false }, new Set()), { kind: 'unsure', claimCount: 2, ownerList: true });
 });
 
-test('★ the one push: the post\'s first pick, launched after For You showed it, to everyone — never its hand-over; the saver gets that one push, not two', async () => {
+test('★ the one push: the post\'s first pick, launched after For You showed it, to everyone — never its hand-over; the saver hears of that coin once, and of the hand-over once', async () => {
   const ndb = db as unknown as NotifyDb;
   const sent: { to: string; title: string }[] = [];
   const push: PushSender = { configured: true, publicKey: 'PUB', send: async (t, m) => (sent.push({ to: t.endpoint, title: m.title }), 'sent') };
@@ -160,22 +160,31 @@ test('★ the one push: the post\'s first pick, launched after For You showed it
   const lineIs = (coins: unknown) =>
     ndb.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', 'x:1001', 0, $1) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [JSON.stringify({ authorLabel: '@catposter', excerpt: 'Pancake the cat drinks from the fountain', coins })]);
   await lineIs({ kind: 'unsure', claimCount: 3, ownerList: true });
-  await ndb.query(`insert into people.post_watch (user_id, item_id) values ('u1', 'x:1001')`);
+  /* Saved 25 minutes ago, before its coins launched; the saved-post rule has been on since (its first look done). */
+  await ndb.query(`insert into people.post_watch (user_id, item_id, created_at) values ('u1', 'x:1001', $1)`, [iso(NOW - 25 * MIN)]);
+  await ndb.query(`insert into people.pipeline_seen (stream, key) values ('watch-saved', '#seeded')`);
   const state = { cursor: iso(NOW) };
   const ports = { policy: SHADOW_POLICY.notify, now: () => NOW, onPick: true };
   const launches = () => checkLaunches(ndb, ports);
-  assert.equal(await checkWatched(ndb, ports, state), 0, 'no pick yet: nothing, and the list is not news');
   assert.equal(await launches(), 0, 'the first look sends nothing');
+  /* The runner already picked $FKITTY (above), and no push went for the post yet: the pick is the saver's first. */
+  assert.equal(await checkWatched(ndb, ports, state), 1, 'the saver\'s push: launched from a post you saved');
   await lineIs({ kind: 'matched', coin: { address: LINK, ticker: 'FKITTY' }, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 600_000, picked: true } });
-  assert.equal(await checkWatched(ndb, ports, state), 1, 'the saver\'s row');
   assert.equal(await launches(), 2, 'one to each profile, saved or not');
   assert.equal(await launches(), 0, 'once');
+  await db.query(`update internal.post_coin_pick set address = $1 where item_id = 'x:1001'`, [NAME]);
   await lineIs({ kind: 'matched', coin: { address: NAME, ticker: 'PNCK' }, evidence: { linksPost: null, samePicture: null, launchedAfterMs: 660_000, picked: true } });
-  assert.equal(await checkWatched(ndb, ports, state), 1, 'the hand-over is still a row for the saver');
-  assert.equal(await launches(), 0, 'the hand-over is never pushed');
+  assert.equal(await checkWatched(ndb, ports, state), 1, 'the hand-over: the one running, once, to the saver');
+  assert.equal(await checkWatched(ndb, ports, state), 0);
+  assert.equal(await launches(), 0, 'the hand-over is never a launch push');
+  await db.query(`update internal.post_coin_pick set address = $1 where item_id = 'x:1001'`, [LINK]);
   const out = (await deliverQueued({ db: ndb, push, pushOn: true, policy: SHADOW_POLICY.notify, now: () => NOW })).map((o) => o.outcome);
-  assert.deepEqual(out, ['list-only', 'push', 'push', 'list-only']);
-  assert.deepEqual(sent, [{ to: 'https://push.example/u1', title: '$FKITTY launched for a post you may have seen' }, { to: 'https://push.example/u2', title: '$FKITTY launched for a post you may have seen' }]);
+  assert.deepEqual(out, ['push', 'already-pushed', 'push', 'push'], 'the saver had $FKITTY from the saved post, so its launch push is listed');
+  assert.deepEqual(sent, [
+    { to: 'https://push.example/u1', title: '$FKITTY launched from a post you saved' },
+    { to: 'https://push.example/u2', title: '$FKITTY launched for a post you may have seen' },
+    { to: 'https://push.example/u1', title: '$PNCK is the one running for a post you saved' },
+  ]);
   const [row] = await ndb.query<{ href: string; body: string; item: string }>(`select href, body, facts ->> 'item' as item from people.alert where kind = 'coin_launched' and user_id = 'u2'`);
   assert.deepEqual(row, { href: `/#/token/solana%3A${LINK}`, body: '"Pancake the cat drinks from the fountain" (@catposter). $9K MC.', item: 'x:1001' }, 'opens the coin\'s chart, the post kept for its card; the cap is the last one stored');
 });

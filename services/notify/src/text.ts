@@ -283,9 +283,9 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const who = s(f['author'], '');
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post you saved' : `${possessive(who)} post`;
       const mc = cap(f);
-      /* The one-coin pick handed over (live mode): "$FALCON is now the coin for a post you saved". */
-      const what = f['handover'] === true ? 'is now the coin' : 'is the first coin';
-      return { title: `${ticker(f)} ${what} for a post you saved`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
+      /* A saved post's two pushes (saved-post.ts): "$KURIBO launched from a post you saved", then, if the pick is another coin, "$KURIBO is the one running for a post you saved". */
+      const what = f['saved'] === 'launched' ? 'launched from a post you saved' : f['saved'] === 'running' ? 'is the one running for a post you saved' : f['handover'] === true ? 'is now the coin for a post you saved' : 'is the first coin for a post you saved';
+      return { title: `${ticker(f)} ${what}`, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
     }
     case 'blowing_up': {
       /* A narrative: "New narrative taking off: Pancake the cat" / "6 new posts, +2.1M views in the last hour". */

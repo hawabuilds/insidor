@@ -1,0 +1,26 @@
+-- 0129_saved_post_read.sql
+--
+-- WHAT THE ALERT SERVICE MAY READ TO PUSH A SAVED POST'S COIN AT ITS LAUNCH: the runner's launch
+-- candidates and its one-coin picks (0113). Read by services/notify/src/saved-post.ts, as
+-- insidor_people.
+--
+-- ── WHY ──────────────────────────────────────────────────────────────────
+--
+-- The owner saved @AOYAN_xD's Kuribo video (x:2113519213507969247) at 17:11 UTC on 23 Oct. $KURIBO
+-- launched from it at 22:47:10 and the runner tied it to the post seven seconds later
+-- (internal.one_coin_candidate, path 'launch'), but the alert service saw a coin only when the
+-- projector put the confirmed pick on the card, at 23:53 — an hour after the launch. The owner,
+-- 2026-10-24: "a saved post always pushes", on the first coin tied to the post after the save, and
+-- once more if the coin that runs is another. That needs the candidates as the runner writes them,
+-- and the pick as soon as it is decided, not as a card shows it.
+--
+-- SELECT only, on these two tables only. Both stay internal: the candidates' ties and the pick's
+-- standings are the system's reasoning, and the alert service puts on a phone only the coin's
+-- ticker, its cap and the post's words (text.ts). The app role gets nothing here.
+--
+-- What breaks if changed carelessly: granting insert or update. The runner is the only writer of a
+-- pick; a second writer would make the card and the push disagree about which coin is the post's.
+-- The service looks both grants up before reading, so code deployed before this migration falls back
+-- to the card's coin and coin_first_post, and sends no failed statement.
+
+grant select on internal.one_coin_candidate, internal.post_coin_pick to insidor_people;
