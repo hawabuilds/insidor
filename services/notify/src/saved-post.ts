@@ -8,42 +8,50 @@
  * limit and outside the launch push's daily cap (core alerts.ts PUSHED_KINDS, PAST_THE_LIMIT,
  * UNCOUNTED_PUSH_KINDS):
  *
- *   1. "$X launched from a post you saved" — the FIRST coin tied to the post that launched AFTER the
- *      person saved it, as soon as it is tied: a candidate the runner's launch matcher wrote for the
- *      post (internal.one_coin_candidate, by a link to the post or an exact name — the judge's names,
- *      the namer's guesses, or the post's own words; a picture alone is not enough), or the coin that
- *      brought the post in by its link (internal.coin_first_post). It does not wait for the pick.
+ *   1. "$X launched from a post you saved" — the FIRST coin tied to the post, launched AFTER the
+ *      person saved it, that STARTS RUNNING. Tied: a candidate the runner's launch matcher wrote for
+ *      the post (internal.one_coin_candidate, by a link to the post or an exact name — the judge's
+ *      names, the namer's guesses, or the post's own words; a picture alone is not enough), or the
+ *      coin that brought the post in by its link (internal.coin_first_post). Running: the running
+ *      coins strip's test (services/read running-coins.ts) on the coin's latest market reading inside
+ *      Policy.market.readingFreshnessMs — Policy.runningCoins.minVolume1hUsd dollars AND minTrades1h
+ *      trades in its last hour (0127). A coin with no reading yet, or a reading without its hour, is
+ *      not running. Two at once: the busier hour. It does not wait for the one-coin pick.
+ *      Why running (the owner, 2026-10-24, after the first replay): "first tied coin" alone would have
+ *      pushed a $2.9K dud "$Kuribo" at 19:33, three hours before $KURIBO; five duds linked or named
+ *      the post before the real coin launched.
  *   2. "$X is the one running for a post you saved" — once, when the one-coin rule's pick
  *      (internal.post_coin_pick; with none, the card's line coin) is a DIFFERENT coin from push 1.
  *
  * ★ THE COIN GATE HOLDS FOR BOTH (coin-gate.ts): a launchpad coin by its stored row, launched after
  * the post. Push 1 also needs the launch after the save — a coin that was there when the star was
- * tapped is not news — and within Policy.notify.launch.maxLaunchAgeMs of now, so a coin tied hours
- * late is remembered as the first, silently, rather than announced as just launched.
+ * tapped is not news — and within Policy.notify.launch.maxLaunchAgeMs of now: a coin that starts
+ * running later than that is not "just launched", and the post waits for its pick.
  *
  * ★ A PICK THAT CAME FIRST SETTLES IT. When the rule has picked a coin before any push 1 went, that
  * pick is push 1 if it qualifies, and is otherwise remembered silently as the post's coin — so a
- * dud tied later is never announced "launched from a post you saved" over a coin already running.
+ * coin tied later is never announced "launched from a post you saved" over a coin already running.
  *
  * Remembered per person in the seen stream (`watch:<person>`): `<post>|#saved-first|<coin>` and
  * `<post>|#saved-running`, whether or not the push reached a phone. The first look of this rule
  * (`watch-saved`, `#seeded`) remembers what every saved post already has and sends nothing.
  *
- * How fast: the matcher writes a candidate about 7–13 s after a coin is made on the live stream
- * (a coin the socket missed comes by the listing, 2–5 min later); this runs every
- * Policy.notify.watchLoopMs and the deliverer every Policy.notify.deliverLoopMs — so about 15–25 s
- * from launch to phone for a live-stream coin.
+ * How fast: the market reader runs every five minutes (tools/railway-start.mjs `market`) and reads
+ * every coin tied to a saved post while it is just launched (services/market db.ts, 0129's
+ * internal.saved_post_coins); this runs every Policy.notify.watchLoopMs and the deliverer every
+ * Policy.notify.deliverLoopMs. So push 1 lands seconds after the first market pass at which the coin
+ * clears the bar: about 1–6 minutes after launch for a coin that runs at once.
  *
- * Reads internal.one_coin_candidate and internal.post_coin_pick by 0129's grant; without it (a
- * database before 0129) only coin_first_post and the card's line coin are read — looked up first,
- * so no failed statement is sent.
+ * Reads internal.one_coin_candidate and internal.post_coin_pick by 0129's grant, and
+ * public.market_reading by 0078's; without 0129 only coin_first_post and the card's line coin are
+ * read — looked up first, so no failed statement is sent.
  *
- * What breaks if changed carelessly: remembering only pushes that went. A first coin skipped as
- * late, or a pick that came first, must be remembered too, or the next tie is announced as the
- * first and the post goes past two pushes.
+ * What breaks if changed carelessly: remembering only pushes that went — a pick that came first
+ * must be remembered too, or a later tie is announced as the first and the post goes past two
+ * pushes. And reading a missing hour as a quiet one or a busy one: it is neither, and waits.
  */
 
-import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type NotifyPolicy, type Policy } from '@insidor/contracts/policy.ts';
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
@@ -55,7 +63,7 @@ import { lineCoin, watchStream } from './post-watch.ts';
 export const SAVED_STREAM = 'watch-saved';
 const SEEDED = '#seeded';
 
-/** The ties that make a coin a saved post's: a link to it, or an exact name. A picture alone is not one. */
+/** The ties that make a coin a saved post's: a link to it, or an exact name. A picture alone is not one. Kept equal to 0129's internal.saved_post_coins. */
 export const SAVED_TIES = ['link', 'name_judge', 'name_guess', 'name_text'] as const;
 
 export const firstSavedKey = (itemId: string, address: string): string => `${itemId}|#saved-first|${address}`;
@@ -63,9 +71,29 @@ export const runningSavedKey = (itemId: string): string => `${itemId}|#saved-run
 
 /* ── pure ─────────────────────────────────────────────────────────── */
 
+/** Dollars traded and trades (buys plus sells) in the hour before a market reading. */
+export interface LastHour {
+  readonly volume1hUsd: number;
+  readonly trades1h: number;
+}
+
 export interface SavedCoin {
   readonly address: string;
   readonly gate: CoinGateFacts;
+  /** The coin's last hour from its latest fresh market reading (0127); null or absent when there is none, or it carried no hour. */
+  readonly hour?: LastHour | null;
+}
+
+type RunningBars = Pick<Policy['runningCoins'], 'minVolume1hUsd' | 'minTrades1h'>;
+
+/** The running coins strip's own test (services/read running-coins.ts): enough dollars AND enough trades. No hour is not running. */
+export const isRunning = (hour: LastHour | null | undefined, bars: RunningBars): boolean =>
+  hour !== null && hour !== undefined && hour.volume1hUsd >= bars.minVolume1hUsd && hour.trades1h >= bars.minTrades1h;
+
+/** The bars push 1 is held to: just launched (Policy.notify.launch.maxLaunchAgeMs) and running (Policy.runningCoins). */
+export interface SavedRule {
+  readonly maxLaunchAgeMs: number;
+  readonly running: RunningBars;
 }
 
 /** What this person already heard about this saved post: push 1's coin (or the coin remembered in its place), and whether push 2 is spent. */
@@ -80,23 +108,25 @@ export interface SavedStep {
 }
 
 /**
- * One saved post, one look. `ties` are the coins tied to it (any order); `pick` the rule's coin now,
- * null while it is waiting. `seeding`: remember, never push.
+ * One saved post, one look. `ties` are the coins tied to it (any order), each with its last hour;
+ * `pick` the rule's coin now, null while it is waiting. `seeding`: remember, never push.
  */
-export function savedPostStep(itemId: string, savedMs: number, ties: readonly SavedCoin[], pick: SavedCoin | null, mem: SavedMemory, nowMs: number, maxLaunchAgeMs: number, seeding: boolean): SavedStep {
+export function savedPostStep(itemId: string, savedMs: number, ties: readonly SavedCoin[], pick: SavedCoin | null, mem: SavedMemory, nowMs: number, rule: SavedRule, seeding: boolean): SavedStep {
   const passes = (c: SavedCoin) => coinGate(c.gate) === null;
   const afterSave = (c: SavedCoin) => c.gate.launchedMs !== null && c.gate.launchedMs >= savedMs;
-  const fresh = (c: SavedCoin) => c.gate.launchedMs !== null && nowMs - c.gate.launchedMs <= maxLaunchAgeMs;
+  const fresh = (c: SavedCoin) => c.gate.launchedMs !== null && nowMs - c.gate.launchedMs <= rule.maxLaunchAgeMs;
   if (mem.first === null) {
     if (pick !== null) {
       const remember = [firstSavedKey(itemId, pick.address)];
       if (!seeding && passes(pick) && afterSave(pick) && fresh(pick)) return { push: { kind: 'first', address: pick.address }, remember };
       return { push: null, remember: seeding ? [...remember, runningSavedKey(itemId)] : remember };
     }
-    const first = [...ties].filter((c) => passes(c) && afterSave(c)).sort((a, b) => (a.gate.launchedMs ?? 0) - (b.gate.launchedMs ?? 0) || a.address.localeCompare(b.address))[0];
+    /* The first tied coin to START RUNNING while it is just launched; two at once: the busier hour, then the address. */
+    const first = [...ties]
+      .filter((c) => passes(c) && afterSave(c) && fresh(c) && isRunning(c.hour, rule.running))
+      .sort((a, b) => (b.hour?.volume1hUsd ?? 0) - (a.hour?.volume1hUsd ?? 0) || a.address.localeCompare(b.address))[0];
     if (first === undefined) return { push: null, remember: [] };
-    const remember = [firstSavedKey(itemId, first.address)];
-    return { push: !seeding && fresh(first) ? { kind: 'first', address: first.address } : null, remember };
+    return { push: seeding ? null : { kind: 'first', address: first.address }, remember: [firstSavedKey(itemId, first.address)] };
   }
   if (mem.running || pick === null || pick.address === mem.first || !passes(pick)) return { push: null, remember: [] };
   return { push: seeding ? null : { kind: 'running', address: pick.address }, remember: [runningSavedKey(itemId)] };
@@ -128,6 +158,33 @@ export interface SavedPorts {
   readonly policy: NotifyPolicy;
   readonly now: () => number;
   readonly quotes?: Quotes;
+  /** The running bars and how old a market reading may be; absent: Policy.runningCoins and Policy.market.readingFreshnessMs in force. */
+  readonly running?: RunningBars;
+  readonly readingFreshnessMs?: number;
+}
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+};
+
+/** Each coin's last hour from its latest market reading inside the freshness window; a latest reading without an hour is no hour (0127's "not read"). */
+async function lastHours(db: Db, addresses: readonly string[], nowMs: number, freshMs: number): Promise<Map<string, LastHour>> {
+  const out = new Map<string, LastHour>();
+  if (addresses.length === 0) return out;
+  const rows = await db.query<{ address: string; v: unknown; b: unknown; s: unknown }>(
+    `select distinct on (address) address, volume_1h_usd as v, buys_1h as b, sells_1h as s from public.market_reading
+      where chain = 'solana' and address = any($1::text[]) and taken_at > to_timestamp($2::float8 / 1000)
+      order by address, taken_at desc`,
+    [[...addresses], nowMs - freshMs],
+  );
+  for (const r of rows) {
+    const v = num(r.v);
+    const b = num(r.b);
+    const s = num(r.s);
+    if (v !== null && b !== null && s !== null) out.set(r.address, { volume1hUsd: v, trades1h: b + s });
+  }
+  return out;
 }
 
 /** Whether this role may read the runner's candidates and picks (0129). */
@@ -182,16 +239,18 @@ export async function checkSavedPosts(db: Db, ports: SavedPorts, watches: readon
   }
   const pairs = itemIds.flatMap((id) => [...new Set([...(tiedTo.get(id) ?? []), ...(picks.has(id) ? [picks.get(id) ?? ''] : [])])].map((address) => ({ itemId: id, address })));
   const gates = await coinGateFacts(db, pairs);
-  const coinOf = (itemId: string, address: string): SavedCoin => ({ address, gate: gates.get(`${itemId}|${address}`) ?? { venueId: null, origin: null, launchedMs: null, hadPostMs: null } });
-
   const now = ports.now();
+  const hours = await lastHours(db, [...new Set(pairs.map((p) => p.address))], now, ports.readingFreshnessMs ?? DEFAULT_POLICY.market.readingFreshnessMs);
+  const coinOf = (itemId: string, address: string): SavedCoin => ({ address, gate: gates.get(`${itemId}|${address}`) ?? { venueId: null, origin: null, launchedMs: null, hadPostMs: null }, hour: hours.get(address) ?? null });
+  const rule: SavedRule = { maxLaunchAgeMs: ports.policy.launch.maxLaunchAgeMs, running: ports.running ?? DEFAULT_POLICY.runningCoins };
+
   const remember: { stream: string; key: string }[] = [];
   const due: { w: SavedWatch; kind: 'first' | 'running'; address: string }[] = [];
   for (const w of open) {
     const stream = watchStream(w.userId);
     const ties = [...(tiedTo.get(w.itemId) ?? [])].map((a) => coinOf(w.itemId, a));
     const pickAddress = picks.get(w.itemId);
-    const step = savedPostStep(w.itemId, w.since, ties, pickAddress === undefined ? null : coinOf(w.itemId, pickAddress), savedMemory(w.itemId, keysOf.get(stream) ?? new Set()), now, ports.policy.launch.maxLaunchAgeMs, seeding);
+    const step = savedPostStep(w.itemId, w.since, ties, pickAddress === undefined ? null : coinOf(w.itemId, pickAddress), savedMemory(w.itemId, keysOf.get(stream) ?? new Set()), now, rule, seeding);
     for (const key of step.remember) remember.push({ stream, key });
     if (step.push !== null) due.push({ w, ...step.push });
   }
