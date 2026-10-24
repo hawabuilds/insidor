@@ -161,7 +161,7 @@ export { toMarketState, toPairView, pickPricePair, CURVE_DEX_IDS } from './to-ma
 export type { MarketReadContext, PairView } from './to-market-state.ts';
 
 /* Search by name or ticker, kept to the launchpad's coins on Solana. */
-export { dexscreenerSearch, readSearch, SEARCH_LIMIT } from './search.ts';
+export { dexscreenerSearch, readSearch, SEARCH_LIMIT, withLaunchpad } from './search.ts';
 export { dexscreenerQuotes, dexscreenerStandings, readQuotes, readStandings, TOKENS_BATCH, WRAPPED_SOL } from './tokens.ts';
 export { dexscreenerProfiles, httpsUrl, readProfiles } from './profiles.ts';
 export type { CoinProfile, ProfileLink, ProfileLinkKind } from './profiles.ts';
