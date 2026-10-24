@@ -8,6 +8,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { Row } from './queries.ts';
+import { COINS_MADE_SQL } from './coins-made.ts';
 import { LIST_NEW_SQL, cardOf, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, gainNow, GAIN_FRESH_MS, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
 
 const NOW = Date.parse('2026-10-18T15:00:00Z');
@@ -158,5 +159,30 @@ test('No coin yet is its own ranking a tick, and New and Most viewed pass it to 
   assert.deepEqual((await list(f.db, 3, { sort: 'today', offset: 0, on: null, noCoin: true })).stories, [{ id: 'none' }]);
   assert.deepEqual((await list(f.db, 3, { sort: 'today', offset: 0, on: null, noCoin: false })).stories, [{ id: 'coined' }, { id: 'none' }]);
   await list(f.db, 3, { sort: 'new', offset: 20, on: 'x', noCoin: true });
-  assert.deepEqual(f.calls.at(-1)?.params, [20, 20, 'X', true]);
+  assert.deepEqual(f.calls.findLast((c) => c.sql === LIST_NEW_SQL)?.params, [20, 20, 'X', true]);
+});
+
+test('★ each card carries its "See N coins" count, one statement a tick for the page; a failed count leaves the cards as they were', async () => {
+  const many = [row('a', { day: '9' }), row('b', { day: '5' })];
+  const calls: string[] = [];
+  let fail = false;
+  const fake = {
+    query: async (sql: string, params: readonly unknown[] = []): Promise<Row[]> => {
+      calls.push(sql);
+      if (sql === LIST_NUMBERS_SQL) return [...many];
+      if (sql === LIST_PAGES_SQL) return (params[0] as string[]).map((id) => ({ story_id: id, payload: { id } }));
+      if (sql === COINS_MADE_SQL) {
+        if (fail) throw new Error('down');
+        return [{ story_id: 'a', first_posted: 1000, coins: [{ a: 'c', at: 1000 }] }];
+      }
+      return [];
+    },
+  };
+  const list = createNarrativeLists(() => NOW);
+  const ask = { sort: 'today', offset: 0, on: null, noCoin: false } as const;
+  assert.deepEqual((await list(fake, 4, ask)).stories, [{ id: 'a', coinsMade: 1 }, { id: 'b' }], 'b was not answered for: no count, never 0');
+  await list(fake, 4, ask);
+  assert.equal(calls.filter((s) => s === COINS_MADE_SQL).length, 2, 'b, unanswered, is asked again; a is kept for the tick');
+  fail = true;
+  assert.deepEqual((await list(fake, 5, ask)).stories, [{ id: 'a' }, { id: 'b' }]);
 });
