@@ -200,11 +200,11 @@ test('★ the coins picked for posts and the stated-name coins are read every pa
   assert.equal(picked.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
 });
 
-test('without the hour, the pass reads exactly what it read before', async () => {
+test('without the hour, the pass reads exactly what it read before, and the war\'s coin', async () => {
   let calls = 0;
   const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;
   await assetsToRead(db, 'solana', 300);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2, 'the coins on screen and the newest, and the Twitter World War coin (0134)');
 });
 
 test('★ a tied candidate in its first hour is read every pass, right after the coins on screen, For You posts first (policy.v163)', async () => {
@@ -234,4 +234,27 @@ test('the light pass reads the first-hour coins alone, and a failed read there i
   assert.deepEqual(await firstHourOnly(ok, 'solana', { nowMs: 0, withinMs: 1, limit: 1 }), [{ chain: 'solana', address: 'baldcat' }]);
   const down = { query: async <R>(): Promise<R[]> => { throw new Error('relation does not exist'); } } as Db;
   assert.deepEqual(await firstHourOnly(down, 'solana', { nowMs: 0, withinMs: 1, limit: 1 }), []);
+});
+
+test('★ the "Twitter World War" coin the owner chose is read every pass, first, under the origin rule', async () => {
+  const seen: string[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      seen.push(s);
+      if (s.includes('from public.war_coin')) {
+        assert.deepEqual([...boundOrigins(p ?? [])].sort(), [...OBSERVED_ASSET_ORIGINS].sort());
+        return [{ chain: 'solana', address: 'WAR', tier: 0 }] as R[];
+      }
+      return [{ chain: 'solana', address: 'NEW', tier: 1 }] as R[];
+    },
+  } as Db;
+  assert.deepEqual((await assetsToRead(db, 'solana', 300)).map((r) => r.address), ['WAR', 'NEW']);
+  assert.ok(seen.some((s) => /a\.origin = any\(\$2::text\[\]\)/.test(s)));
+  const before = {
+    query: async <R>(s: string): Promise<R[]> => {
+      if (s.includes('war_coin')) throw new Error('relation "public.war_coin" does not exist');
+      return [{ chain: 'solana', address: 'NEW', tier: 1 }] as R[];
+    },
+  } as Db;
+  assert.deepEqual((await assetsToRead(before, 'solana', 300)).map((r) => r.address), ['NEW'], 'a database before 0134: the usual pass');
 });

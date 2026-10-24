@@ -99,6 +99,7 @@ export async function assetsToRead(
   const savedCoins = saved === null ? [] : await savedPostCoins(db, chain, saved);
   const held = picked === null ? [] : await pickedCoins(db, chain, picked);
   const young = firstHour === null ? [] : await firstHourCoins(db, chain, firstHour);
+  const war = await warCoin(db, chain);
   const rest = await onScreenThenNewest(db, chain, limit);
   /* The tied candidates in their first hour, then the coins tied to saved posts, then the picked and
      stated coins, then the older coins a pick is weighing, then the hour's coins, go first among the
@@ -106,12 +107,32 @@ export async function assetsToRead(
      limit, and the pass its bound — so on a full pass what gives way is the newest end. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...rest.filter((r) => r.tier === 0), ...young, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
   }
   return out;
+}
+
+/**
+ * ★ THE "TWITTER WORLD WAR" COIN IS READ EVERY PASS, FIRST (the owner, 2026-10-24: one coin for the
+ * whole war, on its card with its cap and Buy). It is the owner's choice (public.war_coin, 0134), on
+ * no projected payload, so the on-screen tier never names it: chosen at an hour old, it had one
+ * reading. One coin, first in the pass, under the same origin allowlist. A failed read (a database
+ * before 0134) is an empty list: the pass reads its usual coins.
+ */
+async function warCoin(db: Db, chain: string): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 0 as tier
+         from public.war_coin w join public.asset a on a.chain = $1 and a.address = w.address
+        where a.origin = any($2::text[])`,
+      [chain, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** The tied candidates launched in the last `withinMs` of `nowMs` (Policy.market.firstHour): at most `limit` a pass. */
