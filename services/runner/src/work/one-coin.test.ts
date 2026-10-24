@@ -208,3 +208,29 @@ test('★ a held coin\'s rug grace is stored with the pick and read back as the 
   assert.deepEqual(holderOf({ ...stored, evidence: {} }), { address: 'A', sinceMs: NOW - 20 * MIN, underShareSinceMs: null });
   assert.equal(holderOf({ ...stored, outcome: 'waiting', address: null }), null);
 });
+
+test('★ stated name: a post found after its stated coin launched gets it; the owner\'s coin call is never re-opened by it', async () => {
+  /* @TocRadio (23 Oct): judged YOU MISSED BITCHES; "You Missed Coin" ($BITCHES) launched after the post. */
+  const origin: RecentPost = { itemId: 'x:toc', postedAtMs: NOW - 120 * MIN, judgeNames: ['YOU MISSED BITCHES'], guessNames: [], hash: null, text: 'a custom gold coin that reads "YOU MISSED BITCHES"' };
+  const real = { address: 'REAL', name: 'You Missed Coin', ticker: 'BITCHES', launchedAtMs: NOW - 60 * MIN, capUsd: 300_000, readAtMs: NOW - MIN, liquidityUsd: null };
+  const copycat = { address: 'COPY', name: 'You Missed Bitches', ticker: 'YMB', launchedAtMs: NOW - 110 * MIN, capUsd: 40_000, readAtMs: NOW - MIN, liquidityUsd: null };
+  const w = world({ posts: [origin], prior: [real, copycat], market: new Map([['REAL', { capUsd: 300_000, peakCapUsd: 300_000, readAtMs: NOW - MIN }], ['COPY', { capUsd: 40_000, peakCapUsd: 40_000, readAtMs: NOW - MIN }]]) });
+  await oneCoinPass(deps(w), newOneCoinState());
+  assert.deepEqual(w.candidates.map((c) => [c.address, c.evidence['ties']]), [['REAL', ['name_stated']]]);
+  assert.equal(w.picks.get('x:toc')?.address, 'REAL');
+
+  /* The copycat held, the owner called it right: the stated coin's tie is dropped for this post. */
+  const held = world({
+    candidates: [
+      { itemId: 'x:toc', address: 'COPY', path: 'launch', evidence: { ties: ['name_judge'] }, launchedAtMs: NOW - 110 * MIN, foundAtMs: NOW - 30 * MIN },
+      { itemId: 'x:toc', address: 'REAL', path: 'launch', evidence: { ties: ['name_stated'] }, launchedAtMs: NOW - 60 * MIN, foundAtMs: NOW - 20 * MIN },
+    ],
+    market: new Map([['REAL', { capUsd: 60_000, peakCapUsd: 60_000, readAtMs: NOW - MIN }], ['COPY', { capUsd: 40_000, peakCapUsd: 40_000, readAtMs: NOW - MIN }]]),
+    picks: new Map([['x:toc', { subjectId: 'x:toc', address: 'COPY', outcome: 'picked', decidedAtMs: NOW - 25 * MIN, evidence: {} }]]),
+  });
+  await oneCoinPass({ ...deps(held), ownerCalled: async () => new Set(['x:toc']) }, newOneCoinState());
+  assert.equal(held.picks.get('x:toc')?.address, 'COPY');
+  /* Without the call, the stated coin over the bars takes it. */
+  await oneCoinPass(deps(held), newOneCoinState());
+  assert.equal(held.picks.get('x:toc')?.address, 'REAL');
+});

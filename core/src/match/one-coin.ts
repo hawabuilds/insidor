@@ -93,6 +93,7 @@
 import { hexHamming, isHexHash, BITS_PER_HEX_DIGIT } from '../bits.ts';
 import { nameKey } from '../group/picture.ts';
 import { compactName, nameMatch } from './post-coin.ts';
+import { statedInText, statesName, type StatedBars } from './stated-name.ts';
 
 /* ── the matcher ───────────────────────────────────────────────────── */
 
@@ -104,6 +105,14 @@ export interface LaunchMatchBars {
   readonly maxHashDistance: number;
   readonly minSimilarity: number;
   readonly minVariantLength: number;
+  /**
+   * The stated-name tie (stated-name.ts): a coin carrying the post's whole stated name and ticker.
+   * Absent: no such tie, as before policy.v153.
+   */
+  readonly stated?: StatedBars & {
+    /** A stated coin ties a post up to this long after it, past `postWindowMs` (the window binds a shared name, not a stated one). */
+    readonly withinMs: number;
+  };
 }
 
 /** A new launch, as the matcher needs it. Every absent fact is unknown, never "no". */
@@ -138,7 +147,7 @@ export interface MatchPost {
   readonly text?: string | null;
 }
 
-export type MatchEvidence = 'link' | 'name_judge' | 'name_guess' | 'name_text' | 'picture' | 'existing';
+export type MatchEvidence = 'link' | 'name_judge' | 'name_guess' | 'name_text' | 'name_stated' | 'picture' | 'existing' | 'missed_runner';
 
 export interface LaunchMatch {
   readonly itemId: string;
@@ -187,6 +196,11 @@ export function namedInText(p: MatchPost, coin: { readonly name: string | null; 
   return said && nameMatch(names, { name: coin.name, ticker: null }, bars) !== 'none';
 }
 
+/** Every name the post states: the judge's, the namer's, and what its own words call it (stated-name.ts). */
+export function statedNamesOf(p: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'text'>): readonly string[] {
+  return [...p.judgeNames, ...p.guessNames, ...statedInText(p.text)];
+}
+
 /** The posts a launch could be the coin of, with what ties it to each. A launch tied to none is absent. */
 export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bars: LaunchMatchBars): readonly LaunchMatch[] {
   const out: LaunchMatch[] = [];
@@ -195,14 +209,17 @@ export function launchMatches(coin: LaunchSide, posts: readonly MatchPost[], bar
     if (after < -bars.launchLeadMs) continue;
     const through = coin.linksPosts.has(p.itemId) || after > bars.linkMaxAgeMs ? null : coin.linksThrough?.get(p.itemId) ?? null;
     const linked = (coin.linksPosts.has(p.itemId) || through !== null) && after <= bars.linkMaxAgeMs;
-    /* Past the window only a link ties: a name or a picture shared with yesterday's post is chance. */
-    if (after > bars.postWindowMs && !linked) continue;
+    const side = { name: coin.name, ticker: coin.ticker };
+    /* A coin carrying the post's whole stated name and ticker, launched after it (stated-name.ts). */
+    const stated = bars.stated !== undefined && after >= 0 && after <= bars.stated.withinMs && statesName(statedNamesOf(p), side, bars.stated);
+    /* Past the window only a link or the stated name ties: a name or a picture shared with yesterday's post is chance. */
+    if (after > bars.postWindowMs && !linked && !stated) continue;
     const evidence: MatchEvidence[] = [];
     if (linked) evidence.push('link');
-    const side = { name: coin.name, ticker: coin.ticker };
     if (p.judgeNames.length > 0 && nameMatch(p.judgeNames, side, bars) === 'exact') evidence.push('name_judge');
     if (p.guessNames.length > 0 && nameMatch(p.guessNames, side, bars) === 'exact') evidence.push('name_guess');
     if (!evidence.includes('name_judge') && !evidence.includes('name_guess') && namedInText(p, side, bars)) evidence.push('name_text');
+    if (stated) evidence.push('name_stated');
     const gap = hashGap(coin.hash, p.hash);
     const similarity = coin.similarity.get(p.itemId) ?? null;
     if ((gap !== null && gap <= bars.maxHashDistance) || (similarity !== null && similarity >= bars.minSimilarity)) evidence.push('picture');
@@ -322,7 +339,7 @@ export interface Contender {
 }
 
 export type Basis = 'trades' | 'market_readings';
-export type OutReason = 'creator_sold' | 'fell_from_peak' | 'after_older_coin';
+export type OutReason = 'creator_sold' | 'fell_from_peak' | 'after_older_coin' | 'behind_stated';
 
 /** How one candidate stood at this judgement. Kept with the pick; never shown. */
 export interface Standing {
@@ -387,8 +404,10 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
 
 /** A coin the second path found already trading when the post came. */
 const isOlder = (c: Contender): boolean => c.existingSinceMs !== undefined && c.existingSinceMs !== null;
-/** Ties that are the creators making the post's own coin, not a shared name. */
-const madeForPost = (c: Contender): boolean => c.evidence.includes('link') || c.evidence.includes('picture');
+/** A coin carrying the post's whole stated name (stated-name.ts). */
+const isStated = (c: Contender): boolean => c.evidence.includes('name_stated');
+/** Ties that are the creators making the post's own coin, not a shared name: a link, the picture, the whole stated name, or the missed-runner net's origin (missed-runner.ts). */
+const madeForPost = (c: Contender): boolean => c.evidence.includes('link') || c.evidence.includes('picture') || isStated(c) || c.evidence.includes('missed_runner');
 
 /**
  * Out, when an older coin of the post's name stands: each later name-only coin that does not beat
@@ -409,6 +428,26 @@ function behindOlder(contenders: readonly Contender[], standings: readonly Stand
 }
 
 /**
+ * ★ THE STATED NAME WINS — ON EQUAL TRADING, NOT AGAINST IT. When a coin carrying the post's whole
+ * stated name and ticker stands (visible, not out, clearing the bars), every coin that only shares a
+ * name — not stated, not the creators' link or picture — and trades no more than it is out
+ * (`behind_stated`). A held look-alike goes out with them, so the pick re-opens and the stated coin
+ * is judged against the coins still standing on the plain rule: the holder's three-times shield is
+ * gone, its lead is not. 23 Oct: dozens of "You Missed Coin" $BITCHES copies launched within seconds
+ * of the post that stated the name, one reached $16k; the look-alike held, "You Missed Bitches"
+ * $YMB, ran to $2.4M. Putting every look-alike out would have handed the pick to the $16k copy.
+ * The real $BITCHES, launched 71 minutes later, takes it once it trades more than $YMB. While no
+ * stated coin clears the bars, nothing changes.
+ */
+function behindStated(contenders: readonly Contender[], standings: readonly Standing[]): readonly Standing[] {
+  const stated = new Set(contenders.filter(isStated).map((c) => c.address));
+  const best = standings.filter((s) => stated.has(s.address) && s.visible && s.out === null && s.clears).sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0))[0];
+  if (best === undefined) return standings;
+  const lookAlike = new Set(contenders.filter((c) => !isStated(c) && !madeForPost(c)).map((c) => c.address));
+  return standings.map((s) => (lookAlike.has(s.address) && s.out === null && (s.strength ?? 0) <= (best.strength ?? 0) ? { ...s, out: 'behind_stated', clears: false } : s));
+}
+
+/**
  * The post's (or narrative's) one coin now. `tradesRunning`: the trade feed wrote lately and these
  * candidates are watched; false falls back to the readings rule, said in `basis`.
  */
@@ -417,7 +456,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const basis: Basis = tradesRunning ? 'trades' : 'market_readings';
   /* On readings the rival floor is one dollar of climb, as the replay's; on trades it is zero net buying. */
   const floor = basis === 'trades' ? 0 : 1;
-  const standings = behindOlder(contenders, contenders.map((c) => standingOf(c, basis, nowMs, bars)), floor, bars);
+  const standings = behindStated(contenders, behindOlder(contenders, contenders.map((c) => standingOf(c, basis, nowMs, bars)), floor, bars));
   const live = standings.filter((s) => s.visible && s.out === null);
   /* On readings an unread coin is not judged yet (the replay's rule); on trades it holds every pick back. */
   const judged = basis === 'trades' ? live : live.filter((s) => s.measured);

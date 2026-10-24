@@ -365,12 +365,18 @@ export class PgOneCoinRepo {
    * `sinceMs` (read from the judgements of that window, by their time index: a post is judged after
    * it is posted), with the judge's names (its newest answer), the namer's guesses and the hash of the
    * post's embedded picture.
+   *
+   * ★ THE FIRST QUESTION'S ANSWER, NEVER A KIND ANSWER. A held kind (POLITICS, SPORT…) is filed as a
+   * newer "no" row of the kind prompt; read as the post's verdict, it dropped a coinable post and its
+   * names out of the matcher. @TocRadio (23 Oct, "YOU MISSED BITCHES") was answered POLITICS two
+   * minutes after its yes and never met "You Missed Coin". The kind holds a post off For You; it says
+   * nothing about which coin is the post's. 740 posts had a kind row in the three days to 24 Oct.
    */
   async recentPosts(sinceMs: number, limit: number, hashVersion: string): Promise<readonly RecentPost[]> {
     const rows = await this.#db.query<PostRow>(
       `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, i.body, ${postExtras('$3')}
          from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
-                 from internal.post_judgement where judged_at >= $1 order by item_id, judged_at desc) j
+                 from internal.post_judgement where judged_at >= $1 and prompt_id not like 'post-kind%' order by item_id, judged_at desc) j
          join public.item i on i.item_id = j.item_id
         where i.origin = 'observed' and coalesce(i.posted_at, i.first_seen_at) >= $1 and j.coinable is true
         order by coalesce(i.posted_at, i.first_seen_at) desc
@@ -389,7 +395,7 @@ export class PgOneCoinRepo {
     const rows = await this.#db.query<PostRow>(
       `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as posted_at, j.proposed_name, j.alternate_names, i.body, ${postExtras('$2')}
          from (select distinct on (item_id) item_id, proposed_name, alternate_names, coinable
-                 from internal.post_judgement where item_id = any($1::text[]) order by item_id, judged_at desc) j
+                 from internal.post_judgement where item_id = any($1::text[]) and prompt_id not like 'post-kind%' order by item_id, judged_at desc) j
          join public.item i on i.item_id = j.item_id
         where i.origin = 'observed' and j.coinable is true`,
       [[...new Set(itemIds)], hashVersion],
