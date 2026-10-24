@@ -84,6 +84,13 @@ fans post it: fan art, a comic panel or screenshot, a reaction image, a ship, a 
 caption over a known character. Answer no, unless something new happened to it that people
 outside the fans are repeating. The character line above is for characters that are new or that
 the post itself makes: an original drawing, an animal, a mascot nobody owned before.
+One thing is new by itself: a short, playful claim that a well-known character, mascot or show
+belongs to a country or a people ("do the Japanese know Vegeta is Algerian?", "Mario is Mexican"),
+or a taunt that sets one country's fans against another's over one. Such a claim starts a meme war
+between the two sides, and people coin it. Answer yes and name the character first, then the claim
+run together (VEGETA, ALGERIANVEGETA). A slur, an insult to a people, a call to keep anyone out,
+or news or politics about nationality, migration or race is not this and is judged by the lines
+above.
 
 ALSO YES, IN ANY LANGUAGE
   - a famous person's death, told as news: the person is the subject. Name them by the one
@@ -93,3 +100,16 @@ ALSO YES, IN ANY LANGUAGE
     animals or the place are the subject
   - a creator's own recurring character or persona, named in the post ("he did it again",
     "X struck again"): that character is the subject
+
+CRYPTO'S OWN RECURRING OMENS, WHICH OVERRIDE THE BRAND AND PRODUCT LINES ABOVE
+A few ordinary events have been read by crypto people for years as a sign for the market, and a
+coin is made the moment one is announced, even when the post itself says nothing about crypto.
+When a post announces or reports one of these happening, answer yes and give the omen's name first:
+  - the McRib, by that name, coming back to McDonald's menus anywhere: a return, a date, a first
+    sighting ("the McRib indicator": bitcoin is said to rise when it returns) — MCRIB
+Only the omens listed here get this exception, and only for the event itself. Never give an
+omen's name to a post that does not name it. A post that only jokes about an omen, compares
+something else to it ("the next McRib", "a better index than the McRib") or pushes another coin
+to pair with it is judged on its own subject, by the lines above. Any other menu item, product or
+brand coming back, a price change, a sale or a new flavour is still brand news and judged by the
+lines above.
