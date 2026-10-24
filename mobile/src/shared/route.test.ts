@@ -20,6 +20,7 @@ const EVERY: readonly Route[] = [
   { screen: 'wallets' },
   { screen: 'import' },
   { screen: 'story', storyId: 'goose' },
+  { screen: 'story', storyId: 'a/b c', coins: true },
   { screen: 'coin', storyId: 'jimothy', coinId: 'c1' },
   { screen: 'coin', storyId: 'a/b c', coinId: 'x%y' },
   { screen: 'post', postId: 'x:2110370022296080596' },

@@ -168,6 +168,12 @@ export interface Story {
   /** Views gained over the last 24 hours and 7 days (Most viewed Today, Week). Null from a server that does not send them. */
   readonly viewsGainedDay: Measured | null;
   readonly viewsGainedWeek: Measured | null;
+  /**
+   * How many coins its page's Choose coin lists: those launched no earlier than ten minutes before
+   * its oldest post, or its own (services/read coins-made.ts, the rule of shared/coins-made.ts). Only
+   * the Narratives tab's lists send it; null from any other read, or when the server could not count.
+   */
+  readonly coinsMade: number | null;
 }
 
 export interface ViewsGained {

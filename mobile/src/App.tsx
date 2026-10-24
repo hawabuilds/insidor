@@ -232,6 +232,7 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps
         <NarrativePage
           key={route.storyId}
           storyId={route.storyId}
+          openCoins={route.coins === true}
           onCreate={(s, from) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, labelled: noticeFor(s) !== null, storyId: s.id, ...(from === undefined ? {} : { link: from.link, postId: from.postId }) })}
         />
       );

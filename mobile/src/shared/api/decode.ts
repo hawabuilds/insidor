@@ -503,6 +503,8 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     viewsPerMinute: decodeSpeeds(o.viewsPerMinute, `${path}.viewsPerMinute`),
     viewsGainedDay: o.viewsGainedDay === undefined || o.viewsGainedDay === null ? null : measured(o.viewsGainedDay, `${path}.viewsGainedDay`, 'not_read_yet'),
     viewsGainedWeek: o.viewsGainedWeek === undefined || o.viewsGainedWeek === null ? null : measured(o.viewsGainedWeek, `${path}.viewsGainedWeek`, 'not_read_yet'),
+    /* Absent, or not a whole count: null, and the card offers no "See N coins" (never a 0 it did not count). */
+    coinsMade: count(o.coinsMade),
   };
 }
 

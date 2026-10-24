@@ -6,7 +6,7 @@ import type { Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { speedLine } from '../feed/feed-sort.ts';
 import { storyCoinState } from '../narrative/story-coin.ts';
-import { DEFAULT_CHOICE, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, starredNarratives, viewsText, viralLine, watchLine, type Choice } from './narrative-order.ts';
+import { DEFAULT_CHOICE, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, seeCoinsText, speedsOf, starredNarratives, viewsText, viralLine, watchLine, type Choice } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 const base = list[0] as Story;
@@ -128,3 +128,18 @@ test('★ Trending says the viral posts a story is listed by, added up under the
   assert.equal(viralLine([{ ...base, inWindow: null }]), null);
 });
 
+
+test('★ the decoder takes the card\'s coins-made count, and reads it as none when absent or not a whole count', () => {
+  const raw = fixtureStory(sampleNarrativeIds()[0] as string) as Record<string, unknown>;
+  assert.equal(decodeStory({ ...raw, coinsMade: 3 }).coinsMade, 3);
+  assert.equal(decodeStory({ ...raw, coinsMade: 0 }).coinsMade, 0);
+  assert.equal(decodeStory(raw).coinsMade, null, 'absent: a server that does not count, never 0');
+  for (const bad of [null, -1, 1.5, '3']) assert.equal(decodeStory({ ...raw, coinsMade: bad }).coinsMade, null, String(bad));
+});
+
+test('★ "See N coins" only when some were made: never "See 0 coins", and none when not counted', () => {
+  assert.equal(seeCoinsText(4), 'See 4 coins');
+  assert.equal(seeCoinsText(1), 'See 1 coin');
+  assert.equal(seeCoinsText(0), null);
+  assert.equal(seeCoinsText(null), null);
+});
