@@ -18,6 +18,11 @@
  * own link ties it (or its repost, one hop) launched within 48 hours of the post, the judge said yes,
  * and the one-coin rule picked that coin. No view bar, score bar, six hours or junk bar for it; the
  * post may be up to two days old, so it is loaded and counted in the window whatever its age.
+ * ★ And For You takes a post by the late route (`lateNoCoin`, late-no-coin.ts): found after the six
+ * hours had closed, judged yes (a yes just under the bar counts there alone), over the views bar, and
+ * no coin for it running yet; loaded whatever its age and whoever found it, For You's only. Under the
+ * frame's cut — where For You's newest-first order puts most of them — it joins For You's list all the
+ * same (`lateJoins`).
  * With `rising.fypMaxAgeOn`, For You also turns away a post over `rising.fypMaxAgeMs` old unless it
  * is still growing fast (fyp-freshness.ts) — but only one that is not on it yet: a post already on
  * For You (feed-members.ts, 0075) stays while it is inside the window (the owner, 2026-10-14: the
@@ -125,6 +130,7 @@ import { loadQuotedPosts, mainPicture, type QuotedRow } from './quoted.ts';
 const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
 import { coinFirstLets, loadCoinFirst, recordAdmitted } from './coin-first.ts';
+import { beyondCap, lateAnswerPolicy, lateLets, loadLateNoCoin } from './late-no-coin.ts';
 import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
@@ -262,6 +268,8 @@ export interface RisingRow {
    * Policy.judge.coinModel.on, absent otherwise. The score itself is never loaded.
    */
   net_add?: boolean | null;
+  /** A catch-all lane credited the post (internal.item_found_by); false for a late post loaded by id alone. Absent on a row built by hand. */
+  credited?: boolean;
 }
 
 /**
@@ -283,7 +291,19 @@ const toMs = (value: Date | string | null): Millis | null => {
  * role reads `internal`; the score never leaves
  * this function except as the yes or no `postScore` makes of it.
  */
-export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null, net: CoinModelTarget | null = null): Promise<readonly RisingRow[]> {
+export async function loadCandidates(
+  db: Db,
+  sinceMs: Millis,
+  members: readonly string[] = [],
+  only: readonly string[] | null = null,
+  net: CoinModelTarget | null = null,
+  /**
+   * Posts loaded though no catch-all lane credited them (late-no-coin.ts: a late post is often found
+   * by a coin's link or a narrative's search, which credit nothing). Each must also be in `members`
+   * or inside the window to be read. `credited` says which rows a lane found.
+   */
+  uncredited: readonly string[] = [],
+): Promise<readonly RisingRow[]> {
   /* ★ The safety net's one bit, joined only while it is on: before 0096 is applied the table does not
      exist, and with the net off nothing here may depend on it. Only the live target's would-add
      (Policy.judge.coinModel.liveTarget, 0099): a shadowed target never lets a post through. The
@@ -296,8 +316,12 @@ export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly 
             k.kind_label, ${netColumn},
             pic.similarity as picture_similarity,
             s.story_id,
-            oc.verdict as owner_call
-       from internal.item_found_by f
+            oc.verdict as owner_call,
+            f.credited
+       from (select fb.item_id, true as credited from internal.item_found_by fb
+             union all
+             select u.item_id, false from unnest($4::text[]) as u(item_id)
+              where not exists (select 1 from internal.item_found_by g where g.item_id = u.item_id)) f
        join public.item i on i.item_id = f.item_id
        join public.author a on a.author_key = i.author_key
        /* ★ The first question's newest answer, never a kind answer: a kind label is not a name, and
@@ -347,7 +371,7 @@ export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly 
         and (coalesce(i.posted_at, i.first_seen_at) >= $1 or i.item_id = any($2::text[]))
         and (j.coinable is not null or oc.verdict = 'meme')
         and ($3::text[] is null or f.item_id = any($3::text[]))`,
-    [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only]],
+    [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only], [...uncredited]],
   );
 }
 
@@ -608,6 +632,13 @@ export interface RisingFrame {
    * sent. Absent on a frame built by hand.
    */
   readonly coinFirst?: ReadonlySet<string>;
+  /** The posts on this frame's For You list by the late route (late-no-coin.ts), cut or not. Absent on a frame built by hand. */
+  readonly late?: ReadonlySet<string>;
+  /**
+   * The late route's posts the cut left under the frame, not members yet: they join For You's list for
+   * good all the same (`beyondCap`), at their own place on the scroll. Absent on a frame built by hand.
+   */
+  readonly lateJoins?: readonly WireRisingPost[];
 }
 
 /** What a post's newest split crypto read said (0064): other accounts' coin talk, and the author's own. */
@@ -816,7 +847,9 @@ export async function buildRising(
   const heldBy = new Map<string, HeldKind>();
   /* ★ THE COIN-FIRST ROUTE's posts (coin-first.ts): loaded whatever their age, as a member is. */
   const coinFirst = await loadCoinFirst(db, nowMs, policy, only, membership === null ? [] : [...membership.fyp]);
-  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null);
+  /* ★ THE LATE ROUTE's posts (late-no-coin.ts): found after the six hours, no coin running yet; loaded whatever their age and whoever found them. */
+  const late = await loadLateNoCoin(db, nowMs, policy, only);
+  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...late.keys()]);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
@@ -825,9 +858,16 @@ export async function buildRising(
   const passing = new Set<string>();
   /* Passed only through the safety net: For You's, never Popular's. */
   const netOnly = new Set<string>();
+  /* Passed only by the late route's near-the-bar yes (late-no-coin.ts `lateAnswerPolicy`): that route's alone. */
+  const nearOnly = new Set<string>();
   const rows = candidates.filter((row) => {
-    const { why, route } = postRoute(row, policyForAnswer(row.judge_id, answers), cryptoSignalFor(row, crypto.get(row.item_id), policy));
-    const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id);
+    const signal = cryptoSignalFor(row, crypto.get(row.item_id), policy);
+    const own = postRoute(row, policyForAnswer(row.judge_id, answers), signal);
+    const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id) || late.has(row.item_id);
+    const near = own.route === null && late.has(row.item_id) ? postRoute(row, lateAnswerPolicy(policyForAnswer(row.judge_id, answers), policy), signal) : null;
+    const nearYes = near !== null && near.route !== null && near.route !== 'net';
+    if (nearYes && inWindow) nearOnly.add(row.item_id);
+    const { why, route } = nearYes && near !== null ? near : own;
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
@@ -911,16 +951,27 @@ export async function buildRising(
     const byCoin = coinFirst.records.has(row.item_id) && coinFirstLets({
       itemId: row.item_id,
       postedAtMs: postedAt,
-      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id),
+      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id) && !nearOnly.has(row.item_id),
       pick: pick === undefined ? null : { outcome: pick.outcome, address: pick.address },
       member,
       ownerNone: check?.none === true,
       wrong: check?.wrong ?? new Set(),
     }, coinFirst, nowMs, policy);
     const byViews = !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
+    /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
+    const byLate = lateLets({
+      itemId: row.item_id,
+      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id),
+      byViews,
+      picked: pick?.outcome === 'picked',
+      ownerCoin: calls.get(row.item_id)?.own !== null && calls.get(row.item_id)?.own !== undefined,
+    }, late);
     return {
       passes: passing.has(row.item_id),
       byCoin,
+      byLate,
+      /* Loaded by the late route alone: For You's, never Popular's. */
+      lateOnly: late.has(row.item_id) && (row.credited === false || atOf(row) < sinceMs),
       score,
       underBar,
       post: withPick(row, projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
@@ -962,15 +1013,17 @@ export async function buildRising(
   /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
      the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
      this bar only stop a post joining, so neither records a reason. */
-  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && p.fresh && !p.member && !p.byCoin).map((p) => p.post.id), policy);
-  /* By the views and the other gates, or by the coin-first route, which none of the six hours and the junk bar hold. */
-  const byGates = (p: (typeof posts)[number]): boolean => p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
-  const fypAll = posts.filter((p) => p.passes && (byGates(p) || p.byCoin)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && (p.fresh || p.byLate) && !p.member && !p.byCoin).map((p) => p.post.id), policy);
+  /* By the views and the other gates, or by the coin-first route, which none of the six hours and the junk bar hold;
+     or by the late route, which the six hours do not hold and the junk bar does. */
+  const byGates = (p: (typeof posts)[number]): boolean => !nearOnly.has(p.post.id) && p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
+  const byLateRoute = (p: (typeof posts)[number]): boolean => p.byLate && (p.member || !junk.has(p.post.id));
+  const fypAll = posts.filter((p) => p.passes && (byGates(p) || p.byCoin || byLateRoute(p))).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const coinFirstAlone = new Set(posts.filter((p) => p.passes && p.byCoin && !p.member && !byGates(p)).map((p) => p.post.id));
   /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = await varied(db, fypAll, rows, policy);
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id)).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
@@ -979,7 +1032,10 @@ export async function buildRising(
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
   for (const p of posts) if (p.passes && !p.fyp) whyNot.set(p.post.id, p.underBar ? 'under_score_bar' : p.unread ? 'reach_unread' : 'under_reach_bar');
   const shown = { fyp: cap(fyp), popular: cap(popular) };
-  const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
+  /* ★ The late route's posts under the cut join For You's list all the same (late-no-coin.ts `beyondCap`). */
+  const lateIds = new Set(posts.filter((p) => p.passes && byLateRoute(p)).map((p) => p.post.id));
+  const lateJoins = beyondCap(fyp.map((p) => p.post), policy.rising.maxRows, lateIds, membership?.fyp ?? new Set());
+  const ids = new Set([...shown.fyp, ...shown.popular, ...lateJoins].map((p) => p.id));
   const sameName: Map<string, readonly string[]> = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
   const sameNameEvidence = new Map<string, ReadonlyMap<string, WireCoinEvidence>>();
   const evidenceOf = (id: string): void => {
@@ -991,7 +1047,7 @@ export async function buildRising(
   /* A member's list of same-named coins is kept with its card, so See N coins opens on an old card too. */
   for (const p of posts) if (!ids.has(p.post.id) && membership?.all.has(p.post.id) === true && p.sameName.length > 0) sameName.set(p.post.id, p.sameName);
   for (const id of sameName.keys()) evidenceOf(id);
-  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members, coinFirst: coinFirstAlone };
+  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members, coinFirst: coinFirstAlone, late: lateIds, lateJoins };
 }
 
 /**
@@ -1199,7 +1255,8 @@ export async function withNewerCards(db: Db, frame: RisingFrame, began: QuickCur
   if (!touched) return { frame, deferred: [] };
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const ids = [...new Set([...frame.fyp.map((p) => p.id), ...committed.map((p) => p.id)])];
-  const rows = await loadCandidates(db, sinceMs, ids, ids);
+  /* Uncredited too: a late post (late-no-coin.ts) has no lane's credit and must still be found here. */
+  const rows = await loadCandidates(db, sinceMs, ids, ids, null, ids);
   const rowAt = new Map(rows.map((r) => [r.item_id, new Date(r.posted_at ?? r.first_seen_at).getTime()] as const));
   const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
   const cards = mergeForYou(frame.fyp, changed, committed, at).map((post) => ({ at: at(post), post }));
@@ -1258,9 +1315,10 @@ export async function projectRisingFeeds(
   /* A post the quick frame placed since this frame began keeps the list the quick frame wrote: its card's count is that list's length. */
   await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence, [...unrefreshed, ...deferred]);
   /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */
-  await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
+  await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular, ...(frame.lateJoins ?? [])].map((p) => p.id))]));
   const written = (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
-  if (membership !== null) await writeMembership(db, nowMs, frame, frame.members, membership.refresh);
+  /* The late route's posts under the cut join For You's list beside the frame's own (late-no-coin.ts). */
+  if (membership !== null) await writeMembership(db, nowMs, { fyp: [...frame.fyp, ...(frame.lateJoins ?? [])], popular: frame.popular }, frame.members, membership.refresh);
   /* The posts shown by the coin-first route alone: recorded once, so each joins by it once (0116). */
   await recordAdmitted(db, frame.fyp.filter((p) => frame.coinFirst?.has(p.id) === true).map((p) => p.id), nowMs);
   return written;
