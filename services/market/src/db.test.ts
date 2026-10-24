@@ -23,7 +23,7 @@ import { test } from 'node:test';
 import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
 import type { Db } from '@insidor/store';
 
-import { assetsToRead } from './db.ts';
+import { assetsToRead, firstHourOnly } from './db.ts';
 
 /** Captures the statement and its parameters rather than running them. */
 function recorder(): { db: Db; last: () => { sql: string; params: readonly unknown[] } } {
@@ -205,4 +205,33 @@ test('without the hour, the pass reads exactly what it read before', async () =>
   const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;
   await assetsToRead(db, 'solana', 300);
   assert.equal(calls, 1);
+});
+
+test('★ a tied candidate in its first hour is read every pass, right after the coins on screen, For You posts first (policy.v163)', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes("?| array['link','name_stated','picture']")) return [{ chain: 'solana', address: 'baldcat', tier: 6 }, { chain: 'solana', address: 'screen1', tier: 6 }] as R[];
+      if (s.includes('internal.saved_post_coins')) return [{ chain: 'solana', address: 'saved1', tier: 4 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  const now = Date.UTC(2026, 9, 24, 0, 52);
+  const rows = await assetsToRead(db, 'solana', 3, null, null, { nowMs: now, withinMs: 10_800_000, limit: 60 }, null, { nowMs: now, withinMs: 3_600_000, limit: 80 });
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'baldcat', 'saved1'], 'on a full pass the newest end gives way, never the first hour');
+  const young = statements.find((s) => s.sql.includes("?| array['link','name_stated','picture']"));
+  assert.ok(young !== undefined);
+  assert.match(young.sql, /order by c\.shown desc, c\.made desc, c\.launched desc/);
+  assert.match(young.sql, /feed_id = 'fyp'/);
+  assert.match(young.sql, /a\.origin = any\(\$\d+::text\[\]\)/);
+  assert.deepEqual(young.params.slice(2, 4), [3_600_000, 80], "the hour and the bound are the policy's");
+  assert.equal(young.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+});
+
+test('the light pass reads the first-hour coins alone, and a failed read there is no coins, not a failed pass', async () => {
+  const ok = { query: async <R>(): Promise<R[]> => [{ chain: 'solana', address: 'baldcat', tier: 6 }] as R[] } as Db;
+  assert.deepEqual(await firstHourOnly(ok, 'solana', { nowMs: 0, withinMs: 1, limit: 1 }), [{ chain: 'solana', address: 'baldcat' }]);
+  const down = { query: async <R>(): Promise<R[]> => { throw new Error('relation does not exist'); } } as Db;
+  assert.deepEqual(await firstHourOnly(down, 'solana', { nowMs: 0, withinMs: 1, limit: 1 }), []);
 });

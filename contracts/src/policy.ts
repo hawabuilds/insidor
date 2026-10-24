@@ -1261,6 +1261,19 @@ export interface MarketPolicy {
    * screen are read first, so they are the last to be dropped at this bound.
    */
   readonly maxPoolProbesPerPass: number;
+  /**
+   * ★ THE FIRST HOUR, READ DENSELY (policy.v163, services/market db.ts `firstHourCoins`): every
+   * candidate launched in the last `withinMs` that a post or narrative ties by a link, its stated
+   * name or its picture, read on every pass — the coins of posts on For You first, then the made
+   * ties, the newest launch first — at most `perPass`. And a second, light pass (`light`) every
+   * `light.everyMs` that reads only these coins and asks the aggregator at most `light.maxProbes`.
+   */
+  readonly firstHour: {
+    readonly on: boolean;
+    readonly withinMs: number;
+    readonly perPass: number;
+    readonly light: { readonly on: boolean; readonly everyMs: number; readonly perPass: number; readonly maxProbes: number };
+  };
 }
 
 /* ── ASSETS ───────────────────────────────────────────────────────────── */
@@ -5233,8 +5246,10 @@ const POLICY_V1: Policy = {
      v35 adds `social` (Trador's ranks and rep, comment limits) and `notify` (alerts: the
      multiples, the curve mark, the hourly limit, the loops).
 
-     v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v161',
+     v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter.
+
+     v163 adds `market.firstHour`: the first hour of a tied candidate read every pass, and a light pass. */
+  version: 'policy.v163',
 
   admit: {
     maxAgeMin: 240,
@@ -5690,6 +5705,17 @@ const POLICY_V1: Policy = {
        route, and the Buy sheet asks again before any order. */
     poolRouteReuseMs: 1_800_000, // thirty minutes
     maxPoolProbesPerPass: 40,
+    /* policy.v163. On 21-24 Oct a candidate got a median 0 readings in its first 10 minutes and 3%
+       any between +10 and +60: the pass's 300 went to the coins on screen, the held picks, the older
+       and pictured coins (about 190) and the newest ~2 minutes of launches (about 100), so a coin
+       was read once, at +1-2 minutes, if a pass fell then. $baldcat: +3.7, +8.8, then +72 at $52.8K.
+       Candidates of For You posts (or their narratives) with such a tie: a median 10 in the hour
+       on 21-24 Oct, 45 at the 90th percentile; 100 at 13:40 UTC on 24 Oct, of 261 tied in all. 80
+       in the full pass, since each one there is a newest launch left unread on a full pass; 100 in
+       the light pass every minute: 4 calls of the free price source and 1 curve read on the chain
+       key (about 1,440 credits a day of the free plan's ~33k; the trade feed's 20k and the
+       listing's 3k leave room), at most 5 aggregator asks for a coin that left its curve. */
+    firstHour: { on: true, withinMs: 3_600_000, perPass: 80, light: { on: true, everyMs: 60_000, perPass: 100, maxProbes: 5 } },
   },
 
   assets: {

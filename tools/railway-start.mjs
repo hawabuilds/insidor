@@ -13,8 +13,8 @@
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
  * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label`, the post slimming and the coin vector archive hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
- * minutes; and, when a judge's answer has landed, the quick For You frame) in three lanes — the full
- * frame, the quick frame, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
+ * minutes; and, when a judge's answer has landed, the quick For You frame) in four lanes — the full
+ * frame, the quick frame, the light market pass every minute, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
  * Nothing here holds a setting of its own: every value is the service's environment, set by the
@@ -61,8 +61,10 @@ if (service in MAIN) {
        frames  the full frame, every minute from its last start (it takes about two of them);
        quick   the quick frame, asked every second (quick-wake.ts), beside a running full frame —
                the two take For You's write lock only to write (services/project for-you-lock.ts);
-       jobs    everything else, in the old order and on the old clocks.
-     Three children at most at any moment, none of them sharing a table they both write but For You,
+       jobs    everything else, in the old order and on the old clocks;
+       light   the light market pass, every minute (policy.v163, below).
+     Four children at most at any moment (the light market pass appends readings, which never
+     collide: one row per coin and instant), none of them sharing a table they both write but For You,
      which the lock covers. */
   /* `sources` runs only the indicator's projector, not `db.mjs sources`: that command also
      DECLARES the sources from its own environment, and this service holds no platform key —
@@ -123,11 +125,23 @@ if (service in MAIN) {
     last.set(job.name, { at: Date.now(), ok });
     console.log(JSON.stringify({ level: ok ? 'info' : 'error', msg: 'job ran', job: job.name, ok, ms: Date.now() - at }));
   };
+  const running = new Set();
   const runJob = async (job) => {
     const at = Date.now();
     started.set(job.name, at);
-    ran(job, at, await once(job));
+    running.add(job.name);
+    try {
+      ran(job, at, await once(job));
+    } finally {
+      running.delete(job.name);
+    }
   };
+  /* ★ THE LIGHT MARKET PASS (services/market main.ts `light`, Policy.market.firstHour.light): only the
+     tied candidates in their first hour, every minute, in a lane of its own so the hourly labels or a
+     slow pairs run never hold it up. It waits while the full market pass runs: the price source has
+     throttled after about eleven calls back to back, and the full pass makes ten. The policy's switch
+     is read by the pass itself, which reads nothing when it is off. */
+  const LIGHT = { name: 'market-light', everyMs: 60_000, args: ['tools/db.mjs', 'market', 'light'] };
   /* ★ THE QUICK FRAME (services/project/src/quick-wake.ts, Policy.rising.quickFrame): its own lane,
      asked every second, so a judge's answer reaches For You without waiting for the full frame or
      any other job. Without it (the module fails to load) the full frame runs as before. */
@@ -164,7 +178,11 @@ if (service in MAIN) {
     if (due(FRAME, Date.now())) await runJob(FRAME);
   });
   void lane(async () => {
-    for (const job of JOBS) if (due(job, Date.now())) await runJob(job);
+    /* The full market pass waits for a light one to finish, as the light pass waits for it. */
+    for (const job of JOBS) if (due(job, Date.now()) && !(job.name === 'market' && running.has(LIGHT.name))) await runJob(job);
+  });
+  void lane(async () => {
+    if (due(LIGHT, Date.now()) && !running.has('market')) await runJob(LIGHT);
   });
   if (quick !== null) void lane(() => quick.maybe());
   createServer((req, res) => {
