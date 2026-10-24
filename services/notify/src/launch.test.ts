@@ -35,6 +35,29 @@ test('★ never a hand-over: a post whose first pick was not pushed stays spent 
   assert.deepEqual(handover.due, [], 'its later coin is a hand-over, never news');
 });
 
+test('★ the runner hand-over is pushed past rule 1, once per post', () => {
+  /* 24 Oct: $CAT, launched before the cat post was on For You, never pushed; baldcat ran 73 minutes after its launch. */
+  const older = launchEvents([pick('p:x:cat', 'CAT', { launchedMs: ON_FYP - 120 * MIN })], [], new Set(), NOW, L);
+  const runners = new Map([['x:cat', 'BALDCAT']]);
+  const r = launchEvents([pick('p:x:cat', 'BALDCAT')], [], new Set(older.keys), NOW, L, runners);
+  assert.deepEqual(r.due.map((d) => [d.address, d.runner]), [['BALDCAT', true]]);
+  assert.deepEqual(r.keys, ['h:x:cat', 'c:BALDCAT']);
+  const back = launchEvents([pick('p:x:cat', 'CAT')], [], new Set([...older.keys, ...r.keys]), NOW, L, new Map([['x:cat', 'CAT']]));
+  assert.deepEqual(back.due, [], 'a second hand-over on the post is never pushed');
+  const notYet = launchEvents([pick('p:x:cat', 'CAT', { launchedMs: ON_FYP - 120 * MIN })], [], new Set(older.keys), NOW, L, runners);
+  assert.deepEqual(notYet, { due: [], keys: [] }, 'the card not yet showing the new coin: waits, nothing spent');
+  const ordinary = launchEvents([pick('p:x:cat', 'BALDCAT')], [], new Set(older.keys), NOW, L);
+  assert.deepEqual(ordinary.due, [], 'a hand-over by the one-coin rule is still never news');
+});
+
+test('a runner hand-over keeps rules 2-4: after For You, just launched, a coin pushed once', () => {
+  const runners = new Map([['x:r', 'RUN']]);
+  assert.deepEqual(launchEvents([pick('p:x:r', 'RUN', { launchedMs: ON_FYP - 1 })], [], new Set(['p:x:r']), NOW, L, runners).due, [], 'before For You showed the post');
+  assert.deepEqual(launchEvents([pick('p:x:r', 'RUN', { launchedMs: NOW - L.maxLaunchAgeMs - 1 })], [], new Set(['p:x:r']), NOW, L, runners).due, [], 'not just launched');
+  assert.deepEqual(launchEvents([pick('p:x:r', 'RUN')], [], new Set(['p:x:r', 'c:RUN']), NOW, L, runners).due, [], 'the coin was pushed before');
+  assert.equal(launchEvents([pick('p:x:r', 'RUN')], [], new Set(), NOW, L, runners).due.length, 1, 'a post never seen: its runner is its one push');
+});
+
 test('a coin launched between the post and its first showing on For You, or of unknown launch, is not pushed', () => {
   assert.deepEqual(launchEvents([pick('p:x:3', 'A', { launchedMs: ON_FYP - 1 })], [], new Set(), NOW, L).due, []);
   assert.deepEqual(launchEvents([pick('p:x:3', 'A', { launchedMs: null })], [], new Set(), NOW, L).due, [], 'an unknown launch is no claim it came after');
