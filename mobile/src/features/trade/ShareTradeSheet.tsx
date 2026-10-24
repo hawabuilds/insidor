@@ -6,10 +6,10 @@
  *
  * A new sheet, drawn with the app's one bottom sheet (shared/ui/Sheet.tsx), because the Buy and Sell
  * ticket keeps its look exactly as it is (the owner): the ticket only gains the one line that opens
- * this, after a sell is sent.
+ * this after a sell is sent, and opens it by itself once that sell is seen landed (sell-landed.ts).
  *
  * ★ THE CARD WAITS FOR THE SELL TO LAND. The ticket knows the sell was sent; the read service knows
- * when it landed and what the market cap was then (services/read trade-card.ts). Until it has, the
+ * when it landed and what each trade's own cap was (services/read trade-card.ts). Until it has, the
  * preview says so and asks again every few seconds; a sell never seen landing gets no card.
  *
  * ★ WHAT IS LEFT OFF IS SAID UNDER THE PREVIEW. A number the record does not have is not drawn (no
@@ -36,12 +36,10 @@ import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.ts
 import { facesFileUrl } from '../../shared/ui/usePosterPic.ts';
 import { backdropChoices, fileName, leftOff, type Backdrop, type FlexFacts } from './flex-card.ts';
 import { cardPng, drawCard, firstPicture, loadFonts, loadPicture } from './flex-draw.ts';
+import { ASK_EVERY_MS, ASK_FOR_MS } from './sell-landed.ts';
 import styles from './share.module.css';
 
 const LOGO_BASE = ((import.meta.env?.['VITE_COIN_LOGO_BASE'] as string | undefined) ?? '').replace(/\/+$/, '');
-/** How often a sell not yet landed is asked about, and for how long: the trade service stops looking after about two and a half minutes. */
-const ASK_EVERY_MS = 3_000;
-const ASK_FOR_MS = 160_000;
 
 type Read = { readonly kind: 'loading' } | { readonly kind: 'waiting' } | { readonly kind: 'unseen' } | { readonly kind: 'failed' } | Extract<SellCard, { kind: 'read' }> | { readonly kind: 'none' };
 

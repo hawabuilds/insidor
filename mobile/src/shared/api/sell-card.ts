@@ -17,7 +17,7 @@
 
 import { assertNoInternalVocabulary } from './decode.ts';
 
-export type SellFactWhy = 'not_bought_here' | 'not_recorded' | 'bought_elsewhere';
+export type SellFactWhy = 'not_bought_here' | 'not_recorded' | 'bought_elsewhere' | 'not_read_yet';
 
 export interface SellFact {
   readonly v: number | null;
@@ -48,7 +48,7 @@ export type SellCard =
   | { readonly kind: 'pending' }
   | { readonly kind: 'none' };
 
-const WHYS: readonly SellFactWhy[] = ['not_bought_here', 'not_recorded', 'bought_elsewhere'];
+const WHYS: readonly SellFactWhy[] = ['not_bought_here', 'not_recorded', 'bought_elsewhere', 'not_read_yet'];
 const FILE = /^[0-9a-f]{32}$/;
 
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
