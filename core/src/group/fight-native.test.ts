@@ -25,6 +25,15 @@ test('a post names another country in its own language', () => {
   assert.deepEqual(countriesNamed('ko', '일본은 왜', P), ['Japan']);
 });
 
+test('★ Japanese names the French in katakana or kanji, inside a word or not; 仏 alone (news, Buddhism) is not France', () => {
+  assert.deepEqual(countriesNamed('ja', '仏人ってほんと性格悪いよな', P), ['France']);
+  assert.deepEqual(countriesNamed('ja', 'またフランス人が日本人をバカにしてる', P), ['France']);
+  assert.deepEqual(countriesNamed('ja', '仏蘭西の連中', P), ['France']);
+  assert.deepEqual(countriesNamed('ja', '【仏で55万人デモ 市庁舎ほぼ全焼】', P), []);
+  assert.deepEqual(countriesNamed('ja', '今日は仏滅の日曜日です', P), []);
+  assert.deepEqual(fightPairsOf({ lang: 'ja', text: '仏人の煽りに返すミーム' }, P), [['France', 'Japan']]);
+});
+
 test('a whole word stays whole, and its own country is not a pair', () => {
   assert.deepEqual(countriesNamed('tr', 'çiçek almak için çini ve çinko', P), []);
   assert.deepEqual(countriesNamed('fr', 'La France est belle', P), []);
@@ -125,6 +134,7 @@ test('the catch-up searches each war\'s own languages for the other side, and En
   const words = warWords([{ countries: ['France', 'Japan'] }], P);
   assert.ok(words.find((w) => w.lang === 'fr')?.words.includes('japonais'));
   assert.ok(words.find((w) => w.lang === 'ja')?.words.includes('フランス'));
+  assert.ok(words.find((w) => w.lang === 'ja')?.words.includes('仏人'));
   assert.ok(words.find((w) => w.lang === 'en')?.words.includes('french'));
   assert.equal(words.find((w) => w.lang === 'zh'), undefined, 'Chinese is neither side');
   assert.deepEqual(countriesIn('en', 'the French vs Japanese beef', P), ['France', 'Japan']);

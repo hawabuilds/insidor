@@ -5357,8 +5357,10 @@ const POLICY_V1: Policy = {
      listWindowHours).
 
      v167 adds `rising.promotion` (a promotion post — a small post pointing at someone else's bigger
-     one — is never on For You or Popular; its coin goes to the original). */
-  version: 'policy.v167',
+     one — is never on For You or Popular; its coin goes to the original).
+
+     v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西). */
+  version: 'policy.v169',
 
   admit: {
     maxAgeMin: 240,
@@ -7508,7 +7510,12 @@ const POLICY_V1: Policy = {
         home: { fr: 'France', ja: 'Japan', zh: 'China', tr: 'Turkey', ko: 'South Korea' },
         names: {
           fr: { Japan: ['japon', 'japonais*', 'japonnais*'], China: ['chine', 'chinois*'], Turkey: ['turquie', 'turc', 'turcs', 'turque', 'turques'], 'South Korea': ['corée', 'coréen*'] },
-          ja: { France: ['フランス'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
+          /* policy.v169 (the owner, 2026-10-24): "French people" as Japanese writes it, in katakana
+             and in the old kanji short form, and France in kanji. フランス人 holds フランス, so the join
+             matched it already; it is here for the words search, which asks a word as written. Not
+             仏 alone: on 14-24 Oct its 18 stored Japanese posts were news (仏で, 仏大統領, 仏独合意) and
+             Buddhism (神社仏閣, 仏滅), none the war. Not おフランス: it holds フランス too. */
+          ja: { France: ['フランス', 'フランス人', '仏人', '仏蘭西'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
           zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
           tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
           ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },
