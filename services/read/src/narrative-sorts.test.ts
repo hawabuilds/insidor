@@ -127,10 +127,22 @@ test('New and Most viewed All page through the index with the site label', async
   assert.equal(page.next, null, 'a short page is the last');
 });
 
-test('★ a list sends a narrative as its card: the page-only series, per-post views and all but one post are cut', () => {
+test('★ a list sends a narrative as its card: the page-only series, per-post views and all but one post are cut; its trend windows stay', () => {
   const page = { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }, { e: 2 }, { e: 3 }], discussion: [{ d: 1 }], viewsGained: { fromMs: 1, stepMs: 1, values: [] }, viewsGainedAll: {}, postViews: [], inWindow: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } };
-  assert.deepEqual(cardOf(page), { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }], discussion: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } });
+  assert.deepEqual(cardOf(page), { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }], discussion: [], inWindow: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } });
   assert.equal(cardOf(null), null);
+});
+
+test('★ Trending: the meme wars rank as one, their viral accounts and gains added up, listed together where they rank; then the steady stories', () => {
+  const rows = nums([
+    row('cn-tr', { views_total: '14957500', countries: ['China', 'Turkey'], viral: 1, hour: null }),
+    row('fr-jp', { views_total: '1813394', countries: ['France', 'Japan'], viral: 8, hour: '71282' }),
+    row('baby', { viral: 5, hour: '268810' }),
+    row('quiet', { viral: 1, hour: '105324' }),
+  ]);
+  /* 9 accounts together outrank the baby's 5; each war alone would not list China vs Turkey at all. */
+  assert.deepEqual(rankNarratives(rows, 'trending', null, NOW), ['cn-tr', 'fr-jp', 'baby', 'quiet']);
+  assert.deepEqual(rankNarratives(nums([row('cn-tr', { countries: ['China', 'Turkey'], viral: 1 }), row('baby', { viral: 5 })]), 'trending', null, NOW), ['baby'], 'one viral account is not steady, and no gain to fill on');
 });
 
 test('★ No coin yet: only the narratives whose card says it, with the site pill, on every ranked sort', () => {

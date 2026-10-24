@@ -104,6 +104,14 @@ export interface HourGain {
   readonly fresh: boolean;
 }
 
+/** A narrative's viral posts as its page counts them, for the steady list (policy.v162 `narrative.trend.list*`). */
+export interface SteadyNarrative {
+  readonly id: string;
+  /** Accounts with a post that went up in the page's `listWindowHours` window and is at For You's views; null: the page did not say. */
+  readonly viralAccounts: number | null;
+  readonly fresh: boolean;
+}
+
 /**
  * ★ TRENDING NEVER EMPTY FOR WANT OF A HALF-HOURLY READING. The speeds need a reading in the last
  * 30 minutes AND in the hour before, a mark gap under 20 minutes, of the same posts. When re-reads
@@ -117,16 +125,33 @@ export interface HourGain {
  * with a measured gain in the last hour, the most first, ties by id. Each card says its own facts
  * (its gain in the last hour), so a filled card never claims to be speeding up. An unmeasured or
  * zero gain is not a gain: such a narrative stays off, never ranked as 0.
+ *
+ * ★ THE STEADY LIST (policy.v162): between the risers and the fill, every fresh narrative whose page
+ * counts viral posts from `narrative.trend.listMinAccounts` accounts or more (`steady`), most first,
+ * then the bigger last-hour gain. Its card says that count, the reason it is listed. A page that does
+ * not say is not steady: an unknown is never a yes.
  */
-export function narrativeTrendingIds(rows: readonly TrendingNarrative[], scaleOf: (source: string) => number, policy: Policy, hourGains: readonly HourGain[] = []): readonly string[] {
+export function narrativeTrendingIds(rows: readonly TrendingNarrative[], scaleOf: (source: string) => number, policy: Policy, hourGains: readonly HourGain[] = [], steady: readonly SteadyNarrative[] = []): readonly string[] {
   const r = policy.rising.forYouSorts.risers;
+  const isRiser = (x: TrendingNarrative): boolean => x.fresh && floorSpeed(x.speeds, scaleOf) >= r.floorPerMin && x.speeds.now >= r.minRatio * x.speeds.before;
   const ranked = narrativeTrending(rows, scaleOf, policy).map((x) => x.id);
-  const risers = rows.filter((x) => x.fresh && floorSpeed(x.speeds, scaleOf) >= r.floorPerMin && x.speeds.now >= r.minRatio * x.speeds.before).length;
-  if (risers >= r.fillBelow || ranked.length >= r.fillTo) return ranked;
-  const taken = new Set(ranked);
+  const riserIds = new Set(rows.filter(isRiser).map((x) => x.id));
+  const risers = ranked.filter((id) => riserIds.has(id));
+  /* ★ Then the stories that keep having viral posts (`narrative.trend.list*`), most accounts first. */
+  const t = policy.narrative.trend;
+  const gainOf = new Map(hourGains.map((g) => [g.id, g.gained ?? Number.NEGATIVE_INFINITY] as const));
+  const steadyIds = steady
+    .filter((s): s is SteadyNarrative & { viralAccounts: number } => s.fresh && s.viralAccounts !== null && s.viralAccounts >= t.listMinAccounts && !riserIds.has(s.id))
+    .sort((a, b) => b.viralAccounts - a.viralAccounts || (gainOf.get(b.id) ?? Number.NEGATIVE_INFINITY) - (gainOf.get(a.id) ?? Number.NEGATIVE_INFINITY) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((s) => s.id);
+  const head = [...risers, ...steadyIds];
+  if (risers.length >= r.fillBelow) return head;
+  const taken = new Set(head);
+  const fill = ranked.filter((id) => !taken.has(id));
+  for (const id of fill) taken.add(id);
   const more = hourGains
     .filter((g): g is HourGain & { gained: number } => g.fresh && g.gained !== null && g.gained > 0 && !taken.has(g.id))
     .sort((a, b) => b.gained - a.gained || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .map((g) => g.id);
-  return [...ranked, ...more].slice(0, r.fillTo);
+  return [...head, ...fill, ...more].slice(0, Math.max(r.fillTo, head.length));
 }

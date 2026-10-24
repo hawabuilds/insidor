@@ -74,6 +74,21 @@ test('★ still short after the floor fill: the fresh narratives with a measured
   assert.equal(narrativeTrendingIds([], one, DEFAULT_POLICY, many).length, DEFAULT_POLICY.rising.forYouSorts.risers.fillTo, 'filled to 10, no further');
 });
 
+test('★ after the risers, the narratives that keep having viral posts, most accounts first; one viral account, a stale page or an unknown count does not', () => {
+  const rows = [row('a', 1000, 500)];
+  const gains = [{ id: 'g1', gained: 9_000, fresh: true }, { id: 'war', gained: 71_282, fresh: true }];
+  const steady = [
+    { id: 'war', viralAccounts: 9, fresh: true },
+    { id: 'baby', viralAccounts: 5, fresh: true },
+    { id: 'one', viralAccounts: 1, fresh: true },
+    { id: 'old', viralAccounts: 7, fresh: false },
+    { id: 'unknown', viralAccounts: null, fresh: true },
+  ];
+  assert.deepEqual(narrativeTrendingIds(rows, one, DEFAULT_POLICY, gains, steady), ['a', 'war', 'baby', 'g1']);
+  const five = [row('a', 1000, 500), row('b', 900, 300), row('f', 600, 300), row('g', 800, 400), row('h', 700, 350)];
+  assert.deepEqual(narrativeTrendingIds(five, one, DEFAULT_POLICY, gains, steady), ['b', 'a', 'g', 'h', 'f', 'war', 'baby'], 'with five risers too');
+});
+
 test('five risers or more: the list is the risers alone, no gain fill', () => {
   const rows = [row('a', 1000, 500), row('b', 900, 300), row('f', 600, 300), row('g', 800, 400), row('h', 700, 350)];
   assert.deepEqual(narrativeTrendingIds(rows, one, DEFAULT_POLICY, [{ id: 'x', gained: 5_000_000, fresh: true }]), ['b', 'a', 'g', 'h', 'f']);
