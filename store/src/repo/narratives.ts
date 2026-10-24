@@ -168,11 +168,11 @@ export interface StoredNarrative {
   readonly postsChangedAtMs: number;
   readonly title: string | null;
   readonly titlePosts: number | null;
-  /** Who wrote the title: the titler's model, or `OWNER_TITLE_MODEL` when the owner typed it (0127). Absent from an older reader. */
+  /** Who wrote the title: the titler's model, or `OWNER_TITLE_MODEL` when the owner typed it (0129). Absent from an older reader. */
   readonly titleModel?: string | null;
   /**
-   * The countries of the online meme war it is (0127 `fight`): two or more, alphabetical; empty when
-   * the titler said it is not one; null when never asked (and before 0127).
+   * The countries of the online meme war it is (0129 `fight`): two or more, alphabetical; empty when
+   * the titler said it is not one; null when never asked (and before 0129).
    */
   readonly fight?: readonly string[] | null;
   /** Its newest post's time as last counted (narrative.newest_post_at); absent from an older reader. */
@@ -218,7 +218,7 @@ export interface NarrativePass {
    */
   readonly split?: readonly { readonly from: string; readonly into: string; readonly members: readonly string[] }[];
   /**
-   * The owner's "Add a post" (0127; core group/narrative-keep.ts `ownerAdds`): `itemId` moves into
+   * The owner's "Add a post" (0129; core group/narrative-keep.ts `ownerAdds`): `itemId` moves into
    * `into` from whatever narrative holds it, or joins it from none. Only a stored post (public.item)
    * and only into an open narrative: a post still queued for the runner to read waits for a later pass.
    */
@@ -244,7 +244,7 @@ export interface NarrativeCallRecord {
   readonly otherMembers: readonly string[];
 }
 
-/** `title_model` on a title the owner typed (0127; services/social owner-narrative.ts writes it). */
+/** `title_model` on a title the owner typed (0129; services/social owner-narrative.ts writes it). */
 export const OWNER_TITLE_MODEL = 'owner';
 
 export class PgNarrativeRepo {
@@ -445,9 +445,9 @@ export class PgNarrativeRepo {
   }
 
   /**
-   * The live shown narratives the meme-war question was never asked of (0127 `fight` null), newest
+   * The live shown narratives the meme-war question was never asked of (0129 `fight` null), newest
    * post first, at most `limit`: the runner's catch-up for narratives titled before it was asked.
-   * Empty before 0127.
+   * Empty before 0129.
    */
   async fightUnasked(sinceMs: number, limit: number): Promise<readonly StoredNarrative[]> {
     if (limit <= 0 || !(await this.migrated()) || !(await this.#hasColumn('narrative', 'fight'))) return [];
@@ -455,9 +455,9 @@ export class PgNarrativeRepo {
   }
 
   /**
-   * The titler's meme-war answer for a narrative (0127): the countries, or none for "not one". Written
+   * The titler's meme-war answer for a narrative (0129): the countries, or none for "not one". Written
    * whatever wrote the title — the owner's title does not stop it — but ★ NEVER OVER THE OWNER'S OWN
-   * ANSWER (`fight_model` `OWNER_TITLE_MODEL`, services/social "Twitter World War"). Nothing before 0127.
+   * ANSWER (`fight_model` `OWNER_TITLE_MODEL`, services/social "Twitter World War"). Nothing before 0129.
    */
   async setFight(id: string, countries: readonly string[], model: string): Promise<void> {
     if (!(await this.#hasColumn('narrative', 'fight'))) return;
@@ -779,7 +779,7 @@ export class PgNarrativeRepo {
 
   /**
    * The cheap model's title for a narrative, with the post count it was written for. ★ NEVER OVER
-   * THE OWNER'S: a title he typed (services/social "Rename", 0127) is marked `OWNER_TITLE_MODEL`,
+   * THE OWNER'S: a title he typed (services/social "Rename", 0129) is marked `OWNER_TITLE_MODEL`,
    * and this writes only where it is not, so a pass that asked before his rename landed cannot undo it.
    */
   async setTitle(id: string, title: string, posts: number, model: string): Promise<void> {

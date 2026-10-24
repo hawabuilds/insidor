@@ -42,8 +42,8 @@
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
- *      owner renamed (0127): his title stands however much it grows. The same call answers whether
- *      it is an online meme war between countries (Policy.narrative.fight, 0127 `fight`); live
+ *      owner renamed (0129): his title stands however much it grows. The same call answers whether
+ *      it is an online meme war between countries (Policy.narrative.fight, 0129 `fight`); live
  *      narratives never asked are asked a few a pass, for that answer only
  *
  * ★ NOTHING HERE IS ON THE FEED'S CLOCK. The projector reads what this wrote; it never waits on
@@ -643,7 +643,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       .filter((x) => x.shown && x.members.some((m) => grouped.posts.has(m)))
       .filter((x) => {
         const s = stored.get(x.id);
-        /* ★ A title the owner typed is never asked for again (0127; the store's write refuses it too). */
+        /* ★ A title the owner typed is never asked for again (0129; the store's write refuses it too). */
         if (s?.titleModel === OWNER_TITLE_MODEL) return false;
         return s === undefined || s.title === null || s.titlePosts === null || x.members.length >= s.titlePosts * (1 + t.retitleGrowth);
       })
