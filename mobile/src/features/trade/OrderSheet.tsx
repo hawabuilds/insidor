@@ -22,7 +22,10 @@
  * disabled buttons: where Trador greys out Confirm, this shows why in its place.
  *
  * After a sell is sent, one plain line under Done offers "Share your trade", which swaps the ticket
- * for its own sheet (ShareTradeSheet.tsx, the flex card); nothing else on the ticket changes.
+ * for its own sheet (ShareTradeSheet.tsx, the flex card); nothing else on the ticket changes. And
+ * once that sell is seen LANDED, the share sheet opens by itself (sell-landed.ts), once: the owner
+ * sold and never found the link. A sell that failed or was never seen landing opens nothing, and
+ * closing the share sheet closes the ticket, so it cannot open a second time.
  *
  * What breaks if changed carelessly: amounts are exact decimal strings to base units
  * (order-flow.ts `toBaseUnits`), never floats; and a quote is dropped the moment the amount,
@@ -31,7 +34,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { buildTrade, fetchHolding, fetchPortfolio, fetchTradeQuote, type TradeLimits, type TradeQuote } from '../../shared/api/index.ts';
+import { buildTrade, fetchHolding, fetchPortfolio, fetchSellCard, fetchTradeQuote, type TradeLimits, type TradeQuote } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { formatPrice } from '../../shared/format/number.ts';
 import { useWallet } from '../../shared/wallet.tsx';
@@ -52,6 +55,7 @@ import {
   toBaseUnits,
   type ConfirmOutcome,
 } from './order-flow.ts';
+import { sellLanded } from './sell-landed.ts';
 import { ShareTradeSheet } from './ShareTradeSheet.tsx';
 import styles from './sheet.module.css';
 
@@ -118,6 +122,9 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   /* After a sell is sent, the card to share it with replaces the ticket (ShareTradeSheet.tsx). */
   const [sharing, setSharing] = useState<string | null>(null);
+  /* The wait for a sent sell to land, so the share sheet opens by itself; one per ticket, ended when it closes. */
+  const watching = useRef<AbortController | null>(null);
+  useEffect(() => () => watching.current?.abort(), []);
   const buying = activeSide === 'buy';
 
   useEffect(() => {
@@ -192,6 +199,21 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
     setStatus({ kind: 'idle' });
   };
 
+  /* Opens the share sheet once the sell is seen landed; never for one that failed or was not seen. */
+  const openWhenLanded = (signature: string) => {
+    if (watching.current !== null) return;
+    const ac = new AbortController();
+    watching.current = ac;
+    void sellLanded(signature, {
+      ask: fetchSellCard,
+      wait: (ms) => new Promise((done) => setTimeout(done, ms)),
+      now: Date.now,
+      signal: ac.signal,
+    }).then((landed) => {
+      if (landed && !ac.signal.aborted) setSharing((s) => s ?? signature);
+    });
+  };
+
   const confirm = async (q: TradeQuote) => {
     if (wallet === null || account === null) return;
     setStatus({ kind: 'working', line: 'Checking the trade' });
@@ -206,6 +228,7 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
         decode: fromBase64,
       });
       setStatus({ kind: 'done', outcome });
+      if (outcome.kind === 'sent' && q.side === 'sell') openWhenLanded(outcome.ref);
     } catch {
       setStatus({ kind: 'done', outcome: { kind: 'failed' } });
     }
