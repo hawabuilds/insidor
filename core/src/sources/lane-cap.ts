@@ -53,6 +53,16 @@ export function searchDayAllowanceUsd(now: number, p: Policy): number {
   return d.dailyUsd * Math.min(1, (sinceStart + Math.max(0, d.aheadMs)) / MS_PER_DAY);
 }
 
+/**
+ * What a paced search (`SearchPagingPolicy.paced`) may have spent by `now`: its `dailyUsd` on the UTC
+ * day's pace, `feed.searchDay.aheadMs` early, never above `dailyUsd`. Its own day starts at 00:00 UTC,
+ * as its ledger lane's does (internal.lane_spend), not at the search day's `countFromMs`.
+ */
+export function pacedDailyUsd(dailyUsd: number, now: number, p: Policy): number {
+  const sinceStart = (((now % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY);
+  return dailyUsd * Math.min(1, (sinceStart + Math.max(0, p.feed.searchDay.aheadMs)) / MS_PER_DAY);
+}
+
 /** What the day's X re-reads may have spent by `now`: `rereadDailyUsd` on the search day's pace and start. */
 export function rereadAllowanceUsd(now: number, p: Policy): number {
   const d = p.feed.searchDay;

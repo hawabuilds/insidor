@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { laneJudgeUsd, laneMayAsk, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
+import { laneJudgeUsd, laneMayAsk, pacedDailyUsd, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
 
 const CAP = { dailyUsd: 6, judgeUsdPerPost: 0.002, judgedShare: 0.5 };
 
@@ -57,4 +57,17 @@ test("the day's bill starts at countFrom on its own UTC day, at the normal pace 
   assert.equal(searchDayAllowanceUsd(from + 3_600_000, P), 7.2 / 24);
   assert.equal(searchDayStart(Date.UTC(2026, 9, 20, 6), P), Date.UTC(2026, 9, 20));
   assert.equal(searchDayStart(Date.UTC(2026, 9, 19, 9), P), Date.UTC(2026, 9, 19));
+});
+
+test('★ a paced search may spend its day only as the UTC day goes, half an hour ahead, never past the day', () => {
+  const day = Date.UTC(2026, 9, 24);
+  const ahead = DEFAULT_POLICY.feed.searchDay.aheadMs;
+  /* 14:40 UTC: where the unpaced band had spent all $1.55 on 23 Oct, a paced one has about 60%. */
+  const at1440 = pacedDailyUsd(1.55, day + (14 * 60 + 40) * 60_000, DEFAULT_POLICY);
+  assert.ok(Math.abs(at1440 - 1.55 * (((14 * 60 + 40) * 60_000 + ahead) / 86_400_000)) < 1e-9);
+  assert.ok(at1440 < 1.0);
+  /* Midnight: the ahead share only, so the first ask of the day is not refused. */
+  assert.ok(pacedDailyUsd(1.55, day, DEFAULT_POLICY) > 0);
+  /* The last minute of the day: the whole day, never more. */
+  assert.equal(pacedDailyUsd(1.55, day + 86_399_000, DEFAULT_POLICY), 1.55);
 });
