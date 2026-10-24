@@ -171,7 +171,7 @@ const num = (v: unknown): number | null => {
 };
 
 /** Each coin's last hour from its latest market reading inside the freshness window; a latest reading without an hour is no hour (0127's "not read"). */
-async function lastHours(db: Db, addresses: readonly string[], nowMs: number, freshMs: number): Promise<Map<string, LastHour>> {
+export async function lastHours(db: Db, addresses: readonly string[], nowMs: number, freshMs: number): Promise<Map<string, LastHour>> {
   const out = new Map<string, LastHour>();
   if (addresses.length === 0) return out;
   const rows = await db.query<{ address: string; v: unknown; b: unknown; s: unknown }>(
