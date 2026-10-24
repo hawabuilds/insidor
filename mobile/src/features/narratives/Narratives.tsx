@@ -50,7 +50,7 @@ import feedStyles from '../feed/feed.module.css';
 import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
+import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { WarCard } from './WorldWar.tsx';
 import { itemKey, withWarUmbrella, type ListItem } from './world-war.ts';
@@ -157,7 +157,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
               if (x.kind === 'war') {
                 return (
                   <div ref={glide(itemKey(x))} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
-                    <WarCard stories={x.stories} place={i + 1} now={now} />
+                    <WarCard stories={x.stories} place={i + 1} now={now} trending={choice.sort === 'trending'} />
                   </div>
                 );
               }
@@ -321,6 +321,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
   const speeds = view?.sort === 'trending' ? speedsOf(story) : null;
   const speed = speeds === null ? null : speedLine(speeds);
+  const viral = view?.sort === 'trending' ? viralLine([story]) : null;
   /* Trending filled from the last hour's gains (core narrativeTrendingIds) when too few have speeds: such a card says its gain, the reason it is listed. */
   const hourGain = view?.sort === 'trending' && speeds === null ? hourGainText(story) : null;
   const gainLine = view !== undefined && gained !== null ? gainedLine(gained, view.span) : hourGain !== null && hourGain !== '+0' && !hourGain.startsWith('-') ? { text: `${hourGain} last hour`, up: true } : null;
@@ -337,6 +338,8 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
             {(line ?? cardLine(story, now)).map((w) => <span key={w}>{w}</span>)}
           </span>
           {speed !== null ? <span className={`${styles['speed']} ${speed.up ? styles['up'] : ''}`}>{speed.text}</span> : null}
+          {/* Listed on Trending for its viral posts (services/read narrative-sorts.ts, policy.v162): the fact it is listed by. */}
+          {speed === null && viral !== null ? <span className={`${styles['speed']} ${styles['up']}`}>{viral}</span> : null}
         </div>
         <div className={styles['gain']}>
           {view === undefined
