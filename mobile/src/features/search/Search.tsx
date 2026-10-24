@@ -1,6 +1,10 @@
 /**
  * THE SEARCH TAB. Type a ticker or a name; see our narratives and posts that mention it, and
- * the coins on pump.fun that carry it, read live from the market when you type.
+ * the coins on pump.fun that carry it, read live from the market when you type. Paste a coin's
+ * address, or its pump.fun or dexscreener link, and that coin is the hit — even one Insidor never
+ * saw — and its row opens the token page, with Buy where trading is on. The term goes to the
+ * server exactly as typed (less a ticker's dollar sign): the server is what reads an address out
+ * of a link, so the screen refuses nothing longer than a word.
  *
  * ★ SEARCH IS A LIST, NEVER A LINK. A narrative row opens its own page. A post row opens the
  * post where it was posted, and carries no narrative and no coin, so there is no Buy here. A
@@ -22,7 +26,7 @@ import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
+import { GAP_LINE, isAddress, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
 import { useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
@@ -53,8 +57,8 @@ export function Search() {
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
-        placeholder="Ticker or name"
-        aria-label="Search for a ticker or a name"
+        placeholder="Ticker, name or address"
+        aria-label="Search for a ticker, a name or a coin address"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
       />
@@ -111,7 +115,7 @@ function Sections({ results }: { results: SearchResults }) {
         ) : null}
       </div>
       {coins.kind === 'unavailable' ? <p className={styles['hint']}>— coins could not be searched just now.</p> : null}
-      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>No coin on pump.fun carries this name.</p> : null}
+      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : 'No coin on pump.fun carries this name.'}</p> : null}
       {coins.kind === 'read' && coins.sourcesMissing > 0 ? <p className={styles['hint']}>One market could not be read, so this list may be short.</p> : null}
       {coins.kind === 'read' ? orderCoins(coins.items, order).map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
     </>

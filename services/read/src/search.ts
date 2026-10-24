@@ -1,7 +1,8 @@
 /**
  * GET /search?q= — the Search tab. A person's term, searched at the moment they type it: our
- * own narratives and posts, our own chainwatch coins, and the market data sources' coins on the
- * launchpad. No new table; every answer is held in memory for a minute.
+ * own narratives and posts (every post ever on For You or in a narrative, at any age), our own
+ * chainwatch coins, and the market data sources' coins on the launchpad. No new table; every
+ * answer is held in memory for a minute.
  *
  * ★ SEARCH IS A LIST, NEVER A LINK. A coin in this reply is a coin with that name, and nothing
  * more. A coin is labelled as matched to a narrative only when the narrative's own page already
@@ -24,8 +25,9 @@
  * two free sources answering. A term reaches a source at most once a minute however many people
  * type it, and one client cannot type faster than `perClient` a minute. A coin a search returned
  * may then be opened as a token page for `openableMs`; so may a coin a token page asked for by its
- * address that a market source lists (`open`, a held coin we never indexed), under its own limit.
- * Nothing else widens the market route.
+ * address that a market source lists (`open`, a held coin we never indexed), under its own limit;
+ * an address pasted into Search that no search source lists goes through that same lookup and
+ * limit (`addressIn`). Nothing else widens the market route.
  *
  * GET /post/:id/names and GET /ticker/:symbol/coins live here too (name-ideas.ts): the Create
  * sheet's name chips and whether each ticker is free, searched through the same cache and limit.
@@ -63,22 +65,68 @@ select s.story_id, s.payload, (b.story_id is not null) as live
  order by live desc, s.story_id desc
  limit $4`;
 
+/*
+ * ★ A POST IS FOUND AT ANY AGE (the owner, 2026-10-24: "I still want them searchable regardless of
+ * age"). Every post that was ever on For You (0075 public.feed_post) and every post a narrative
+ * lists (0093 public.story_post), plus the frame showing now, by its words or by their English
+ * (0081 public.post_translation), newest posted first. A post the owner called not a meme is
+ * withdrawn from the scroll and is withdrawn from here too.
+ *
+ * The words are the post row's own `body`: the card's excerpt is cut at 280 characters, and on
+ * 2026-10-24 no For You post matched a term in its excerpt that its body did not. The members are
+ * picked from narrow columns and only the page's own cards are then read whole, so no card's JSON
+ * is opened to be searched. A narrative's post with no For You card is shown as its narrative
+ * lists it (the story's evidence row), the same fields a card carries.
+ *
+ * What breaks if changed carelessly: the cost. There is no text index: the members are a few
+ * thousand (4,500 on 2026-10-24, growing a few hundred a day) and each is one primary-key read of
+ * its post row, measured at 100–250 ms; a match over all of public.item (277,000 rows) would need
+ * a trigram index, and so would this once the members reach tens of thousands. `live` is the frame
+ * holding the post now.
+ */
 export const POST_SEARCH_SQL = `
-select distinct on (payload ->> 'id') payload
-  from public.rising_row
- where payload ->> 'excerpt' ilike $1 escape '\\'
- order by payload ->> 'id'
- limit $2`;
+with member as (
+  select r.item_id from public.rising_row r
+  union
+  select f.item_id from public.feed_post f where f.feed_id = 'fyp' and f.withdrawn_at is null and f.payload is not null
+  union
+  select s.item_id from public.story_post s
+    join public.story_view v on v.story_id = s.story_id and v.payload #>> '{provenance,kind}' = 'observed'
+),
+hit as (
+  select m.item_id, coalesce(i.posted_at, i.first_seen_at) as at
+    from member m
+    join public.item i on i.item_id = m.item_id
+    left join public.post_translation t on t.item_id = m.item_id
+   where (i.body ilike $1 escape '\\' or t.text_en ilike $1 escape '\\')
+     and not exists (select 1 from public.feed_post w where w.item_id = m.item_id and w.withdrawn_at is not null)
+   order by at desc nulls last, m.item_id
+   limit $2
+)
+select coalesce(
+         (select r.payload - 'sheet' from public.rising_row r where r.item_id = h.item_id limit 1),
+         (select f.payload - 'sheet' from public.feed_post f where f.feed_id = 'fyp' and f.item_id = h.item_id and f.payload is not null),
+         (select e.value
+            from public.story_post s
+            join public.story_view v on v.story_id = s.story_id
+            cross join lateral jsonb_array_elements(case when jsonb_typeof(v.payload -> 'evidence') = 'array' then v.payload -> 'evidence' else '[]'::jsonb end) e
+           where s.item_id = h.item_id and e.value ->> 'evidenceId' = h.item_id
+           limit 1)) as payload,
+       exists (select 1 from public.rising_row r where r.item_id = h.item_id) as live
+  from hit h
+ order by h.at desc nulls last, h.item_id`;
 
 /* Chainwatch's own coins, from the name index (0037), which outlives each coin's full row: a coin
    deleted by the keep rule is still found here, and its picture is used only while the full row
    lasts. Exact ticker or exact name only — the index holds every launch ever, and a fuzzy match
-   over it is not a list. */
+   over it is not a list. A ticker its creator wrote with the dollar sign ("$NANA": 310 of the
+   42,000 launches on 2026-10-24) is that ticker: the person's dollar sign is stripped from the
+   term, so without the second spelling a fresh launch named so was never found. */
 export const ASSET_SEARCH_SQL = `
 select n.address, n.ticker as symbol, n.name, a.image_uri, n.launched_at as minted_at
   from public.coin_name n
   left join public.asset a on a.chain = 'solana' and a.address = n.address
- where upper(n.ticker) = $1 or lower(n.name) = lower($3)
+ where upper(n.ticker) in ($1, '$' || $1) or lower(n.name) = lower($3)
  order by n.launched_at desc nulls last
  limit $2`;
 
@@ -188,6 +236,36 @@ function likePattern(term: string): string {
   return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
+/**
+ * ★ A COIN IS FOUND BY ITS ADDRESS, PASTED BARE OR IN A LINK (the owner, 2026-10-24: "I want to be
+ * able to search any pump.fun coin in search and buy"). A Solana address, with or without a
+ * dollar sign, or a market page's link that names one — pump.fun/coin/<mint>, dexscreener.com/
+ * solana/<pair> — gives that address; anything else is null and is searched as words. The last
+ * address-shaped part of a link's path is taken, so a trailing tab or query does not hide it.
+ *
+ * An address is longer than `maxTermLength`, which is why it is read before the term is: that
+ * limit is for words, and refusing an address was "bad request" for every pasted coin.
+ */
+export function addressIn(raw: string | null): string | null {
+  if (raw === null) return null;
+  const t = raw.trim().replace(/^\$+/, '');
+  if (ADDRESS.test(t)) return t;
+  if (t.length > MAX_LINK || /\s/.test(t)) return null;
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`);
+  } catch {
+    return null;
+  }
+  if (!url.hostname.includes('.')) return null;
+  const parts = url.pathname.split('/').filter((x) => x !== '');
+  for (let i = parts.length - 1; i >= 0; i--) if (ADDRESS.test(parts[i] ?? '')) return parts[i] ?? null;
+  return null;
+}
+
+/** The longest link read for an address: a market page's link with its tracking tail. */
+const MAX_LINK = 300;
+
 /** "$jim " → "jim". A ticker is typed with or without its dollar sign. */
 export function normaliseTerm(raw: string | null, policy: SearchPolicy): string | null {
   if (raw === null) return null;
@@ -274,10 +352,10 @@ export function createSearch(deps: SearchDeps) {
   const named = new Map<string, { readonly at: number; readonly hits: readonly (readonly CoinSearchHit[])[]; readonly failed: number }>();
   /* Each post's list reply, for `keepMs`, like a search's. */
   const lists = new Map<string, { readonly at: number; readonly reply: SearchReply }>();
-  /* What a lookup by address said, for `keepMs`: listed or not. An outage is not kept. */
-  const looked = new Map<string, { readonly at: number; readonly found: boolean }>();
+  /* What a lookup by address said, for `keepMs`: the coin, or null when nothing lists it. An outage is not kept. */
+  const looked = new Map<string, { readonly at: number; readonly hit: CoinSearchHit | null }>();
   const opens: number[] = [];
-  const opening = new Map<string, Promise<boolean>>();
+  const opening = new Map<string, Promise<CoinSearchHit | null>>();
 
   /** True when this client may search now; records the search when it may. */
   function allow(client: string, now: number): boolean {
@@ -298,6 +376,62 @@ export function createSearch(deps: SearchDeps) {
     for (const [k, v] of named) if (now - v.at >= deps.policy.keepMs) named.delete(k);
     for (const [k, v] of lists) if (now - v.at >= deps.policy.keepMs) lists.delete(k);
     for (const [k, v] of looked) if (now - v.at >= deps.policy.keepMs) looked.delete(k);
+  }
+
+  /** A coin a recent search returned, by address; null when none did. */
+  function recent(address: string): CoinSearchHit | null {
+    const held = openable.get(address);
+    return held !== undefined && deps.now() - held.at < deps.policy.openableMs ? held.hit : null;
+  }
+
+  /**
+   * ★ A COIN SOMEONE HOLDS OPENS, EVEN ONE WE NEVER INDEXED (the owner, 2026-10-21: Laura, in
+   * his Portfolio, would not open: our launch feed had missed it, so it was in neither the
+   * universe nor the name index, and no search had listed it). When a token page asks for a coin
+   * we hold no row of, it is looked up by its address on a market source, once; a coin the
+   * source lists becomes openable exactly as a search hit does (`recent`), with what the source
+   * said about it. Nothing is written: the read service holds no write credential, and adding a
+   * coin to the universe stays the runner's lookup's job. An address typed or pasted into Search
+   * that no search source lists is looked up the same way, under the same limit.
+   *
+   * Bounded so a page cannot be used to make us fetch arbitrary addresses: only a well-formed
+   * address, each answer kept `keepMs` (listed or not), and at most `OPENS_PER_MINUTE` lookups a
+   * minute for everyone. The coin as the source lists it, now openable; null when nothing lists it,
+   * the source is down or the minute's lookups are spent.
+   */
+  async function lookUp(address: string): Promise<CoinSearchHit | null> {
+    if (!ADDRESS.test(address) || deps.lookup === undefined || deps.lookup === null) return null;
+    const now = deps.now();
+    sweep(now);
+    const held = looked.get(address);
+    if (held !== undefined) return held.hit;
+    /* The page asks for its facts and its chart at once: both wait on one lookup. */
+    const running = opening.get(address);
+    if (running !== undefined) return running;
+    while (opens.length > 0 && now - (opens[0] ?? 0) >= deps.policy.windowMs) opens.shift();
+    if (opens.length >= OPENS_PER_MINUTE) return null;
+    opens.push(now);
+    const lookup = deps.lookup;
+    const job = (async () => {
+      let hit: CoinSearchHit | null;
+      try {
+        hit = await lookup(address);
+      } catch (e) {
+        deps.log.info('coin lookup by address unavailable', { err: e instanceof Error ? e.message : String(e) });
+        return null;
+      }
+      looked.set(address, { at: now, hit });
+      if (hit !== null) openable.set(address, { at: now, hit });
+      return hit;
+    })().finally(() => opening.delete(address));
+    opening.set(address, job);
+    return job;
+  }
+
+  /** True when a token page may open this coin: a search returned it, or a lookup finds it listed. */
+  async function openAddress(address: string): Promise<boolean> {
+    if (!ADDRESS.test(address)) return false;
+    return recent(address) !== null || (await lookUp(address)) !== null;
   }
 
   /** The sources' answers for a name: each source's hits, and how many sources failed. */
@@ -394,16 +528,22 @@ export function createSearch(deps: SearchDeps) {
     }
   }
 
-  async function run(term: string, now: number): Promise<SearchReply> {
+  /**
+   * One search. `address` set: the term is that coin's address (or a market page's pair address),
+   * and the reply is that one coin and the posts that quote it — no narrative is named by an
+   * address, and a source's fuzzy neighbours are not the coin.
+   */
+  async function run(term: string, now: number, address: string | null): Promise<SearchReply> {
     const p = deps.policy;
     const like = likePattern(term);
     const ticker = term.toUpperCase();
+    const none = Promise.resolve<readonly Row[]>([]);
 
     const [storyRows, historyRows, postRows, assetRows, answers] = await Promise.all([
-      deps.db.query(STORY_SEARCH_SQL, [like, ticker, LIVE_VIEW, p.storiesShown + 1]),
-      deps.db.query(HISTORY_SEARCH_SQL, [like, ticker, p.storiesShown + 1]),
+      address !== null ? none : deps.db.query(STORY_SEARCH_SQL, [like, ticker, LIVE_VIEW, p.storiesShown + 1]),
+      address !== null ? none : deps.db.query(HISTORY_SEARCH_SQL, [like, ticker, p.storiesShown + 1]),
       deps.db.query(POST_SEARCH_SQL, [like, p.postsShown + 1]),
-      deps.db.query(ASSET_SEARCH_SQL, [ticker, p.coinsShown, term]),
+      address !== null ? deps.db.query(ASSET_FACTS_SQL, [address]) : deps.db.query(ASSET_SEARCH_SQL, [ticker, p.coinsShown, term]),
       Promise.allSettled(deps.sources.map((s) => s.source.search(term))),
     ]);
 
@@ -427,12 +567,12 @@ export function createSearch(deps: SearchDeps) {
       };
     });
 
-    /* ── posts: live from the feeds, historical from matching narratives' own evidence ── */
+    /* ── posts: every post ever on For You or in a narrative, then matching narratives' own evidence ── */
     const lower = term.toLowerCase();
-    const live = postRows.map((r) => rec(r['payload']));
+    const found = postRows.map((r) => ({ r: rec(r['payload']), live: r['live'] === true }));
     const historical = stories.flatMap((s) => s.evidence).filter((e) => (str(e['excerpt']) ?? '').toLowerCase().includes(lower));
     const seen = new Set<string>();
-    const posts = [...live.map((r) => ({ r, live: true })), ...historical.map((r) => ({ r, live: false }))].flatMap(({ r, live: isLive }) => {
+    const posts = [...found, ...historical.map((r) => ({ r, live: false }))].flatMap(({ r, live: isLive }) => {
       const key = str(r['permalink']) ?? str(r['id']) ?? str(r['evidenceId']);
       const excerpt = str(r['excerpt']);
       const authorLabel = str(r['authorLabel']);
@@ -449,20 +589,29 @@ export function createSearch(deps: SearchDeps) {
         postedAt: rec(r['postedAt'])['at'] === undefined ? instant(null, 'not_reported') : (r['postedAt'] as Instant),
         live: isLive,
       }];
-    });
+    }).sort((a, b) => (b.postedAt.at ?? 0) - (a.postedAt.at ?? 0)); // newest posted first; an unknown time last
 
     /* ── coins ── */
     const failed = deps.sources.filter((_, i) => answers[i]?.status === 'rejected').map((s) => s.name);
     for (const [i, a] of answers.entries()) {
       if (a.status === 'rejected') deps.log.info('coin search source unavailable', { source: deps.sources[i]?.name, err: a.reason instanceof Error ? a.reason.message : String(a.reason) });
     }
-    const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value] : []));
+    let read: { readonly hits: readonly CoinSearchHit[]; readonly capped: boolean }[] = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value] : []));
     const ours: CoinSearchHit[] = assetRows.flatMap((r) => {
-      const address = str(r['address']);
-      if (address === null) return [];
+      const a = str(r['address']);
+      if (a === null) return [];
       const minted = r['minted_at'] instanceof Date ? r['minted_at'].getTime() : null;
-      return [{ address, name: str(r['name']), ticker: str(r['symbol']), venue: 'curve' as const, marketAddress: null, createdAt: minted, marketCapUsd: null, imageUrl: str(r['image_uri']), source: 'chainwatch' }];
+      return [{ address: a, name: str(r['name']), ticker: str(r['symbol']), venue: 'curve' as const, marketAddress: null, createdAt: minted, marketCapUsd: null, imageUrl: str(r['image_uri']), source: 'chainwatch' }];
     });
+    if (address !== null) {
+      /* The coin itself, or the coin whose pair this is (a market page's link names the pair). */
+      read = read.map((r) => ({ capped: false, hits: r.hits.filter((h) => h.address === address || h.marketAddress === address) }));
+      /* No search source lists it: the token page's own lookup by address, under its own limit. */
+      if (!read.some((r) => r.hits.length > 0)) {
+        const found = await lookUp(address);
+        if (found !== null) read = [...read, { hits: [found], capped: false }];
+      }
+    }
     const listed = new Set(read.flatMap((r) => r.hits.map((h) => h.address)));
     const merged = mergeHits([...read.map((r) => r.hits), ours]);
     const matched = new Map<string, { storyId: string | null; title: string }>(shownStories.flatMap((s) => s.settled.map((c) => [c.address, { storyId: s.storyId, title: s.title }] as const)));
@@ -556,13 +705,15 @@ export function createSearch(deps: SearchDeps) {
     async search(rawTerm: string | null, client: string): Promise<SearchReply> {
       const now = deps.now();
       sweep(now);
-      const term = normaliseTerm(rawTerm, deps.policy);
+      const address = addressIn(rawTerm);
+      const term = address ?? normaliseTerm(rawTerm, deps.policy);
       if (term === null) return json(400, { error: 'bad request' });
       if (!allow(client, now)) return json(429, { error: 'slow down' });
-      const key = term.toLowerCase();
+      /* An address is case-sensitive: two that differ only in case are two coins. */
+      const key = address !== null ? `address:${address}` : term.toLowerCase();
       const held = kept.get(key);
       if (held !== undefined) return held.reply;
-      const reply = await run(term, now);
+      const reply = await run(term, now, address);
       kept.set(key, { at: now, reply });
       return reply;
     },
@@ -661,54 +812,12 @@ export function createSearch(deps: SearchDeps) {
     },
 
     /** A coin a recent search returned, by address; null when none did. Widens the market route by exactly this. */
-    recent(address: string): CoinSearchHit | null {
-      const held = openable.get(address);
-      return held !== undefined && deps.now() - held.at < deps.policy.openableMs ? held.hit : null;
-    },
+    recent,
 
-    /**
-     * ★ A COIN SOMEONE HOLDS OPENS, EVEN ONE WE NEVER INDEXED (the owner, 2026-10-21: Laura, in
-     * his Portfolio, would not open: our launch feed had missed it, so it was in neither the
-     * universe nor the name index, and no search had listed it). When a token page asks for a coin
-     * we hold no row of, it is looked up by its address on a market source, once; a coin the
-     * source lists becomes openable exactly as a search hit does (`recent`), with what the source
-     * said about it. Nothing is written: the read service holds no write credential, and adding a
-     * coin to the universe stays the runner's lookup's job.
-     *
-     * Bounded so a page cannot be used to make us fetch arbitrary addresses: only a well-formed
-     * address, each answer kept `keepMs` (listed or not), and at most `OPENS_PER_MINUTE` lookups a
-     * minute for everyone. True when the coin may now be opened.
-     */
+    /** A token page's coin we hold no row of, looked up by its address (`openAddress`). True when it may now be opened. */
     async open(assetKey: string): Promise<boolean> {
       const address = assetKey.startsWith('solana:') ? assetKey.slice('solana:'.length) : null;
-      if (address === null || !ADDRESS.test(address)) return false;
-      if (this.recent(address) !== null) return true;
-      if (deps.lookup === undefined || deps.lookup === null) return false;
-      const now = deps.now();
-      sweep(now);
-      const held = looked.get(address);
-      if (held !== undefined) return held.found && this.recent(address) !== null;
-      /* The page asks for its facts and its chart at once: both wait on one lookup. */
-      const running = opening.get(address);
-      if (running !== undefined) return running;
-      while (opens.length > 0 && now - (opens[0] ?? 0) >= deps.policy.windowMs) opens.shift();
-      if (opens.length >= OPENS_PER_MINUTE) return false;
-      opens.push(now);
-      const lookup = deps.lookup;
-      const job = (async () => {
-        let hit: CoinSearchHit | null;
-        try {
-          hit = await lookup(address);
-        } catch (e) {
-          deps.log.info('coin lookup by address unavailable', { err: e instanceof Error ? e.message : String(e) });
-          return false;
-        }
-        looked.set(address, { at: now, found: hit !== null });
-        if (hit !== null) openable.set(address, { at: now, hit });
-        return hit !== null;
-      })().finally(() => opening.delete(address));
-      opening.set(address, job);
-      return job;
+      return address !== null && openAddress(address);
     },
 
     /**
@@ -719,7 +828,7 @@ export function createSearch(deps: SearchDeps) {
     async facts(assetKey: string): Promise<SearchReply | null> {
       const address = assetKey.startsWith('solana:') ? assetKey.slice('solana:'.length) : null;
       if (address === null) return null;
-      const hit = this.recent(address);
+      const hit = recent(address);
       if (hit !== null) {
         return json(200, {
           coinId: assetKey, address, name: hit.name, ticker: hit.ticker, imageUrl: hit.imageUrl,

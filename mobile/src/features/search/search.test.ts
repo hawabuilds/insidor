@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { decodeSearch } from '../../shared/api/decode.ts';
 import { fixtureSearch } from '../../test-fixtures/fixtures.ts';
-import { marketLine, orderCoins, showingTop } from './search-view.ts';
+import { isAddress, marketLine, orderCoins, showingTop } from './search-view.ts';
 
 const reply = (coins: readonly Record<string, unknown>[], capped = false) =>
   decodeSearch({ term: 'jim', narratives: { capped: false, items: [] }, posts: { capped: false, items: [] }, coins: { kind: 'read', capped, sourcesMissing: 0, items: coins } });
@@ -74,4 +74,14 @@ test('★ a past narrative has no page, and shows its origin post or why there i
   assert.equal(found?.storyId, null);
   assert.equal(found?.originPost?.authorLabel, '@zoo');
   assert.equal(lost?.originGap, 'not_searched_yet', 'neither a post nor a reason is read as "not searched yet", never as nothing');
+});
+
+test('★ a pasted coin address decodes as a coin hit that opens its token page, and an empty list says no market lists it', () => {
+  const mint = '58YoqjCKAdp9W7bPq16P2YvfTsxM8h7eqos3hUuMpump';
+  const r = decodeSearch({ term: mint, narratives: { capped: false, items: [] }, posts: { capped: false, items: [] }, coins: { kind: 'read', capped: false, sourcesMissing: 0, items: [coin(mint, 38_251, 1, { ticker: 'MEMEWAR', venue: 'pool' })] } });
+  if (r.coins.kind !== 'read') return assert.fail();
+  assert.equal(r.coins.items[0]?.coinId, `solana:${mint}`);
+  assert.equal(isAddress(r.term), true);
+  assert.equal(isAddress('jim'), false);
+  assert.equal(isAddress('cat meme'), false);
 });
