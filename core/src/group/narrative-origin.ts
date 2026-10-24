@@ -65,11 +65,11 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { pairKey, type NarrativeCalls, type NarrativePost } from './narrative.ts';
-import { phrasesOf, rarePhrases, storyWords } from './narrative-phrase.ts';
+import { contentWords, phrasesOf, rarePhrases, storyWords } from './narrative-phrase.ts';
 import { subjectName } from './narrative-same.ts';
 import { clearsReachBar, type ReachLevel } from '../qualify/reach-bar.ts';
 
-export type OriginTie = 'quoted' | 'root' | 'picture' | 'name' | 'phrase';
+export type OriginTie = 'quoted' | 'root' | 'picture' | 'name' | 'phrase' | 'words';
 
 export interface OriginNarrative {
   readonly id: string;
@@ -117,6 +117,8 @@ export interface OriginInput {
   readonly reproductions?: ReadonlyMap<string, readonly string[]>;
   /** Of `untouchable`, the ones a newer narrative may still be merged into (the owner's merged and called narratives). Absent: none. */
   readonly receiveOnly?: ReadonlySet<string>;
+  /** Narratives the single-word join never adds to (the meme wars, whose own rules hold). Absent: none. */
+  readonly noWordsJoin?: ReadonlySet<string>;
 }
 
 /** `refs` with each post's quoted post added: what the starts, roots and joins follow. */
@@ -188,7 +190,7 @@ function averageOf(members: readonly string[], vectors: ReadonlyMap<string, Arra
   return sum;
 }
 
-const TIE_ORDER: Readonly<Record<OriginTie, number>> = { quoted: 0, root: 1, picture: 2, name: 3, phrase: 4 }; // policy-allow: an order of preference, not a threshold
+const TIE_ORDER: Readonly<Record<OriginTie, number>> = { quoted: 0, root: 1, picture: 2, name: 3, phrase: 4, words: 5 }; // policy-allow: an order of preference, not a threshold
 
 /**
  * The merges and each lead narrative's earlier posts. Narratives are merged first, so a starting
@@ -516,6 +518,77 @@ function looseJoinable(input: OriginInput, p: Policy): readonly string[] {
   return [...new Set(input.loose ?? [])].filter((c) => !input.narrativeOf.has(c) && input.vectors.has(c) && (!o.joinViral || viral.has(c)));
 }
 
+/** A content word as the single-word join reads it: a plural `s` off, then `wordStems` ("fawns" is "deer"). */
+function stemWord(w: string, p: Policy): string {
+  const stems = p.narrative.origin.wordStems;
+  const one = w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w; // policy-allow: a plural "s" is cut only from a word longer than four letters (bus, gas stay)
+  return stems[w] ?? stems[one] ?? one;
+}
+
+/**
+ * ★ THE SINGLE RARE WORDS (`origin.looseWords*`, policy.v162; the Nara fawns): each post's content
+ * words, own and English, stemmed; and per word the lead narratives whose own word it is — said by at
+ * least `wordsMinCoverage` of its posts — when it is rare: said by at most `phraseMaxShare` of the
+ * posts read (at least two of them) and the own word of at most `wordsMaxNarratives` narratives. Never
+ * a narrative the owner called on (`untouchable`) or one of `noWordsJoin`. Off: no word ties anything.
+ */
+function looseWordsOf(input: OriginInput, p: Policy, t: { readonly loose: readonly string[]; readonly ownOf: ReadonlyMap<string, readonly string[]>; readonly leads: readonly string[] }): { readonly of: (id: string) => ReadonlySet<string>; readonly sayers: ReadonlyMap<string, readonly string[]>; readonly namesOf: (id: string) => ReadonlySet<string> } {
+  const o = p.narrative.origin;
+  const none = { of: () => new Set<string>(), sayers: new Map<string, readonly string[]>(), namesOf: () => new Set<string>() };
+  if (!o.looseWordsOn || t.loose.length === 0) return none;
+  const words = new Map<string, ReadonlySet<string>>();
+  for (const [id, post] of input.posts) words.set(id, new Set([post.text, input.english?.get(id) ?? ''].flatMap((x) => contentWords(x, p)).map((w) => stemWord(w, p))));
+  const df = new Map<string, number>();
+  for (const set of words.values()) for (const w of set) df.set(w, (df.get(w) ?? 0) + 1);
+  const most = Math.max(2, Math.floor(words.size * o.phraseMaxShare));
+  const by = new Map<string, string[]>();
+  for (const l of t.leads) {
+    if (input.untouchable.has(l) || (input.noWordsJoin?.has(l) ?? false)) continue;
+    const own = t.ownOf.get(l) ?? [];
+    if (own.length === 0) continue;
+    const count = new Map<string, number>();
+    for (const m of own) for (const w of words.get(m) ?? []) count.set(w, (count.get(w) ?? 0) + 1);
+    for (const [w, k] of count) {
+      const d = df.get(w) ?? 0;
+      if (k >= o.wordsMinCoverage * own.length && d >= 2 && d <= most) by.set(w, [...(by.get(w) ?? []), l]);
+    }
+  }
+  const sayers = new Map([...by].filter(([, ls]) => ls.length <= o.wordsMaxNarratives));
+  const names = new Map<string, ReadonlySet<string>>();
+  const namesOf = (id: string): ReadonlySet<string> => {
+    let got = names.get(id);
+    if (got === undefined) {
+      const post = input.posts.get(id);
+      got = post === undefined ? new Set<string>() : namesIn([post.text, input.english?.get(id) ?? ''], p);
+      names.set(id, got);
+    }
+    return got;
+  };
+  return { of: (id) => words.get(id) ?? new Set<string>(), sayers, namesOf };
+}
+
+const TITLE_CASE = /^\p{Lu}\p{Ll}+$/u;
+const SENTENCE_END = /[.!?:;]$/u;
+const EDGE = /^[^\p{L}]+|[^\p{L}]+$/gu;
+
+/**
+ * The names a text writes: words in title case ("Nara", "Milei") that do not start a sentence, folded
+ * and stemmed as `contentWords` and `stemWord` read them. A capital that only starts a sentence, and a
+ * word in capitals throughout ("BREAKING"), say nothing. Han and kana have no case: none is a name here.
+ */
+function namesIn(texts: readonly string[], p: Policy): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const t of texts) {
+    const toks = t.replace(/https?:\/\/\S+/giu, ' ').split(/\s+/u);
+    toks.forEach((tok, i) => {
+      const raw = tok.replace(EDGE, '');
+      if (i === 0 || SENTENCE_END.test(toks[i - 1] ?? '') || !TITLE_CASE.test(raw)) return;
+      for (const w of contentWords(raw, p)) out.add(stemWord(w, p));
+    });
+  }
+  return out;
+}
+
 /**
  * ★ THE LOOSE POSTS JOIN (`origin.join*`): a good post in no narrative — the window's posts the
  * regroup left alone, the owner's pasted posts — joins the narrative it reacts to, once the merges
@@ -527,6 +600,9 @@ function looseJoinable(input: OriginInput, p: Policy): readonly string[] {
  *   phrase  it says a rare phrase (narrative-phrase.ts) one of those posts says, in its own words or
  *           its stored English, and is at `phraseMeaning` from the average (@rayaneAlg00's
  *           "végéta est algérien", which quotes nothing and was named HOMER)
+ *   words   (policy.v162) it says `wordsMinShared` of the narrative's single rare words
+ *           (`looseWordsOf`) and is at `wordsMeaning` from the average (@hezuruy's "whoever killed the
+ *           little deer… Nara", named PATROL, and "Four Baby Deer Found Dead in Nara Park": nara, deer)
  *
  * A post two narratives could take goes to the closer tie, then the nearer average. At most
  * `joinPerNarrative` a narrative a pass, nearest first; never against the owner's calls.
@@ -561,6 +637,7 @@ function joinLoose(
   const sayers = new Map<string, Set<string>>();
   for (const [l, own] of ownOf) for (const m of own) for (const x of phrases.get(m) ?? []) if (rare.has(x)) sayers.set(x, (sayers.get(x) ?? new Set<string>()).add(l));
 
+  const single = looseWordsOf(input, p, { loose, ownOf, leads });
   const offers: { post: string; lead: string; tie: OriginTie; meaning: number }[] = [];
   for (const c of loose) {
     const v = input.vectors.get(c);
@@ -570,12 +647,17 @@ function joinLoose(
       return l === undefined ? [] : [l];
     }));
     const said = new Set([...(phrases.get(c) ?? [])].flatMap((x) => [...(sayers.get(x) ?? [])]));
+    /* ★ At least `wordsMinShared` rare words, and one of them a name both sides write (`namesIn`): "nara" + "deer", never "hospital" + "ambulance". */
+    const shared = new Map<string, string[]>();
+    for (const w of single.of(c)) for (const l of single.sayers.get(w) ?? []) shared.set(l, [...(shared.get(l) ?? []), w]);
+    const named = (l: string, ws: readonly string[]): boolean => ws.some((w) => single.namesOf(c).has(w) && (ownOf.get(l) ?? []).some((m) => single.namesOf(m).has(w)));
+    const worded = new Set([...shared].filter(([l, ws]) => ws.length >= o.wordsMinShared && named(l, ws)).map(([l]) => l));
     let best: { lead: string; tie: OriginTie; meaning: number } | null = null;
-    for (const l of new Set([...quoted, ...said])) {
+    for (const l of new Set([...quoted, ...said, ...worded])) {
       const avg = t.leadAverage(l);
       if (avg === null || t.ownerKeepsOut(c, ownOf.get(l) ?? [])) continue;
       const meaning = dot(v, avg);
-      const tie: OriginTie | null = quoted.has(l) && meaning >= o.linkMeaning ? 'quoted' : said.has(l) && meaning >= o.phraseMeaning ? 'phrase' : null;
+      const tie: OriginTie | null = quoted.has(l) && meaning >= o.linkMeaning ? 'quoted' : said.has(l) && meaning >= o.phraseMeaning ? 'phrase' : worded.has(l) && meaning >= o.looseWordsMeaning ? 'words' : null;
       if (tie === null) continue;
       if (best === null || TIE_ORDER[tie] < TIE_ORDER[best.tie] || (tie === best.tie && (meaning > best.meaning || (meaning === best.meaning && l < best.lead)))) best = { lead: l, tie, meaning };
     }

@@ -4308,6 +4308,18 @@ export interface NarrativePolicy {
    *           their averages are at `wordsMeaning`, and they were
    *           first shown within `wordsFormedWithinMs` of each other. Never on a narrative the owner
    *           made a call on, nor across posts he kept apart
+   *
+   * policy.v162 (the owner, 2026-10-24: @hezuruy's "whoever killed the little deer, come out… Nara",
+   * judged PATROL, never joined "Four Baby Deer Found Dead in Nara Park" — "widen the join"):
+   *   looseWords  `looseWordsOn`: a loose post (held to `joinViral` as every join) also joins a
+   *           narrative it shares at least `wordsMinShared` single rare words with — content words
+   *           (narrative-phrase.ts `contentWords`) of its own words or its stored English, folded by
+   *           `wordStems` and a plural `s`, said by at most `phraseMaxShare` of the posts read, by at
+   *           most `wordsMaxNarratives` narratives, and by at least `wordsMinCoverage` of the
+   *           narrative's posts — and at least one of them a NAME both sides write (title case
+   *           inside a sentence: "Nara", "Milei"), at `looseWordsMeaning` from its average. The
+   *           judge's names may differ.
+   *           Never into a narrative the owner made a call on, nor a meme war (its own rules hold)
    */
   readonly origin: {
     readonly on: boolean;
@@ -4341,6 +4353,10 @@ export interface NarrativePolicy {
     readonly wordsMinCoverage: number;
     readonly wordsMeaning: number;
     readonly wordsFormedWithinMs: number;
+    readonly looseWordsOn: boolean;
+    readonly looseWordsMeaning: number;
+    /** A word → the word it is read as, for the single-word join: "fawn" is "deer". Lower-case, accents folded. */
+    readonly wordStems: Readonly<Record<string, string>>;
   };
   /**
    * ★ ONLINE MEME WARS BETWEEN COUNTRIES (the owner, 2026-10-23, policy.v154): the titler, in the
@@ -7322,6 +7338,15 @@ const POLICY_V1: Policy = {
       wordsMinCoverage: 0.25, // said by a quarter of each side's posts: its own word, not one post in a blob
       wordsMeaning: 0.6, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
       wordsFormedWithinMs: 345_600_000, // four days
+      /* policy.v162: the loose post's single rare words (the Nara fawns). Copy-tested read-only on the
+         stored posts of 22-24 Oct: see the commit. Only a short list of the same thing said another way. */
+      looseWordsOn: true,
+      /* Below the phrase bar: a post in another language reads far from a narrative in English (@hezuruy
+         0.41 from the fawns' average). The name the two must share keeps it safe — copy test of 22-24 Oct,
+         93 loose viral posts sharing two rare words: with a shared name 21, and at 0.41 or closer 13, the
+         nearest wrong ones at 0.403 ("Florida" + "hospital") and 0.402 (a streaming site + "streamer") left out. */
+      looseWordsMeaning: 0.41,
+      wordStems: { fawn: 'deer', deers: 'deer' },
     },
     /* ── narrative.fight: online meme wars between countries (policy.v154) ──
        Fields: on, activeMs, perPass, maxCountries, minPosts, maxOutputTokens. The question rides on the title call, a few

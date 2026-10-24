@@ -241,6 +241,44 @@ test('★ a loose post joins only when viral, close enough, and quoting the stor
   assert.equal(traceStories(common, P).joins?.size ?? 0, 0);
 });
 
+/* ── policy.v162: the loose post's single rare words — the Nara fawns, 24 Oct ── */
+
+function fawns(over: Partial<OriginInput> = {}): OriginInput {
+  const posts: NarrativePost[] = [
+    { itemId: 'nf', atMs: T0, text: "Japan's Nara Prefecture says four dead fawns with missing body parts have been found around Nara Park", names: ['NARAFAWN'], hasPicture: false },
+    { itemId: 'jf', atMs: T0 + 20 * H, text: 'JAPAN IS PAYING ATTENTION. Four baby deer found dead around Nara Park. JUSTICE FOR THE FAWNS.', names: ['JUSTICEFORTHEFAWNS'], hasPicture: false },
+    { itemId: 'hz', atMs: T0 + 23 * H, text: '許さんぞ。小鹿さんを殺めた犯人は今すぐ出てこい。奈良をコケにされて黙っとらんぞ。', names: ['PATROL'], hasPicture: true },
+    { itemId: 'er', atMs: T0 + 23 * H, text: 'Kompany was taken to the hospital by ambulance after the dead deer crash', names: ['KOMPANY'], hasPicture: false },
+    ...Array.from({ length: 1000 }, (_, i) => ({ itemId: `o${i}`, atMs: T0, text: `elon musk posted another dog picture number ${i}`, names: [], hasPicture: false })),
+  ];
+  return {
+    narratives: [{ id: 'n-fawn', members: ['nf', 'jf'], formedAtMs: T0 + H }],
+    posts: new Map(posts.map((x) => [x.itemId, x] as const)),
+    narrativeOf: new Map([['nf', 'n-fawn'], ['jf', 'n-fawn']]),
+    refs: new Map(),
+    eligible: new Set(),
+    loose: ['hz', 'er'],
+    looseViral: new Set(['hz', 'er']),
+    english: new Map([['hz', "I won't forgive you. Whoever killed the little deer, come out right now. I'm not staying quiet after Nara's been disrespected. Let's all protect Nara and the deer."]]),
+    shortlist: new Map(),
+    /* @hezuruy measured 0.41 from the fawns' average; the other loose post as close. */
+    vectors: new Map([['nf', unit(0)], ['jf', unit(0)], ['hz', unit(1.147)], ['er', unit(1.147)]]),
+    pictures: new Map(),
+    calls: foldNarrativeCalls([]),
+    untouchable: new Set(),
+    ...over,
+  };
+}
+
+test('★ the Nara fawns: a loose post in other words and another judge name joins on two rare words, one of them a name; two words with no name do not', () => {
+  const plan = traceStories(fawns(), P);
+  assert.deepEqual(plan.joins?.get('n-fawn'), [{ itemId: 'hz', tie: 'words' }], '"nara" + "deer" (fawn read as deer); "dead" + "deer" alone names nothing');
+  assert.equal(traceStories(fawns({ untouchable: new Set(['n-fawn']) }), P).joins?.size ?? 0, 0, 'never into a narrative the owner called on');
+  assert.equal(traceStories(fawns({ noWordsJoin: new Set(['n-fawn']) }), P).joins?.size ?? 0, 0, 'never into a meme war');
+  const far = traceStories(fawns({ vectors: new Map([...fawns().vectors, ['hz', unit(1.3)]]) }), P);
+  assert.equal(far.joins?.size ?? 0, 0, 'still held to the meaning bar');
+});
+
 /* ── policy.v149: the merge on the story's own words — the Yotsuya station goats, 19–23 Oct ── */
 
 /* Three Japanese narratives about JR East's weeding goats at Yotsuya station, quoting nothing, as they
