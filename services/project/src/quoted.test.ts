@@ -93,3 +93,11 @@ test('mainPicture: own first, a video still keeps its play icon, else the quote\
   assert.equal(mainPicture([], { thumbUrl: null, thumbIsVideo: false }), null);
   assert.equal(mainPicture([], null), null);
 });
+
+test('★ a post found deleted carries when on its card, as ms; one not known to be carries nothing', () => {
+  const gone = projectRisingPost({ ...QUOTE_ROW, deleted_at: '2026-10-24T01:34:24.000Z' }, READINGS, new Map(), 1_800_000);
+  assert.equal(gone.deletedAt, Date.parse('2026-10-24T01:34:24.000Z'));
+  assert.equal(gone.excerpt, projectRisingPost(QUOTE_ROW, READINGS, new Map(), 1_800_000).excerpt, 'it keeps what we stored');
+  assert.equal('deletedAt' in projectRisingPost(QUOTE_ROW, READINGS, new Map(), 1_800_000), false);
+  assert.equal('deletedAt' in projectRisingPost({ ...QUOTE_ROW, deleted_at: null }, READINGS, new Map(), 1_800_000), false);
+});
