@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { postOfRow } from './faces.ts';
-import { launchEvents, launchHref, onLaunchpad, type Picked } from './launch.ts';
+import { isRevival, launchEvents, launchHref, onLaunchpad, type Picked } from './launch.ts';
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;
@@ -136,4 +136,29 @@ test('★ a coin picked late is pushed while it runs, up to a day old; quiet, it
   /* Launched before For You showed the post: still not "caught early", late or not. */
   const before = launchEvents([pick('p:x:b', 'B', { onForYouMs: NOW - 5 * 60 * MIN, launchedMs: NOW - 6 * 60 * MIN, runningNow: true })], [], new Set(), NOW, L);
   assert.deepEqual(before.due, []);
+});
+
+test('★ the Light Baby case: an old original brought back by its promotion coin is pushed once, past rules 1 and 2', () => {
+  /* 24 Oct: $BI launched 12:27 for @Infinitidigits' quote of @prtygal777's 6-day-old post; the original came back with it. */
+  const revived = pick('p:x:lightbaby', 'BI', { revival: true, runningNow: true, onForYouMs: NOW - 6 * 24 * 60 * MIN, launchedMs: NOW - 60 * MIN });
+  const first = launchEvents([revived], [], new Set(['p:x:lightbaby']), NOW, L);
+  assert.deepEqual(first.due.map((d) => d.address), ['BI'], 'the post spent long ago and the coin older than this For You: pushed all the same');
+  assert.deepEqual(first.keys, ['v:x:lightbaby', 'c:BI']);
+  assert.deepEqual(launchEvents([revived], [], new Set(['p:x:lightbaby', ...first.keys]), NOW, L).due, [], 'once per post');
+  assert.deepEqual(launchEvents([{ ...revived, itemId: 'x:other', key: 'p:x:other' }], [], new Set(first.keys), NOW, L).due, [], 'once per coin');
+});
+
+test('a revival waits, unspent, while its coin is quiet, and is never pushed past a day after the launch', () => {
+  const quiet = pick('p:x:old', 'OLD', { revival: true, runningNow: false, launchedMs: NOW - 60 * MIN });
+  assert.deepEqual(launchEvents([quiet], [], new Set(), NOW, L), { due: [], keys: [] });
+  const stale = pick('p:x:old', 'OLD', { revival: true, runningNow: true, launchedMs: NOW - L.lateRunningMs - 1 });
+  assert.deepEqual(launchEvents([stale], [], new Set(), NOW, L), { due: [], keys: [] });
+});
+
+test('a revival is a picked coin that is not the post own pick and launched past the coin-link age after it', () => {
+  const day = 24 * 60 * MIN;
+  assert.equal(isRevival({ launchedMs: 6 * day, postedMs: 0, ownPick: false }), true);
+  assert.equal(isRevival({ launchedMs: 6 * day, postedMs: 0, ownPick: true }), false, 'the post own pick keeps the ordinary rules');
+  assert.equal(isRevival({ launchedMs: 2 * day, postedMs: 0, ownPick: false }), false, 'a young original is pushed by the ordinary rules');
+  assert.equal(isRevival({ launchedMs: null, postedMs: 0, ownPick: false }), false);
 });

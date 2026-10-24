@@ -55,6 +55,17 @@
  * push's own, and rule 2 holds without the coin-first exception: the new coin always came after.
  * A second hand-over on the same post is never pushed.
  *
+ * ★ EXCEPT AN ORIGINAL BROUGHT BACK BY ITS PROMOTION'S COIN (the owner, 2026-10-24; Policy.rising
+ * .promotion, services/project promotions.ts). A caller's post quoting an older viral post is never
+ * shown; its coin goes to the original, and an original older than the coin-link age at the launch
+ * (core `promotionMaxAgeMs`) comes back to For You only while the coin runs. Rules 1 and 2 would never
+ * push it — its first For You was days ago, or the coin came before it came back — so such a post is
+ * pushed past both, ONCE PER POST (`v:<item>`) and once per coin (rule 4), while the coin is at most
+ * `lateRunningMs` old and its last hour clears the saved-post running bars now. A revival is read off
+ * the frame For You shows now (public.rising_row): a picked coin on the card that is not the post's
+ * own pick (internal.post_coin_pick, 0129) and launched more than that age after the post. Without
+ * 0129's grant nothing is a revival. The coin gate holds; the wording is the launch push's own.
+ *
  * ★ A LAUNCHPAD COIN ONLY (the owner, 2026-10-23: "coins that are launched from pumpfun"): a coin
  * whose stored row is not the launchpad's seen launch is not pushed (coin-gate.ts). Its keys are
  * remembered all the same, so the post's later coins never follow as a hand-over.
@@ -75,6 +86,7 @@
  */
 
 import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
+import { promotionMaxAgeMs } from '@insidor/core';
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
@@ -111,8 +123,10 @@ export interface Picked {
   readonly coinFirst?: { readonly firstCoinAddress: string | null };
   /** The pick on the card is the runner hand-over's (services/runner work/runner-handover.ts): pushed as "a new coin … is running". */
   readonly runner?: boolean;
-  /** Its coin's last hour clears the running bars now (only read for a coin past `maxLaunchAgeMs`). */
+  /** Its coin's last hour clears the running bars now (only read for a coin past `maxLaunchAgeMs`, and for a revival). */
   readonly runningNow?: boolean;
+  /** An old original brought back to For You by its promotion's running coin (the header): pushed past rules 1 and 2, once per post. */
+  readonly revival?: true;
 }
 
 /** The timing rule's ages: three hours as launched, and up to `lateRunningMs` while running. */
@@ -130,6 +144,22 @@ export function waitsToRun(p: Pick<Picked, 'launchedMs' | 'runningNow'>, nowMs: 
   if (p.launchedMs === null || rule.lateRunningMs === undefined || p.runningNow === true) return false;
   const age = nowMs - p.launchedMs;
   return age > rule.maxLaunchAgeMs && age <= rule.lateRunningMs;
+}
+
+/** A revived original's push, remembered once per post whatever coin brought it back. */
+export const revivalKey = (itemId: string): string => `v:${itemId}`;
+
+/** A revival's timing: the coin at most `lateRunningMs` old and running now. No rule 2: the coin came first. */
+export function revivalEarlyEnough(p: Pick<Picked, 'launchedMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
+  return p.launchedMs !== null && rule.lateRunningMs !== undefined && nowMs - p.launchedMs <= rule.lateRunningMs && p.runningNow === true;
+}
+
+/**
+ * Whether a card's picked coin is a revival (the header): not the post's own pick, and launched more
+ * than the coin-link age after the post. Unknown times are not one.
+ */
+export function isRevival(c: { readonly launchedMs: number | null; readonly postedMs: number | null; readonly ownPick: boolean }, maxAgeMs: number = promotionMaxAgeMs(DEFAULT_POLICY)): boolean {
+  return !c.ownPick && c.launchedMs !== null && c.postedMs !== null && c.launchedMs - c.postedMs > maxAgeMs;
 }
 
 /** A post's hand-over push, remembered once per post whatever coin it went to. */
@@ -172,6 +202,21 @@ export function launchEvents(
   const keys: string[] = [];
   const pushed = new Set<string>();
   for (const p of [...posts, ...narratives]) {
+    /* ★ A revival: an old original back on For You with its promotion's running coin. Once per post, past rules 1 and 2. */
+    if (p.revival === true) {
+      const vk = revivalKey(p.itemId);
+      if (seen.has(vk) || keys.includes(vk)) continue;
+      /* Not running now: nothing spent, looked at again next pass. */
+      if (!revivalEarlyEnough(p, nowMs, rule)) continue;
+      keys.push(vk);
+      if (!seen.has(p.key) && !keys.includes(p.key)) keys.push(p.key);
+      const coin = `c:${p.address}`;
+      if (seen.has(coin) || pushed.has(coin)) continue;
+      pushed.add(coin);
+      keys.push(coin);
+      due.push(p);
+      continue;
+    }
     /* ★ The runner hand-over: the post's coin moved to a later coin running now. Once per post, past rule 1. */
     const rk = runnerKey(p.itemId);
     if (p.key.startsWith('p:') && runners.get(p.itemId) === p.address && !seen.has(rk) && !keys.includes(rk)) {
@@ -258,6 +303,41 @@ export interface LaunchPorts {
   readonly onPick?: boolean;
   /** Push the runner hand-over (Policy.runnerLink.handover on and push); absent: from the policy in force. */
   readonly runnerPush?: boolean;
+  /** Push a revived original (Policy.rising.promotion on); absent: from the policy in force. */
+  readonly revivals?: boolean;
+}
+
+/* For You's frame now: each card with a picked coin, its first time on For You (now when it has none), and the post's own time. */
+const FRAME_SQL = `
+  select r.item_id as "itemId", (extract(epoch from coalesce(f.first_shown_at, now())) * 1000)::float8 as "onForYouMs",
+         r.payload -> 'coins' as coins, r.payload ->> 'excerpt' as excerpt, r.payload ->> 'authorLabel' as author, r.payload ->> 'thumbUrl' as image,
+         (extract(epoch from coalesce(i.posted_at, i.first_seen_at)) * 1000)::float8 as "postedMs"
+    from public.rising_row r
+    join public.item i on i.item_id = r.item_id
+    left join public.feed_post f on f.feed_id = 'fyp' and f.item_id = r.item_id
+   where r.feed_id = 'fyp' and r.payload -> 'coins' -> 'evidence' ->> 'picked' = 'true'`;
+
+/**
+ * The frame's picked cards, each post's own time, and the coins picked for each post itself — null
+ * without 0129's grant on internal.post_coin_pick (looked up first): then nothing is a revival.
+ */
+async function frameCards(db: Db): Promise<{
+  readonly rows: readonly { itemId: string; onForYouMs: number; coins: unknown; excerpt: string | null; author: string | null; image: string | null; postedMs: number }[];
+  readonly postedMs: ReadonlyMap<string, number>;
+  readonly ownPicks: ReadonlyMap<string, ReadonlySet<string>> | null;
+}> {
+  const rows = await db.query<{ itemId: string; onForYouMs: number; coins: unknown; excerpt: string | null; author: string | null; image: string | null; postedMs: number }>(FRAME_SQL);
+  const postedMs = new Map(rows.map((r) => [r.itemId, Number(r.postedMs)] as const));
+  const [ok] = await db.query<{ ok: boolean | null }>(
+    `select case when to_regclass('internal.post_coin_pick') is null then false else has_table_privilege('internal.post_coin_pick', 'select') end as ok`,
+  );
+  if (ok?.ok !== true || rows.length === 0) return { rows, postedMs, ownPicks: ok?.ok === true ? new Map() : null };
+  const own = new Map<string, Set<string>>();
+  for (const r of await db.query<{ item_id: string; address: string }>(
+    `select item_id, address from internal.post_coin_pick where item_id = any($1::text[]) and outcome = 'picked' and address is not null`,
+    [rows.map((r) => r.itemId)],
+  )) own.set(r.item_id, new Set([...(own.get(r.item_id) ?? []), r.address]));
+  return { rows, postedMs, ownPicks: own };
 }
 
 /**
@@ -282,11 +362,15 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   if (!(ports.onPick ?? DEFAULT_POLICY.oneCoin.mode === 'live')) return 0;
   const L = ports.policy.launch;
   const postRows = await db.query<{ itemId: string; onForYouMs: number; coins: unknown; excerpt: string | null; author: string | null; image: string | null }>(POSTS_SQL, [L.postsWithinMs]);
-  const posts: Picked[] = postRows.flatMap((r) => {
+  const asPicked = (r: { itemId: string; onForYouMs: number; coins: unknown; excerpt: string | null; author: string | null; image: string | null }): Picked[] => {
     const line = lineCoin({ coins: parse(r.coins) });
     if (line === null) return [];
     return [{ key: `p:${r.itemId}`, address: line.address, ticker: line.ticker, onForYouMs: Number(r.onForYouMs), launchedMs: line.mintedAtMs, capUsd: line.mcUsd, itemId: r.itemId, excerpt: text(r.excerpt), author: text(r.author), image: https(r.image), logo: line.imageUrl }];
-  });
+  };
+  /* ★ Revivals (the header): For You's frame now, with each post's own time; the ones not read above are kept only if they are revivals. */
+  const frame = (ports.revivals ?? DEFAULT_POLICY.rising.promotion.on) ? await frameCards(db) : null;
+  const fromWindow = new Set(postRows.map((r) => r.itemId));
+  const posts: Picked[] = [...postRows.flatMap(asPicked), ...(frame?.rows ?? []).filter((r) => !fromWindow.has(r.itemId)).flatMap(asPicked)];
   let narrativeRows: { storyId: string; coins: unknown; itemId: string; onForYouMs: number; excerpt: string | null; author: string | null; image: string | null }[] = [];
   try {
     narrativeRows = await db.query(NARRATIVES_SQL, [L.postsWithinMs]);
@@ -302,10 +386,15 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   const facts = await coinFacts(db, undefined, [...narrativeCoins.map((n) => n.coin.address), ...posts.filter((p) => p.launchedMs === null).map((p) => p.address)]);
   /* ★ Coin-first posts: the route's record of each, for the first-coin exception to rule 2. */
   const coinFirst = await coinFirstOf(db, posts.map((p) => p.itemId));
-  const withLaunch = posts.map((p) => {
+  const withLaunch = posts.flatMap((p) => {
     const launched = p.launchedMs !== null ? p : { ...p, launchedMs: facts.get(p.address)?.mintedAtMs ?? null };
     const cf = coinFirst.get(p.itemId);
-    return cf === undefined ? launched : { ...launched, coinFirst: { firstCoinAddress: cf } };
+    const out: Picked = cf === undefined ? launched : { ...launched, coinFirst: { firstCoinAddress: cf } };
+    const posted = frame?.postedMs.get(p.itemId);
+    const revival = frame !== null && frame.ownPicks !== null && posted !== undefined
+      && isRevival({ launchedMs: out.launchedMs, postedMs: posted, ownPick: frame.ownPicks.get(p.itemId)?.has(p.address) === true });
+    if (revival) return [{ ...out, revival: true as const }];
+    return fromWindow.has(p.itemId) ? [out] : [];
   });
   const narratives: Picked[] = narrativeCoins.map(({ r, coin }) => {
     const f = facts.get(coin.address);
@@ -324,7 +413,7 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   const runners = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
   /* ★ Late picks (past maxLaunchAgeMs, inside lateRunningMs): each coin's last hour, read only for these. */
   const nowMs = ports.now();
-  const late = [...withLaunch, ...narratives].filter((p) => p.launchedMs !== null && nowMs - p.launchedMs > L.maxLaunchAgeMs && nowMs - p.launchedMs <= L.lateRunningMs);
+  const late = [...withLaunch, ...narratives].filter((p) => p.launchedMs !== null && (p.revival === true || nowMs - p.launchedMs > L.maxLaunchAgeMs) && nowMs - p.launchedMs <= L.lateRunningMs);
   const hours = late.length === 0 ? new Map() : await lastHours(db, [...new Set(late.map((p) => p.address))], nowMs, DEFAULT_POLICY.market.readingFreshnessMs);
   const mark = (p: Picked): Picked => (late.includes(p) ? { ...p, runningNow: isRunning(hours.get(p.address), ports.policy.savedPost) } : p);
   const events = launchEvents(withLaunch.map(mark), narratives.map(mark), seen, nowMs, L, runners);
