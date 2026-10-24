@@ -96,6 +96,7 @@ import {
   PgCoinFirstRepo,
   PgOneCoinRepo,
   PgOwnerCoinCallRepo,
+  PgMissedRunnerRepo,
   PgImagePairRepo,
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
@@ -173,6 +174,7 @@ import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { embedCoinPictures, pictureCoinMatches } from './work/coin-match.ts';
 import { newOneCoinState, oneCoinPass, type OneCoinResult } from './work/one-coin.ts';
+import { missedRunnerPass, newMissedRunnerState } from './work/missed-runners.ts';
 import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
@@ -857,6 +859,37 @@ export async function withRuntime<T>(
       });
       void disk.check();
       setInterval(() => void disk.check(), policy.store.disk.everyMs).unref();
+      /* ★ THE MISSED-RUNNER NET (work/missed-runners.ts, Policy.runnerLink.missed): coins over the cap bar
+         no pick holds, tied back to the post we hold they came from, and the owner told. DB only. */
+      if (policy.runnerLink.missed.on) {
+        const runnerRepo = new PgMissedRunnerRepo(db);
+        const picksRepo = new PgOneCoinRepo(db);
+        const runnerState = newMissedRunnerState();
+        const runnerPass = () =>
+          missedRunnerPass(
+            {
+              runners: (sinceMs, minCapUsd, origins, limit, minLiquidityUsd, minReadings) => runnerRepo.runners(sinceMs, minCapUsd, origins, limit, minLiquidityUsd, minReadings),
+              postsFor: (phrases, keys, fromMs, toMs, limit) => runnerRepo.postsFor(phrases, keys, fromMs, toMs, limit),
+              pictureSimilarity: (assetKey, itemIds) => runnerRepo.pictureSimilarity(assetKey, itemIds, policy.group.image.space),
+              ownerCalled: async (ids) => {
+                const newest = new Map<string, string>();
+                for (const r of await new PgOwnerCoinCallRepo(db).rows(ids)) newest.set(r.itemId, r.verdict);
+                return new Set([...newest].filter(([, v]) => v !== 'cleared').map(([id]) => id));
+              },
+              picks: (ids) => picksRepo.picks('post', ids),
+              upsertCandidates: (rows, nowMs) => picksRepo.upsertCandidates(rows, nowMs),
+              writePicks: (picks, previous, mode, nowMs) => picksRepo.writePicks('post', picks, previous, mode, nowMs),
+              ownerWallets: cfg.ownerWallets,
+              owner,
+              policy,
+              log: log.child({ step: 'missed-runners' }),
+              now: () => Date.now(),
+            },
+            runnerState,
+          );
+        void runnerPass();
+        setInterval(() => void runnerPass(), policy.runnerLink.missed.everyMs).unref();
+      }
       /* ★ THE OWNER'S JUDGE COST ALARM (judge-cost-alarm.ts): the judge's booked cost a call over the
          last hour against the median hour of the week before; past twice it, the owner is told, at
          most once in six hours (Policy.notify.judgeCost). Read from the ledger, so it runs whichever
