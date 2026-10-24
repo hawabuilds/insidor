@@ -13,13 +13,15 @@
  *      the post (internal.one_coin_candidate, by a link to the post or an exact name — the judge's
  *      names, the namer's guesses, or the post's own words; a picture alone is not enough), or the
  *      coin that brought the post in by its link (internal.coin_first_post). Running: the running
- *      coins strip's test (services/read running-coins.ts) on the coin's latest market reading inside
- *      Policy.market.readingFreshnessMs — Policy.runningCoins.minVolume1hUsd dollars AND minTrades1h
- *      trades in its last hour (0127). A coin with no reading yet, or a reading without its hour, is
- *      not running. Two at once: the busier hour. It does not wait for the one-coin pick.
+ *      coins strip's test (services/read running-coins.ts) with this push's own, higher bars, on the
+ *      coin's latest market reading inside Policy.market.readingFreshnessMs —
+ *      Policy.notify.savedPost.minVolume1hUsd dollars AND minTrades1h trades in its last hour (0127).
+ *      A coin with no reading yet, or a reading without its hour, is not running. Two at once: the
+ *      busier hour. It does not wait for the one-coin pick.
  *      Why running (the owner, 2026-10-24, after the first replay): "first tied coin" alone would have
  *      pushed a $2.9K dud "$Kuribo" at 19:33, three hours before $KURIBO; five duds linked or named
- *      the post before the real coin launched.
+ *      the post before the real coin launched. Why not the strip's $1,000: the $729 $KURIBOO passed it
+ *      at 23:28 and rugged five minutes later (the measurement is at the policy field).
  *   2. "$X is the one running for a post you saved" — once, when the one-coin rule's pick
  *      (internal.post_coin_pick; with none, the card's line coin) is a DIFFERENT coin from push 1.
  *
@@ -86,11 +88,11 @@ export interface SavedCoin {
 
 type RunningBars = Pick<Policy['runningCoins'], 'minVolume1hUsd' | 'minTrades1h'>;
 
-/** The running coins strip's own test (services/read running-coins.ts): enough dollars AND enough trades. No hour is not running. */
+/** The running coins strip's test (services/read running-coins.ts), on whatever bars it is given: enough dollars AND enough trades. No hour is not running. */
 export const isRunning = (hour: LastHour | null | undefined, bars: RunningBars): boolean =>
   hour !== null && hour !== undefined && hour.volume1hUsd >= bars.minVolume1hUsd && hour.trades1h >= bars.minTrades1h;
 
-/** The bars push 1 is held to: just launched (Policy.notify.launch.maxLaunchAgeMs) and running (Policy.runningCoins). */
+/** The bars push 1 is held to: just launched (Policy.notify.launch.maxLaunchAgeMs) and running (Policy.notify.savedPost). */
 export interface SavedRule {
   readonly maxLaunchAgeMs: number;
   readonly running: RunningBars;
@@ -158,7 +160,7 @@ export interface SavedPorts {
   readonly policy: NotifyPolicy;
   readonly now: () => number;
   readonly quotes?: Quotes;
-  /** The running bars and how old a market reading may be; absent: Policy.runningCoins and Policy.market.readingFreshnessMs in force. */
+  /** The running bars and how old a market reading may be; absent: Policy.notify.savedPost and Policy.market.readingFreshnessMs. */
   readonly running?: RunningBars;
   readonly readingFreshnessMs?: number;
 }
@@ -242,7 +244,7 @@ export async function checkSavedPosts(db: Db, ports: SavedPorts, watches: readon
   const now = ports.now();
   const hours = await lastHours(db, [...new Set(pairs.map((p) => p.address))], now, ports.readingFreshnessMs ?? DEFAULT_POLICY.market.readingFreshnessMs);
   const coinOf = (itemId: string, address: string): SavedCoin => ({ address, gate: gates.get(`${itemId}|${address}`) ?? { venueId: null, origin: null, launchedMs: null, hadPostMs: null }, hour: hours.get(address) ?? null });
-  const rule: SavedRule = { maxLaunchAgeMs: ports.policy.launch.maxLaunchAgeMs, running: ports.running ?? DEFAULT_POLICY.runningCoins };
+  const rule: SavedRule = { maxLaunchAgeMs: ports.policy.launch.maxLaunchAgeMs, running: ports.running ?? ports.policy.savedPost };
 
   const remember: { stream: string; key: string }[] = [];
   const due: { w: SavedWatch; kind: 'first' | 'running'; address: string }[] = [];

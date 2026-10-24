@@ -11,7 +11,7 @@ import { firstSavedKey, isRunning, runningSavedKey, savedMemory, savedPostStep, 
 const POSTED = Date.parse('2026-10-23T06:33:42Z');
 const SAVED = Date.parse('2026-10-23T17:11:42Z');
 const HOUR = 3_600_000;
-const RULE: SavedRule = { maxLaunchAgeMs: 3 * HOUR, running: { minVolume1hUsd: 1_000, minTrades1h: 20 } };
+const RULE: SavedRule = { maxLaunchAgeMs: 3 * HOUR, running: DEFAULT_POLICY.notify.savedPost };
 const ITEM = 'x:2113519213507969247';
 const BUSY: LastHour = { volume1hUsd: 400_000, trades1h: 8_500 };
 const coin = (address: string, launched: string, hour: LastHour | null = BUSY, over: Partial<SavedCoin['gate']> = {}): SavedCoin => ({
@@ -21,12 +21,14 @@ const coin = (address: string, launched: string, hour: LastHour | null = BUSY, o
 });
 const NONE = { first: null, running: false };
 
-test('★ running is the strip\'s test: enough dollars AND enough trades; no hour is not running', () => {
-  assert.equal(isRunning({ volume1hUsd: 1_000, trades1h: 20 }, RULE.running), true);
-  assert.equal(isRunning({ volume1hUsd: 999, trades1h: 500 }, RULE.running), false);
+test('★ running is the strip\'s test on the saved post\'s own bars ($20,000 and 20 trades in the last hour); no hour is not running', () => {
+  assert.deepEqual(DEFAULT_POLICY.notify.savedPost, { minVolume1hUsd: 20_000, minTrades1h: 20 }, 'the bars in force');
+  assert.equal(DEFAULT_POLICY.runningCoins.minVolume1hUsd, 1_000, 'the strip keeps its own');
+  assert.equal(isRunning({ volume1hUsd: 20_000, trades1h: 20 }, RULE.running), true);
+  assert.equal(isRunning({ volume1hUsd: 19_999, trades1h: 500 }, RULE.running), false);
+  assert.equal(isRunning({ volume1hUsd: 1_555, trades1h: 109 }, RULE.running), false, '$KURIBOO at 23:28 on 23 Oct, a $729 coin that rugged five minutes later');
   assert.equal(isRunning({ volume1hUsd: 50_000, trades1h: 19 }, RULE.running), false, 'a few large fills are not running');
   assert.equal(isRunning(null, RULE.running), false);
-  assert.deepEqual([DEFAULT_POLICY.runningCoins.minVolume1hUsd, DEFAULT_POLICY.runningCoins.minTrades1h], [1_000, 20], 'the bars in force');
 });
 
 test('★ the first tied coin after the save that STARTS RUNNING is pushed, without waiting for the pick; a dud tied earlier is not', () => {
@@ -40,7 +42,7 @@ test('★ the first tied coin after the save that STARTS RUNNING is pushed, with
 });
 
 test('two running at once: the busier hour', () => {
-  const s = savedPostStep(ITEM, SAVED, [coin('A', '2026-10-23T22:47:00Z', { volume1hUsd: 2_000, trades1h: 40 }), coin('B', '2026-10-23T22:48:00Z')], null, NONE, Date.parse('2026-10-23T22:52:00Z'), RULE, false);
+  const s = savedPostStep(ITEM, SAVED, [coin('A', '2026-10-23T22:47:00Z', { volume1hUsd: 25_000, trades1h: 40 }), coin('B', '2026-10-23T22:48:00Z')], null, NONE, Date.parse('2026-10-23T22:52:00Z'), RULE, false);
   assert.deepEqual(s.push, { kind: 'first', address: 'B' });
 });
 

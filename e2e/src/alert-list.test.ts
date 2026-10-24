@@ -201,9 +201,9 @@ test('★ a saved post (2026-10-24): the first coin tied after the save to start
   assert.deepEqual(toRead.map((r) => r.address).sort(), [first, second].sort());
   assert.equal(await checkWatched(db, ports, state), 0, 'tied, but no reading yet: not running');
   await reading(first, null, 0, 0);
-  await reading(second, 800, 30, 10);
-  assert.equal(await checkWatched(db, ports, state), 0, 'a reading without its hour is not running; nor is $800 traded');
-  await reading(first, 5_000, 25, 5);
+  await reading(second, 19_000, 300, 100);
+  assert.equal(await checkWatched(db, ports, state), 0, 'a reading without its hour is not running; nor is $19,000 traded');
+  await reading(first, 25_000, 25, 5);
   assert.equal(await checkWatched(db, ports, state), 1, 'the first tied coin to start running, no pick yet: pushed');
   await reading(second, 50_000, 300, 100);
   assert.equal(await checkWatched(db, ports, state), 0, 'a later coin running is not news');
