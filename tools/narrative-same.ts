@@ -29,7 +29,7 @@ import { DEFAULT_POLICY as P } from '../contracts/src/policy.ts';
 import { foldNarrativeCalls, hiddenByOwner, sameSubjectMerges, subjectName, subjectOf, subjectPosts } from '../core/src/index.ts';
 import { createPool, DB_ROLE, PgNarrativeRepo, withTransaction } from '../store/src/index.ts';
 
-const SPACE = 'multimodal-3.1024.post';
+const SPACE = P.group.image.postSpace;
 const arg = (name: string): string | null => {
   const i = process.argv.indexOf(name);
   return i < 0 ? null : (process.argv[i + 1] ?? null);

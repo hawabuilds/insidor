@@ -155,6 +155,8 @@ export async function loadTopicLinks(
   db: Db,
   ids: readonly string[],
   sameMeaning: number,
+  /** The post vectors' space (Policy.group.image.postSpace): the bar was measured in it, never across two. */
+  space: string,
 ): Promise<{ readonly guesses: ReadonlyMap<string, string>; readonly alike: readonly (readonly [string, string])[] }> {
   if (ids.length < 2) return { guesses: new Map(), alike: [] };
   const guarded = async <R>(name: string, sql: string, params: unknown[]): Promise<R[]> => {
@@ -184,9 +186,10 @@ export async function loadTopicLinks(
     `select x.item_id as a, y.item_id as b
        from internal.post_embedding x
        join internal.post_embedding y on y.space = x.space and y.item_id > x.item_id
-      where x.item_id = any($1::text[]) and y.item_id = any($1::text[])
+      where x.space = $3
+        and x.item_id = any($1::text[]) and y.item_id = any($1::text[])
         and 1 - (x.embedding <=> y.embedding) >= $2`,
-    [[...ids], sameMeaning],
+    [[...ids], sameMeaning, space],
   );
   return { guesses: new Map(guessRows.map((r) => [r.item_id, r.name] as const)), alike: pairRows.map((r) => [r.a, r.b] as const) };
 }

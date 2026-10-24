@@ -73,7 +73,6 @@ import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import type { TranslatePort } from '@insidor/contracts/ports/translate.ts';
-import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { followLink, resolvePlatforms, SECOND_VIDEO_VENDOR, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
@@ -152,6 +151,7 @@ import { quoteClock, quoteSearchPass, type QuoteSearchResult } from './work/quot
 import { accountWatchPass, accountWatchState, type AccountWatchResult } from './work/account-watch.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
+import { embedPortFor } from './embed-port.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
@@ -736,6 +736,14 @@ export async function withRuntime<T>(
         spentTodayUsd: meter.openedWith.totalUsd,
       });
 
+      /* ★ ONE EMBEDDING PORT FOR THE PROCESS, CHOSEN BY THE POLICY'S SPACE (embed-port.ts): the hosted
+         model while Policy.group.image.space names its space, our own service (services/embed) once it
+         names that one. Every step below that embeds gets this port or nothing, so no step can write a
+         vector in a space the readers do not ask for. */
+      const embedChoice = embedPortFor(cfg, policy.group.image, meter);
+      const embedding = embedChoice.port;
+      log.info('embeddings', embedding === null ? { state: 'dormant', why: embedChoice.dormant } : { state: 'configured', port: embedding.id, space: embedding.space, postSpace: embedding.postSpace });
+
       /* ★ THE LINES ARE SHARED WITH ANY ONE-OFF PAID JOB (tools/jobs.ts), which writes to the same
          ledger. Re-read it on a timer so what the job spends counts here too; see `refresh` in
          the meter. Unref'd: it must never be what keeps a stopping runner alive. */
@@ -966,7 +974,7 @@ export async function withRuntime<T>(
          applied: no examples, the judge's rules alone. */
       /* ★ PRECEDENTS (work/precedents.ts): the owner's closest labelled posts ride along with each
          post, when the embeddings that find them are configured. They change the post question's id. */
-      const withPrecedents = cfg.embeddings.state === 'configured' && precedentsWanted(policy) > 0;
+      const withPrecedents = embedding !== null && precedentsWanted(policy) > 0;
       /* ★ THE FEED'S TWO JUDGES (feed-judges.ts): the main one and the open model, by the role
          Policy.judge.primary gives each, both with the same block, precedents and questions. */
       const openModel = await openHostModel(cfg.openJudge, policy.judge.timeoutMs, log.child({ step: 'open-judge' }));
@@ -1121,24 +1129,11 @@ export async function withRuntime<T>(
         stories: judge?.id ?? null,
         sameSubject: pairsJudge?.id ?? null,
       });
-      /* The embed port the narratives pass uses for a good post with no vector (work/narratives.ts). */
-      const precedentsEmbed =
-        cfg.embeddings.state === 'configured'
-          ? voyageEmbed({
-              client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-              meter,
-              now: () => Date.now() as Millis,
-            })
-          : null;
       /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
       const precedents =
-        cfg.embeddings.state === 'configured'
+        embedding !== null
           ? precedentSource({
-              embed: voyageEmbed({
-                client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                meter,
-                now: () => Date.now() as Millis,
-              }),
+              embed: embedding,
               labels: new PgLabelEmbeddingRepo(db),
               posts: new PgPostEmbeddingRepo(db),
               meter,
@@ -1152,7 +1147,7 @@ export async function withRuntime<T>(
          second source whose embeddings are tallied, so the pass can charge its lane what they cost. */
       const earlyEmbedUsd = { total: 0 };
       const earlyPrecedents =
-        cfg.embeddings.state === 'configured' && policy.judge.early.on
+        embedding !== null && policy.judge.early.on
           ? precedentSource({
               embed: ((port) => ({
                 ...port,
@@ -1165,13 +1160,7 @@ export async function withRuntime<T>(
                         return r;
                       },
                     }),
-              }))(
-                voyageEmbed({
-                  client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                  meter,
-                  now: () => Date.now() as Millis,
-                }),
-              ),
+              }))(embedding),
               labels: new PgLabelEmbeddingRepo(db),
               posts: new PgPostEmbeddingRepo(db),
               meter,
@@ -1201,13 +1190,7 @@ export async function withRuntime<T>(
       const names = nameGuesser({
         namer,
         embed:
-          cfg.embeddings.state === 'configured'
-            ? voyageEmbed({
-                client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                meter,
-                now: () => Date.now() as Millis,
-              })
-            : null,
+          embedding,
         examples: new PgNameExampleRepo(db),
         guesses: new PgNameGuessRepo(db),
         meter,
@@ -1490,13 +1473,7 @@ export async function withRuntime<T>(
           embedImages: () =>
             embedImages({
               embed:
-                cfg.embeddings.state === 'configured'
-                  ? voyageEmbed({
-                      client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                      meter,
-                      now: () => Date.now() as Millis,
-                    })
-                  : null,
+                embedding,
               images: new PgImageEmbeddingRepo(db),
               mode: cfg.spend.kind,
               policy,
@@ -1517,13 +1494,7 @@ export async function withRuntime<T>(
             postJudge,
             shadow,
             embed:
-              cfg.embeddings.state === 'configured'
-                ? voyageEmbed({
-                    client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                    meter,
-                    now: () => Date.now() as Millis,
-                  })
-                : null,
+              embedding,
             pairs:
               pairsJudge === null
                 ? null
@@ -1567,13 +1538,7 @@ export async function withRuntime<T>(
                 coins: new PgCoinUniverseRepo(db),
                 images: new PgImageEmbeddingRepo(db),
                 embed:
-                  cfg.embeddings.state === 'configured'
-                    ? voyageEmbed({
-                        client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                        meter,
-                        now: () => Date.now() as Millis,
-                      })
-                    : null,
+                  embedding,
                 pairs:
                   pairsJudge === null
                     ? null
@@ -1657,13 +1622,7 @@ export async function withRuntime<T>(
           oneCoin: (() => {
             const state = newOneCoinState();
             const embed =
-              cfg.embeddings.state === 'configured'
-                ? voyageEmbed({
-                    client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
-                    meter,
-                    now: () => Date.now() as Millis,
-                  })
-                : null;
+              embedding;
             const pictures = { embed, meter, mode: cfg.spend.kind, images: new PgImageEmbeddingRepo(db), log: log.child({ step: 'one-coin' }), now: () => Date.now() as Millis };
             /* One repo for the process: it mirrors the candidate table and reads only what changed (store `PgOneCoinRepo`). */
             const oneCoinRepo = new PgOneCoinRepo(db, { mirrorCandidates: true });
@@ -1869,7 +1828,7 @@ export async function withRuntime<T>(
              minutes and written in one short transaction; titled by the open model on its own ledger
              endpoint; a good post with no vector embedded on the live embeddings line. */
           narratives: (() => {
-            const space = precedentsEmbed?.postSpace ?? null;
+            const space = embedding?.postSpace ?? null;
             /* The meme-war question rides on the title call (Policy.narrative.fight) and needs room in the answer. */
             const titleTokens = policy.narrative.fight.on ? Math.max(policy.narrative.title.maxOutputTokens, policy.narrative.fight.maxOutputTokens) : policy.narrative.title.maxOutputTokens;
             const grouper = narrativeGrouper({
@@ -1908,7 +1867,7 @@ export async function withRuntime<T>(
                       maxTitleChars: policy.narrative.title.maxTitleChars,
                       ...(policy.narrative.fight.on ? { maxCountries: policy.narrative.fight.maxCountries } : {}),
                     }),
-              embed: precedentsEmbed,
+              embed: embedding,
               keepVectors: (rows, postSpace) => new PgPostEmbeddingRepo(db).putMany(rows, postSpace),
               meter,
               mode: cfg.spend.kind,

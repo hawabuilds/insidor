@@ -590,7 +590,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         keep: async (_id: string, uri: string, _space: string, v: readonly number[]) => void runVectors.set(uri, v),
       };
       let spentUsd = 0;
-      const coined = await repo.coinedPictureVectors();
+      const coined = await repo.coinedPictureVectors(P.group.image.space);
       /* ★ THE OWNER'S LABELS AS PRECEDENT, AS LIVE: every test post is sent with its closest labelled
          posts and held when very close to a "Not a meme" one (tools/lib/pass-rates.ts `precedents`).
          No stored labels (0069 not applied): graded without, as live then runs. */

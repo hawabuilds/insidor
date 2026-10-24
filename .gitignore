@@ -21,3 +21,6 @@ var/
 # measures (fixtures/parity.json, fixtures/walker-parity.json) are committed —
 # an oracle that has to be regenerated to run is an oracle that does not run.
 ml/serve/fixtures/parity-measured.json
+
+# The self-hosted embedding model's files, downloaded at its first boot (services/embed).
+services/embed/models/

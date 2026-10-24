@@ -16,6 +16,7 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
+import { VENDOR as SELF_EMBED_VENDOR } from '@insidor/embed-selfhost';
 import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
 import { BACKUP_VENDOR as SECOND_OPEN_JUDGE_VENDOR, DEFAULT_VENDOR as OPEN_JUDGE_VENDOR } from '@insidor/judge-openai-compatible';
@@ -69,6 +70,9 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
        again, its own account. About $3.60 a day as the first judge ($0.0005 a post in its copy test on 40 live posts, 2026-10-17, at about 7,200 posts a day). */
     [SECOND_OPEN_JUDGE_VENDOR]: lines.judge,
     [EMBED_VENDOR]: lines.embeddings,
+    /* Our own embedding service: $0 a call (a fixed monthly machine), so the line never binds; it is
+       named so its calls sit on the pictures line rather than the default per-source one. */
+    [SELF_EMBED_VENDOR]: lines.embeddings,
   };
 }
 

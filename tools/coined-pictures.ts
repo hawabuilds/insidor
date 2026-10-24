@@ -38,7 +38,7 @@ for (const [coinId, ev] of loadEvidence()) {
 
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-coined-pictures' });
 const repo = new PgCoinedPictureRepo(asDb(pool));
-const held = await repo.known();
+const held = await repo.known(SPACE);
 const todo = [...wanted].filter(([uri]) => !held.has(uri));
 console.log(`${wanted.size} origin pictures, ${todo.length} not yet held; at most $${(todo.length * USD_PER_PICTURE).toFixed(3)}.`);
 const { meter, close } = await openSharedMeter(Math.max(todo.length * USD_PER_PICTURE, 0.01));

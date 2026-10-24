@@ -17,11 +17,11 @@
  * never as unlike: an absence is not a measurement.
  */
 
-import type { Policy } from '../../contracts/src/policy.ts';
+import { DEFAULT_POLICY, type Policy } from '../../contracts/src/policy.ts';
 import { pairKey } from '../../core/src/index.ts';
 import { PgNarrativeRepo, type Db } from '../../store/src/index.ts';
 
-const POST_SPACE = 'multimodal-3.1024.post';
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 
 export interface NarrativeLessons {
   /** Narratives first on the board in the window. */

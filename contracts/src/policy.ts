@@ -598,7 +598,23 @@ export interface GroupPolicy {
    * `pairChecksPerDay` caps the judge questions; pairs past it simply do not join.
    */
   readonly image: {
+    /**
+     * ★ THE EMBEDDING SWITCH. The space every picture vector is written in and read from — and the
+     * runner builds the embedding port whose space this is (services/runner wiring.ts
+     * `embedPortFor`), so changing it changes which model embeds. Every bar in this policy that
+     * compares vectors (the three below, `postCoin.picture.minSimilarity`, the projector's
+     * `boostMinSimilarity`, the narrative and story-coin meaning bars, the judge's
+     * `holdNotSimilarity`) was measured in ONE space: change this and those bars in the same edit,
+     * from that space's own copy test.
+     */
     readonly space: string;
+    /**
+     * A POST's vector (its words and picture read together) in the same representation: its own
+     * space, never compared with a picture-only vector. Read by every post-vector lookup (the
+     * judge's precedents, the namer's examples, narratives, the projector's story match and For
+     * You's variety), so a vector of another model's posts is never one of their neighbours.
+     */
+    readonly postSpace: string;
     readonly nearIdentical: number;
     readonly likely: number;
     readonly borderline: number;
@@ -5387,8 +5403,12 @@ const POLICY_V1: Policy = {
 
      v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西)
      and the meme-war word search's per-language bar (`feed.fightWords.byLang`, Japanese at 100),
-     and the quote of a war post in the other side's language (`narrative.fight.native.answersOn`). */
-  version: 'policy.v169',
+     and the quote of a war post in the other side's language (`narrative.fight.native.answersOn`).
+
+     v170 adds `group.image.postSpace`, the post vectors' space, read by every post-vector lookup
+     instead of each one's own copy of the name. No value changes: the switch to the self-hosted
+     model is a later version that changes `space`, `postSpace` and the bars together. */
+  version: 'policy.v170',
 
   admit: {
     maxAgeMin: 240,
@@ -5571,7 +5591,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
+    image: { space: 'multimodal-3.1024', postSpace: 'multimodal-3.1024.post', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,
