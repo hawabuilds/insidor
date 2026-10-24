@@ -4653,6 +4653,23 @@ export interface PostPicturePolicy {
 }
 
 /**
+ * THE LATE ROUTE ON FOR YOU (policy.v152; the owner, 2026-10-24: "show late posts that still have no
+ * coin"; services/project late-no-coin.ts). A post we found after `rising.fypMaxAgeMs` had already
+ * passed, that the judge said yes to and that cleared For You's views bar, joins For You while no coin
+ * for it is running (`oneCoin.minCapUsd`), up to `maxPostAgeMs` after it went up.
+ */
+export interface LateNoCoinPolicy {
+  readonly on: boolean;
+  /** Past this age the route lets the post go, coin or no coin. */
+  readonly maxPostAgeMs: number;
+  /**
+   * True: on this route a yes up to `rising.boostBarMargin` under its confidence bar counts, as the
+   * picture boost's does with a coined picture. False: For You's own bar.
+   */
+  readonly nearBar: boolean;
+}
+
+/**
  * THE RUNNING COINS STRIP at the top of For You and the Narratives tab (policy.v148; the owner,
  * 2026-10-23, design A of reports/ticker). Only the coins of posts and narratives we found — the
  * one coin a For You card or a board narrative names — launched on the launchpad, tradable, with a
@@ -4788,6 +4805,8 @@ export interface Policy {
   readonly store: StorePolicy;
   /** The running coins strip on For You and the Narratives tab (services/read running-coins.ts). */
   readonly runningCoins: RunningCoinsPolicy;
+  /** Posts found late with no running coin yet, on For You (services/project late-no-coin.ts). */
+  readonly lateNoCoin: LateNoCoinPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -5002,7 +5021,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v151',
+  version: 'policy.v152',
 
   admit: {
     maxAgeMin: 240,
@@ -7290,6 +7309,20 @@ const POLICY_V1: Policy = {
        is a few large orders, not a market. Of the 20 coins the cards named that night it kept 7. */
     minVolume1hUsd: 1_000,
     minTrades1h: 20,
+  },
+
+  /* policy.v152 adds `lateNoCoin` (the owner, 2026-10-24: "show late posts that still have no coin").
+     Replayed read-only over 19-23 Oct (tools/late-no-coin-replay.ts): 944 posts found more than six hours
+     after they went up were judged yes once; 209 would have joined For You under these values — 52, 67,
+     30, 8 and 51 a London day, beside For You's own 450, 170, 139, 16 and 201 — 176 if the yes had to
+     clear For You's own bar. 13 got a running coin after joining, a median 10.7 hours later; those
+     coins came 8 to 70 hours after their post, and a 168-hour cap added 49 posts for one more coin, so
+     72. The moustache-baby post (0.72 on a video frame, under the 0.75 bar) joins only with `nearBar`:
+     at 08:21 London on 23 Oct, 13 hours before its running coin launched. $0: no read or judge call. */
+  lateNoCoin: {
+    on: true,
+    maxPostAgeMs: 259_200_000, // 72 hours
+    nearBar: true,
   },
 
   scorers: {
