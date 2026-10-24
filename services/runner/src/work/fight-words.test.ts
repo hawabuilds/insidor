@@ -47,7 +47,7 @@ test('a war is searched in each side\'s own language for the other country, the 
   const ct = fightWords({ id: 'n-ct', countries: ['China', 'Türkiye'] }, P).map((w) => `${w.lang}:${w.word}`);
   assert.deepEqual(ct, ['zh:土耳其', 'tr:çin', 'tr:çinli']);
   const fj = fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, P).map((w) => `${w.lang}:${w.word}`);
-  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス']);
+  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス', 'ja:フランス人']);
   assert.deepEqual(fightWords({ id: 'n-x', countries: ['Brazil', 'Argentina'] }, P), [], 'no home language for either: nothing to ask');
 });
 
