@@ -46,6 +46,7 @@ import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 
 import { recordAdmitted } from './coin-first.ts';
+import { beyondCap } from './late-no-coin.ts';
 import { loadMembership, writeMembership } from './feed-members.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { changedPosts, lockForYou, type QuickCursor } from './for-you-lock.ts';
@@ -187,30 +188,35 @@ export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, po
   const showing = (await db.query<{ item_id: string; payload: WireRisingPost }>(`select item_id, payload from public.rising_row where feed_id = 'fyp' order by position`)).map((r) => r.payload);
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const mergedIds = [...new Set([...showing.map((p) => p.id), ...frame.fyp.map((p) => p.id)])];
-  const rows = await loadCandidates(db, sinceMs, mergedIds, mergedIds);
+  /* Uncredited too: a late post (late-no-coin.ts) has no lane's credit and must still be found here. */
+  const rows = await loadCandidates(db, sinceMs, mergedIds, mergedIds, null, mergedIds);
   const rowAt = new Map(rows.map((r) => [r.item_id, new Date(r.posted_at ?? r.first_seen_at).getTime()] as const));
   const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
   const merged = mergeForYou(showing, changed, frame.fyp, at);
   const cards = merged.map((post) => ({ at: at(post), post }));
-  const fyp = (await varied(db, cards, rows, policy)).slice(0, policy.rising.maxRows).map((c) => c.post);
+  const variedAll = await varied(db, cards, rows, policy);
+  const fyp = variedAll.slice(0, policy.rising.maxRows).map((c) => c.post);
+  /* ★ The late route's posts the cut left under the list join For You's list all the same (late-no-coin.ts). */
+  const cutHere = beyondCap(variedAll.map((c) => c.post), policy.rising.maxRows, frame.late ?? new Set(), membership?.fyp ?? new Set());
+  const lateJoins = [...cutHere, ...(frame.lateJoins ?? []).filter((p) => !cutHere.some((c) => c.id === p.id))];
 
   const before = new Set(showing.map((p) => p.id));
   const after = new Set(fyp.map((p) => p.id));
   const added = fyp.filter((p) => !before.has(p.id));
   const left = showing.filter((p) => !after.has(p.id));
   const replaced = fyp.filter((p) => before.has(p.id) && changed.has(p.id));
-  if (added.length === 0 && left.length === 0 && replaced.length === 0) return { changed: ids.length, added: 0, removed: 0, wrote: false };
+  if (added.length === 0 && left.length === 0 && replaced.length === 0 && lateJoins.length === 0) return { changed: ids.length, added: 0, removed: 0, wrote: false };
 
   /* Why a changed post that was showing left; one pushed off by the cut or the variety rule left for no failing of its own. */
   await new PgFeedRejectionRepo(db).record(left.flatMap((p) => {
     const why = changed.has(p.id) ? frame.whyNot.get(p.id) : undefined;
     return why === undefined ? [] : [{ kind: 'post' as const, id: p.id, reason: why, detail: kindDetail(frame.heldBy.get(p.id)) }];
   }));
-  const fresh = [...added, ...replaced].map((p) => p.id);
+  const fresh = [...added, ...replaced, ...lateJoins].map((p) => p.id);
   await replaceSameNameCoins(db, 'post', fresh, frame.sameName, frame.sameNameEvidence);
   await writeNameIdeas(db, await loadNameIdeas(db, fresh), fresh);
   await writeRising(db, 'fyp', fyp);
-  if (membership !== null) await writeMembership(db, nowMs, { fyp: [...added, ...replaced], popular: [] }, [], []);
+  if (membership !== null) await writeMembership(db, nowMs, { fyp: [...added, ...replaced, ...lateJoins], popular: [] }, [], []);
   await recordAdmitted(db, added.filter((p) => frame.coinFirst?.has(p.id) === true).map((p) => p.id), nowMs);
   await keepFeedHistory(db, nowMs);
   return { changed: ids.length, added: added.length, removed: left.length, wrote: true };
