@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import type { Budget } from '@insidor/contracts/ports/meter.ts';
 import { inMemoryMeter } from '@insidor/meter';
 
-import { OPEN_TITLE_ENDPOINT, cleanTitle, openTitler, titleRequestText } from './titles.ts';
+import { OPEN_TITLE_ENDPOINT, cleanCountries, cleanTitle, openTitler, titleRequestText } from './titles.ts';
 import { openChatClient, type HostModel } from './index.ts';
 
 const AT = 1_800_000_000_000;
@@ -63,4 +63,27 @@ test('a title is cleaned of quotes and refused when it is a hashtag, a ticker, a
   assert.equal(cleanTitle('x'.repeat(61), 60), null);
   assert.equal(cleanTitle('', 60), null);
   assert.equal(titleRequestText({ ref: 'r', posts: ['a\n b'], names: ['N'] }), 'Posts:\n1. a b\nNames people gave it: N');
+});
+
+test('★ the meme-war answer: two or more countries, each once, alphabetical; a "no", too many or too few is no fight; unreadable is absent', () => {
+  assert.deepEqual(cleanCountries(true, ['turkey', 'China'], 4), ['China', 'Turkey']);
+  assert.deepEqual(cleanCountries(true, ['China', 'china', 'Turkey'], 4), ['China', 'Turkey'], 'one country named twice is one');
+  assert.deepEqual(cleanCountries(true, ['USA', 'South Korea'], 4), ['South Korea', 'USA']);
+  assert.deepEqual(cleanCountries(false, ['France', 'Japan'], 4), [], 'a no is kept as no, whatever it named');
+  assert.deepEqual(cleanCountries(true, ['France'], 4), [], 'one country is no fight');
+  assert.deepEqual(cleanCountries(true, ['A1', 'B'], 4), null);
+  assert.deepEqual(cleanCountries(true, ['France', 'Japan', 'Spain', 'Italy', 'Peru'], 4), [], 'a world-wide meme is not a fight between countries');
+  assert.equal(cleanCountries(undefined, ['France', 'Japan'], 4), null);
+  assert.equal(cleanCountries(true, 'France, Japan', 4), null);
+});
+
+test('★ with the question on, the same call answers both: the title and the countries', async () => {
+  const fetch = (async () => new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify({ title: 'China Turkey Meme War', meme_war: true, countries: ['Turkey', 'China'] }) } }], usage: { prompt_tokens: 300, completion_tokens: 20, cost: 0.00003 } }), { status: 200 })) as typeof globalThis.fetch;
+  const meter = inMemoryMeter({ dailyCapUsd: 5, softStop: 1, now: () => AT });
+  const client = openChatClient({ vendor: 'router', apiKey: 'sk-test', baseUrl: 'https://router.invalid/api/v1', model: MODEL.id, vision: true, maxOutputTokens: 100, timeoutMs: 1_000, maxAttempts: 1, backoffMs: 1, maxWaitMs: 1, maxFrameBytes: 1_000_000, fetch, sleep: async () => {} });
+  const titler = openTitler({ client, meter, now: () => AT as never, model: MODEL, vendor: 'router', providers: ['first'], charsPerToken: 3, maxOutputTokens: 100, maxTitleChars: 60, maxCountries: 4 });
+  const out = await titler.title([{ ref: 'n-war', posts: ['Turkish users vs Chinese users over Patrick Star'], names: [] }], BUDGET);
+  assert.deepEqual(out.value, [{ kind: 'titled', ref: 'n-war', title: 'China Turkey Meme War', fight: ['China', 'Turkey'] }]);
+  const plain = await setup([() => json(200, reply('Altai the Tiger Cub'))]).titler.title([{ ref: 'n', posts: ['tiger'], names: [] }], BUDGET);
+  assert.deepEqual(plain.value, [{ kind: 'titled', ref: 'n', title: 'Altai the Tiger Cub' }], 'a titler not asked the question says nothing about it');
 });

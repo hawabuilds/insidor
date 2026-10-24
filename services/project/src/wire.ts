@@ -789,6 +789,12 @@ export interface WireStory {
   readonly dead?: boolean;
   /** When the newest post it lists went up (when we saved it, for a source that gave no time). */
   readonly lastPostAt?: WireInstant;
+  /**
+   * The countries whose users are trading memes and insults in it — an online meme war (Policy
+   * .narrative.fight, 0130), alphabetical, two or more. Absent when it is not one, was never asked,
+   * or has had no post in the last `fight.activeMs`. The app gathers these under one umbrella.
+   */
+  readonly countries?: readonly string[];
   /** First found: the earliest moment we saved any post it lists now (item.first_seen_at). */
   readonly foundAt?: WireInstant;
   /**

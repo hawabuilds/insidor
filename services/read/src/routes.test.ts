@@ -26,6 +26,7 @@ import {
   RISING_VIEW_SQL,
   SOURCE_VIEW_SQL,
   NARRATIVES_SQL,
+  FIGHT_NARRATIVES_SQL,
   STORY_SQL,
   type Row,
 } from './queries.ts';
@@ -653,6 +654,17 @@ test('★ the narratives list is the board\'s stories as whole pages, in board o
   assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [FERRY, PIGEON], provenance: { kind: 'observed' } });
   assert.deepEqual(calls.map((c) => c.sql), [BOARD_VIEW_SQL, NARRATIVES_SQL]);
   assert.equal((await handle('GET', '/narratives/nope', fakeDb({}).deps)).status, 404, 'a view never projected is a 404');
+});
+
+test('★ the meme wars: the pages that name their countries, most viewed first, in the board\'s envelope', async () => {
+  const war = { ...FERRY, id: 'n-war', countries: ['China', 'Turkey'] };
+  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9', provenance: OBSERVED }], [FIGHT_NARRATIVES_SQL]: [{ payload: war }] });
+  const reply = await handle('GET', '/narratives/default/fights', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [war], provenance: { kind: 'observed' } });
+  assert.ok(calls.some((c) => c.sql === FIGHT_NARRATIVES_SQL));
+  assert.match(FIGHT_NARRATIVES_SQL, /jsonb_array_length\(payload -> 'countries'\) >= 2/);
+  assert.equal((await handle('GET', '/narratives/nope/fights', fakeDb({}).deps)).status, 404);
 });
 
 test('★ a coin\'s market: only for a coin we hold; candles, trades and, on a curve, its progress', async () => {

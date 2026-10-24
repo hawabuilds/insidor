@@ -55,6 +55,8 @@ export interface OriginStepInput {
   readonly mergedAway: ReadonlySet<string>;
   /** Narratives no rule may merge: the owner's calls, and every side of this pass's merges. */
   readonly untouchable: ReadonlySet<string>;
+  /** Of `untouchable`, the owner's narratives a newer one may still be merged into (core `traceStories`). */
+  readonly receiveOnly?: ReadonlySet<string>;
   readonly hidden: (id: string, members: readonly string[]) => boolean;
   /** The early step's stored good posts in no narrative (the name and picture ties' pool). */
   readonly stored: readonly NarrativePostRow[];
@@ -244,6 +246,7 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
         looseViral,
         english,
         reproductions: quotes,
+        ...(input.receiveOnly === undefined ? {} : { receiveOnly: input.receiveOnly }),
       },
       p,
     );

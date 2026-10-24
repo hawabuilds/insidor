@@ -19,6 +19,10 @@
  *            survivor (the projector writes public.story_alias)
  *   remove   only the owner's "Remove this post": that post leaves that narrative and is never
  *            added back to it
+ *   add      the owner's "Add a post" (`ownerAdds`): the post is moved into the narrative he added
+ *            it to (where that leads now) and kept there — the pins hold it from then on, so no
+ *            regroup moves it, and a "Remove this post" he made of it from that narrative before
+ *            is undone. Only his own later "Remove this post" or "Split" of it takes it out again
  *   split    only the owner's "Split": the posts he picked leave that narrative together and are a
  *            new one under the id the call named (`ownerSplits`); the narrative they left never
  *            takes them back. A split is applied once — the new id stored in any state is the mark
@@ -125,11 +129,18 @@ export function ownerMerges(rows: readonly NarrativeCallRow[], states: ReadonlyM
   return out;
 }
 
-/** The owner's "Remove this post" calls: each post and the narratives (where they lead now) it was removed from. */
+/**
+ * The owner's "Remove this post" calls: each post and the narratives (where they lead now) it was
+ * removed from — but not one he added the post back to later ("Add a post" into where it leads).
+ */
 export function removedPosts(rows: readonly NarrativeCallRow[], states: ReadonlyMap<string, NarrativeState>): ReadonlyMap<string, ReadonlySet<string>> {
   const out = new Map<string, Set<string>>();
+  const addedLater = (r: NarrativeCallRow): boolean => {
+    const lead = survivorOf(r.narrativeId, states) ?? r.narrativeId;
+    return rows.some((a) => a.verdict === 'add_post' && a.otherId === r.otherId && (a.atMs > r.atMs || (a.atMs === r.atMs && a.id > r.id)) && (survivorOf(a.narrativeId, states) ?? a.narrativeId) === lead);
+  };
   for (const r of rows) {
-    if (r.verdict !== 'remove_post' || r.otherId === null) continue;
+    if (r.verdict !== 'remove_post' || r.otherId === null || addedLater(r)) continue;
     const set = out.get(r.otherId) ?? new Set<string>();
     set.add(r.narrativeId);
     const lead = survivorOf(r.narrativeId, states);
@@ -137,6 +148,35 @@ export function removedPosts(rows: readonly NarrativeCallRow[], states: Readonly
     out.set(r.otherId, set);
   }
   return out;
+}
+
+/** One owner's "Add a post": `itemId` belongs in `into` (where the narrative he added it to leads now). */
+export interface OwnerAdd {
+  readonly itemId: string;
+  readonly into: string;
+}
+
+/**
+ * The owner's "Add a post" calls that stand: per post, his newest call naming it — an add, a
+ * "Remove this post" of it, or a "Split" that moved it — and only where that is an add into a
+ * narrative that still leads somewhere open. Read whole every pass; the caller writes only the ones
+ * whose post is not already there, so an add is applied once and re-applied only if something
+ * moved the post away. A post not stored yet (queued for the runner to read) waits: the write skips
+ * it until it is.
+ */
+export function ownerAdds(rows: readonly NarrativeCallRow[], states: ReadonlyMap<string, NarrativeState>): readonly OwnerAdd[] {
+  const newest = new Map<string, NarrativeCallRow>();
+  for (const r of [...rows].sort((x, y) => x.atMs - y.atMs || x.id - y.id)) {
+    if ((r.verdict === 'add_post' || r.verdict === 'remove_post') && r.otherId !== null) newest.set(r.otherId, r);
+    if (r.verdict === 'split') for (const m of r.members) newest.set(m, r);
+  }
+  const out: OwnerAdd[] = [];
+  for (const [itemId, r] of newest) {
+    if (r.verdict !== 'add_post') continue;
+    const into = survivorOf(r.narrativeId, states);
+    if (into !== null) out.push({ itemId, into });
+  }
+  return out.sort((a, b) => a.itemId.localeCompare(b.itemId));
 }
 
 /** One owner's "Split" still to apply: `members` leave `from` (where his narrative leads now) for the new narrative `into`. */

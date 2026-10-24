@@ -47,14 +47,14 @@ const row = (itemId: string, extra: Partial<NarrativePostRow> = {}): NarrativePo
 
 const unit = (angle: number) => Float32Array.from([Math.cos(angle), Math.sin(angle)]);
 
-function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = [], older: readonly NarrativePostRow[] = [], open: () => readonly StoredNarrative[] = () => [], policy = DEFAULT_POLICY) {
+function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = [], older: readonly NarrativePostRow[] = [], open: () => readonly StoredNarrative[] = () => [], policy = DEFAULT_POLICY, more: Record<string, unknown> = {}) {
   const saved: NarrativePass[] = [];
   const reads: string[][] = [];
   const titles: [string, string][] = [];
   const titler: TitlePort = {
     id: 't', model: 'm',
     async title(subjects) {
-      return { value: subjects.map((s) => ({ kind: 'titled' as const, ref: s.ref, title: 'GTA 6 Trailer Two' })), spend: { vendor: 'v', endpoint: 'narrative-title', unit: 'per-call', units: 1, usd: 0.0001, at: NOW } } as never;
+      return { value: subjects.map((s) => ({ kind: 'titled' as const, ref: s.ref, title: 'GTA 6 Trailer Two', fight: s.ref === 'n-war' ? ['China', 'Turkey'] : [] })), spend: { vendor: 'v', endpoint: 'narrative-title', unit: 'per-call', units: 1, usd: 0.0001, at: NOW } } as never;
     },
   };
   const repo = {
@@ -70,6 +70,7 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
     byIds: async (ids: readonly string[]) => open().filter((n) => ids.includes(n.id)),
     setTitle: async (id: string, title: string) => void titles.push([id, title]),
     storedGood: async () => older,
+    ...more,
   };
   const grouper = narrativeGrouper({
     repo, save: async (p) => (saved.push(p), true), block: async () => ({ cutoff: null, chosenOn: null }), titler, embed: null, keepVectors: async () => false,
@@ -198,6 +199,39 @@ test('★ only the owner merges: his "Merge with…" moves one narrative into th
   assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two', by: 'owner' }]);
 });
 
+test('★ the owner\'s title stands: a narrative he renamed is never sent to the titler, however much it grows', async () => {
+  const stored: StoredNarrative[] = [
+    { id: 'n-mine', members: ['a'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Twitter World War', titlePosts: 1, titleModel: 'owner', newestPostAtMs: NOW, early: [] },
+    { id: 'n-model', members: ['x'], anchor: 'x', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Old Title', titlePosts: 1, titleModel: 'm', newestPostAtMs: NOW, early: [] },
+  ];
+  const rename: NarrativeCallRow = { id: 11, atMs: NOW - 1, narrativeId: 'n-mine', verdict: 'rename', otherId: null, coin: null, members: ['a'], otherMembers: [] };
+  const other = { body: 'A new cat cafe opened downtown with twenty rescue cats', proposedName: 'Cat Cafe' };
+  const v = { a: unit(0), b: unit(0), c: unit(0), x: unit(1.5), y: unit(1.5), z: unit(1.5) };
+  const s = setup([row('a'), row('b'), row('c'), row('x', other), row('y', other), row('z', other)], v, 'live', [rename], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.narratives.map((n) => [n.id, [...(n.added ?? [])].sort()]).sort(), [['n-mine', ['b', 'c']], ['n-model', ['y', 'z']]], 'both grew threefold');
+  assert.deepEqual(s.titles.map(([id]) => id), ['n-model'], 'only the model\'s title is asked again');
+});
+
+test('★ the owner\'s "Add a post": the post is moved into his narrative, pinned there for the regroup, and written once', async () => {
+  const war: StoredNarrative = { id: 'n-war', members: ['a', 'b'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'War', titlePosts: 2, newestPostAtMs: NOW, early: [] };
+  const cat: StoredNarrative = { id: 'n-cat', members: ['x', 'y'], anchor: 'x', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Cat', titlePosts: 2, newestPostAtMs: NOW, early: [] };
+  const add: NarrativeCallRow = { id: 12, atMs: NOW - 1, narrativeId: 'n-war', verdict: 'add_post', otherId: 'x', coin: null, members: ['a', 'b'], otherMembers: [] };
+  const other = { body: 'A new cat cafe opened downtown with twenty rescue cats', proposedName: 'Cat Cafe' };
+  const v = { a: unit(0), b: unit(0), x: unit(1.5), y: unit(1.5), z: unit(1.5), far: unit(0) };
+  let stored = [war, cat];
+  const s = setup([row('a'), row('b'), row('x', other), row('y', other), row('z', other)], v, 'live', [add], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.added, [{ itemId: 'x', into: 'n-war' }]);
+  assert.ok(!(s.saved[0]?.narratives ?? []).some((n) => n.added?.includes('x')), 'x is pinned to n-war: no group takes it anywhere else');
+
+  /* As the write left it: x in n-war. Nothing to write again, and a post never in the window (a queued one) waits the same way. */
+  stored = [{ ...war, members: ['a', 'b', 'x'] }, { ...cat, members: ['y'] }];
+  const again = setup([row('a'), row('b'), row('x', other), row('y', other)], v, 'live', [add, { ...add, id: 13, otherId: 'queued' }], [], () => stored);
+  await again.grouper.pass();
+  assert.deepEqual(again.saved[0]?.added, [{ itemId: 'queued', into: 'n-war' }], 'x is there; the queued post is offered until the store has it');
+});
+
 test('★ the owner\'s split: the posts he picked are a new narrative this pass, shown and titled, and it is done once', async () => {
   const before: StoredNarrative[] = [
     { id: 'n-a', members: ['a', 'b', 'c', 'd'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'All', titlePosts: 4, newestPostAtMs: NOW, early: [] },
@@ -252,4 +286,19 @@ test('switched off, nothing is early', async () => {
   const r = await grouper.pass();
   assert.deepEqual(saved[0]?.narratives[0]?.early, []);
   assert.equal(r.early, 0);
+});
+
+test('★ the meme-war answer rides on the title call, and a live narrative never asked (an owner-renamed one too) is asked for it alone', async () => {
+  const fights: [string, readonly string[]][] = [];
+  const war: StoredNarrative = { id: 'n-war', members: ['w1', 'w2'], anchor: 'w1', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: 'His Title', titlePosts: 2, titleModel: 'owner', fight: null, newestPostAtMs: NOW - DAY, early: [] };
+  const more = {
+    fightUnasked: async (sinceMs: number, limit: number) => (assert.equal(sinceMs, NOW - DEFAULT_POLICY.narrative.fight.activeMs), assert.equal(limit, DEFAULT_POLICY.narrative.fight.perPass), [war]),
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { body: 'Chinese and Turkish users roast each other over Patrick Star' })),
+    setFight: async (id: string, countries: readonly string[]) => void fights.push([id, countries]),
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  await s.grouper.pass();
+  const made = s.saved[0]?.narratives[0]?.id ?? '';
+  assert.deepEqual(s.titles, [[made, 'GTA 6 Trailer Two']], 'only the new narrative is titled: his title stands');
+  assert.deepEqual(fights.sort(), [[made, []], ['n-war', ['China', 'Turkey']]], 'both answers are kept: the new one is not a war, his is');
 });
