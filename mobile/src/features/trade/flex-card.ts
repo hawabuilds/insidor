@@ -285,6 +285,7 @@ export function leftOff(card: Extract<SellCard, { kind: 'read' }>, hasPostPictur
   if (card.boughtCapUsd.why === 'not_bought_here') out.push("This coin wasn't bought in Insidor, so there's no entry, multiple or profit.");
   else {
     if (card.multiple.v === null) out.push('No market cap was recorded for this trade, so the multiple is left off.');
+    if (card.boughtCapUsd.why === 'not_read_yet' || card.soldCapUsd.why === 'not_read_yet') out.push("SOL's dollar price couldn't be read just now, so the market caps are left off.");
     if (card.profitSol.why === 'bought_elsewhere') out.push('You sold more than you bought in Insidor, so the profit is left off.');
     else if (card.profitSol.v === null) out.push("The amounts for this trade weren't recorded, so the profit is left off.");
   }

@@ -30,6 +30,7 @@ import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 
 import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
+import { SOL } from './holding-prices.ts';
 import { createLogger, errorText } from './log.ts';
 import { createPostSheet } from './post-sheet.ts';
 import { createPrepared, type PreparedAnswers } from './prepared.ts';
@@ -302,8 +303,14 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  /* The flex card after a sell (trade-card.ts): our own trade record only, no market call. */
-  const tradeCard = createTradeCard({ db: deps.db, log: deps.log, now: Date.now });
+  /* The flex card after a sell (trade-card.ts): our own trade record, priced in dollars by SOL's
+     one-minute candles at each trade's landing from the token page's market data source. */
+  const tradeCard = createTradeCard({
+    db: deps.db,
+    log: deps.log,
+    now: Date.now,
+    solCandles: async (untilMs, minutes) => (await marketData.history(SOL, untilMs, 1, minutes)).candles,
+  });
   const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
