@@ -46,7 +46,7 @@ import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
 import { jupiter, NATIVE } from '@insidor/venue-jupiter';
 import { curveStates } from '@insidor/venue-solana-pumpfun/route.ts';
 
-import { assetsToRead, lastAnswers, writeReadings } from './db.ts';
+import { assetsToRead, firstHourOnly, lastAnswers, writeReadings } from './db.ts';
 import { toReading, tradeAnswer } from './reading.ts';
 import type { MarketReading } from './reading.ts';
 import { routesFor } from './trade-route.ts';
@@ -174,8 +174,22 @@ async function main(): Promise<void> {
     );
   }
 
+  /* ★ THE LIGHT PASS (`light` on the command line, Policy.market.firstHour.light): only the tied
+     candidates in their first hour, every minute beside the full pass every five, so the early pick
+     sees a launch's first half hour minute by minute rather than once or twice. The same reading,
+     route and write path; fewer aggregator asks, since a coin this young is nearly always on its
+     curve. Off in the policy, it says so and reads nothing. */
+  const light = process.argv.includes('light');
+  const F = DEFAULT_POLICY.market.firstHour;
+  if (light && !(F.on && F.light.on)) {
+    console.log('light pass off (Policy.market.firstHour.light): nothing read');
+    await pool.end();
+    return;
+  }
+
   try {
-    const assets = await assetsToRead(
+    const firstHour = F.on ? { nowMs: now(), withinMs: F.withinMs, limit: light ? F.light.perPass : F.perPass } : null;
+    const assets = light && firstHour !== null ? await firstHourOnly(asDb(pool), String(CHAIN), firstHour) : await assetsToRead(
       asDb(pool),
       String(CHAIN),
       DEFAULT_POLICY.market.maxAssetsPerPass,
@@ -191,6 +205,8 @@ async function main(): Promise<void> {
       DEFAULT_POLICY.runnerLink.running.on
         ? { nowMs: now(), withinMs: DEFAULT_POLICY.runnerLink.running.pickWithinMs, limit: DEFAULT_POLICY.runnerLink.running.marketReadsPerPass }
         : null,
+      /* The tied candidates in their first hour, read every pass for the early pick (db.ts). */
+      firstHour,
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,
@@ -224,7 +240,7 @@ async function main(): Promise<void> {
       {
         nowMs: now(),
         reuseMs: DEFAULT_POLICY.market.poolRouteReuseMs,
-        maxProbes: DEFAULT_POLICY.market.maxPoolProbesPerPass,
+        maxProbes: light ? F.light.maxProbes : DEFAULT_POLICY.market.maxPoolProbesPerPass,
         probeGapMs: PROBE_GAP_MS,
         retryAfterMs: PROBE_RETRY_AFTER_MS,
         keepMs: KEPT_ROUTE_MS,
@@ -267,7 +283,7 @@ async function main(): Promise<void> {
     }
 
     console.log(
-      `read venue=${String(VENUE_ID)} asked=${refs.length} calls=${batches.length} ` +
+      `read${light ? ' (light)' : ''} venue=${String(VENUE_ID)} asked=${refs.length} calls=${batches.length} ` +
         `written=${written} priced=${priced} no_market=${noMarket} unread=${failed} ` +
         `spent_usd=${meter.spentUsd().toFixed(4)} ` +
         `route curve=${routeCounts.curve} pool=${routeCounts.pool} kept=${routeCounts.kept} none=${routeCounts.none} ` +

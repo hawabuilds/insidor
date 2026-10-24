@@ -1261,6 +1261,19 @@ export interface MarketPolicy {
    * screen are read first, so they are the last to be dropped at this bound.
    */
   readonly maxPoolProbesPerPass: number;
+  /**
+   * ★ THE FIRST HOUR, READ DENSELY (policy.v165, services/market db.ts `firstHourCoins`): every
+   * candidate launched in the last `withinMs` that a post or narrative ties by a link, its stated
+   * name or its picture, read on every pass — the coins of posts on For You first, then the made
+   * ties, the newest launch first — at most `perPass`. And a second, light pass (`light`) every
+   * `light.everyMs` that reads only these coins and asks the aggregator at most `light.maxProbes`.
+   */
+  readonly firstHour: {
+    readonly on: boolean;
+    readonly withinMs: number;
+    readonly perPass: number;
+    readonly light: { readonly on: boolean; readonly everyMs: number; readonly perPass: number; readonly maxProbes: number };
+  };
 }
 
 /* ── ASSETS ───────────────────────────────────────────────────────────── */
@@ -2365,6 +2378,26 @@ export interface OneCoinPolicy {
    * The market service reads at most `readsPerPass` of these coins each pass while they are weighed.
    */
   readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number; readonly lookbackMs: number; readonly lookbackCoins: number; readonly readsPerPass: number };
+  /**
+   * ★ THE EARLY PICK (policy.v165, core match/early-pick.ts, services/runner work/early-pick.ts): a
+   * coin made for the post (a link, one hop through a promotion included, or its stated name) whose
+   * fresh reading is in [`minCapUsd`, `maxCapUsd`) and whose rise over `openingCapUsd` is `lead`
+   * times every rival launched in the `rivalWithinMs` before, judged `fromMs` to `withinMs` after its
+   * launch, takes the post's pick — never over the owner's coin call or the runner hand-over's pick,
+   * once a post. `push`: told at once with plain facts, to the owner's profiles only while `everyone`
+   * is false, and only for a post on For You before the coin launched (or a coin-first post).
+   */
+  readonly early: {
+    readonly on: boolean;
+    readonly minCapUsd: number;
+    readonly maxCapUsd: number;
+    readonly lead: number;
+    readonly fromMs: number;
+    readonly withinMs: number;
+    readonly rivalWithinMs: number;
+    readonly readingWithinMs: number;
+    readonly push: { readonly on: boolean; readonly everyone: boolean };
+  };
   /** Per pass at most: launches matched, posts looked at by the second path, pictures embedded, subjects judged. */
   readonly perPass: { readonly launches: number; readonly posts: number; readonly embeds: number; readonly subjects: number };
   /**
@@ -5241,8 +5274,12 @@ const POLICY_V1: Policy = {
      v35 adds `social` (Trador's ranks and rep, comment limits) and `notify` (alerts: the
      multiples, the curve mark, the hourly limit, the loops).
 
-     v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v164',
+     v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter.
+
+     v165 adds `oneCoin.early` (the early pick under $20K, pushed to everyone from 2026-10-24: the
+     owner's "ship it for everyone, let them decide whether they want to buy") and `market.firstHour`
+     (the first hour of a tied candidate read every pass, and a light pass). */
+  version: 'policy.v165',
 
   admit: {
     maxAgeMin: 240,
@@ -5698,6 +5735,17 @@ const POLICY_V1: Policy = {
        route, and the Buy sheet asks again before any order. */
     poolRouteReuseMs: 1_800_000, // thirty minutes
     maxPoolProbesPerPass: 40,
+    /* policy.v165. On 21-24 Oct a candidate got a median 0 readings in its first 10 minutes and 3%
+       any between +10 and +60: the pass's 300 went to the coins on screen, the held picks, the older
+       and pictured coins (about 190) and the newest ~2 minutes of launches (about 100), so a coin
+       was read once, at +1-2 minutes, if a pass fell then. $baldcat: +3.7, +8.8, then +72 at $52.8K.
+       Candidates of For You posts (or their narratives) with such a tie: a median 10 in the hour
+       on 21-24 Oct, 45 at the 90th percentile; 100 at 13:40 UTC on 24 Oct, of 261 tied in all. 80
+       in the full pass, since each one there is a newest launch left unread on a full pass; 100 in
+       the light pass every minute: 4 calls of the free price source and 1 curve read on the chain
+       key (about 1,440 credits a day of the free plan's ~33k; the trade feed's 20k and the
+       listing's 3k leave room), at most 5 aggregator asks for a coin that left its curve. */
+    firstHour: { on: true, withinMs: 3_600_000, perPass: 80, light: { on: true, everyMs: 60_000, perPass: 100, maxProbes: 5 } },
   },
 
   assets: {
@@ -6758,6 +6806,25 @@ const POLICY_V1: Policy = {
        on the 40 coinable posts the owner called on 16-19 Oct, the lookback added 4.6 a post. 50 of
        the market pass's 300 reads go to them, so the newest coins keep most of the bound. */
     existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000, lookbackMs: 172_800_000, lookbackCoins: 5, readsPerPass: 50 },
+    /* policy.v165 (the owner, 2026-10-24: "make sure I would've caught the right baldcat coin early
+       before it took off"). The bar is the read-only replay's best under $20K (tools/sub20k-replay.ts,
+       21-24 Oct, "climb 5x cap≥12K ≤30m link"): 12.7 picks a day, 9.3 on posts on For You before the
+       coin, of which 5 ran past $50K and 23 died. $baldcat: taken at +8.8 min and $14.3K, against
+       the live pick at +5.8 h and the launch push at $50K. Its reading must be one pass fresh (the
+       market pass's own freshness). To everyone from the first ship (the owner: "ship it for everyone,
+       let them decide whether they want to buy"), as a coin launch push: the same 15-a-day cap and
+       quiet hours, once a coin. */
+    early: {
+      on: true,
+      minCapUsd: 12_000,
+      maxCapUsd: 20_000,
+      lead: 5,
+      fromMs: 120_000, // two minutes
+      withinMs: 1_800_000, // half an hour
+      rivalWithinMs: 3_600_000, // the watch: the hour before
+      readingWithinMs: 480_000,
+      push: { on: true, everyone: true },
+    },
     perPass: { launches: 2_000, posts: 200, embeds: 20, subjects: 500 },
     refit: {
       everyMs: 604_800_000, // a week

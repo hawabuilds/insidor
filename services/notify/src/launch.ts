@@ -50,10 +50,12 @@
  * early", option 2 — everyone). When the post's pick moved to a later coin by the runner hand-over
  * (services/runner work/runner-handover.ts: running now at three times the first coin's hour; the
  * pick's evidence `runner_handover`) and the card shows it, that coin is pushed past rule 1, ONCE PER
- * POST (`h:<item>`, and the deliverer's claim `<item>|#runner`): "A new coin from @X's post is
+ * RUNNER (`h:<item>|<coin>`, and the deliverer's claim `<item>|#runner|<coin>`): "A new coin from @X's post is
  * running: $TICKER, $45K cap". Rules 3 and 4 and the coin gate hold, the daily cap is the launch
  * push's own, and rule 2 holds without the coin-first exception: the new coin always came after.
- * A second hand-over on the same post is never pushed.
+ * Every later runner of a post is pushed once (`h:<item>|<coin>`; the owner, 2026-10-24: "notify on
+ * every new runner"); rule 4 keeps a coin to one push, so a pick handed back to a coin already pushed
+ * says nothing again.
  *
  * ★ A LAUNCHPAD COIN ONLY (the owner, 2026-10-23: "coins that are launched from pumpfun"): a coin
  * whose stored row is not the launchpad's seen launch is not pushed (coin-gate.ts). Its keys are
@@ -132,10 +134,10 @@ export function waitsToRun(p: Pick<Picked, 'launchedMs' | 'runningNow'>, nowMs: 
   return age > rule.maxLaunchAgeMs && age <= rule.lateRunningMs;
 }
 
-/** A post's hand-over push, remembered once per post whatever coin it went to. */
-export const runnerKey = (itemId: string): string => `h:${itemId}`;
-/** The deliverer's claim for a hand-over push: one per person and post (0044), beside the coin's own. */
-export const runnerSubject = (itemId: string): string => `${itemId}|#runner`;
+/** A hand-over push, remembered once per post AND coin (the owner, 2026-10-24: "notify on every new runner"): each later runner of a post is pushed once. */
+export const runnerKey = (itemId: string, address: string): string => `h:${itemId}|${address}`;
+/** The deliverer's claim for a hand-over push: one per person, post and coin (0044), beside the coin's own. */
+export const runnerSubject = (itemId: string, address: string): string => `${itemId}|#runner|${address}`;
 
 /** A hand-over push's timing: the coin launched after the post was on For You, and is still just launched. No coin-first exception: the new coin always came after. */
 export function runnerEarlyEnough(p: Pick<Picked, 'launchedMs' | 'onForYouMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
@@ -173,7 +175,7 @@ export function launchEvents(
   const pushed = new Set<string>();
   for (const p of [...posts, ...narratives]) {
     /* ★ The runner hand-over: the post's coin moved to a later coin running now. Once per post, past rule 1. */
-    const rk = runnerKey(p.itemId);
+    const rk = runnerKey(p.itemId, p.address);
     if (p.key.startsWith('p:') && runners.get(p.itemId) === p.address && !seen.has(rk) && !keys.includes(rk)) {
       keys.push(rk);
       if (!seen.has(p.key) && !keys.includes(p.key)) keys.push(p.key);
@@ -356,7 +358,7 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
       /* Strongest first: one statement per coin, so queue order is cap order. */
       const rows = await db.query<{ n: number }>(
         `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href) select user_id, 'coin_launched', $1, 0, $2, $3 from people.profile returning 1) select count(*)::int as n from q`,
-        [d.runner === true ? runnerSubject(d.itemId) : d.address, JSON.stringify(f), launchHref(d)],
+        [d.runner === true ? runnerSubject(d.itemId, d.address) : d.address, JSON.stringify(f), launchHref(d)],
       );
       queued += rows[0]?.n ?? 0;
     }
