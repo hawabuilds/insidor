@@ -235,6 +235,14 @@ test('★ the one push says the coin, the post and its cap, and nothing of why',
   assert.deepEqual(alertText('coin_launched', {}), { title: '$COIN launched for a post you may have seen', body: 'A post on For You.' });
 });
 
+test('★ the runner hand-over: "A new coin from @X\'s post is running", facts only', () => {
+  assert.deepEqual(alertText('coin_launched', { runner: true, symbol: 'baldcat', excerpt: 'this cat doesnt even know how stupid it looks', author: '@catposter', mcUsd: 45_000 }), {
+    title: "A new coin from @catposter's post is running: $baldcat, $45K cap",
+    body: '"this cat doesnt even know how stupid it looks".',
+  });
+  assert.deepEqual(alertText('coin_launched', { runner: true, symbol: 'RUN', mcUsd: null }), { title: 'A new coin from a post on For You is running: $RUN', body: 'A post on For You.' }, 'no cap: left out, never a zero');
+});
+
 test('★ a launch from the post that started a narrative says so, in place of the normal first line, with the same body', () => {
   assert.deepEqual(alertText('coin_launched', { symbol: 'DOGZILLA', started: 'Dogzilla', excerpt: 'Dogzilla is coming for the city', author: '@trpost', mcUsd: 21_000 }), {
     title: '$DOGZILLA launched from the post that started Dogzilla',
