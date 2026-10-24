@@ -91,17 +91,19 @@ export async function assetsToRead(
   hour: PictureHour | null = null,
   weighing: OlderCandidates | null = null,
   saved: SavedCoins | null = null,
+  picked: PickedCoins | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
   const savedCoins = saved === null ? [] : await savedPostCoins(db, chain, saved);
+  const held = picked === null ? [] : await pickedCoins(db, chain, picked);
   const rest = await onScreenThenNewest(db, chain, limit);
-  /* The coins tied to saved posts, then the older coins a pick is weighing, then the hour's coins,
-     go first among the newest, never ahead of the coins on screen: those are what a card shows.
-     Each list has its own limit, and the pass its bound. */
+  /* The coins tied to saved posts, then the picked and stated coins, then the older coins a pick is
+     weighing, then the hour's coins, go first among the newest, never ahead of the coins on screen:
+     those are what a card shows. Each list has its own limit, and the pass its bound. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...rest.filter((r) => r.tier === 0), ...savedCoins, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...rest.filter((r) => r.tier === 0), ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
@@ -165,6 +167,47 @@ async function olderCandidates(db: Db, chain: string, w: OlderCandidates): Promi
          join public.asset a on a.chain = $1 and a.address = c.address
         where a.origin = any($5::text[])
         order by c.found desc, a.asset_key asc
+        limit $4`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** The picked and stated coins to read every pass (Policy.runnerLink.running): touched since `nowMs - withinMs`, at most `limit`. */
+export interface PickedCoins {
+  readonly nowMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+}
+
+/**
+ * ★ A COIN PICKED FOR A POST IS READ EVERY PASS, AND SO IS A COIN CARRYING A POST'S STATED NAME. The
+ * newest-first bound reads a launch only in its first minutes, and only if a pass falls in them: on
+ * 23 Oct 3,026 of the 11,242 coins first seen 18:00-22:00 UTC were never read at all, "You Missed Coin"
+ * ($BITCHES) among them — the coin a post had stated, which ran to millions while the pick stayed on
+ * a copycat because the rule never saw it trade. This reads, newest first, every coin a post's or a
+ * narrative's pick holds (picked, updated since `withinMs`) and every candidate tied by the stated
+ * name (0113 evidence `name_stated`) found since then — the longest unread first, so about 240 such
+ * coins over two days are each read every few passes — at most `limit` a pass. The running pick on For
+ * You and the missed-runner net read the same readings. A failed read here is an empty list.
+ */
+async function pickedCoins(db: Db, chain: string, w: PickedCoins): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 5 as tier
+         from (select address, max(at) as at from (
+                 select address, updated_at as at from internal.post_coin_pick where outcome = 'picked' and updated_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+                 union all
+                 select address, updated_at from internal.narrative_coin_pick where outcome = 'picked' and updated_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+                 union all
+                 select address, found_at from internal.one_coin_candidate where found_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000) and evidence->'ties' ? 'name_stated'
+               ) u group by address) c
+         join public.asset a on a.chain = $1 and a.address = c.address
+         left join lateral (select m.taken_at from public.market_reading m where m.asset_key = a.asset_key order by m.taken_at desc limit 1) r on true
+        where a.origin = any($5::text[])
+        order by r.taken_at asc nulls first, c.at desc, a.asset_key asc
         limit $4`,
       [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
     );

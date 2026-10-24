@@ -23,6 +23,10 @@
  * no coin for it running yet; loaded whatever its age and whoever found it, For You's only. Under the
  * frame's cut — where For You's newest-first order puts most of them — it joins For You's list all the
  * same (`lateJoins`).
+ * ★ And For You takes a post whose picked coin is running now (`runnerLink.running`, running-picks.ts):
+ * the coin trading — the running coins strip's last-hour test, or a cap bar — pulls its post back,
+ * past the view bar, the six hours, the junk bar and a held kind, with the judge's yes and the
+ * owner's word still deciding. Loaded whatever its age and whichever route stored it.
  * With `rising.fypMaxAgeOn`, For You also turns away a post over `rising.fypMaxAgeMs` old unless it
  * is still growing fast (fyp-freshness.ts) — but only one that is not on it yet: a post already on
  * For You (feed-members.ts, 0075) stays while it is inside the window (the owner, 2026-10-14: the
@@ -131,6 +135,7 @@ const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
 import { coinFirstLets, loadCoinFirst, recordAdmitted } from './coin-first.ts';
 import { beyondCap, lateAnswerPolicy, lateLets, loadLateNoCoin } from './late-no-coin.ts';
+import { loadRunningPicks, runningLets } from './running-picks.ts';
 import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
@@ -849,7 +854,9 @@ export async function buildRising(
   const coinFirst = await loadCoinFirst(db, nowMs, policy, only, membership === null ? [] : [...membership.fyp]);
   /* ★ THE LATE ROUTE's posts (late-no-coin.ts): found after the six hours, no coin running yet; loaded whatever their age and whoever found them. */
   const late = await loadLateNoCoin(db, nowMs, policy, only);
-  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...late.keys()]);
+  /* ★ THE RUNNING PICKS (running-picks.ts): loaded whatever their age, and whichever route stored them. */
+  const running = await loadRunningPicks(db, nowMs, policy, only);
+  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys()])]);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
@@ -863,7 +870,7 @@ export async function buildRising(
   const rows = candidates.filter((row) => {
     const signal = cryptoSignalFor(row, crypto.get(row.item_id), policy);
     const own = postRoute(row, policyForAnswer(row.judge_id, answers), signal);
-    const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id) || late.has(row.item_id);
+    const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id) || late.has(row.item_id) || running.has(row.item_id);
     const near = own.route === null && late.has(row.item_id) ? postRoute(row, lateAnswerPolicy(policyForAnswer(row.judge_id, answers), policy), signal) : null;
     const nearYes = near !== null && near.route !== null && near.route !== 'net';
     if (nearYes && inWindow) nearOnly.add(row.item_id);
@@ -873,7 +880,7 @@ export async function buildRising(
     if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
     if (why === 'passes' && inWindow) passing.add(row.item_id);
     if (route === 'net' && inWindow) netOnly.add(row.item_id);
-    return passing.has(row.item_id) || membership?.all.has(row.item_id) === true;
+    return passing.has(row.item_id) || membership?.all.has(row.item_id) === true || running.has(row.item_id);
   });
   /* A refreshed member's readings start before the window: read from its own time. */
   const readFromMs = Math.min(sinceMs, ...rows.map(atOf)) as Millis;
@@ -966,10 +973,15 @@ export async function buildRising(
       picked: pick?.outcome === 'picked',
       ownerCoin: calls.get(row.item_id)?.own !== null && calls.get(row.item_id)?.own !== undefined,
     }, late);
+    /* ★ THE RUNNING PICK: the post's coin is trading now, the judge said yes once, the owner did not say no. */
+    const byRunning = runningLets(running.get(row.item_id), { ownerNotMeme: row.owner_call === 'not', ownerNone: check?.none === true, wrong: check?.wrong ?? new Set() }, nowMs, policy);
     return {
       passes: passing.has(row.item_id),
       byCoin,
       byLate,
+      byRunning,
+      /* Loaded by the running route alone, no lane credited it: For You's, never Popular's. */
+      runningOnly: running.has(row.item_id) && row.credited === false,
       /* Loaded by the late route alone: For You's, never Popular's. */
       lateOnly: late.has(row.item_id) && (row.credited === false || atOf(row) < sinceMs),
       score,
@@ -985,7 +997,7 @@ export async function buildRising(
       }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: byViews || byCoin,
+      fyp: byViews || byCoin || byRunning,
       byViews,
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
@@ -1013,17 +1025,17 @@ export async function buildRising(
   /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
      the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
      this bar only stop a post joining, so neither records a reason. */
-  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && (p.fresh || p.byLate) && !p.member && !p.byCoin).map((p) => p.post.id), policy);
+  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && (p.fresh || p.byLate) && !p.member && !p.byCoin && !p.byRunning).map((p) => p.post.id), policy);
   /* By the views and the other gates, or by the coin-first route, which none of the six hours and the junk bar hold;
      or by the late route, which the six hours do not hold and the junk bar does. */
   const byGates = (p: (typeof posts)[number]): boolean => !nearOnly.has(p.post.id) && p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
   const byLateRoute = (p: (typeof posts)[number]): boolean => p.byLate && (p.member || !junk.has(p.post.id));
-  const fypAll = posts.filter((p) => p.passes && (byGates(p) || p.byCoin || byLateRoute(p))).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const fypAll = posts.filter((p) => (p.passes && (byGates(p) || p.byCoin || byLateRoute(p))) || p.byRunning).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const coinFirstAlone = new Set(posts.filter((p) => p.passes && p.byCoin && !p.member && !byGates(p)).map((p) => p.post.id));
   /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = await varied(db, fypAll, rows, policy);
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly && !p.runningOnly).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
