@@ -20,7 +20,8 @@ const P = DEFAULT_POLICY.notify;
 const MIN = 60_000;
 const NOW = Math.floor(Date.now() / MIN) * MIN;
 const iso = (ms: number) => new Date(ms).toISOString();
-const mint = (i: number) => `Coin${i}`.padEnd(40, '1');
+/* A separator after the number, so Coin1 and Coin11 never pad to the same address. */
+const mint = (i: number) => `Coin${i}Z`.padEnd(40, '1');
 
 async function setup() {
   const db = (await migratedDb()) as unknown as Db;
