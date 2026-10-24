@@ -116,7 +116,7 @@ import {
   type StoryPlan,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
-import { FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
+import { FIGHT_SEED_DECLINED, FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -760,9 +760,10 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     /* ★ The meme-war seeds still waiting (policy.v157): titled like a new narrative, and shown once the answer names both countries. */
     const askedIds = new Set([...dueIds, ...unasked.map((x) => x.id)]);
     const pending = f.on && f.native.on && deps.repo.fightPending !== undefined && deps.repo.showFight !== undefined
-      ? (await deps.repo.fightPending(deps.now() - f.activeMs, f.native.pendingPerPass)).filter((x) => !askedIds.has(x.id) && x.fightModel === FIGHT_SEED_MODEL)
+      ? (await deps.repo.fightPending(deps.now() - f.activeMs, f.native.pendingPerPass, t.retitleGrowth)).filter((x) => !askedIds.has(x.id) && (x.fightModel === FIGHT_SEED_MODEL || x.fightModel === FIGHT_SEED_DECLINED))
       : [];
-    const pairOf = new Map(pending.map((x) => [x.id, x.fight ?? []] as const));
+    /* A declined seed's pair was overwritten by the "no": any two countries the titler now names show it. */
+    const pairOf = new Map(pending.map((x) => [x.id, x.fightModel === FIGHT_SEED_DECLINED ? null : (x.fight ?? [])] as const));
     const rowsOf = new Map(grouped.posts);
     const missing = [...new Set([...unasked, ...pending].flatMap((x) => x.members))].filter((m) => !rowsOf.has(m));
     if (missing.length > 0 && deps.repo.standingRows !== undefined) for (const r of await deps.repo.standingRows(missing)) rowsOf.set(r.itemId, r);
@@ -785,9 +786,12 @@ export function narrativeGrouper(deps: NarrativeDeps) {
           await deps.repo.setTitle(o.ref, o.title, s.size, titler.model);
           titled += 1;
         }
-        if (f.on && o.fight !== undefined && deps.repo.setFight !== undefined) await deps.repo.setFight(o.ref, o.fight, titler.model);
         const pair = pairOf.get(o.ref);
-        if (pair !== undefined && o.fight !== undefined && answerHoldsPair(o.fight, pair, deps.policy)) await deps.repo.showFight?.(o.ref);
+        const holds = pair !== undefined && o.fight !== undefined && (pair === null ? o.fight.length >= 2 : answerHoldsPair(o.fight, pair, deps.policy));
+        /* A seed's "no" is written as declined, so it is asked again once it has grown (store `fightPending`). */
+        const model = pair !== undefined && !holds ? FIGHT_SEED_DECLINED : titler.model;
+        if (f.on && o.fight !== undefined && deps.repo.setFight !== undefined) await deps.repo.setFight(o.ref, o.fight, model);
+        if (holds) await deps.repo.showFight?.(o.ref);
       }
       return { titled, usd: r.spend.usd };
     } catch (e) {

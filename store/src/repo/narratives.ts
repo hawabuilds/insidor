@@ -271,6 +271,12 @@ export const OWNER_TITLE_MODEL = 'owner';
  * yet: the pair is the rule's, the narrative is not shown. The titler's answer replaces it.
  */
 export const FIGHT_SEED_MODEL = 'native-names';
+/**
+ * A meme-war seed the titler answered "no" to (2026-10-24): kept apart from every other "no" so it is
+ * asked again once it has grown (`fightPending`) — a hidden narrative is never retitled, and before
+ * this the first "no" kept it off the board for good ("French Users Mock Japanese People", 9 posts).
+ */
+export const FIGHT_SEED_DECLINED = 'native-names:declined';
 
 export class PgNarrativeRepo {
   readonly #db: Db;
@@ -506,9 +512,14 @@ export class PgNarrativeRepo {
   }
 
   /** The meme-war seeds the titler has not answered (`FIGHT_SEED_MODEL`, not shown), newest post first, at most `limit`. */
-  async fightPending(sinceMs: number, limit: number): Promise<readonly StoredNarrative[]> {
+  async fightPending(sinceMs: number, limit: number, regrowth = 0.5): Promise<readonly StoredNarrative[]> {
     if (limit <= 0 || !(await this.migrated()) || !(await this.#hasColumn('narrative', 'fight'))) return [];
-    return this.#narratives('not n.shown and n.fight_model = $3 and n.newest_post_at >= $1', [new Date(sinceMs).toISOString(), limit, FIGHT_SEED_MODEL], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $2');
+    /* …and the seeds it declined, once they have grown by `regrowth` since that answer (their title's size). */
+    return this.#narratives(
+      `not n.shown and n.newest_post_at >= $1 and (n.fight_model = $3 or (n.fight_model = $4 and n.member_count >= coalesce(n.title_posts, 0) * (1 + $5::float8)))`,
+      [new Date(sinceMs).toISOString(), limit, FIGHT_SEED_MODEL, FIGHT_SEED_DECLINED, regrowth],
+      'order by n.newest_post_at desc nulls last, n.narrative_id limit $2',
+    );
   }
 
   /** A seed the titler said is the war: on the board from now, as any narrative first shown. */

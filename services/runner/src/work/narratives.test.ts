@@ -342,3 +342,25 @@ test('★ a pair no war holds seeds a narrative off the board; the titler naming
   assert.deepEqual(shownNow, ['n-war'], 'the waiting seed the titler named China and Turkey for is shown');
   assert.ok(s.titles.some(([id]) => id === 'n-war'), 'and titled');
 });
+
+test('★ a seed the titler declined is asked again once grown, shown when it now names two countries; a seed declined now is marked declined', async () => {
+  const shownNow: string[] = [];
+  const fights: [string, readonly string[], string][] = [];
+  /* Declined at 3 posts, grown to 5: asked again, and the titler (above) names China and Turkey for n-war. */
+  const declined: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3', 'w4', 'w5'], anchor: 'w1', shown: false, firstShownAtMs: null, postsChangedAtMs: NOW - DAY, title: 'Users Joke', titlePosts: 3, fight: [], fightModel: 'native-names:declined', newestPostAtMs: NOW - DAY, early: [] };
+  /* A fresh seed the titler answers with no countries: written as declined, not shown. */
+  const fresh: StoredNarrative = { id: 'n-other', members: ['o1', 'o2', 'o3'], anchor: 'o1', shown: false, firstShownAtMs: null, postsChangedAtMs: NOW - DAY, title: null, titlePosts: null, fight: ['France', 'Japan'], fightModel: 'native-names', newestPostAtMs: NOW - DAY, early: [] };
+  const more = {
+    fightPosts: async () => [],
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { body: 'a post' })),
+    fights: async () => [],
+    fightPending: async () => [declined, fresh],
+    showFight: async (id: string) => void shownNow.push(id),
+    setFight: async (id: string, countries: readonly string[], model: string) => void fights.push([id, countries, model]),
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  await s.grouper.pass();
+  assert.deepEqual(shownNow, ['n-war']);
+  assert.deepEqual(fights.find(([id]) => id === 'n-other'), ['n-other', [], 'native-names:declined']);
+  assert.equal(fights.find(([id]) => id === 'n-war')?.[2], 'm', 'a yes is written as the titler\'s own answer');
+});
