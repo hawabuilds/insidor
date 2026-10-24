@@ -331,3 +331,63 @@ test('★ the starting post: a post four days older that the narrative\'s posts 
   assert.match(earliest, /"startedBy":"quoted"/);
   assert.match(earliest, /"authorLabel":"@xbarkin"/);
 });
+
+const TAMA = { name: 'Tama', body: 'Tama the station master cat got a new tiny hat and the whole line came to see it', axis: 30 };
+const OKAPI = { name: 'Okapi', body: 'The baby okapi took her first wobbly steps at the zoo and the keepers filmed all of it', axis: 31 };
+const BUBU = { name: 'Bubu', body: 'Bubu the walrus clapped for the crowd again and the aquarium posted the whole show', axis: 32 };
+
+const frameWith = (nowMs: number, policy: typeof DEFAULT_POLICY) =>
+  projectNarrativeFrame(db, 'default', { nowMs: nowMs as Millis, sparkWindowMs: 30 * 60_000, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs }, nowMs - 26 * HOUR, policy);
+
+test('★ once listed, listed: a rule that moves after a page was written never takes it away', async () => {
+  for (const [i, h] of [3 * HOUR, 2 * HOUR].entries()) await post(`tama${i}`, NOW - h, TAMA);
+  await passAt(NOW);
+  const tama = (await narrativeOf('x:tama0')) ?? '';
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(tama)}`)).status, 200);
+  const [row] = await db.query<{ listed: boolean }>(`select listed_at is not null as listed from internal.narrative where narrative_id = $1`, [tama]);
+  assert.equal(row?.listed, true, 'the page written marks it listed');
+
+  /* The bar rises and three accounts are asked for: a new narrative would not be listed now. */
+  const stricter = {
+    ...DEFAULT_POLICY,
+    rising: { ...DEFAULT_POLICY.rising, fypMinReach: DEFAULT_POLICY.rising.fypMinReach * 1000 },
+    narrative: { ...DEFAULT_POLICY.narrative, minAccounts: 3 },
+  };
+  await frameWith(NOW, stricter);
+  const page = await read(`/story/${encodeURIComponent(tama)}`);
+  assert.equal(page.status, 200, 'its page stays');
+  assert.equal((await db.query(`select 1 from public.story_post where story_id = $1`, [tama])).length, 2, 'and its posts keep their tag');
+
+  /* A new narrative is still held to the rules the first time. */
+  for (const [i, h] of [3 * HOUR, 2 * HOUR].entries()) await post(`okapi${i}`, NOW - h, OKAPI);
+  await passAt(NOW);
+  const okapi = (await narrativeOf('x:okapi0')) ?? '';
+  assert.ok(okapi !== '');
+  await frameWith(NOW, stricter);
+  assert.equal((await read(`/story/${encodeURIComponent(okapi)}`)).status, 404, 'never listed: the rules decide');
+});
+
+test('★ a narrative listed before the viral floor, whose page went, comes back with its small posts', async () => {
+  for (const [i, h] of [4 * DAY + 2 * HOUR, 4 * DAY + HOUR].entries()) await post(`bubu${i}`, NOW - h, BUBU, `x:bubu${i}`, 900);
+  await passAt(NOW - 4 * DAY);
+  const bubu = (await narrativeOf('x:bubu0')) ?? '';
+  assert.ok(bubu !== '');
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(bubu)}`)).status, 404, 'small posts: not listed today');
+
+  /* As 0135 seeds one the projector listed before 23 Oct and the floor then deleted. */
+  await db.query(`update internal.narrative set listed_at = first_shown_at where narrative_id = $1`, [bubu]);
+  await frameAt(NOW);
+  const page = await read(`/story/${encodeURIComponent(bubu)}`);
+  assert.equal(page.status, 200, 'its page is written again');
+  assert.equal(page.body['dead'], true);
+  assert.deepEqual(page.body['viewsTotal'], { v: 1800 }, 'its views as last read');
+
+  /* Only the owner takes it: his "Not a meme" on every post. */
+  for (const m of ['x:bubu0', 'x:bubu1']) {
+    await db.query(`insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict) values ('x:owner', 'did:owner', 'post', $1, 'not')`, [m]);
+  }
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(bubu)}`)).status, 404, 'his calls left it no post');
+});
