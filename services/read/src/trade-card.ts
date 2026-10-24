@@ -103,6 +103,9 @@ select (select a.decimals from public.asset a where a.chain = 'solana' and a.add
              and m.taken_at > to_timestamp($2::double precision / 1000)
            order by m.taken_at asc limit 1)) as supply`;
 
+/** The coin's decimals only, when its market readings cannot be read. */
+export const DECIMALS_SQL = `select a.decimals, null::float8 as supply from public.asset a where a.chain = 'solana' and a.address = $1`;
+
 /** The earliest-posted post whose card was matched to the coin, with its poster. */
 export const COIN_POST_SQL = `
 select f.item_id, (extract(epoch from i.posted_at) * 1000)::bigint as posted_ms,
@@ -383,7 +386,9 @@ export function createTradeCard(deps: TradeCardDeps) {
     if (mint === null || sell === null) return { reply: json(200, { kind: 'none', why: 'not_recorded' }), keep: true };
     const [earlierRows, scaleRows, names, coinPost] = await Promise.all([
       deps.db.query(EARLIER_SQL, [row['wallet'], mint, row['id']]),
-      deps.db.query(SCALE_SQL, [mint, settled]),
+      /* The read role may not be granted market_reading (it is not on the live database today): then the
+         decimals alone, and coinScale falls back to the launchpad's fixed supply. */
+      deps.db.query(SCALE_SQL, [mint, settled]).catch(() => deps.db.query(DECIMALS_SQL, [mint])),
       deps.db.query(COIN_NAME_SQL, [mint]),
       post(mint),
     ]);
