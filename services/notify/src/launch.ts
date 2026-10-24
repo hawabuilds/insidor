@@ -262,20 +262,29 @@ const POSTS_SQL = `
    where f.feed_id = 'fyp' and f.withdrawn_at is null and f.first_shown_at > now() - make_interval(secs => $1::float8 / 1000)
      and c.p -> 'coins' -> 'evidence' ->> 'picked' = 'true'`;
 
-/* Narratives with a post on For You in the window, their page's coin, and their first post on For You. */
+/*
+ * Narratives on the board with a post found in the window, their page's coin, and their first post:
+ * the one we found first, and when (`onForYouMs` carries that moment, rule 2's "we had it first").
+ * ★ NOT ONLY THROUGH FOR YOU (the owner, 2026-10-24): $MEMEWAR ran to $94K on France vs Japan, a
+ * narrative none of whose posts was ever on For You (the judge called its posts not coinable), and
+ * nobody was told. A narrative the Narratives tab shows counts from when we found its first post;
+ * that post's For You card, when it has one, gives the push its words and picture.
+ */
 const NARRATIVES_SQL = `
   with recent as (
     select distinct m.narrative_id from internal.narrative_member m
-      join public.feed_post f on f.feed_id = 'fyp' and f.item_id = m.item_id and f.withdrawn_at is null
-     where f.first_shown_at > now() - make_interval(secs => $1::float8 / 1000)
+      join public.item i on i.item_id = m.item_id
+     where i.first_seen_at > now() - make_interval(secs => $1::float8 / 1000)
   ), first_post as (
-    select distinct on (m.narrative_id) m.narrative_id, f.item_id, f.first_shown_at,
-           f.payload ->> 'excerpt' as excerpt, f.payload ->> 'authorLabel' as author, f.payload ->> 'thumbUrl' as image
+    select distinct on (m.narrative_id) m.narrative_id, i.item_id, i.first_seen_at,
+           coalesce(f.payload ->> 'excerpt', left(i.body, 280)) as excerpt, coalesce(f.payload ->> 'authorLabel', '@' || a.handle) as author, f.payload ->> 'thumbUrl' as image
       from recent n join internal.narrative_member m on m.narrative_id = n.narrative_id
-      join public.feed_post f on f.feed_id = 'fyp' and f.item_id = m.item_id and f.withdrawn_at is null
-     order by m.narrative_id, f.first_shown_at
+      join public.item i on i.item_id = m.item_id
+      left join public.author a on a.author_key = i.author_key
+      left join public.feed_post f on f.feed_id = 'fyp' and f.item_id = m.item_id and f.withdrawn_at is null
+     order by m.narrative_id, i.first_seen_at
   )
-  select v.story_id as "storyId", v.payload -> 'coins' as coins, fp.item_id as "itemId", (extract(epoch from fp.first_shown_at) * 1000)::float8 as "onForYouMs",
+  select v.story_id as "storyId", v.payload -> 'coins' as coins, fp.item_id as "itemId", (extract(epoch from fp.first_seen_at) * 1000)::float8 as "onForYouMs",
          fp.excerpt, fp.author, fp.image
     from first_post fp join public.story_view v on v.story_id = fp.narrative_id
    where v.payload #>> '{provenance,kind}' = 'observed' and v.payload #>> '{coins,kind}' in ('one', 'several')`;
