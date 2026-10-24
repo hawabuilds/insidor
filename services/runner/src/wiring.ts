@@ -877,6 +877,7 @@ export async function withRuntime<T>(
                 return new Set([...newest].filter(([, v]) => v !== 'cleared').map(([id]) => id));
               },
               picks: (ids) => picksRepo.picks('post', ids),
+              peaks: (addresses, sinceMs) => runnerRepo.peaks(addresses, sinceMs, policy.oneCoin.minLiquidityUsd),
               upsertCandidates: (rows, nowMs) => picksRepo.upsertCandidates(rows, nowMs),
               writePicks: (picks, previous, mode, nowMs) => picksRepo.writePicks('post', picks, previous, mode, nowMs),
               ownerWallets: cfg.ownerWallets,

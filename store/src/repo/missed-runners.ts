@@ -89,6 +89,30 @@ export class PgMissedRunnerRepo {
   }
 
   /**
+   * The highest market cap read for each of `addresses` since `sinceMs`, on a pool (liquidity null —
+   * on its curve — or at least `minLiquidityUsd`), the bar the runners themselves are read on. A coin
+   * with no such reading is absent, not zero.
+   */
+  async peaks(addresses: readonly string[], sinceMs: number, minLiquidityUsd = 0): Promise<ReadonlyMap<string, number>> {
+    if (addresses.length === 0) return new Map();
+    const rows = await this.#db.query<{ address: string; peak: unknown }>(
+      `select a.address, max(m.market_cap_usd) as peak
+         from public.asset a
+         join public.market_reading m on m.asset_key = a.asset_key
+        where a.chain = 'solana' and a.address = any($1::text[]) and m.taken_at >= $2 and m.market_cap_usd is not null
+          and (m.liquidity_usd is null or m.liquidity_usd >= $3)
+        group by a.address`,
+      [[...addresses], new Date(sinceMs).toISOString(), minLiquidityUsd],
+    );
+    const out = new Map<string, number>();
+    for (const r of rows) {
+      const n = num(r.peak);
+      if (n !== null) out.set(r.address, n);
+    }
+    return out;
+  }
+
+  /**
    * Observed posts first seen since `fromMs` and posted by `toMs` whose words (or English translation)
    * hold one of `phrases`, or whose judge's (first question, a yes) or namer's names compact to one of
    * `keys`. At most `limit`, the most viewed first. The caller ranks them (core `rankRunnerPosts`).

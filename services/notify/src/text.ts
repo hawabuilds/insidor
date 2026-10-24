@@ -429,7 +429,9 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         const title = `${ticker} ran to ${cap === null ? 'a big cap' : `$${compact(cap)}`} past us`;
         if (f['itemId'] === null || f['itemId'] === undefined) return { title, body: 'It ran without a post we hold. No search found the post it came from.' };
         const post = `${handle ?? 'a post'}'s post${views === null ? '' : ` (${views.toLocaleString('en-US')} views)`}`;
-        return { title, body: f['linked'] === true ? `It came from ${post}. That post now shows it as its coin.` : `It came from ${post}. You made a coin call on that post, so it was left as you set it.` };
+        if (f['linked'] === true) return { title, body: `It came from ${post}. That post now shows it as its coin.` };
+        if (f['keptBigger'] === true) return { title, body: `It came from ${post}, which already shows a coin of the same name that ran higher, so that one was kept.` };
+        return { title, body: `It came from ${post}. You made a coin call on that post, so it was left as you set it.` };
       }
       if (f['what'] === 'judge-cost') {
         /* The runner's judge cost alarm (services/runner judge-cost-alarm.ts): the last hour's booked

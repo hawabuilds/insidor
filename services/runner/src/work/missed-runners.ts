@@ -18,7 +18,8 @@
  *            `rankRunnerPosts` (a name tie first, then the most views, then the earliest)
  *   link     the best post gets the coin: a candidate tied `missed_runner` (so the next one-coin pass
  *            judges it as the creators' coin, not a look-alike) and the pick, with the change recorded
- *            — unless the owner made a coin call on that post: his word stands, the coin is listed only
+ *            — unless the owner made a coin call on that post: his word stands, the coin is listed only;
+ *            or the post's own coin ran as high or higher (`biggerCoinHeld`): it is kept, and told
  *   tell     the owner's alert (kind 'outage', what 'missed-runner'; services/notify text.ts): the
  *            coin, its cap, and the post — or "ran without a post we hold"
  * The post then reaches For You by its running pick (services/project running-picks.ts), and its
@@ -48,6 +49,8 @@ export interface MissedRunnerDeps {
   /** The posts of these ids whose newest coin call is not "cleared". */
   readonly ownerCalled: (itemIds: readonly string[]) => Promise<ReadonlySet<string>>;
   readonly picks: (itemIds: readonly string[]) => Promise<ReadonlyMap<string, StoredPick>>;
+  /** The highest cap read for each address since `sinceMs` (store PgMissedRunnerRepo.peaks); absent when never read. */
+  readonly peaks: (addresses: readonly string[], sinceMs: number) => Promise<ReadonlyMap<string, number>>;
   readonly upsertCandidates: (rows: readonly CandidateRow[], nowMs: number) => Promise<unknown>;
   readonly writePicks: (picks: readonly PickWrite[], previous: ReadonlyMap<string, StoredPick>, mode: 'shadow' | 'live', nowMs: number) => Promise<unknown>;
   readonly ownerWallets: readonly string[];
@@ -65,6 +68,22 @@ export interface MissedRunner {
   readonly weighed: readonly RunnerMatch[];
   readonly linked: boolean;
   readonly ownerCalled: boolean;
+  /** Not linked because the post's own coin ran as high or higher (`biggerCoinHeld`). */
+  readonly keptBigger: boolean;
+}
+
+/**
+ * ★ A RUNNER NEVER TAKES A POST FROM A COIN THAT RAN HIGHER. Two coins of one name often both run, and
+ * a post's coin may already be the bigger one. On 24 Oct, its first pass, the net:
+ *   - wrote a $730K copy of $YMB, launched two minutes after it, over the $793K original on @TocRadio's post, seconds after linking the original;
+ *   - wrote a $667K $fomo over the $1.8M $FOMO the matcher had given @MrketInsider's post.
+ * The net exists for a coin a post does NOT show, so the post's own coin is kept whenever it read as
+ * high or higher in the same window.
+ */
+async function biggerCoinHeld(deps: MissedRunnerDeps, prev: StoredPick | undefined, coin: RunnerCoinRow, sinceMs: number): Promise<boolean> {
+  if (prev === undefined || prev.outcome !== 'picked' || prev.address === null || prev.address === coin.address) return false;
+  const held = (await deps.peaks([prev.address], sinceMs)).get(prev.address);
+  return held !== undefined && held >= coin.peakCapUsd;
 }
 
 /** The posts read for one coin, most viewed first. */
@@ -127,12 +146,13 @@ export async function missedRunnerPass(deps: MissedRunnerDeps, state: MissedRunn
       const best = ranked[0];
       const called = best === undefined ? new Set<string>() : await deps.ownerCalled([best.itemId]);
       const ownerCalled = best !== undefined && called.has(best.itemId);
-      const linked = best !== undefined && !ownerCalled;
+      const prev = best === undefined || ownerCalled ? new Map<string, StoredPick>() : await deps.picks([best.itemId]);
+      const keptBigger = best !== undefined && (await biggerCoinHeld(deps, prev.get(best.itemId), coin, now - P.seenWithinMs));
+      const linked = best !== undefined && !ownerCalled && !keptBigger;
       if (best !== undefined && linked) {
         const ties = [...best.ties, 'missed_runner'];
         const launchedAfterMs = coin.launchedAtMs === null ? null : coin.launchedAtMs - (rows.get(best.itemId)?.postedAtMs ?? coin.launchedAtMs);
         await deps.upsertCandidates([{ itemId: best.itemId, address: coin.address, path: 'launch', evidence: { ties, peakCapUsd: coin.peakCapUsd, launchedAfterMs }, launchedAtMs: coin.launchedAtMs, foundAtMs: now }], now);
-        const prev = await deps.picks([best.itemId]);
         await deps.writePicks(
           [{ subjectId: best.itemId, address: coin.address, outcome: 'picked', decidedAtMs: now, evidence: { mode: deps.policy.oneCoin.mode, basis: 'market_readings', missedRunner: true, ties, peakCapUsd: coin.peakCapUsd, replaced: prev.get(best.itemId)?.address ?? null, standings: [] }, basis: 'market_readings' }],
           prev,
@@ -141,11 +161,11 @@ export async function missedRunnerPass(deps: MissedRunnerDeps, state: MissedRunn
         );
       }
       const post = best === undefined ? null : { ...best, handle: rows.get(best.itemId)?.handle ?? null, postedAtMs: rows.get(best.itemId)?.postedAtMs ?? 0 };
-      const found: MissedRunner = { coin, post, weighed: ranked.slice(0, WEIGHED_KEPT), linked, ownerCalled };
+      const found: MissedRunner = { coin, post, weighed: ranked.slice(0, WEIGHED_KEPT), linked, ownerCalled, keptBigger };
       out.push(found);
       state.done.add(coin.address);
       await tell(deps, found);
-      deps.log.info('missed runner', { address: coin.address, ticker: coin.ticker, peakCapUsd: coin.peakCapUsd, itemId: post?.itemId ?? null, ties: post?.ties ?? [], linked, ownerCalled });
+      deps.log.info('missed runner', { address: coin.address, ticker: coin.ticker, peakCapUsd: coin.peakCapUsd, itemId: post?.itemId ?? null, ties: post?.ties ?? [], linked, ownerCalled, keptBigger });
     } catch (e) {
       deps.log.error('missed runners: one coin could not be handled; trying again next pass', { address: coin.address, err: errorText(e) });
     }
@@ -166,6 +186,7 @@ async function tell(deps: MissedRunnerDeps, m: MissedRunner): Promise<void> {
     itemId: m.post?.itemId ?? null,
     views: m.post?.reach ?? null,
     linked: m.linked,
+    keptBigger: m.keptBigger,
   };
   try {
     for (const userId of await deps.owner.ownerIds(deps.ownerWallets)) await deps.owner.queue(userId, { kind: 'outage', subject: `missed-runner|${m.coin.address}`, rung: 0, facts, href: '/#/alerts' });
