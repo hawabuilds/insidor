@@ -32,7 +32,6 @@ import { PgLearningRepo, PgNarrativeRepo, type Db, type NarrativePostRow } from 
 
 import { asNarrativePost, narrativePairs, postStanding } from './narratives.ts';
 
-const POST_SPACE = 'multimodal-3.1024.post';
 const toMs = (v: unknown): number | null => {
   const t = v instanceof Date ? v.getTime() : typeof v === 'string' ? Date.parse(v) : NaN;
   return Number.isFinite(t) ? t : null;
@@ -89,7 +88,7 @@ export async function planUnmerge(db: Db, opts: { readonly policy: Policy }): Pr
     const members = stored?.members ?? [];
     const rows = new Map((await repo.standingRows(members)).map((r) => [r.itemId, r] as const));
     const posts = members.map((m) => rows.get(m)).filter((r): r is NarrativePostRow => listed(r));
-    const vec = await repo.vectors(posts.map((r) => r.itemId), POST_SPACE, 'post');
+    const vec = await repo.vectors(posts.map((r) => r.itemId), p.group.image.postSpace, 'post');
     const pic = await repo.vectors(posts.map((r) => r.itemId), p.group.image.space, 'picture');
     const firstSeen = new Map((members.length === 0 ? [] : await db.query<{ item_id: string; first_seen_at: Date | string }>(`select item_id, first_seen_at from public.item where item_id = any($1::text[])`, [members])).map((r) => [r.item_id, toMs(r.first_seen_at) ?? 0] as const));
     const inHolder = new Set(members);

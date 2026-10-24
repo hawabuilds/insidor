@@ -42,7 +42,6 @@ import { answerPolicies, earlyMatches, earlyShortlist, foldNarrativeCalls, group
 import { PgLearningRepo, PgNarrativeRepo, type Db, type NarrativePass, type NarrativePostRow } from '@insidor/store';
 import { asNarrativePost, narrativePairs, postStanding } from './narratives.ts';
 
-const POST_SPACE = 'multimodal-3.1024.post';
 const DAY_MS = 86_400_000;
 /** At most this many stored good posts are read: more than a week has ever held. */
 const MAX_STORED = 200_000;
@@ -91,7 +90,7 @@ export async function planRebuild(db: Db, opts: { readonly policy: Policy; reado
   const pic = new Map<string, Float32Array>();
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500);
-    for (const [k, v] of await repo.vectors(chunk.map((r) => r.itemId), POST_SPACE, 'post')) vec.set(k, v);
+    for (const [k, v] of await repo.vectors(chunk.map((r) => r.itemId), p.group.image.postSpace, 'post')) vec.set(k, v);
     for (const [k, v] of await repo.vectors(chunk.map((r) => r.itemId), p.group.image.space, 'picture')) pic.set(k, v);
   }
   const withVec = rows.filter((r) => vec.has(r.itemId)).sort((a, b) => b.atMs - a.atMs || a.itemId.localeCompare(b.itemId));

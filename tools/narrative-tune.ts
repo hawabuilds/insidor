@@ -24,7 +24,7 @@ import { answerPolicies, foldNarrativeCalls, groupNarratives, compactName } from
 import { createPool, DB_ROLE, PgLearningRepo, PgNarrativeRepo, withTransaction } from '../store/src/index.ts';
 import { asNarrativePost, narrativePairs, postStanding } from '../services/runner/src/work/narratives.ts';
 
-const SPACE = 'multimodal-3.1024.post';
+const SPACE = P.group.image.postSpace;
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-tune' });
 type V = { name: string; p: Policy };
 const variant = (name: string, n: Partial<Policy['narrative']>): V => ({ name, p: { ...P, narrative: { ...P.narrative, ...n } } });

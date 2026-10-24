@@ -31,7 +31,7 @@ import { inMemoryMeter } from '../../adapters/meter/spend/src/index.ts';
 import { PgLearningRepo, PgNarrativeRepo, type Db } from '../../store/src/index.ts';
 import { narrativeGrouper } from '../../services/runner/src/work/narratives.ts';
 
-const POST_SPACE = 'multimodal-3.1024.post';
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 /** Two times this close are the same moment: the page prints minutes. */
 const SAME_MS = 60_000;
 

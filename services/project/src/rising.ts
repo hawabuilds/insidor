@@ -372,11 +372,12 @@ export async function loadCandidates(
                limit 1
             ) oc on true
        /* The picture boost's one number: how close this post's picture is to a coined post's.
-          Read here and nowhere else; it decides, and never reaches the wire. */
+          Read here and nowhere else; it decides, and never reaches the wire. In the policy's picture
+          space only ($5): the bar was measured in it, and a max over two models' vectors is no number. */
        left join lateral (
               select max(1 - (e.embedding <=> c.embedding)) as similarity
                 from internal.image_embedding e
-                join internal.coined_picture c on c.space = e.space
+                join internal.coined_picture c on c.space = e.space and c.space = $5
                where e.subject_kind = 'item' and e.subject_id = i.item_id
             ) pic on true
        left join lateral (
@@ -391,7 +392,7 @@ export async function loadCandidates(
         and (coalesce(i.posted_at, i.first_seen_at) >= $1 or i.item_id = any($2::text[]))
         and (j.coinable is not null or oc.verdict = 'meme')
         and ($3::text[] is null or f.item_id = any($3::text[]))`,
-    [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only], [...uncredited]],
+    [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only], [...uncredited], DEFAULT_POLICY.group.image.space],
   );
   const gone = await loadDeleted(db, rows.map((r) => r.item_id));
   return gone.size === 0 ? rows : rows.map((r) => (gone.has(r.item_id) ? { ...r, deleted_at: gone.get(r.item_id) ?? null } : r));
@@ -1149,7 +1150,7 @@ export async function varied<P extends { readonly at: number; readonly post: Wir
   const byId = new Map(rows.map((row) => [row.item_id, row] as const));
   const rules: ShareRule[] = [];
   if (policy.rising.varietyOn) {
-    const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning);
+    const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning, policy.group.image.postSpace);
     const facts = new Map(ids.map((id) => {
       const row = byId.get(id);
       return [id, { storyId: row?.story_id ?? null, name: row?.proposed_name ?? guesses.get(id) ?? null }] as const;
