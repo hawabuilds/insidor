@@ -1940,6 +1940,10 @@ export interface FeedPolicy {
    * Its own day in internal.lane_spend ('search:fight_words', `cap`), and every ask also inside the
    * X search day's pace (`searchDay`) and the meter's line: it never raises either.
    *
+   * ★ A LANGUAGE MAY HAVE ITS OWN BAR (`byLang`, policy.v169): its like floor and how many of its
+   * words are asked, in place of `minApproval` and `wordsPerSide` for that language's asks only. A
+   * side whose posts draw fewer likes is asked lower (Japanese answering the French, 2026-10-24).
+   *
    * What breaks if changed carelessly: `lookbackMs` against `everyMs`. A post is returned (and billed)
    * on every ask while it is inside the window; three asks a post at 90 minutes and 30.
    */
@@ -1949,6 +1953,7 @@ export interface FeedPolicy {
     readonly lookbackMs: number;
     readonly minApproval: number;
     readonly wordsPerSide: number;
+    readonly byLang: Readonly<Record<string, { readonly minApproval: number; readonly wordsPerSide: number }>>;
     readonly maxWars: number;
     readonly maxPagesPerAsk: number;
     readonly passDeadlineMs: number;
@@ -5359,7 +5364,8 @@ const POLICY_V1: Policy = {
      v167 adds `rising.promotion` (a promotion post — a small post pointing at someone else's bigger
      one — is never on For You or Popular; its coin goes to the original).
 
-     v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西). */
+     v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西)
+     and the meme-war word search's per-language bar (`feed.fightWords.byLang`, Japanese at 100). */
   version: 'policy.v169',
 
   admit: {
@@ -6307,6 +6313,14 @@ const POLICY_V1: Policy = {
       lookbackMs: 5_400_000, // ninety minutes
       minApproval: 300,
       wordsPerSide: 2,
+      /* policy.v169, the owner's yes (2026-10-24): France vs Japan had 24 French posts and no Japanese
+         one; in the 4 days to then only 6 stored Japanese posts named フランス, all under 10k views and
+         none the war, and this search's Japanese ask found 2 posts at 300 likes in its first 6 hours.
+         Japanese at 100, and its three words (フランス, フランス人, 仏人) asked, not one. Estimated: 2
+         more asks a pass at the one-post minimum, 96 a day, ~$0.015; about 3 times the Japanese posts
+         at a third of the likes, ~25 a day returned ~3 times, ~$0.011, and judged, ~$0.010 — about
+         $0.035 a day more, inside the $0.10 cap (the day of 24 Oct had spent $0.021 by 17:30 UTC). */
+      byLang: { ja: { minApproval: 100, wordsPerSide: 3 } },
       maxWars: 6,
       maxPagesPerAsk: 2,
       passDeadlineMs: 120_000,
