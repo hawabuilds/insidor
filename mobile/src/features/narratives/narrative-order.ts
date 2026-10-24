@@ -92,6 +92,25 @@ export function hourGainText(s: Story): string | null {
   return amount === null ? null : `${amount >= 0 ? '+' : ''}${compact(amount)}`;
 }
 
+/** The window Trending lists a story by its viral posts in (the server's `narrative.trend.listWindowHours`), said "today". */
+const VIRAL_WINDOW_HOURS = 24;
+
+/**
+ * "Posts over 40K views from 8 accounts today": the accounts whose post went up in the last 24 hours
+ * and has at least the views the server names, added up over `stories` (one card, or every meme war
+ * under the umbrella) — the fact Trending lists them by (policy.v162). Null when no story says, or none.
+ */
+export function viralLine(stories: readonly Story[]): string | null {
+  const said = stories.flatMap((s) => {
+    const w = s.inWindow?.get(VIRAL_WINDOW_HOURS);
+    return w === undefined || w.viralAccounts === null || w.viralMinViews === null ? [] : [{ n: w.viralAccounts, bar: w.viralMinViews }];
+  });
+  const n = said.reduce((sum, x) => sum + x.n, 0);
+  const bar = said[0]?.bar ?? null;
+  if (n <= 0 || bar === null) return null;
+  return `Posts over ${compact(bar)} views from ${n} account${n === 1 ? '' : 's'} today`;
+}
+
 /** The card's line under the title: its post count, its age since we found it, "28m old", and Dead. Facts only. */
 export function cardLine(s: Story, now: number): readonly string[] {
   const n = s.postCount ?? s.evidence.length;

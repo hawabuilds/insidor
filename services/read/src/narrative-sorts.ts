@@ -8,8 +8,12 @@
  *             narrative's speeds (its posts' For You speeds added up, written on its page by the
  *             projector), risers by how many times faster, filled when fewer than 5: first with
  *             the others over the floor, then with the fresh pages' measured last-hour gains
- *             (`narrativeTrendingIds`, for when readings are too thin for speeds). Dead ones and
- *             pages made `freshMs` ago or more are not on it
+ *             (`narrativeTrendingIds`, for when readings are too thin for speeds). From policy.v162
+ *             the narratives that keep having viral posts come right after the risers (their page's
+ *             `inWindow` viralAccounts, `narrative.trend.list*`), and the online meme wars rank as ONE
+ *             entry, their numbers added up (`withWarUnit`), listed together where it ranks so the
+ *             app's "Twitter World War" card stands there. Dead ones and pages made `freshMs` ago or
+ *             more are not on it
  *   today     views gained over the last 24 hours, the posts' gains added up (the page's
  *   week      `viewsGainedDay` / `viewsGainedWeek`); a page that does not say is left off, never 0,
  *             and so is a page measured `GAIN_FRESH_MS` ago or more (`gainNow`)
@@ -111,6 +115,9 @@ export const LIST_NUMBERS_SQL = `select story_id, dead, projected_at, views_tota
        payload -> 'viewsPerMinute' as speeds,
        payload #>> '{viewsGainedDay,v}' as day, payload #>> '{viewsGainedWeek,v}' as week,
        payload #>> '{viewsGained1h,v}' as hour,
+       payload -> 'countries' as countries,
+       (select (w ->> 'viralAccounts')::int from jsonb_array_elements(case when jsonb_typeof(payload -> 'inWindow') = 'array' then payload -> 'inWindow' else '[]'::jsonb end) w
+         where (w ->> 'hours')::int = $1 limit 1) as viral,
        payload -> 'evidence' @> '[{"sourceLabel":"X"}]' as on_x,
        payload -> 'evidence' @> '[{"sourceLabel":"TikTok"}]' as on_tiktok,
        ${NO_COIN_YET} as no_coin
@@ -127,6 +134,10 @@ export interface NumbersRow {
   readonly week: number | null;
   /** Views gained in the last hour, as the page measured it; null when it did not. */
   readonly hour: number | null;
+  /** The online meme war's countries (the projector's `countries`); null: not one. */
+  readonly countries?: readonly string[] | null;
+  /** Accounts with a viral post in the page's `narrative.trend.listWindowHours` window (`inWindow` viralAccounts); null: not said. */
+  readonly viral?: number | null;
   readonly on: ReadonlySet<Site>;
   readonly noCoin: boolean;
 }
@@ -152,7 +163,8 @@ export function numbersOf(r: Row): NumbersRow | null {
   const on = new Set<Site>();
   if (r['on_x'] === true) on.add('x');
   if (r['on_tiktok'] === true) on.add('tiktok');
-  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), hour: num(r['hour']), on, noCoin: r['no_coin'] === true };
+  const countries = Array.isArray(r['countries']) && r['countries'].every((c) => typeof c === 'string') ? (r['countries'] as string[]) : null;
+  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), hour: num(r['hour']), on, noCoin: r['no_coin'] === true, countries, viral: num(r['viral']) };
 }
 
 /** The page's gain over Today's or Week's span as of `nowMs`, or null: none measured, or measured too long ago (`GAIN_FRESH_MS`). */
@@ -161,14 +173,58 @@ export function gainNow(r: NumbersRow, span: 'today' | 'week', nowMs: number): n
   return span === 'today' ? r.day : r.week;
 }
 
+/** The one entry the meme wars rank as on Trending; never a narrative id (those start with a letter). */
+const WAR_UNIT = ' war';
+
+const sumKnown = (xs: readonly (number | null | undefined)[]): number | null => {
+  const known = xs.filter((x): x is number => x !== null && x !== undefined);
+  return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
+};
+
+/**
+ * The rows with every online meme war (`countries`, two or more) folded into one entry, `WAR_UNIT`:
+ * its speeds, last-hour gains and viral accounts each the wars' added up over the ones that measured
+ * them (none measured: unknown, never 0), its freshest page's time; and the wars' ids, most viewed
+ * first, as they are listed where the entry ranks.
+ */
+export function withWarUnit(rows: readonly NumbersRow[]): { readonly units: readonly NumbersRow[]; readonly wars: readonly string[] } {
+  const isWar = (r: NumbersRow): boolean => (r.countries?.length ?? 0) >= 2;
+  const wars = rows.filter(isWar);
+  if (wars.length === 0) return { units: rows, wars: [] };
+  const sped = wars.flatMap((r) => (r.speeds === null ? [] : [r.speeds]));
+  const bySource: Record<string, number> = {};
+  for (const s of sped) for (const [k, v] of Object.entries(s.nowBySource)) bySource[k] = (bySource[k] ?? 0) + v;
+  const speeds: NarrativeSpeeds | null = sped.length === 0 ? null : { now: sped.reduce((a, s) => a + s.now, 0), before: sped.reduce((a, s) => a + s.before, 0), posts: sped.reduce((a, s) => a + s.posts, 0), nowBySource: bySource };
+  const projected = wars.map((r) => r.projectedMs).filter((t): t is number => t !== null);
+  const unit: NumbersRow = {
+    id: WAR_UNIT,
+    dead: false,
+    projectedMs: projected.length === 0 ? null : Math.max(...projected),
+    views: sumKnown(wars.map((r) => r.views)),
+    speeds,
+    day: sumKnown(wars.map((r) => r.day)),
+    week: sumKnown(wars.map((r) => r.week)),
+    hour: sumKnown(wars.map((r) => r.hour)),
+    on: new Set(wars.flatMap((r) => [...r.on])),
+    noCoin: wars.every((r) => r.noCoin),
+    countries: null,
+    viral: sumKnown(wars.map((r) => r.viral)),
+  };
+  const ids = [...wars].sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((r) => r.id);
+  return { units: [...rows.filter((r) => !isWar(r)), unit], wars: ids };
+}
+
 /** The list for a ranked sort, in order: ids only. */
 export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY, noCoin = false): readonly string[] {
   const mine = rows.filter((r) => (on === null || r.on.has(on)) && (!noCoin || r.noCoin));
   if (sort === 'trending') {
     const fresh = (r: NumbersRow): boolean => r.projectedMs !== null && nowMs - r.projectedMs < policy.rising.forYouSorts.freshMs;
-    const live = mine.flatMap((r) => (r.dead || r.speeds === null ? [] : [{ id: r.id, speeds: r.speeds, fresh: fresh(r) }]));
-    const gains = mine.flatMap((r) => (r.dead ? [] : [{ id: r.id, gained: r.hour, fresh: fresh(r) }]));
-    return narrativeTrendingIds(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy, gains);
+    /* ★ THE MEME WARS RANK AS ONE (policy.v162): the app gathers them under one card where the first stands, so they are ranked together. */
+    const { units, wars } = withWarUnit(mine.filter((r) => !r.dead));
+    const live = units.flatMap((r) => (r.speeds === null ? [] : [{ id: r.id, speeds: r.speeds, fresh: fresh(r) }]));
+    const gains = units.map((r) => ({ id: r.id, gained: r.hour, fresh: fresh(r) }));
+    const steady = units.map((r) => ({ id: r.id, viralAccounts: r.viral ?? null, fresh: fresh(r) }));
+    return narrativeTrendingIds(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy, gains, steady).flatMap((id) => (id === WAR_UNIT ? wars : [id]));
   }
   const key = (r: NumbersRow): number | null => gainNow(r, sort, nowMs);
   return mine
@@ -181,15 +237,16 @@ export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | '
  * ★ A LIST SENDS EACH NARRATIVE AS ITS CARD, NOT ITS WHOLE PAGE. The tab's card (mobile
  * features/narratives Narratives.tsx) reads the title, picture, post count, age, Dead, views, the
  * day's and week's gains, the two speeds and the coin line; it never reads the page's chart series
- * (`viewsGained`, `viewsGainedAll`), its per-post views (`postViews`), its trend windows
- * (`inWindow`) or its discussion, and of its posts (`evidence`) only that there is one. Those were
+ * (`viewsGained`, `viewsGainedAll`), its per-post views (`postViews`) or its discussion, and of its
+ * posts (`evidence`) only that there is one. Its trend windows (`inWindow`, three small entries) stay
+ * from policy.v162: Trending's card says its viral posts' accounts from them. Those were
  * four fifths of a page (18 Oct: a Most viewed Today page was 413 KB for 20 cards). The page itself,
  * GET /story/:id, still sends everything; a tap opens it.
  *
  * Each field cut is one the phone's decoder accepts as absent (a series or a map read as null) or
  * keeps as a list; nothing is renamed, and the payload's own `postCount` carries the count.
  */
-const CARD_DROPS = ['viewsGained', 'viewsGainedAll', 'postViews', 'inWindow'] as const;
+const CARD_DROPS = ['viewsGained', 'viewsGainedAll', 'postViews'] as const;
 
 export function cardOf(page: unknown): unknown {
   if (typeof page !== 'object' || page === null || Array.isArray(page)) return page;
@@ -222,7 +279,7 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     const key = `${ask.sort}:${ask.on ?? 'all'}:${ask.noCoin ? 'no-coin' : 'any'}`;
     let hit = kept.get(key);
     if (hit === undefined || hit.tick !== tick || nowMs - hit.at >= KEEP_MS) {
-      const rows = (await db.query(LIST_NUMBERS_SQL, [])).flatMap((r) => numbersOf(r) ?? []);
+      const rows = (await db.query(LIST_NUMBERS_SQL, [policy.narrative.trend.listWindowHours])).flatMap((r) => numbersOf(r) ?? []);
       hit = { tick, at: nowMs, ids: rankNarratives(rows, ask.sort, ask.on, nowMs, policy, ask.noCoin) };
       kept.set(key, hit);
     }

@@ -780,8 +780,11 @@ export interface WireStory {
    * that decides it is never sent. A dead narrative (`dead`) has the facts and no place: it is not
    * in Trending. `viralPosts` (policy.v157): its posts that went up in the window and have For You's
    * views now (Policy.rising.fypMinReach), a fact about them that Trending is ordered by in part.
+   * `viralAccounts` (policy.v162): the accounts that posted them, each once — what the tab's Trending
+   * lists a story by (services/read narrative-sorts.ts) and its card says — and `viralMinViews` the
+   * views they each have at least, so the card can say the bar as a fact ("40K+ views").
    */
-  readonly inWindow?: readonly { readonly hours: number; readonly viewsGained: WireMeasured; readonly newPosts: number; readonly viralPosts?: number; readonly trendingPlace?: number }[];
+  readonly inWindow?: readonly { readonly hours: number; readonly viewsGained: WireMeasured; readonly newPosts: number; readonly viralPosts?: number; readonly viralAccounts?: number; readonly viralMinViews?: number; readonly trendingPlace?: number }[];
   /**
    * No post it lists went up in the last Policy.narrative.dead.afterMs (the owner's 48 hours): left out
    * of Trending, still in Most viewed and New, its page and posts still here. A fact about its posts'

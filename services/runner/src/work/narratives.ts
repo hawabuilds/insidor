@@ -43,7 +43,11 @@
  *      posts at For You's views, in no narrative, that name another country in their own language,
  *      judged or not — the judge's "not coinable" never kept a war's posts out again. Each joins the
  *      open war of its pair; a pair with none and enough posts from enough accounts becomes a new
- *      narrative kept off the board (a seed) until step 7's titler names both countries
+ *      narrative kept off the board (a seed) until step 7's titler names both countries. Every
+ *      `catchUpEveryMs` (policy.v162) the live wars' words are also searched back to each war's
+ *      start, in or out of a small narrative: an older post joins as an early one, an English post
+ *      naming both sides joins when alike to the war, and a small narrative wholly the war's is folded
+ *      into it — never one the owner touched
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
@@ -85,6 +89,7 @@ import {
   climbPerMinute,
   fightPairsOf,
   planFights,
+  warWords,
   earlyMatches,
   earlyShortlist,
   embedInput,
@@ -116,7 +121,7 @@ import {
   type StoryPlan,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
-import { FIGHT_SEED_DECLINED, FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
+import { FIGHT_SEED_DECLINED, FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type FightPostRow, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -135,7 +140,7 @@ const outOfEither = (a: ReadonlyMap<string, ReadonlySet<string>>, b: ReadonlyMap
 };
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english' | 'fightUnasked' | 'setFight' | 'fights' | 'fightPending' | 'fightPosts' | 'showFight'>>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames' | 'standingRows' | 'references' | 'coinTied' | 'barReadings' | 'pastedPosts' | 'english' | 'fightUnasked' | 'setFight' | 'fights' | 'fightPending' | 'fightPosts' | 'showFight' | 'fightWarPosts' | 'fightRowsOf' | 'ownStarts'>>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -180,7 +185,7 @@ export interface NarrativeResult {
   /** Loose posts joined to the narrative they quote or say the same words as, this pass (core `joinLoose`). */
   readonly joinedStory: number;
   readonly mergedStory: number;
-  /** Meme-war posts joined to their war, and new meme-war seeds made, this pass (core group/fight-native.ts). */
+  /** Meme-war posts joined to their war (early ones, moved ones and those of folded narratives included), and new meme-war seeds made, this pass (core group/fight-native.ts). */
   readonly joinedFight: number;
   readonly seededFight: number;
   /** What the early step took this pass, its stored-post read included when it ran. */
@@ -271,6 +276,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
      the ones it has placed since that read. */
   let stored: { readonly atMs: number; readonly rows: readonly NarrativePostRow[] } | null = null;
   const placed = new Set<string>();
+  /* When the meme-war catch-up last read (policy.v162 `fight.native.catchUpEveryMs`); never yet: due on the first pass. */
+  let lastCatchUp = Number.NEGATIVE_INFINITY;
   const traceOrigins = originTracer(deps.repo, () => deps.policy);
 
   async function vectorsFor(ids: readonly string[], space: string, kind: 'post' | 'picture', cache: Map<string, Float32Array>): Promise<void> {
@@ -436,6 +443,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
    * touched gets the posts added to its entry, an untouched one is listed for its new posts only, and
    * a seed is listed as a new narrative, not shown, with its pair in `fights`. Off, or before the repo
    * can read it: nothing changes.
+   *
+   * ★ THE CATCH-UP (policy.v162), every `catchUpEveryMs`: the live wars' own words searched in the
+   * stored posts back to each war's start (store `fightWarPosts`), in no narrative or in a small one
+   * that is not a war. Those older than the war's own posts join as early posts; a small narrative
+   * wholly the war's is folded into it (`folds`, written as `meme_war` merges); a small mixed one gives
+   * up only its viral war posts (`moved`). ★ Never a narrative the owner called on, renamed, answered
+   * or hid, one this pass already touched, or another war — his edits stand.
    */
   async function fightStep(input: {
     readonly entries: NarrativePass['narratives'][number][];
@@ -444,51 +458,96 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     readonly removedFrom: ReadonlyMap<string, ReadonlySet<string>>;
     readonly hideOf: (id: string, members: readonly string[]) => boolean;
     readonly standing: (r: NarrativePostRow) => NarrativeStanding;
+    /** Narratives the owner made a call on (and where they lead now), and those this pass merges or splits. */
+    readonly ownerCalled: ReadonlySet<string>;
+    readonly space: string;
     readonly nowMs: number;
-  }): Promise<{ readonly fights: readonly { readonly id: string; readonly countries: readonly string[] }[]; readonly joined: number; readonly rows: ReadonlyMap<string, NarrativePostRow> }> {
+  }): Promise<{ readonly fights: readonly { readonly id: string; readonly countries: readonly string[] }[]; readonly joined: number; readonly rows: ReadonlyMap<string, NarrativePostRow>; readonly folds: readonly { readonly from: string; readonly into: string }[]; readonly moved: readonly { readonly itemId: string; readonly from: string; readonly into: string }[] }> {
     const p = deps.policy;
     const f = p.narrative.fight;
     const n = f.native;
-    const none = { fights: [], joined: 0, rows: new Map<string, NarrativePostRow>() };
+    const none = { fights: [], joined: 0, rows: new Map<string, NarrativePostRow>(), folds: [], moved: [] };
     const repo = deps.repo;
     if (!f.on || !n.on || repo.fightPosts === undefined || repo.fights === undefined || repo.standingRows === undefined) return none;
+    const wars = (await repo.fights(input.nowMs - f.activeMs)).filter((x) => !input.mergedAway.has(x.id) && !input.hideOf(x.id, x.members));
     const light = (await repo.fightPosts(input.nowMs - n.lookbackMs, Object.keys(n.home), n.minReach, n.maxRead)).filter((r) => !input.placed.has(r.itemId) && fightPairsOf({ lang: r.lang, text: r.body }, p).length > 0);
-    if (light.length === 0) return none;
+
+    /* The catch-up's read: due, with a live war and the repo able to search. */
+    const due = wars.length > 0 && repo.fightWarPosts !== undefined && repo.ownStarts !== undefined && repo.fightRowsOf !== undefined && input.nowMs - lastCatchUp >= n.catchUpEveryMs;
+    const starts = due && repo.ownStarts !== undefined ? await repo.ownStarts(wars.map((w) => w.id)) : new Map<string, number>();
+    let caught: readonly (FightPostRow & { readonly narrativeId: string | null })[] = [];
+    if (due && repo.fightWarPosts !== undefined) {
+      lastCatchUp = input.nowMs;
+      const earliest = Math.min(input.nowMs - n.lookbackMs, ...wars.map((w) => (starts.get(w.id) ?? input.nowMs) - n.warLeadMs));
+      caught = await repo.fightWarPosts(Math.max(input.nowMs - f.activeMs, earliest), warWords(wars.map((w) => ({ countries: w.fight ?? [] })), p), n.minReach, n.maxRead, n.moveMaxPosts);
+    }
+    const lightIds = new Set(light.map((r) => r.itemId));
+    const looseCaught = caught.filter((r) => r.narrativeId === null && !input.placed.has(r.itemId) && !lightIds.has(r.itemId));
+    /* ★ The small narratives holding a caught post that the catch-up may touch (see above). */
+    const touched = new Set(input.entries.map((x) => x.id));
+    const warIds = new Set(wars.map((w) => w.id));
+    const candidateIds = [...new Set(caught.flatMap((r) => (r.narrativeId === null ? [] : [r.narrativeId])))].filter((id) => !touched.has(id) && !warIds.has(id) && !input.ownerCalled.has(id) && !input.mergedAway.has(id));
+    const candidates = (candidateIds.length === 0 ? [] : await repo.byIds(candidateIds)).filter((x) => x.titleModel !== OWNER_TITLE_MODEL && x.fightModel !== OWNER_TITLE_MODEL && !input.hideOf(x.id, x.members) && x.members.length <= n.moveMaxPosts);
+    const memberIds = [...new Set(candidates.flatMap((x) => x.members))];
+    const memberRows = new Map((memberIds.length === 0 || repo.fightRowsOf === undefined ? [] : await repo.fightRowsOf(memberIds)).map((r) => [r.itemId, r] as const));
+
+    const all = [...light, ...looseCaught, ...memberRows.values()];
+    if (all.length === 0) return none;
     /* ★ The owner's "Not a meme", a shill and a held kind (an ad) never join, as in every other step; the judge's no does. */
-    const rows = new Map((await repo.standingRows(light.map((r) => r.itemId))).map((r) => [r.itemId, r] as const));
-    const fit = light.filter((r) => {
-      const row = rows.get(r.itemId);
+    const rows = new Map((await repo.standingRows([...new Set(all.map((r) => r.itemId))])).map((r) => [r.itemId, r] as const));
+    const isFit = (id: string): boolean => {
+      const row = rows.get(id);
       if (row === undefined) return false;
       const s = input.standing(row);
       return s !== 'owner_not_meme' && s !== 'shill' && s !== 'held_kind';
-    });
-    const wars = (await repo.fights(input.nowMs - f.activeMs)).filter((x) => !input.mergedAway.has(x.id) && !input.hideOf(x.id, x.members));
+    };
+    /* Vectors for the alike rule: the wars' posts and every caught post with no pair of its own language. */
+    const needVector = [...looseCaught, ...memberRows.values()].filter((r) => fightPairsOf({ lang: r.lang, text: r.body }, p).length === 0).map((r) => r.itemId);
+    if (needVector.length > 0) await vectorsFor([...needVector, ...wars.flatMap((w) => w.members)], input.space, 'post', postVectors);
+    const asPost = (r: FightPostRow) => ({ itemId: r.itemId, authorKey: r.authorKey, lang: r.lang, text: r.body, atMs: r.atMs, reach: r.reach, vector: postVectors.get(r.itemId) ?? null });
+    /* An unfit member stays in its narrative and keeps it from folding: it is offered with no words, no views and no vector. */
+    const asMember = (id: string) => {
+      const r = memberRows.get(id);
+      return r === undefined || !isFit(id) ? { itemId: id, authorKey: null, lang: null, text: '', atMs: 0, reach: null, vector: null } : asPost(r);
+    };
     const plan = planFights({
-      posts: fit.map((r) => ({ itemId: r.itemId, authorKey: r.authorKey, lang: r.lang, text: r.body, atMs: r.atMs, reach: r.reach })),
-      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null })),
+      posts: [...light, ...looseCaught].filter((r) => isFit(r.itemId)).map(asPost),
+      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null, startAtMs: starts.get(x.id) ?? null, vectors: x.members.flatMap((m) => postVectors.get(m) ?? []) })),
+      placed: candidates.map((x) => ({ id: x.id, members: x.members.map(asMember) })),
       nowMs: input.nowMs,
     }, p);
-    const atOf = new Map(fit.map((r) => [r.itemId, r.atMs] as const));
+    const atOf = new Map(all.map((r) => [r.itemId, r.atMs] as const));
     const warOf = new Map(wars.map((x) => [x.id, x] as const));
     const entryOf = new Map(input.entries.map((x, i) => [x.id, i] as const));
-    let joined = 0;
-    for (const [id, posts] of plan.joins) {
-      const free = posts.filter((m) => !(input.removedFrom.get(m)?.has(id) ?? false));
-      if (free.length === 0) continue;
-      joined += free.length;
-      const newest = Math.max(0, ...free.map((m) => atOf.get(m) ?? 0));
+    const notRemoved = (id: string) => (m: string) => !(input.removedFrom.get(m)?.has(id) ?? false);
+    /* The war's entry in the pass, made from what is stored when this pass did not touch it. */
+    const entryFor = (id: string): number | undefined => {
       const at = entryOf.get(id);
-      const had = at === undefined ? undefined : input.entries[at];
-      if (had !== undefined && at !== undefined) {
-        input.entries[at] = { ...had, members: [...had.members, ...free], added: [...(had.added ?? had.members), ...free], newestPostAtMs: Math.max(had.newestPostAtMs ?? 0, newest) || null };
-        continue;
-      }
+      if (at !== undefined) return at;
       const w = warOf.get(id);
-      if (w === undefined) continue;
+      if (w === undefined) return undefined;
       const own = w.members.filter((m) => !(w.early ?? []).includes(m));
-      input.entries.push({ id, members: [...own, ...free], added: free, anchor: w.anchor, newestPostAtMs: Math.max(w.newestPostAtMs ?? 0, newest) || null, shown: w.shown, changed: true });
+      input.entries.push({ id, members: own, added: [], early: [], anchor: w.anchor, newestPostAtMs: w.newestPostAtMs ?? null, shown: w.shown, changed: true });
       entryOf.set(id, input.entries.length - 1);
+      return input.entries.length - 1;
+    };
+    let joined = 0;
+    for (const id of new Set([...plan.joins.keys(), ...plan.early.keys()])) {
+      const free = (plan.joins.get(id) ?? []).filter(notRemoved(id));
+      const before = (plan.early.get(id) ?? []).filter(notRemoved(id));
+      if (free.length === 0 && before.length === 0) continue;
+      const at = entryFor(id);
+      const had = at === undefined ? undefined : input.entries[at];
+      if (had === undefined || at === undefined) continue;
+      joined += free.length + before.length;
+      const newest = Math.max(0, ...free.map((m) => atOf.get(m) ?? 0));
+      input.entries[at] = { ...had, members: [...had.members, ...free], added: [...(had.added ?? had.members), ...free], early: [...(had.early ?? []), ...before], newestPostAtMs: Math.max(had.newestPostAtMs ?? 0, newest) || null, changed: true };
     }
+    const candidateOf = new Map(candidates.map((x) => [x.id, x] as const));
+    const folds = plan.merges.filter((m) => (candidateOf.get(m.from)?.members ?? []).every(notRemoved(m.into)));
+    joined += folds.reduce((sum, m) => sum + (candidateOf.get(m.from)?.members.length ?? 0), 0);
+    const moved = plan.moves.filter((mv) => notRemoved(mv.into)(mv.itemId));
+    joined += moved.length;
     /* A seed's id as a new narrative's: its first post's, or the next free one — never one given out. */
     const wanted = plan.seeds.flatMap((sd) => [`n-${sd.members[0] ?? ''}`, `n-${sd.members[0] ?? ''}-1`, `n-${sd.members[0] ?? ''}-2`]);
     const taken = new Set([...(wanted.length === 0 ? [] : await repo.states(wanted)).map((x) => x.id), ...input.entries.map((x) => x.id)]);
@@ -503,9 +562,10 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       input.entries.push({ id, members: sd.members, added: sd.members, anchor: first, newestPostAtMs: newest > 0 ? newest : null, shown: false, changed: true });
       fights.push({ id, countries: sd.countries });
     }
-    if (joined > 0 || fights.length > 0) deps.log.info('meme-war posts placed by the country they name', { joined, seeds: fights.map((x) => `${x.countries.join(' vs ')} (${x.id})`) });
-    return { fights, joined, rows };
+    if (joined > 0 || fights.length > 0) deps.log.info('meme-war posts placed by the country they name', { joined, early: [...plan.early.values()].reduce((s, l) => s + l.length, 0), folded: folds.map((m) => `${m.from} → ${m.into}`), moved: moved.length, caught: caught.length, seeds: fights.map((x) => `${x.countries.join(' vs ')} (${x.id})`) });
+    return { fights, joined, rows, folds, moved };
   }
+
 
   /** Steps 1–6 without the write: what the dry run (tools/narratives.ts) and a live pass share. */
   async function group(): Promise<GroupedPass | string> {
@@ -694,11 +754,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       removedFrom,
       hideOf,
       standing: standingOf,
+      ownerCalled: new Set([...ownerCalled, ...busy, ...origin.plan.merges.flatMap((m) => [m.from, m.into])]),
+      space,
       nowMs,
     });
     const allPosts = new Map([...byId, ...war.rows]);
     return {
-      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const }))], removed, split: splits.pending, added, fights: war.fights },
+      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const })), ...origin.plan.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_story' as const })), ...war.folds.map((m) => ({ id: m.from, into: m.into, by: 'meme_war' as const }))], removed, split: splits.pending, added, moved: war.moved, fights: war.fights },
       posts: allPosts,
       reach: readings.latest,
       stored: storedOf,

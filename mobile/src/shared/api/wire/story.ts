@@ -188,6 +188,9 @@ export interface InWindow {
   readonly newPosts: number;
   /** Its place in Trending for the window; null for a dead narrative, which is not in Trending. */
   readonly trendingPlace: number | null;
+  /** The accounts whose post went up in the window and has at least `viralMinViews` views now; null when the server did not say. */
+  readonly viralAccounts: number | null;
+  readonly viralMinViews: number | null;
 }
 
 /**

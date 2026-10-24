@@ -4349,6 +4349,18 @@ export interface NarrativePolicy {
    *           their averages are at `wordsMeaning`, and they were
    *           first shown within `wordsFormedWithinMs` of each other. Never on a narrative the owner
    *           made a call on, nor across posts he kept apart
+   *
+   * policy.v166 (the owner, 2026-10-24: @hezuruy's "whoever killed the little deer, come out… Nara",
+   * judged PATROL, never joined "Four Baby Deer Found Dead in Nara Park" — "widen the join"):
+   *   looseWords  `looseWordsOn`: a loose post (held to `joinViral` as every join) also joins a
+   *           narrative it shares at least `wordsMinShared` single rare words with — content words
+   *           (narrative-phrase.ts `contentWords`) of its own words or its stored English, folded by
+   *           `wordStems` and a plural `s`, said by at most `phraseMaxShare` of the posts read, by at
+   *           most `wordsMaxNarratives` narratives, and by at least `wordsMinCoverage` of the
+   *           narrative's posts — and at least one of them a NAME both sides write (title case
+   *           inside a sentence: "Nara", "Milei"), at `looseWordsMeaning` from its average. The
+   *           judge's names may differ.
+   *           Never into a narrative the owner made a call on, nor a meme war (its own rules hold)
    */
   readonly origin: {
     readonly on: boolean;
@@ -4382,6 +4394,10 @@ export interface NarrativePolicy {
     readonly wordsMinCoverage: number;
     readonly wordsMeaning: number;
     readonly wordsFormedWithinMs: number;
+    readonly looseWordsOn: boolean;
+    readonly looseWordsMeaning: number;
+    /** A word → the word it is read as, for the single-word join: "fawn" is "deer". Lower-case, accents folded. */
+    readonly wordStems: Readonly<Record<string, string>>;
   };
   /**
    * ★ ONLINE MEME WARS BETWEEN COUNTRIES (the owner, 2026-10-23, policy.v154): the titler, in the
@@ -4430,6 +4446,27 @@ export interface NarrativePolicy {
      *            the post's own language (Turkish "ÇİN" is "çin")
      *   aliases  the titler's other spellings of a country, read as ours ("Türkiye" is Turkey)
      *   maxRead  the most stored posts read a pass, highest views first
+     *
+     * ★ THE CATCH-UP (policy.v166, the owner 2026-10-24: "it's not catching any of the viral posts
+     * under the narrative that have hundreds of thousands and even 1M+ views"). Every `catchUpEveryMs`
+     * the live wars' own words are searched in the stored posts back to each war's start, in or out of
+     * a narrative, so a post the two-day read above never saw still joins:
+     *
+     *   warLeadMs   a post joins a war from this long before the war's oldest own post (not one
+     *               matched back in), never further: the 7.8M Chinese post of 21 Oct joins China vs
+     *               Turkey, and the 17-19 Oct riots (50 Japanese posts naming France at 40k+, the last
+     *               on 19 Oct 12:18) stay out of France vs Japan, whose own posts start 23 Oct 09:44.
+     *               A post older than the war's own posts joins as an early post, so it never moves
+     *               the start and the window cannot creep back day by day
+     *   names.en    a language with no home country (English): a post naming two of a war's countries
+     *               joins only when it is also as alike to one of the war's posts as two posts with
+     *               the same name must be (`narrative.nameMeaning`). Measured 23-24 Oct at 40k+: the
+     *               posts about the French–Japanese beef sit 0.61-0.76 from the war, the news naming
+     *               both (a PHP bug, the riots, a K-pop tour) 0.29-0.49
+     *   moveMaxPosts  a war post in another narrative: a narrative all of whose posts are that war's
+     *               (one of its own included) is merged into the war; one of at most this many posts
+     *               with other posts too gives up only that post. Never a narrative the owner made a
+     *               call on, renamed or answered, nor another war
      */
     readonly native: {
       readonly on: boolean;
@@ -4437,6 +4474,9 @@ export interface NarrativePolicy {
       readonly lookbackMs: number;
       readonly maxRead: number;
       readonly perPass: number;
+      readonly catchUpEveryMs: number;
+      readonly warLeadMs: number;
+      readonly moveMaxPosts: number;
       readonly seedMinPosts: number;
       readonly seedMinAccounts: number;
       readonly seedWithinMs: number;
@@ -4498,6 +4538,19 @@ export interface NarrativeTrendPolicy {
   readonly viralWeight: number;
   readonly steadyWeight: number;
   readonly steadySlots: number;
+  /**
+   * ★ THE TAB'S TRENDING LISTS THE STORIES THAT KEEP HAVING VIRAL POSTS (policy.v166, the owner
+   * 2026-10-24: "I want there to be a way we can know which narratives are having consistent viral
+   * posts — shouldn't that be the purpose of Trending"). The weights above order the board; the tab's
+   * Trending (services/read narrative-sorts.ts, core rank/narrative-sorts.ts) is speed risers, and on
+   * 24 Oct 2 of 71 live narratives had speeds at all. So after the risers it now lists every fresh
+   * narrative with posts from at least `listMinAccounts` accounts that went up in its last
+   * `listWindowHours` window and are at For You's views now (the page's `inWindow` viralAccounts),
+   * most accounts first. ★ The online meme wars (`countries`) are one entry there, their posts and
+   * accounts added up, so the app's one meme-war card stands where they all rank together.
+   */
+  readonly listMinAccounts: number;
+  readonly listWindowHours: number;
 }
 
 /**
@@ -5278,8 +5331,13 @@ const POLICY_V1: Policy = {
 
      v165 adds `oneCoin.early` (the early pick under $20K, pushed to everyone from 2026-10-24: the
      owner's "ship it for everyone, let them decide whether they want to buy") and `market.firstHour`
-     (the first hour of a tied candidate read every pass, and a light pass). */
-  version: 'policy.v165',
+     (the first hour of a tied candidate read every pass, and a light pass).
+
+     v166 adds the meme wars' catch-up (`narrative.fight.native` catchUpEveryMs, warLeadMs,
+     moveMaxPosts, names.en), the loose-post join on rare words (`narrative.origin` looseWordsOn,
+     looseWordsMeaning, wordStems) and Trending's viral list (`narrative.trend` listMinAccounts,
+     listWindowHours). */
+  version: 'policy.v166',
 
   admit: {
     maxAgeMin: 240,
@@ -7282,6 +7340,11 @@ const POLICY_V1: Policy = {
       viralWeight: 0.8,
       steadyWeight: 1,
       steadySlots: 6,
+      /* policy.v166. 24 Oct 13:00, the live pages: 11 of 71 had two viral posts or more in their 24 hours
+         (counted by post — accounts were not on the page yet; France vs Japan 8, a mustached newborn 5,
+         the Oregon father 4), while 2 of the 71 had speeds for the tab's Trending at all. */
+      listMinAccounts: 2,
+      listWindowHours: 24,
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
@@ -7374,6 +7437,15 @@ const POLICY_V1: Policy = {
       wordsMinCoverage: 0.25, // said by a quarter of each side's posts: its own word, not one post in a blob
       wordsMeaning: 0.6, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
       wordsFormedWithinMs: 345_600_000, // four days
+      /* policy.v166: the loose post's single rare words (the Nara fawns). Copy-tested read-only on the
+         stored posts of 22-24 Oct: see the commit. Only a short list of the same thing said another way. */
+      looseWordsOn: true,
+      /* Below the phrase bar: a post in another language reads far from a narrative in English (@hezuruy
+         0.41 from the fawns' average). The name the two must share keeps it safe — copy test of 22-24 Oct,
+         93 loose viral posts sharing two rare words: with a shared name 21, and at 0.41 or closer 13, the
+         nearest wrong ones at 0.403 ("Florida" + "hospital") and 0.402 (a streaming site + "streamer") left out. */
+      looseWordsMeaning: 0.41,
+      wordStems: { fawn: 'deer', deers: 'deer' },
     },
     /* ── narrative.fight: online meme wars between countries (policy.v154) ──
        Fields: on, activeMs, perPass, maxCountries, minPosts, maxOutputTokens. The question rides on the title call, a few
@@ -7397,6 +7469,11 @@ const POLICY_V1: Policy = {
         lookbackMs: 172_800_000, // two days, the regroup's window
         maxRead: 2_000,
         perPass: 100,
+        /* policy.v166. The catch-up read, measured 2026-10-24: five days of stored posts, the live wars'
+           words pre-matched in the database, 120 rows in 0.95 s — so every ten minutes, not every pass. */
+        catchUpEveryMs: 600_000,
+        warLeadMs: 172_800_000, // two days, the regroup's window
+        moveMaxPosts: 3,
         seedMinPosts: 3,
         seedMinAccounts: 3,
         seedWithinMs: 86_400_000, // a day
@@ -7409,6 +7486,8 @@ const POLICY_V1: Policy = {
           zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
           tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
           ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },
+          /* No home: a post here must name two of a war's countries and be alike to the war (policy.v166). */
+          en: { France: ['france', 'french', 'frenchies'], Japan: ['japan', 'japanese'], China: ['china', 'chinese'], Turkey: ['turkey', 'turkish', 'türkiye', 'turkiye', 'turks'], 'South Korea': ['korea', 'korean*'] },
         },
         aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China' },
       },

@@ -571,7 +571,7 @@ function decodeInWindow(raw: unknown, path: string): ReadonlyMap<number, InWindo
     /* A dead narrative has the window's facts and no Trending place. */
     if (hours === null || posts === null) return [];
     try {
-      return [[hours, { viewsGained: measured(r['viewsGained'], `${path}[${i}].viewsGained`, 'not_read_yet'), newPosts: posts, trendingPlace: place }] as const];
+      return [[hours, { viewsGained: measured(r['viewsGained'], `${path}[${i}].viewsGained`, 'not_read_yet'), newPosts: posts, trendingPlace: place, viralAccounts: n(r['viralAccounts']), viralMinViews: n(r['viralMinViews']) }] as const];
     } catch {
       return [];
     }

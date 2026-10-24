@@ -247,6 +247,8 @@ export function originTracer(repo: Partial<OriginRepo>, policy: () => Policy) {
         english,
         reproductions: quotes,
         ...(input.receiveOnly === undefined ? {} : { receiveOnly: input.receiveOnly }),
+        /* The meme wars keep their own rules (core group/fight-native.ts): the single-word join never adds to one. */
+        noWordsJoin: new Set(live.filter((x) => (x.fight?.length ?? 0) >= 2).map((x) => x.id)),
       },
       p,
     );

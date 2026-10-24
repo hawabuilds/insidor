@@ -208,9 +208,17 @@ export interface NarrativePass {
    * The merges: `id` moves all its posts to `into` and is kept as merged. `into` null is never
    * written (nothing is retired). `by` is who merged it (0108 `merged_by`): the owner's "Merge
    * with…" (the default), the regroup's same-subject rule (core group/narrative-same.ts), or its
-   * same-story quote rule (core group/narrative-origin.ts, 0126) — not written before 0126.
+   * same-story quote rule (core group/narrative-origin.ts, 0126) — not written before 0126 — or the
+   * meme-war catch-up folding a narrative wholly a war's into it (core group/fight-native.ts, 0133
+   * `meme_war`) — not written before 0133.
    */
-  readonly retired: readonly { readonly id: string; readonly into: string | null; readonly by?: 'owner' | 'same_subject' | 'same_story' }[];
+  readonly retired: readonly { readonly id: string; readonly into: string | null; readonly by?: 'owner' | 'same_subject' | 'same_story' | 'meme_war' }[];
+  /**
+   * The meme-war catch-up's moves (core group/fight-native.ts `moves`): `itemId` leaves the small
+   * narrative `from` for the war `into`, written as the owner's adds are (the row moves), only while
+   * the post is still in `from` and both are open.
+   */
+  readonly moved?: readonly { readonly itemId: string; readonly from: string; readonly into: string }[];
   /** The owner's "Remove this post": the post leaves that narrative. */
   readonly removed?: readonly { readonly narrativeId: string; readonly itemId: string }[];
   /**
@@ -555,6 +563,88 @@ export class PgNarrativeRepo {
     return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach) }));
   }
 
+  /**
+   * ★ THE MEME-WAR CATCH-UP (policy.v162 `narrative.fight.native.catchUpEveryMs`): stored posts found
+   * and gone up since `sinceMs`, at `minReach` views or more, whose words hold one of `terms`' words
+   * in that language (case-insensitive, a first sift: core `hasWord` decides), in no narrative or in
+   * an open one that is not a meme war with at most `maxPosts` posts (`narrativeId`, else null);
+   * highest views first, at most `limit`. Each word is sifted as written and upper-cased in its own
+   * language too (Turkish "ÇİN" is not what the database lower-cases "çin" to). Measured 2026-10-24
+   * on live data: five days, 120 rows in 0.95 s, by the first-seen index — so not every pass.
+   */
+  async fightWarPosts(sinceMs: number, terms: readonly { readonly lang: string; readonly words: readonly string[] }[], minReach: number, limit: number, maxPosts: number): Promise<readonly (FightPostRow & { readonly narrativeId: string | null })[]> {
+    const langs: string[] = [];
+    const likes: string[] = [];
+    const like = (w: string) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    for (const t of terms) {
+      for (const w of t.words) {
+        if (w === '') continue;
+        let upper = w;
+        try {
+          upper = w.toLocaleUpperCase(t.lang);
+        } catch {
+          upper = w.toUpperCase();
+        }
+        for (const form of new Set([w, upper])) {
+          langs.push(t.lang);
+          likes.push(like(form));
+        }
+      }
+    }
+    if (langs.length === 0 || limit <= 0 || !(await this.migrated())) return [];
+    const withFight = await this.#hasColumn('narrative', 'fight');
+    const notWar = withFight ? 'coalesce(cardinality(n.fight), 0) < 2' : 'true';
+    const since = new Date(sinceMs).toISOString();
+    const rows = await orEmpty(() => this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; body: string; at: Date | string; reach: number | string | null; narrative_id: string | null }>(
+      `select i.item_id, i.author_key, i.lang, i.body, coalesce(i.posted_at, i.first_seen_at) as at,
+              (i.counters->'reach'->>'value')::double precision as reach, m.narrative_id
+         from public.item i
+         left join internal.narrative_member m on m.item_id = i.item_id
+         left join internal.narrative n on n.narrative_id = m.narrative_id
+        where i.first_seen_at >= $1 and coalesce(i.posted_at, i.first_seen_at) >= $1
+          and i.origin = 'observed'
+          and (i.counters->'reach'->>'value')::double precision >= $4
+          and exists (select 1 from unnest($2::text[], $3::text[]) as t(lang, pat) where t.lang = i.lang and i.body ilike t.pat)
+          and (m.item_id is null or (n.state = 'open' and ${notWar} and n.member_count <= $6))
+        order by reach desc, i.item_id
+        limit $5`,
+      [since, langs, likes, minReach, limit, maxPosts],
+    ), []);
+    return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach), narrativeId: r.narrative_id }));
+  }
+
+  /** These posts as the meme-war rule reads them (`fightPosts`' columns), any views, in any narrative. */
+  async fightRowsOf(itemIds: readonly string[]): Promise<readonly FightPostRow[]> {
+    if (itemIds.length === 0) return [];
+    const rows = await this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; body: string; at: Date | string; reach: number | string | null }>(
+      `select i.item_id, i.author_key, i.lang, i.body, coalesce(i.posted_at, i.first_seen_at) as at,
+              (i.counters->'reach'->>'value')::double precision as reach
+         from public.item i where i.item_id = any($1::text[])`,
+      [[...itemIds]],
+    );
+    return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach) }));
+  }
+
+  /**
+   * Each narrative's oldest OWN post's time (never an early post's, 0100): where a meme war's
+   * catch-up window starts (core group/fight-native.ts `startAtMs`). A narrative with none is absent.
+   */
+  async ownStarts(ids: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    if (ids.length === 0 || !(await this.migrated())) return new Map();
+    const early = (await this.earlyMigrated()) ? 'and not m.early' : '';
+    const rows = await orEmpty(() => this.#db.query<{ narrative_id: string; at: Date | string | null }>(
+      `select m.narrative_id, min(coalesce(i.posted_at, i.first_seen_at)) as at
+         from internal.narrative_member m join public.item i on i.item_id = m.item_id
+        where m.narrative_id = any($1::text[]) ${early}
+        group by m.narrative_id`,
+      [[...ids]],
+    ), []);
+    return new Map(rows.flatMap((r) => {
+      const t = toMs(r.at);
+      return t === null ? [] : [[r.narrative_id, t] as const];
+    }));
+  }
+
   /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */
   async newest(limit: number): Promise<readonly StoredNarrative[]> {
     return this.#narratives('n.shown', [limit], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $1');
@@ -712,7 +802,8 @@ export class PgNarrativeRepo {
       /* The owner's merges: every post moves to the narrative he chose; the merged one stays, pointing there. */
       /* A quote merge is written only once 0126 lets merged_by say so: before it, it is not made at all. */
       const storyMerges = pass.retired.some((r) => r.by === 'same_story') && (await this.#mergedByAllows('same_story'));
-      const merges = pass.retired.filter((r): r is { id: string; into: string; by?: 'owner' | 'same_subject' | 'same_story' } => r.into !== null && r.into !== r.id && (r.by !== 'same_story' || storyMerges));
+      const warMerges = pass.retired.some((r) => r.by === 'meme_war') && (await this.#mergedByAllows('meme_war'));
+      const merges = pass.retired.filter((r): r is { id: string; into: string; by?: 'owner' | 'same_subject' | 'same_story' | 'meme_war' } => r.into !== null && r.into !== r.id && (r.by !== 'same_story' || storyMerges) && (r.by !== 'meme_war' || warMerges));
       const withBy = merges.length > 0 && (await this.#hasColumn('narrative', 'merged_by'));
       for (const r of merges) {
         /* Only from an open narrative into an open one: a merge read before another pass wrote is not applied over it. */
@@ -747,6 +838,17 @@ export class PgNarrativeRepo {
           [a.itemId, a.into],
         );
         if (moved.length > 0) addedFrom.push(a.into, ...was.map((w) => w.narrative_id));
+      }
+      /* The meme-war catch-up's moves: only from where the pass saw the post, into an open war. */
+      for (const mv of pass.moved ?? []) {
+        const moved = await this.#db.query<{ item_id: string }>(
+          `update internal.narrative_member m set narrative_id = $3${withEarly ? ', early = false' : ''}
+            where m.item_id = $1 and m.narrative_id = $2
+              and exists (select 1 from internal.narrative t where t.narrative_id = $3 and t.state = 'open')
+            returning m.item_id`,
+          [mv.itemId, mv.from, mv.into],
+        );
+        if (moved.length > 0) addedFrom.push(mv.into, mv.from);
       }
       const removed = pass.removed ?? [];
       if (removed.length > 0) {

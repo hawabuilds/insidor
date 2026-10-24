@@ -187,14 +187,26 @@
 }
 
 /* "Twitter World War" (WorldWar.tsx): the fights on the umbrella card, and its sheet's sections and rows. */
-.warFights {
-  overflow: hidden;
+.warFight {
+  display: flex;
+  gap: 8px;
   margin-top: 3px;
-  color: var(--text-1);
+  overflow: hidden;
+  color: var(--text-2);
   font-size: 13px;
-  font-weight: 600;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.warFight b {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.warThumbs {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .warNote {
