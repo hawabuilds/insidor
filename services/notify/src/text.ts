@@ -135,6 +135,22 @@ const cap = (f: Facts): string | null => {
   const v = n(f['mcUsd']);
   return v === null || v <= 0 ? null : `$${compact(v)} MC`;
 };
+/**
+ * The early pick's push (services/runner work/early-pick.ts), facts only: "$BALDCAT from
+ * @x's post: $14K cap, 9 min old, 5× the other coins", the post's words below. The multiple is how
+ * many times the other coins' rise this one rose since it opened; with no other coin, it says so.
+ */
+function earlyText(f: Facts): { title: string; body: string } {
+  const who = s(f['author'], '');
+  const v = n(f['mcUsd']);
+  const age = n(f['ageMs']);
+  const rivals = n(f['rivals']) ?? 0;
+  const times = n(f['multiple']);
+  const lead = rivals === 0 ? 'the only coin for it' : times === null ? `the other ${rivals === 1 ? 'coin' : `${rivals} coins`} flat` : `${times >= 100 ? '100+' : Math.floor(times)}× the other coins`;
+  const parts = [v === null || v <= 0 ? null : `$${compact(v)} cap`, age === null ? null : `${Math.max(1, Math.round(age / 60_000))} min old`, lead].filter((x): x is string => x !== null);
+  const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+  return { title: `${ticker(f)} from ${who === '' ? 'a post on For You' : `${possessive(who)} post`}: ${parts.join(', ')}`, body: words !== null ? `"${words}".` : 'A post on For You.' };
+}
 const moved = (f: Facts): string | null => {
   const c = n(f['change24h']);
   if (c === null || Math.round(c) === 0) return null;
@@ -272,6 +288,8 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const who = s(f['author'], '');
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post on For You' : `A post by ${who}`;
       const mc = cap(f);
+      /* The early pick widened to everyone (services/runner work/early-pick.ts): the same words as the owner's. */
+      if (f['early'] === true) return earlyText(f);
       /* The runner hand-over (launch.ts): "A new coin from @X's post is running: $TICKER, $45K cap" / '"Falcon 9 lands…".' */
       if (f['runner'] === true) {
         const v = n(f['mcUsd']);
@@ -426,6 +444,8 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `${finds === null ? 'Few' : finds} ${language === null ? '' : `${language} `}posts found by the ${source} searches in ${window}, against ${base ?? 'many more'} in the same hours the day before.${language === null ? ' Every language fell together.' : ''}`,
         };
       }
+      /* The early pick, the owner's own (services/runner work/early-pick.ts): a coin made for a For You post, under $20K, far ahead of its rivals. */
+      if (f['what'] === 'early-pick') return earlyText(f);
       if (f['what'] === 'missed-runner') {
         /* The runner's missed-runner net (services/runner work/missed-runners.ts): a coin over the cap
            bar that no post's or narrative's coin was, and the post we held it came from, if any. */
