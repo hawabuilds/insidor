@@ -29,7 +29,7 @@ test('a side short of its share gives its places to the other', () => {
   assert.deepEqual(fairTurns([], [], 25), []);
 });
 
-test('★ the titler never writes over a title the owner typed (0129): its update skips title_model owner', async () => {
+test('★ the titler never writes over a title the owner typed (0130): its update skips title_model owner', async () => {
   const seen: { sql: string; params: readonly unknown[] }[] = [];
   const db = { query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), []) } as unknown as Db;
   await new PgNarrativeRepo(db).setTitle('n-x:1', 'Cat Meme War', 12, 'nvidia/nemotron');
@@ -59,7 +59,7 @@ test('★ an owner\'s add moves the post\'s one row into his narrative (stored p
   assert.deepEqual([...((recount?.params[0] as string[]) ?? [])].sort(), ['n-cat', 'n-war']);
 });
 
-test('★ the meme-war answer is written whoever wrote the title, and nothing before 0129', async () => {
+test('★ the meme-war answer is written whoever wrote the title, and nothing before 0130', async () => {
   const seen: { sql: string; params: readonly unknown[] }[] = [];
   const has = (ok: boolean) => ({ query: async (sql: string, params: readonly unknown[] = []) => (seen.push({ sql, params }), / as ok/.test(sql) ? [{ ok }] : []) }) as unknown as Db;
   await new PgNarrativeRepo(has(true)).setFight('n-war', ['China', 'Turkey'], 'nvidia/nemotron');

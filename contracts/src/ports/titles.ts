@@ -11,7 +11,7 @@
  * a usable title) — absent is asked again on a later pass and meanwhile the narrative keeps the
  * name its posts' judge gave it, never a placeholder.
  *
- * ★ ONE MORE QUESTION ON THE SAME CALL (policy.v153, Policy.narrative.fight): whether the posts are
+ * ★ ONE MORE QUESTION ON THE SAME CALL (policy.v155, Policy.narrative.fight): whether the posts are
  * users of two or more countries trading memes and insults with each other online, and which
  * countries. `fight` on a `titled` answer: the countries (two or more, each a plain country name),
  * an empty list for "no", or absent when the answer said nothing usable about it — absent is asked

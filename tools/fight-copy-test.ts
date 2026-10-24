@@ -1,7 +1,7 @@
 /**
  * `node --env-file=.env.local --experimental-strip-types tools/fight-copy-test.ts [--days 5] [--cap 0.10] [--out <file>] [--resume <file>]`
  *
- * THE MEME-WAR QUESTION, COPY-TESTED ON REAL NARRATIVES (policy.v153 Policy.narrative.fight; the
+ * THE MEME-WAR QUESTION, COPY-TESTED ON REAL NARRATIVES (policy.v155 Policy.narrative.fight; the
  * owner, 2026-10-23: one "Twitter World War" for the country beefs on X). Every shown narrative with
  * a post in the last `--days` is sent to the runner's own titler (adapters/judge/openai-compatible
  * titles.ts, the prompt that asks the title and the question in one call), with the posts the runner

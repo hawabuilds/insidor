@@ -18,7 +18,7 @@
  * ★ A TITLE THAT IS NOT ONE IS NOT KEPT: empty, longer than `maxTitleChars`, a hashtag, a $ticker
  * or a coin address is `absent`, and the narrative keeps its judge's name.
  *
- * ★ AND, IN THE SAME CALL, WHETHER IT IS AN ONLINE MEME WAR BETWEEN COUNTRIES (policy.v153; the
+ * ★ AND, IN THE SAME CALL, WHETHER IT IS AN ONLINE MEME WAR BETWEEN COUNTRIES (policy.v155; the
  * owner, 2026-10-23: China vs Turkey, France vs Japan). A few more words on a call already paid for,
  * rather than a second call per narrative. The answer is `fight`: two to `maxCountries` country
  * names when it is one, an empty list when it is not, and absent when the answer is not readable

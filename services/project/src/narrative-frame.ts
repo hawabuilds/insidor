@@ -113,7 +113,7 @@ export interface ShownNarrative {
   readonly title: string | null;
   readonly members: readonly string[];
   readonly firstShownAtMs: number | null;
-  /** The countries of the online meme war the titler said it is (0129); empty or null: not one, or never asked. Absent from an older caller. */
+  /** The countries of the online meme war the titler said it is (0130); empty or null: not one, or never asked. Absent from an older caller. */
   readonly fight?: readonly string[] | null;
 }
 
@@ -161,7 +161,7 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
     if (!n.shown) return null;
     /* A post the owner removed from beside these posts is off the list at once, before the regroup. */
     const removed = (m: string) => [...(calls.removed.get(m) ?? [])].some((x) => x !== m && n.members.includes(x));
-    /* ★ A post the owner added ("Add a post", 0129) is listed whatever its kind or the shill rule say; only his own "Not a meme" takes it off. */
+    /* ★ A post the owner added ("Add a post", 0130) is listed whatever its kind or the shill rule say; only his own "Not a meme" takes it off. */
     const ownerAdded = (m: string) => calls.added.has(m) && byId.get(m) !== undefined && byId.get(m)?.ownerCall !== 'not';
     const listed = n.members.filter((m) => (good(byId.get(m)) || ownerAdded(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
