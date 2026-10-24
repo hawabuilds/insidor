@@ -130,6 +130,31 @@ test('★ a narrative wholly a war\'s folds into it; a small mixed one gives up 
   assert.deepEqual(plan.moves, [{ itemId: 'fr1', from: 'n-mixed', into: 'n-fj' }]);
 });
 
+test('★ a quote of a war post in the other side\'s language joins though it names no country; in the same language, in English, of a waiting seed, or under the bar, it does not', () => {
+  const posts = new Map<string, string | null>([['vegeta-fr', 'fr'], ['beef-en', 'en']]);
+  const fj = { ...war(20), posts };
+  const q = (itemId: string, lang: string, refersTo: readonly string[], reach = 4_946_842, hoursAgo = 30) => ({ ...post(itemId, lang, 'ベジータがアルジェリア人ではない最大の証拠がコチラ', reach, `a:${itemId}`, hoursAgo), refersTo });
+  const plan = planFights({
+    posts: [
+      q('ja-answer', 'ja', ['vegeta-fr']),
+      q('ja-of-en', 'ja', ['beef-en'], 90_000, 3),
+      { ...q('fr-pile', 'fr', ['vegeta-fr'], 134_706, 3), text: 'Quand ils vont découvrir que Picolo est Malien' },
+      { ...q('en-quote', 'en', ['vegeta-fr'], 267_536, 3), text: 'Nah man the French up like 50 rn' },
+      q('ja-small', 'ja', ['vegeta-fr'], 9_000, 3),
+      q('ja-other', 'ja', ['x:unrelated'], 500_000, 3),
+    ],
+    narratives: [fj],
+    nowMs: NOW,
+  }, P);
+  assert.deepEqual(plan.early.get('n-fj'), ['ja-answer'], 'older than the war\'s own first post: early');
+  assert.deepEqual(plan.joins.get('n-fj'), ['ja-of-en'], 'an English war post has no side: a Japanese quote of it answers');
+  /* A seed still waiting for the titler is handed in with no posts: nothing joins it by a quote. */
+  const seed = planFights({ posts: [q('ja-answer', 'ja', ['vegeta-fr'], 4_946_842, 3)], narratives: [war(20)], nowMs: NOW }, P);
+  assert.equal(seed.joins.size + seed.early.size, 0);
+  const off = planFights({ posts: [q('ja-answer', 'ja', ['vegeta-fr'], 4_946_842, 3)], narratives: [fj], nowMs: NOW }, { ...P, narrative: { ...P.narrative, fight: { ...P.narrative.fight, native: { ...P.narrative.fight.native, answersOn: false } } } });
+  assert.equal(off.joins.size + off.early.size, 0);
+});
+
 test('the catch-up searches each war\'s own languages for the other side, and English for both', () => {
   const words = warWords([{ countries: ['France', 'Japan'] }], P);
   assert.ok(words.find((w) => w.lang === 'fr')?.words.includes('japonais'));
