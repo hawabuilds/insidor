@@ -33,6 +33,11 @@
  * six hours stop a post joining late and never take one off). Off, it keeps every post inside the
  * window, as it has since the News tab went. Everything a frame ever showed stays on the infinite
  * scroll (public.feed_post), whatever later frames show.
+ * ★ And no route lets a PROMOTION onto either feed (promotions.ts, `rising.promotion`, the owner
+ * 2026-10-24): a post under For You's views bar that only re-shares, quotes or links another
+ * account's bigger post is taken out after every route has spoken, and withdrawn from the scroll if
+ * it was a member. Its picked coin is carried on the original's card, and a running one pulls the
+ * original back by the running route.
  * With `rising.junkBar.on`, a post the re-tune's junk fit puts at or over its own held-out For You
  * bar does not join For You either (junk-bar.ts); like the six hours it never takes a member off.
  *
@@ -136,6 +141,7 @@ import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from '.
 import { coinFirstLets, loadCoinFirst, recordAdmitted } from './coin-first.ts';
 import { beyondCap, lateAnswerPolicy, lateLets, loadLateNoCoin } from './late-no-coin.ts';
 import { loadRunningPicks, runningLets } from './running-picks.ts';
+import { loadPromotedPicks, loadPromotions, NO_PROMOTED_PICKS, promotionOn, withCarried, type OwnReachOf } from './promotions.ts';
 import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
@@ -675,6 +681,8 @@ export interface RisingFrame {
    * good all the same (`beyondCap`), at their own place on the scroll. Absent on a frame built by hand.
    */
   readonly lateJoins?: readonly WireRisingPost[];
+  /** The feed members this frame found to be promotions (promotions.ts): withdrawn from the scroll by the writer. Absent on a frame built by hand. */
+  readonly promotions?: ReadonlySet<string>;
 }
 
 /** What a post's newest split crypto read said (0064): other accounts' coin talk, and the author's own. */
@@ -885,8 +893,11 @@ export async function buildRising(
   const coinFirst = await loadCoinFirst(db, nowMs, policy, only, membership === null ? [] : [...membership.fyp]);
   /* ★ THE LATE ROUTE's posts (late-no-coin.ts): found after the six hours, no coin running yet; loaded whatever their age and whoever found them. */
   const late = await loadLateNoCoin(db, nowMs, policy, only);
-  /* ★ THE RUNNING PICKS (running-picks.ts): loaded whatever their age, and whichever route stored them. */
-  const running = await loadRunningPicks(db, nowMs, policy, only);
+  /* ★ THE PICKS ON PROMOTIONS (promotions.ts): each one's coin is its original's, young or running. */
+  const ownReachOf: OwnReachOf = (source) => policy.rising.fypMinReach * (source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1);
+  const promoted = promotionOn(policy) ? await loadPromotedPicks(db, nowMs, ownReachOf, policy) : NO_PROMOTED_PICKS;
+  /* ★ THE RUNNING PICKS (running-picks.ts): loaded whatever their age, and whichever route stored them; a promotion's, as its original. */
+  const running = await loadRunningPicks(db, nowMs, policy, only, promoted.byPromo);
   const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys()])]);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
@@ -940,7 +951,10 @@ export async function buildRising(
   /* ★ ONE POST, ONE COIN (one-coin-cards.ts): only in live mode is the runner's pick read, and then
      it is the card's coin, or Create; in shadow nothing here is read and every card is as before. */
   const live = policy.oneCoin.mode === 'live';
-  const picks: ReadonlyMap<string, CardPick> = live ? await loadPostPicks(db, rowIds) : new Map();
+  /* ★ An original carries its promotion's coin where it has none picked of its own (promotions.ts `withCarried`). */
+  const picks: ReadonlyMap<string, CardPick> = live ? withCarried(await loadPostPicks(db, rowIds), promoted.byOriginal, rowIds) : new Map();
+  /* ★ THE PROMOTIONS (promotions.ts): a post only pointing at another account's bigger post is on neither feed, by any route. */
+  const promotions = promotionOn(policy) ? await loadPromotions(db, rowIds, ownReachOf) : new Map();
   const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address] : [])))]) : new Map();
   const pickOptions = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
   const withPick = (row: RisingRow, post: WireRisingPost, lookup: PostLookup | null): WireRisingPost => {
@@ -1043,7 +1057,7 @@ export async function buildRising(
   /* One post whose own words carry a word the wire refuses (a post about a vendor, say) is left out
      of this frame on its own, printed, as a launch is in main.ts: it must never stop both feeds
      updating, which is what one such post did for five hours on 2026-10-15. */
-  const posts = rows.flatMap((row) => {
+  const built = rows.flatMap((row) => {
     try {
       return [build(row)];
     } catch (error: unknown) {
@@ -1052,6 +1066,9 @@ export async function buildRising(
       return [];
     }
   });
+  /* ★ A PROMOTION IS NEVER SHOWN: taken out after every route has had its say, so none puts it back.
+     Its card is still projected for the members list below; leaving the frame records no reason. */
+  const posts = built.filter((p) => !promotions.has(p.post.id));
 
   /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
      the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
@@ -1086,11 +1103,13 @@ export async function buildRising(
     if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
     if (l !== undefined && 'coins' in l && l.match?.kind === 'matched') sameNameEvidence.set(id, new Map([[l.match.coin.address, l.match.evidence]]));
   };
-  const members = posts.filter((p) => membership?.all.has(p.post.id) === true).map((p) => p.post);
+  const members = built.filter((p) => membership?.all.has(p.post.id) === true).map((p) => p.post);
   /* A member's list of same-named coins is kept with its card, so See N coins opens on an old card too. */
   for (const p of posts) if (!ids.has(p.post.id) && membership?.all.has(p.post.id) === true && p.sameName.length > 0) sameName.set(p.post.id, p.sameName);
   for (const id of sameName.keys()) evidenceOf(id);
-  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members, coinFirst: coinFirstAlone, late: lateIds, lateJoins };
+  /* The members that are promotions: withdrawn from the scroll too (feed-members.ts), so none stays on screen. */
+  const promotionMembers = new Set([...promotions.keys()].filter((id) => membership?.all.has(id) === true));
+  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members, coinFirst: coinFirstAlone, late: lateIds, lateJoins, promotions: promotionMembers };
 }
 
 /**
@@ -1361,7 +1380,7 @@ export async function projectRisingFeeds(
   await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular, ...(frame.lateJoins ?? [])].map((p) => p.id))]));
   const written = (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
   /* The late route's posts under the cut join For You's list beside the frame's own (late-no-coin.ts). */
-  if (membership !== null) await writeMembership(db, nowMs, { fyp: [...frame.fyp, ...(frame.lateJoins ?? [])], popular: frame.popular }, frame.members, membership.refresh);
+  if (membership !== null) await writeMembership(db, nowMs, { fyp: [...frame.fyp, ...(frame.lateJoins ?? [])], popular: frame.popular }, frame.members, membership.refresh, [...(frame.promotions ?? [])]);
   /* The posts shown by the coin-first route alone: recorded once, so each joins by it once (0116). */
   await recordAdmitted(db, frame.fyp.filter((p) => frame.coinFirst?.has(p.id) === true).map((p) => p.id), nowMs);
   return written;
