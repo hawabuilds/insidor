@@ -29,6 +29,7 @@ function deps(coins: RunnerCoinRow[], posts: RunnerPostRow[], called: string[] =
     pictureSimilarity: async () => new Map(),
     ownerCalled: async (ids) => new Set(ids.filter((id) => called.includes(id))),
     picks: async () => new Map(),
+    peaks: async (addresses) => new Map(coins.filter((c) => addresses.includes(c.address)).map((c) => [c.address, c.peakCapUsd] as const)),
     upsertCandidates: async (rows) => void rec.candidates.push(...rows),
     writePicks: async (picks) => void rec.picks.push(...picks),
     ownerWallets: ['owner-wallet'],
@@ -63,6 +64,37 @@ test('the owner\'s call stands: the coin is told, the pick is not written', asyn
   assert.equal(out[0]?.ownerCalled, true);
   assert.equal(rec.picks.length, 0);
   assert.equal(rec.alerts[0]?.facts['linked'], false);
+});
+
+test('★ a same-name copy that ran lower never takes the post from the coin that ran higher', async () => {
+  /* 24 Oct, the first pass: $YMB at $793K, and a copy launched two minutes later at $730K, both tied to @TocRadio. */
+  const YMB: RunnerCoinRow = { ...BITCHES, address: 'ozs7', assetKey: 'solana:ozs7', peakCapUsd: 792_821 };
+  const COPY: RunnerCoinRow = { ...BITCHES, address: '9HCJ', assetKey: 'solana:9HCJ', launchedAtMs: BITCHES.launchedAtMs! + 2 * MIN, peakCapUsd: 729_895 };
+  const { d, rec } = deps([YMB, COPY], [ORIGIN]);
+  const held: MissedRunnerDeps = {
+    ...d,
+    picks: async (ids) => new Map(rec.picks.filter((p) => ids.includes(p.subjectId)).slice(-1).map((p) => [p.subjectId, { subjectId: p.subjectId, address: p.address, outcome: 'picked' as const, decidedAtMs: NOW, evidence: p.evidence }] as const)),
+  };
+  const out = await missedRunnerPass(held, newMissedRunnerState());
+  assert.deepEqual(rec.picks.map((p) => p.address), ['ozs7']);
+  assert.equal(out[1]?.linked, false);
+  assert.equal(out[1]?.keptBigger, true);
+  assert.equal(rec.alerts[1]?.facts['keptBigger'], true);
+});
+
+test('★ the matcher\'s own coin is kept when it ran higher ($FOMO over $fomo)', async () => {
+  const FOMO_SMALL: RunnerCoinRow = { ...BITCHES, address: 'Ewfot', assetKey: 'solana:Ewfot', peakCapUsd: 667_201 };
+  const { d, rec } = deps([FOMO_SMALL], [ORIGIN]);
+  const out = await missedRunnerPass(
+    {
+      ...d,
+      picks: async (ids) => new Map(ids.map((id) => [id, { subjectId: id, address: 'd2m8', outcome: 'picked' as const, decidedAtMs: NOW, evidence: {} }] as const)),
+      peaks: async () => new Map([['d2m8', 1_803_609]]),
+    },
+    newMissedRunnerState(),
+  );
+  assert.equal(rec.picks.length, 0);
+  assert.equal(out[0]?.keptBigger, true);
 });
 
 test('a coin with no post we hold is still told', async () => {
