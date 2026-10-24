@@ -40,7 +40,7 @@ export function WarCard({ stories, place, now }: { stories: readonly Story[]; pl
       }}>
         <div className={styles['top']}>
           {place !== null ? <span className={styles['place']}>{place}</span> : null}
-          <Thumb url={first?.thumbUrl ?? null} file={first?.thumbFile ?? null} size={64} radius={16} />
+          <Thumb url={first?.thumbUrl ?? null} file={first?.thumbFile ?? null} size={64} radius={16} hideEmpty />
           <div className={styles['text']}>
             <b className={styles['title']}>{WAR_TITLE}</b>
             <span className={styles['warFights']}>{fights.map((f) => f.name).join(', ')}</span>
@@ -75,7 +75,7 @@ function WarSheet({ loaded, now, onClose }: { loaded: readonly Story[]; now: num
             <h3 className={styles['warName']}>{f.name}</h3>
             {f.stories.map((s) => (
               <button key={s.id} type="button" className={styles['warRow']} onClick={() => go(s)}>
-                <Thumb url={s.thumbUrl} file={s.thumbFile} size={44} radius={12} />
+                <Thumb url={s.thumbUrl} file={s.thumbFile} size={44} radius={12} hideEmpty />
                 <span className={styles['text']}>
                   <b className={styles['warRowTitle']}>{s.title}</b>
                   <span className={styles['sub']}>
