@@ -56,7 +56,7 @@ import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-t
 import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, searchActorCostUsd, searchActorQuoteUsd, SEARCH_POST_USD, SOURCE, TRENDS, VENDOR } from './capabilities.ts';
 import { FEED_ENDPOINT, FEED_PRICES, FEED_VENDOR, feedRegions, fromTrendingFeed, type TrendingFeedClient } from './trending-feed.ts';
 import { fromTrendsRows, toTrendsInput, trendRegions, trendsRunUsd, TRENDS_MAX_PER_REGION } from './trends.ts';
-import type { TikTokClient } from './client.ts';
+import { isPathSegment, postUrl, type TikTokClient } from './client.ts';
 import { discoverRun, SEARCH_ORDERS, wordsOf, type SearchOrder } from './discover.ts';
 import { SEARCH_ACTOR_RESULTS_PER_WORD } from './search-actor.ts';
 import { addressable, chunk, observeBatch, type Addressed } from './observe.ts';
@@ -488,6 +488,8 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
         }),
 
     parseLink: (url: string) => parseLinkOf(url),
+    /* This source addresses a post by its account: with none known, there is no link to make. */
+    postLink: (sourceItemId: string, handle: string | null) => (handle === null || !isPathSegment(handle) || !isPathSegment(sourceItemId) ? null : postUrl(handle, sourceItemId)),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
 
     toItem(raw: unknown, at: Millis): Item {
