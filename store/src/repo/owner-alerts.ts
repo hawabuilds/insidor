@@ -44,6 +44,15 @@ export class PgOwnerAlertRepo {
     return rows.map((r) => r.user_id);
   }
 
+  /**
+   * Every profile, for the one runner alert the owner may widen to everyone (the early pick's push,
+   * Policy.oneCoin.early.push.everyone). Ids only; the deliverer still reads each person's settings.
+   */
+  async everyoneIds(): Promise<readonly string[]> {
+    const rows = await this.#db.query<{ user_id: string }>('select user_id from people.profile');
+    return rows.map((r) => r.user_id);
+  }
+
   async queue(userId: string, a: OwnerAlert): Promise<void> {
     await this.#db.query(
       'insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ($1, $2, $3, $4, $5, $6)',

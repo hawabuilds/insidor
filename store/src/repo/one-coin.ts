@@ -844,6 +844,42 @@ export class PgOneCoinRepo {
     return out;
   }
 
+  /**
+   * For the early pick's push (services/runner work/early-pick.ts): when each post was first on For
+   * You (null: never), and whether For You took it by the coin-first route (0116/0117), whose coin
+   * always came first. A database before 0117 reads every post as not coin-first.
+   */
+  async shownOf(itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly forYouMs: number | null; readonly coinFirst: boolean }>> {
+    const out = new Map<string, { forYouMs: number | null; coinFirst: boolean }>();
+    if (itemIds.length === 0) return out;
+    const ids = [...new Set(itemIds)];
+    const shown = await this.#db.query<{ item_id: string; at: string }>(
+      `select item_id, min(first_shown_at) as at from public.feed_post where feed_id = 'fyp' and item_id = any($1::text[]) group by item_id`,
+      [ids],
+    );
+    for (const id of ids) out.set(id, { forYouMs: null, coinFirst: false });
+    for (const r of shown) out.set(r.item_id, { forYouMs: ms(r.at), coinFirst: false });
+    try {
+      const cf = await this.#db.query<{ item_id: string }>(`select item_id from internal.coin_first_post where item_id = any($1::text[]) and admitted_at is not null`, [ids]);
+      for (const r of cf) out.set(r.item_id, { forYouMs: out.get(r.item_id)?.forYouMs ?? null, coinFirst: true });
+    } catch (e) {
+      if (!missingTable(e)) throw e;
+    }
+    return out;
+  }
+
+  /** What a push about a post's coin says: the coin's ticker, and the post's words and poster. Null fields when unknown. */
+  async pushFacts(itemId: string, address: string): Promise<{ readonly ticker: string | null; readonly excerpt: string | null; readonly handle: string | null; readonly image: string | null }> {
+    const [coin] = await this.#db.query<{ symbol: string | null; image_uri: string | null }>(`select symbol, image_uri from public.asset where address = $1 limit 1`, [address]);
+    const [post] = await this.#db.query<{ body: string | null; handle: string | null }>(
+      `select i.body, au.handle from public.item i left join public.author au on au.author_key = i.author_key where i.item_id = $1`,
+      [itemId],
+    );
+    const text = (v: string | null | undefined): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+    const image = text(coin?.image_uri);
+    return { ticker: text(coin?.symbol), excerpt: text(post?.body), handle: text(post?.handle), image: image !== null && /^https:\/\/\S+$/.test(image) ? image : null };
+  }
+
   /** The newest applied refit's bars (0113 one_coin_fit), or null. */
   async appliedFit(): Promise<Readonly<Record<string, number>> | null> {
     try {

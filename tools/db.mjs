@@ -6,7 +6,7 @@
  *   node tools/db.mjs migrate   apply store/migrations/*.sql, then make the app login user
  *   node tools/db.mjs reset     drop the database, recreate it, migrate  (destructive)
  *   node tools/db.mjs seed      domain facts only            (tools/seed.mjs)
- *   node tools/db.mjs market    read markets, append rows    (services/market)
+ *   node tools/db.mjs market    read markets, append rows    (services/market; `market light`: the first-hour coins only)
  *   node tools/db.mjs project   derive the wire projection   (services/project)
  *   node tools/db.mjs pairs     derive the pairs projection  (services/project)
  *   node tools/db.mjs sources   derive the source indicator  (services/project)
@@ -507,7 +507,8 @@ async function market() {
         '  an absence — which is honest, and is also every figure on the board.',
     );
   }
-  await run(['--experimental-strip-types', MARKET], 'the market reader');
+  /* `market light`: the light pass, only the tied candidates in their first hour (main.ts). */
+  await run(['--experimental-strip-types', MARKET, ...process.argv.slice(3)], 'the market reader');
 }
 
 /**

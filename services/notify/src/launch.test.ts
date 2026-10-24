@@ -35,15 +35,21 @@ test('★ never a hand-over: a post whose first pick was not pushed stays spent 
   assert.deepEqual(handover.due, [], 'its later coin is a hand-over, never news');
 });
 
-test('★ the runner hand-over is pushed past rule 1, once per post', () => {
+test('★ the runner hand-over is pushed past rule 1, once a runner — every new runner of the post', () => {
   /* 24 Oct: $CAT, launched before the cat post was on For You, never pushed; baldcat ran 73 minutes after its launch. */
   const older = launchEvents([pick('p:x:cat', 'CAT', { launchedMs: ON_FYP - 120 * MIN })], [], new Set(), NOW, L);
   const runners = new Map([['x:cat', 'BALDCAT']]);
   const r = launchEvents([pick('p:x:cat', 'BALDCAT')], [], new Set(older.keys), NOW, L, runners);
   assert.deepEqual(r.due.map((d) => [d.address, d.runner]), [['BALDCAT', true]]);
-  assert.deepEqual(r.keys, ['h:x:cat', 'c:BALDCAT']);
-  const back = launchEvents([pick('p:x:cat', 'CAT')], [], new Set([...older.keys, ...r.keys]), NOW, L, new Map([['x:cat', 'CAT']]));
-  assert.deepEqual(back.due, [], 'a second hand-over on the post is never pushed');
+  assert.deepEqual(r.keys, ['h:x:cat|BALDCAT', 'c:BALDCAT']);
+  const back = launchEvents([pick('p:x:cat', 'CAT', { launchedMs: ON_FYP - 120 * MIN })], [], new Set([...older.keys, ...r.keys]), NOW, L, new Map([['x:cat', 'CAT']]));
+  assert.deepEqual(back.due, [], 'handed back to a coin launched before For You: not "caught early"');
+  /* A third coin runs past baldcat later: pushed too (the owner, 2026-10-24: "notify on every new runner"). */
+  const third = launchEvents([pick('p:x:cat', 'NEXT')], [], new Set([...older.keys, ...r.keys]), NOW, L, new Map([['x:cat', 'NEXT']]));
+  assert.deepEqual(third.due.map((d) => [d.address, d.runner]), [['NEXT', true]]);
+  /* Handed back to baldcat: already pushed, nothing again. */
+  const again = launchEvents([pick('p:x:cat', 'BALDCAT')], [], new Set([...older.keys, ...r.keys, ...third.keys]), NOW, L, runners);
+  assert.deepEqual(again.due, []);
   const notYet = launchEvents([pick('p:x:cat', 'CAT', { launchedMs: ON_FYP - 120 * MIN })], [], new Set(older.keys), NOW, L, runners);
   assert.deepEqual(notYet, { due: [], keys: [] }, 'the card not yet showing the new coin: waits, nothing spent');
   const ordinary = launchEvents([pick('p:x:cat', 'BALDCAT')], [], new Set(older.keys), NOW, L);

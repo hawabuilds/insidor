@@ -198,6 +198,8 @@ export { biggestOfName, hashGap, launchMatches, namedInText, oneCoinBars, pickOn
 export { statedInText, statesName, type StatedBars } from './match/stated-name.ts';
 export { rankRunnerPosts, runnerTies, type RunnerBars, type RunnerCoin, type RunnerMatch, type RunnerPost } from './match/missed-runner.ts';
 export { runnerHandover, runsAt, type CoinHour, type HandoverBars, type HandoverCoin, type HandoverHeld, type HandoverOutcome } from './match/runner-handover.ts';
+/* The early pick under $20K, on the launch wave's market readings (match/early-pick.ts, Policy.oneCoin.early). */
+export { earlyPick, riseOf, type EarlyBars, type EarlyCoin, type EarlyPick } from './match/early-pick.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, PriorBars, PriorCoin, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
 export { coinAt, replayMerit, replayTimeline, scoreReplay, tradesAt } from './match/one-coin-replay.ts';
 /* The coin-first route onto For You: what the runner does for a post a running coin links, and whether it joins (match/coin-first.ts). */
