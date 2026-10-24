@@ -74,8 +74,8 @@ export { barWindowMs, linkReach, standsOnViralPost, traceStories, withReproducti
 export { cjkPieces, contentWords, phrasesOf, rarePhrases, storyWords } from './group/narrative-phrase.ts';
 export type { OriginInput, OriginNarrative, OriginTie, StoryMerge, StoryPlan, TracedPost } from './group/narrative-origin.ts';
 /* Meme-war posts by the country they name in their own language (group/fight-native.ts). */
-export { answerHoldsPair, canonicalCountry, countriesNamed, fightPairsOf, planFights } from './group/fight-native.ts';
-export type { FightNarrative, FightPlan, FightPost } from './group/fight-native.ts';
+export { answerHoldsPair, canonicalCountry, countriesIn, countriesNamed, fightPairsOf, planFights, warWords } from './group/fight-native.ts';
+export type { FightNarrative, FightPlan, FightPost, PlacedNarrative } from './group/fight-native.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';
 export type { TrendCoin, TrendFacts, TrendInput, TrendPost, TrendStanding } from './group/narrative-trend.ts';
@@ -156,7 +156,7 @@ export type { VelocityRank } from './track/velocity.ts';
 export { gainIn as sortGainIn, runsOf as sortRunsOf, sortOrder, sortPlace, riserPlace, riserSpeeds, trendFloor, trendingList, viewedPlace } from './rank/post-sorts.ts';
 export type { GainRun, PostSortBy, SortGroup, SortPlace, SortReading } from './rank/post-sorts.ts';
 export { floorSpeed, narrativeSpeeds, narrativeTrending, narrativeTrendingIds } from './rank/narrative-sorts.ts';
-export type { HourGain, NarrativePostReadings, NarrativeSpeeds, TrendingNarrative } from './rank/narrative-sorts.ts';
+export type { HourGain, NarrativePostReadings, NarrativeSpeeds, SteadyNarrative, TrendingNarrative } from './rank/narrative-sorts.ts';
 
 /**
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass

@@ -148,7 +148,7 @@ try {
     const joins = plan.joins ?? new Map();
     const joinIds = [...new Set([...joins.values()].flat().map((x) => x.itemId))];
     const fj = await facts(db, joinIds);
-    say(`## 2b. Narratives given loose posts that quote them or say their words: ${joins.size} (${joinIds.length} posts; quoted ${[...joins.values()].flat().filter((x) => x.tie === 'quoted').length}, same words ${[...joins.values()].flat().filter((x) => x.tie === 'phrase').length})`);
+    say(`## 2b. Narratives given loose posts that quote them or say their words: ${joins.size} (${joinIds.length} posts; quoted ${[...joins.values()].flat().filter((x) => x.tie === 'quoted').length}, same words ${[...joins.values()].flat().filter((x) => x.tie === 'phrase').length}, same rare single words ${[...joins.values()].flat().filter((x) => x.tie === 'words').length})`);
     say();
     for (const [id, list] of joins) {
       say(`- ${t(id)}`);

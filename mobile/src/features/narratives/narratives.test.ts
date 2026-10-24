@@ -6,7 +6,7 @@ import type { Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { speedLine } from '../feed/feed-sort.ts';
 import { storyCoinState } from '../narrative/story-coin.ts';
-import { DEFAULT_CHOICE, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, starredNarratives, viewsText, watchLine, type Choice } from './narrative-order.ts';
+import { DEFAULT_CHOICE, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, starredNarratives, viewsText, viralLine, watchLine, type Choice } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 const base = list[0] as Story;
@@ -15,7 +15,7 @@ const measured = (v: number | null) => (v === null ? { known: false as const, pe
 const story = (id: string, w: Record<number, [number | null, number, number]>, extra: Partial<Story> = {}): Story => ({
   ...base,
   id,
-  inWindow: new Map(Object.entries(w).map(([h, [g, posts, place]]) => [Number(h), { viewsGained: measured(g), newPosts: posts, trendingPlace: place }] as const)),
+  inWindow: new Map(Object.entries(w).map(([h, [g, posts, place]]) => [Number(h), { viewsGained: measured(g), newPosts: posts, trendingPlace: place, viralAccounts: null, viralMinViews: null }] as const)),
   ...extra,
 });
 const ids = (xs: readonly Story[]) => xs.map((s) => s.id);
@@ -116,5 +116,15 @@ test('the Watchlist card line is posts and views, and unknown views are said, ne
   assert.deepEqual(watchLine({ ...base, postCount: 12, viewsTotal: { known: true, amount: 3_400_000 } }), ['12 posts', '3.4M views']);
   assert.deepEqual(watchLine({ ...base, postCount: 1, viewsTotal: null, reach: { known: true, amount: 900 } }), ['1 post', '900 views']);
   assert.deepEqual(watchLine({ ...base, postCount: 2, viewsTotal: unknown, reach: unknown }), ['2 posts', 'views not reported']);
+});
+
+test('★ Trending says the viral posts a story is listed by, added up under the meme-war card; an unsaid count is no line', () => {
+  const viral = (id: string, n: number | null): Story => ({ ...base, id, inWindow: new Map([[24, { viewsGained: measured(1), newPosts: 1, trendingPlace: 1, viralAccounts: n, viralMinViews: n === null ? null : 40_000 }]]) });
+  assert.equal(viralLine([viral('fj', 8)]), 'Posts over 40K views from 8 accounts today');
+  assert.equal(viralLine([viral('fj', 8), viral('ct', 1)]), 'Posts over 40K views from 9 accounts today');
+  assert.equal(viralLine([viral('ct', 1)]), 'Posts over 40K views from 1 account today');
+  assert.equal(viralLine([viral('x', 0)]), null);
+  assert.equal(viralLine([viral('x', null)]), null);
+  assert.equal(viralLine([{ ...base, inWindow: null }]), null);
 });
 
