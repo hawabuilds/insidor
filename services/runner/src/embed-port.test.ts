@@ -1,0 +1,45 @@
+/**
+ * The embedding switch: the policy's space picks the port, the environment only makes it
+ * reachable, and a mismatched or unconfigured pairing is dormant with a reason.
+ */
+
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import { DEFAULT_POLICY } from '@insidor/contracts';
+import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import { POST_SPACE as SELF_POST, SPACE as SELF } from '@insidor/embed-selfhost';
+
+import { embedPortFor } from './embed-port.ts';
+
+const meter = {} as Meter;
+const both = {
+  embeddings: { state: 'configured', apiKey: 'k', baseUrl: 'https://vendor.example' },
+  selfEmbed: { state: 'configured', baseUrl: 'http://embed.internal:8790', secret: 's'.repeat(30) },
+} as const;
+
+test('★ the default policy keeps the hosted port, whatever else is configured', () => {
+  const got = embedPortFor(both, DEFAULT_POLICY.group.image, meter);
+  assert.equal(got.port?.space, DEFAULT_POLICY.group.image.space);
+  assert.equal(got.port?.postSpace, DEFAULT_POLICY.group.image.postSpace);
+  assert.ok(!got.port?.id.includes('embed-service'));
+});
+
+test('★ the policy naming our own space switches to our own service', () => {
+  const got = embedPortFor(both, { space: SELF, postSpace: SELF_POST }, meter);
+  assert.equal(got.port?.space, SELF);
+  assert.equal(got.port?.postSpace, SELF_POST);
+  assert.ok(got.port?.id.includes('embed-service'));
+});
+
+test('a space whose port is not configured is dormant, with the reason', () => {
+  const got = embedPortFor({ ...both, selfEmbed: { state: 'dormant' } }, { space: SELF, postSpace: SELF_POST }, meter);
+  assert.equal(got.port, null);
+  assert.match(got.dormant ?? '', /EMBED_SERVICE_URL/);
+});
+
+test('★ a picture space and a post space of two different models is refused', () => {
+  const got = embedPortFor(both, { space: SELF, postSpace: DEFAULT_POLICY.group.image.postSpace }, meter);
+  assert.equal(got.port, null);
+  assert.match(got.dormant ?? '', /no embedding port/);
+});
