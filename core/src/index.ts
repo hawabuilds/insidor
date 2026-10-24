@@ -197,6 +197,7 @@ export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts
 export { biggestOfName, hashGap, launchMatches, namedInText, oneCoinBars, pickOneCoin, priorCoins, statedNamesOf } from './match/one-coin.ts';
 export { statedInText, statesName, type StatedBars } from './match/stated-name.ts';
 export { rankRunnerPosts, runnerTies, type RunnerBars, type RunnerCoin, type RunnerMatch, type RunnerPost } from './match/missed-runner.ts';
+export { runnerHandover, runsAt, type CoinHour, type HandoverBars, type HandoverCoin, type HandoverHeld, type HandoverOutcome } from './match/runner-handover.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, PriorBars, PriorCoin, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
 export { coinAt, replayMerit, replayTimeline, scoreReplay, tradesAt } from './match/one-coin-replay.ts';
 /* The coin-first route onto For You: what the runner does for a post a running coin links, and whether it joins (match/coin-first.ts). */

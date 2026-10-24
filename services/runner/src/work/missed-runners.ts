@@ -41,6 +41,7 @@ import { runnerKey } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
 import type { OwnerQueue } from '../supplier-warnings.ts';
+import { heldByRunner } from './runner-handover.ts';
 
 export interface MissedRunnerDeps {
   readonly runners: (sinceMs: number, minCapUsd: number, origins: readonly string[], limit: number, minLiquidityUsd: number, minReadings: number) => Promise<readonly RunnerCoinRow[]>;
@@ -68,7 +69,7 @@ export interface MissedRunner {
   readonly weighed: readonly RunnerMatch[];
   readonly linked: boolean;
   readonly ownerCalled: boolean;
-  /** Not linked because the post's own coin ran as high or higher (`biggerCoinHeld`). */
+  /** Not linked because the post's own coin ran as high or higher (`biggerCoinHeld`), or the runner hand-over took the post from this very coin. */
   readonly keptBigger: boolean;
 }
 
@@ -147,7 +148,9 @@ export async function missedRunnerPass(deps: MissedRunnerDeps, state: MissedRunn
       const called = best === undefined ? new Set<string>() : await deps.ownerCalled([best.itemId]);
       const ownerCalled = best !== undefined && called.has(best.itemId);
       const prev = best === undefined || ownerCalled ? new Map<string, StoredPick>() : await deps.picks([best.itemId]);
-      const keptBigger = best !== undefined && (await biggerCoinHeld(deps, prev.get(best.itemId), coin, now - P.seenWithinMs));
+      /* ★ Nor back to the coin the runner hand-over took the post from (work/runner-handover.ts): only that rule may move it back. */
+      const handedFrom = best !== undefined && heldByRunner(prev.get(best.itemId)) && prev.get(best.itemId)?.evidence['handedOverFrom'] === coin.address;
+      const keptBigger = best !== undefined && (handedFrom || (await biggerCoinHeld(deps, prev.get(best.itemId), coin, now - P.seenWithinMs)));
       const linked = best !== undefined && !ownerCalled && !keptBigger;
       if (best !== undefined && linked) {
         const ties = [...best.ties, 'missed_runner'];

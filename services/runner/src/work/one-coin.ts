@@ -32,7 +32,11 @@
  *            narrative one of them belongs to (over all its posts' candidates): the rule on the
  *            trade feed's minutes when it is running, else on market readings — the pick's
  *            evidence says which, with the reason "no trade data" — written with every change of
- *            coin recorded (coin_pick_change).
+ *            coin recorded (coin_pick_change). A post whose pick the runner hand-over wrote is
+ *            left to that rule.
+ *   hand over every Policy.runnerLink.handover.everyMs, each held post pick against the later coins
+ *            made for the post that run now (work/runner-handover.ts): a pick held on a dead first
+ *            coin goes to the runner.
  *
  * ★ THE STATED NAME (Policy.runnerLink.stated, core match/stated-name.ts). A launch carrying a post's
  * whole stated name and ticker ties it up to two days after the post, and a post new to this process
@@ -59,6 +63,7 @@ import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, 
 
 import { errorText, type Logger } from '../log.ts';
 import { HASH_VERSION } from './picture-hash.ts';
+import { heldByRunner, runnerHandoverPass, type Handover, type RunnerHandoverDeps } from './runner-handover.ts';
 
 /** The recent posts are read again this often, not every pass: a launch is rematched for minutes, so a post judged since is still met. */
 const POSTS_REFRESH_MS = 30_000;
@@ -91,6 +96,11 @@ export interface OneCoinDeps {
    * their stated-name tie is never used, so the call stands. Absent: none.
    */
   readonly ownerCalled?: (itemIds: readonly string[]) => Promise<ReadonlySet<string>>;
+  /**
+   * The runner hand-over's own reads (work/runner-handover.ts, Policy.runnerLink.handover): the held
+   * post picks and the coins' last hours. Absent: no hand-over step, as before policy.v160.
+   */
+  readonly handover?: Pick<RunnerHandoverDeps, 'heldPostPicks' | 'lastHours'>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -104,9 +114,11 @@ export interface OneCoinState {
   posts: readonly RecentPost[];
   existingDone: Set<string>;
   watchMissingSaid: boolean;
+  /** When the runner hand-over step last ran: it runs every Policy.runnerLink.handover.everyMs, not every pass. */
+  handoverAt: number;
 }
 
-export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false });
+export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0 });
 
 export interface OneCoinResult {
   readonly launches: number;
@@ -115,6 +127,8 @@ export interface OneCoinResult {
   readonly judged: number;
   readonly changed: number;
   readonly basis: 'trades' | 'market_readings' | null;
+  /** The runner hand-overs this pass wrote (empty on a pass the step did not run). */
+  readonly handovers: readonly Handover[];
 }
 
 const evidenceOf = (m: LaunchMatch): Record<string, unknown> => ({ ties: m.evidence, hashDistance: m.hashDistance, similarity: m.similarity, launchedAfterMs: m.launchedAfterMs, ...(m.linkedThrough === null ? {} : { linkedThrough: m.linkedThrough }) });
@@ -305,7 +319,8 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const withoutStated = (rs: readonly CandidateRow[]): CandidateRow[] => rs.map((r) => (Array.isArray(r.evidence['ties']) && r.evidence['ties'].includes('name_stated') ? { ...r, evidence: { ...r.evidence, ties: r.evidence['ties'].filter((t: unknown) => t !== 'name_stated') } } : r));
 
   const prevPosts = await repo.picks('post', [...byPost.keys()]);
-  const postPicks = [...byPost].map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
+  /* ★ A pick the runner hand-over wrote is that rule's (work/runner-handover.ts): judged here again on first-hour buying, it would go straight back. */
+  const postPicks = [...byPost].filter(([id]) => !heldByRunner(prevPosts.get(id))).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);
 
   const rowsByItem = new Map<string, CandidateRow[]>();
@@ -317,10 +332,30 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   });
   const changedNarratives = await repo.writePicks('narrative', narrativePicks, prevNarratives, P.mode, now);
 
-  const changed = changedPosts + changedNarratives;
+  /* ── hand over: a later coin made for a held post, running now ──── */
+  let handovers: readonly Handover[] = [];
+  const H = deps.policy.runnerLink.handover;
+  if (deps.handover !== undefined && H.on && now - state.handoverAt >= H.everyMs) {
+    state.handoverAt = now;
+    try {
+      handovers = await runnerHandoverPass({
+        ...deps.handover,
+        candidatesOf: (ids) => repo.candidatesOf(ids),
+        ...(deps.ownerCalled === undefined ? {} : { ownerCalled: deps.ownerCalled }),
+        writePicks: (picks, previous, mode, nowMs) => repo.writePicks('post', picks, previous, mode, nowMs),
+        policy: deps.policy,
+        log: deps.log,
+        now: () => now,
+      });
+    } catch (e) {
+      deps.log.error('one coin: the runner hand-over step failed; trying again next time', { err: errorText(e) });
+    }
+  }
+
+  const changed = changedPosts + changedNarratives + handovers.length;
   const basis = byPost.size === 0 ? null : running ? 'trades' : 'market_readings';
   if (rows.length > 0 || changed > 0) {
     deps.log.info('one coin: launches matched and picks judged', { launches: launches.length, candidates: rows.length, existing, posts: postPicks.length, narratives: narrativePicks.length, changed, basis, mode: P.mode });
   }
-  return { launches: launches.length, candidates: rows.length, existing, judged: postPicks.length + narrativePicks.length, changed, basis };
+  return { launches: launches.length, candidates: rows.length, existing, judged: postPicks.length + narrativePicks.length, changed, basis, handovers };
 }

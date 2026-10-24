@@ -4879,6 +4879,30 @@ export interface RunnerLinkPolicy {
     /** Queue the owner's alert for each new missed runner. */
     readonly alert: boolean;
   };
+  /**
+   * ★ THE RUNNER HAND-OVER (policy.v160, the owner, 2026-10-24: a later coin that runs on a post we
+   * already hold must not be stuck behind the first coin as a "copycat" — "I want to be notified and
+   * catch the runner early", pushed to everyone). Every `everyMs`, each post whose pick is held (picked,
+   * updated within `running.pickWithinMs`) is looked at with the coins tied to it by a link (one hop
+   * through a promotion included, 0132) or its whole stated name that launched AFTER the held coin. One
+   * of them takes the pick (evidence `runner_handover`) when, on fresh readings
+   * (Policy.market.readingFreshnessMs), BOTH hold:
+   *   - it is running at the saved-post push's bars (Policy.notify.savedPost: dollars AND trades in the
+   *     last hour) and trades at the pick's own cap bar (Policy.oneCoin.minCapUsd);
+   *   - its last hour's dollars are at least Policy.oneCoin.handOverRatio times the held coin's.
+   * Never over the owner's coin call. A coin it handed the pick to is never re-judged by the one-coin
+   * rule; only this rule moves it again, and the coin it was taken from may take it back only by
+   * this same test against the new one (core match/runner-handover.ts). No number of its own: every
+   * bar is one the owner already set.
+   *
+   *   push   the post's coin push to everyone (services/notify launch.ts), once per post, under the
+   *          launch push's own rules and daily cap. Off: the pick moves and nobody is told.
+   */
+  readonly handover: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly push: boolean;
+  };
 }
 
 /**
@@ -5210,7 +5234,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v159',
+  version: 'policy.v160',
 
   admit: {
     maxAgeMin: 240,
@@ -7607,6 +7631,12 @@ const POLICY_V1: Policy = {
     stated: { on: true, withinMs: 172_800_000, genericWords: ['coin', 'token'] },
     running: { on: true, minCapUsd: 250_000, readingWithinMs: 1_800_000, pickWithinMs: 172_800_000, marketReadsPerPass: 60 },
     missed: { on: true, everyMs: 600_000, seenWithinMs: 86_400_000, minCapUsd: 500_000, minReadings: 2, postLookbackMs: 172_800_000, originShareOfTop: 0.5, perPass: 50, alert: true },
+    /* policy.v160. Replayed read-only on production from 23 Oct 23:21 UTC (the first reading with a
+       last hour, 0127) to 24 Oct ~13:30: 2 posts handed over (baldcat over $CAT 73 minutes after its
+       launch, at $53K and $530K traded in the hour against $0; Kugen over $Friendship at $34K). Without
+       the $15K cap bar 9, seven of them $3-6K coins churned past $20K in an hour by bots that never
+       reached $17K. A minute: the market reader lands a reading about every five. */
+    handover: { on: true, everyMs: 60_000, push: true },
   },
 
   scorers: {

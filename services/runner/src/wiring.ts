@@ -1672,6 +1672,8 @@ export async function withRuntime<T>(
                 {
                   repo: oneCoinRepo,
                   coinFirstLaunches: (sinceMs, limit, hashVersion) => new PgOneCoinRepo(db).coinFirstLaunches(sinceMs, limit, hashVersion),
+                  /* The runner hand-over's reads (work/runner-handover.ts): the held picks and the coins' last hours. */
+                  handover: { heldPostPicks: (sinceMs, limit) => oneCoinRepo.heldPostPicks(sinceMs, limit), lastHours: (addresses, sinceMs) => oneCoinRepo.lastHours(addresses, sinceMs) },
                   /* The posts whose newest coin call is not "cleared": the stated name never re-opens the owner's call. */
                   ownerCalled: async (ids) => {
                     const newest = new Map<string, string>();
