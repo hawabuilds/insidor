@@ -56,7 +56,7 @@ import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { useSeenOnScreen } from '../owner/useSeen.ts';
-import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
+import { BuyOpen, CHART_INTERVALS, ChooseCoin, CoinLine, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
 import { PAGE, firstPosted, moments, newestFirst, startedByHandle, type Moment } from './posts-order.ts';
@@ -164,6 +164,10 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
       : [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launch time not known`, at: null }]),
   ];
 
+  /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, every coin its posts
+     made is listed on the page itself, oldest first, and the bar offers Create — never a sheet to open. */
+  const unclear = coin.kind !== 'checked' && sheet !== null && sheet.coins.length > 0;
+  const oldestFirst = useMemo(() => (sheet === null ? [] : [...sheet.coins].sort((a, b) => (a.launchedAt.known ? a.launchedAt.at : Infinity) - (b.launchedAt.known ? b.launchedAt.at : Infinity))), [sheet]);
   const openCoin = (c: CoinFace) => (window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id)));
   const pinned = useMemo(() => firstPosted(story), [story]);
   const when = useMemo(() => moments(story), [story]);
@@ -222,6 +226,21 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
       <Notice notice={noticeFor(story)} />
 
+      {unclear ? (
+        <>
+          <div className={styles['postsHead']}>
+            <h2>Coins from these posts</h2>
+            <span>Oldest first</span>
+          </div>
+          <p className={styles['why']}>No clear runner yet. Tap a coin to check its chart.</p>
+          <div className={styles['posts']}>
+            {oldestFirst.map((c) => (
+              <CoinLine key={c.address} coin={c} now={now} onOpen={() => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} action={null} />
+            ))}
+          </div>
+        </>
+      ) : null}
+
       {story.evidence.length > 0 ? (
         <div className={styles['firstCard']}>
           {started !== null ? (
@@ -249,7 +268,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 
-      <CoinBar state={coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={() => onCreate(story)} />
+      <CoinBar state={unclear ? { kind: 'unclear' } : coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={() => onCreate(story)} />
 
       {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
       {choosing && sheet !== null ? (
@@ -342,7 +361,8 @@ function useEndInView(onEnd: () => void): (el: HTMLDivElement | null) => void {
  * narrative's own line with no button.
  */
 function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
-  state: StoryCoinState;
+  /* `unclear`: coins exist but none is the narrative's; they are listed on the page, and the bar offers Create. */
+  state: StoryCoinState | { readonly kind: 'unclear' };
   coins: number;
   onBuy: (c: CoinFace) => void;
   onOpen: (c: CoinFace) => void;
@@ -378,6 +398,13 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
               </span>
             </div>
             <button type="button" className={styles['buy']} onClick={() => onBuy(face)}>Buy</button>
+          </>
+        ) : state.kind === 'unclear' ? (
+          <>
+            <span className={styles['barNone']}>
+              <b>No clear runner yet</b>
+            </span>
+            <button type="button" className={styles['buy']} onClick={onCreate}>Create</button>
           </>
         ) : state.kind === 'none' ? (
           <>
