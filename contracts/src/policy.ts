@@ -4389,6 +4389,27 @@ export interface NarrativePolicy {
      *            the post's own language (Turkish "ÇİN" is "çin")
      *   aliases  the titler's other spellings of a country, read as ours ("Türkiye" is Turkey)
      *   maxRead  the most stored posts read a pass, highest views first
+     *
+     * ★ THE CATCH-UP (policy.v162, the owner 2026-10-24: "it's not catching any of the viral posts
+     * under the narrative that have hundreds of thousands and even 1M+ views"). Every `catchUpEveryMs`
+     * the live wars' own words are searched in the stored posts back to each war's start, in or out of
+     * a narrative, so a post the two-day read above never saw still joins:
+     *
+     *   warLeadMs   a post joins a war from this long before the war's oldest own post (not one
+     *               matched back in), never further: the 7.8M Chinese post of 21 Oct joins China vs
+     *               Turkey, and the 17-19 Oct riots (50 Japanese posts naming France at 40k+, the last
+     *               on 19 Oct 12:18) stay out of France vs Japan, whose own posts start 23 Oct 09:44.
+     *               A post older than the war's own posts joins as an early post, so it never moves
+     *               the start and the window cannot creep back day by day
+     *   names.en    a language with no home country (English): a post naming two of a war's countries
+     *               joins only when it is also as alike to one of the war's posts as two posts with
+     *               the same name must be (`narrative.nameMeaning`). Measured 23-24 Oct at 40k+: the
+     *               posts about the French–Japanese beef sit 0.61-0.76 from the war, the news naming
+     *               both (a PHP bug, the riots, a K-pop tour) 0.29-0.49
+     *   moveMaxPosts  a war post in another narrative: a narrative all of whose posts are that war's
+     *               (one of its own included) is merged into the war; one of at most this many posts
+     *               with other posts too gives up only that post. Never a narrative the owner made a
+     *               call on, renamed or answered, nor another war
      */
     readonly native: {
       readonly on: boolean;
@@ -4396,6 +4417,9 @@ export interface NarrativePolicy {
       readonly lookbackMs: number;
       readonly maxRead: number;
       readonly perPass: number;
+      readonly catchUpEveryMs: number;
+      readonly warLeadMs: number;
+      readonly moveMaxPosts: number;
       readonly seedMinPosts: number;
       readonly seedMinAccounts: number;
       readonly seedWithinMs: number;
@@ -5234,7 +5258,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v161',
+  version: 'policy.v162',
 
   admit: {
     maxAgeMin: 240,
@@ -7321,6 +7345,11 @@ const POLICY_V1: Policy = {
         lookbackMs: 172_800_000, // two days, the regroup's window
         maxRead: 2_000,
         perPass: 100,
+        /* policy.v162. The catch-up read, measured 2026-10-24: five days of stored posts, the live wars'
+           words pre-matched in the database, 120 rows in 0.95 s — so every ten minutes, not every pass. */
+        catchUpEveryMs: 600_000,
+        warLeadMs: 172_800_000, // two days, the regroup's window
+        moveMaxPosts: 3,
         seedMinPosts: 3,
         seedMinAccounts: 3,
         seedWithinMs: 86_400_000, // a day
@@ -7333,6 +7362,8 @@ const POLICY_V1: Policy = {
           zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
           tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
           ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },
+          /* No home: a post here must name two of a war's countries and be alike to the war (policy.v162). */
+          en: { France: ['france', 'french', 'frenchies'], Japan: ['japan', 'japanese'], China: ['china', 'chinese'], Turkey: ['turkey', 'turkish', 'türkiye', 'turkiye', 'turks'], 'South Korea': ['korea', 'korean*'] },
         },
         aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China' },
       },

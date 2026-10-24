@@ -321,6 +321,41 @@ test('★ a post naming the other country in its own language joins the live war
   assert.deepEqual(s.saved[0]?.fights, []);
 });
 
+test('★ the catch-up: an older war post joins as early, an English post alike to the war joins, a narrative of its own folds in; one the owner called on is left alone', async () => {
+  const war: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: 'French and Japanese users trade memes', titlePosts: 3, fight: ['France', 'Japan'], fightModel: 'm', newestPostAtMs: NOW - 3_600_000, early: [] };
+  const solo: StoredNarrative = { id: 'n-solo', members: ['solo'], anchor: 'solo', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: null, titlePosts: null, fight: null, newestPostAtMs: NOW - DAY, early: [] };
+  const owned: StoredNarrative = { ...solo, id: 'n-owned', members: ['owned'], anchor: 'owned' };
+  const old = { ...warPost('vegeta', 'fr', 'Les japonais quand tu leurs dit que végéta est algérien', 164_530), atMs: NOW - 1.5 * DAY };
+  const caught = [
+    { ...old, narrativeId: null },
+    { ...warPost('beef', 'en', 'this french vs japanese twitter beef is the funniest thing', 155_511), narrativeId: null },
+    { ...warPost('solo', 'fr', 'Le japonais qui plante une graine', 78_872), narrativeId: 'n-solo' },
+    { ...warPost('owned', 'fr', 'Les touristes japonais', 316_567), narrativeId: 'n-owned' },
+  ];
+  const asked: unknown[][] = [];
+  const more = {
+    fightPosts: async () => [],
+    fightWarPosts: async (...args: unknown[]) => (asked.push(args), caught),
+    fightRowsOf: async (ids: readonly string[]) => caught.filter((c) => ids.includes(c.itemId)),
+    ownStarts: async () => new Map([['n-war', NOW - DAY]]),
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { coinable: false, confidence: 0.9, body: 'a post' })),
+    fights: async () => [war],
+  };
+  const right: NarrativeCallRow = { id: 7, atMs: NOW - 1, narrativeId: 'n-owned', verdict: 'right', otherId: null, coin: null, members: ['owned'], otherMembers: [] };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0), w1: unit(0), beef: unit(0.1) }, 'live', [right], [], () => [war, solo, owned], DEFAULT_POLICY, more);
+  const r = await s.grouper.pass();
+  const entry = s.saved[0]?.narratives.find((x) => x.id === 'n-war');
+  assert.deepEqual(entry?.added, ['beef']);
+  assert.deepEqual(entry?.early, ['vegeta']);
+  assert.deepEqual(s.saved[0]?.retired.filter((x) => x.by === 'meme_war'), [{ id: 'n-solo', into: 'n-war', by: 'meme_war' }]);
+  assert.equal(r.joinedFight, 3);
+  /* Read back to two days before the war's own first post, with the war's own words. */
+  assert.equal(asked[0]?.[0], NOW - 3 * DAY);
+  /* Not again inside the catch-up's interval. */
+  await s.grouper.pass();
+  assert.equal(asked.length, 1);
+});
+
 test('★ a pair no war holds seeds a narrative off the board; the titler naming both countries shows it', async () => {
   const shownNow: string[] = [];
   const seed: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: false, firstShownAtMs: null, postsChangedAtMs: NOW - DAY, title: null, titlePosts: null, fight: ['China', 'Turkey'], fightModel: 'native-names', newestPostAtMs: NOW - DAY, early: [] };
