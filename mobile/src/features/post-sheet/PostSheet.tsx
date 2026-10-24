@@ -49,7 +49,7 @@ import { QuoteInset } from '../../shared/ui/QuoteInset.tsx';
 import { quotePictureLeads } from '../../shared/api/wire/rising.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { platformOf } from '../../shared/platform.ts';
+import { deletedLine, platformOf } from '../../shared/platform.ts';
 import { storyWords } from '../../shared/story-words.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
@@ -292,11 +292,13 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             {data.author.name !== null && handle.startsWith('@') ? <span>{handle}</span> : null}
             {data.author.followers.known ? <span>{followersText(data.author.followers.amount)}</span> : null}
             {age.kind === 'value' ? <span>{age.text}</span> : null}
+            {post.deletedAt !== undefined ? <span>{deletedLine(post.sourceLabel)}</span> : null}
           </span>
         </span>
         {/* Watch this post (the owner, 2026-10-14): its coin, when one launches or is found, is pushed within seconds. */}
         <WatchStar postId={post.id} size="sheet" />
-        {post.permalink !== null ? (
+        {/* A deleted post's page is gone: no link out offered as if it worked (RisingPost.deletedAt). */}
+        {post.permalink !== null && post.deletedAt === undefined ? (
           <a className={styles['open']} href={post.permalink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`}>
             <OpenIcon size={18} />
           </a>
@@ -316,7 +318,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
               {/* ★ The quoted post (QuoteInset.tsx). With no media of its own the media below IS the
                   quoted post's, so the box comes first and shows no picture; else after the media, with it. */}
               {quote !== null && quoteLeads ? <QuoteInset quote={quote} showPicture={false} now={now} lines={TEXT_LINES.quote} link /> : null}
-              {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} tiktokId={platform === 'tiktok' ? tiktokVideoId(post.id) : null} /> : null}
+              {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.deletedAt === undefined ? post.permalink : null} sourceLabel={post.sourceLabel} tiktokId={platform === 'tiktok' ? tiktokVideoId(post.id) : null} /> : null}
               {quote !== null && !quoteLeads ? <QuoteInset quote={quote} showPicture now={now} lines={TEXT_LINES.quote} link /> : null}
             </section>
           ) : null}

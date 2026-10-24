@@ -115,6 +115,8 @@ export const RISING_POST_FIELDS = [
   'inStory',
   /* The post this one quotes (services/project rising.ts `quote`), drawn inside the card. */
   'quote',
+  /* When the post was found deleted from its source (services/project rising.ts `deletedAt`, 0131). */
+  'deletedAt',
 ] as const;
 
 /** A quoted post inside a card (`RisingPost.quote`). */

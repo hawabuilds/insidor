@@ -42,3 +42,8 @@ export function platformOf(sourceLabel: string): Platform | null {
 export function siteList(sourceLabels: readonly string[]): string {
   return [...new Set(sourceLabels)].join(', ');
 }
+
+/** The line a card and the post sheet show for a post deleted from its source: "Deleted on X". */
+export function deletedLine(sourceLabel: string): string {
+  return sourceLabel.trim() === '' ? 'Post deleted' : `Deleted on ${sourceLabel.trim()}`;
+}
