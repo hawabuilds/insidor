@@ -791,7 +791,7 @@ export interface WireStory {
   readonly lastPostAt?: WireInstant;
   /**
    * The countries whose users are trading memes and insults in it — an online meme war (Policy
-   * .narrative.fight, 0129), alphabetical, two or more. Absent when it is not one, was never asked,
+   * .narrative.fight, 0130), alphabetical, two or more. Absent when it is not one, was never asked,
    * or has had no post in the last `fight.activeMs`. The app gathers these under one umbrella.
    */
   readonly countries?: readonly string[];

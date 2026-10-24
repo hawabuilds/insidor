@@ -1,4 +1,4 @@
--- 0129_narrative_owner_edits.sql
+-- 0130_narrative_owner_edits.sql
 --
 -- THE OWNER NAMES A NARRATIVE HIMSELF, AND ADDS A POST TO IT; AND WHICH NARRATIVES ARE A MEME WAR
 -- BETWEEN COUNTRIES.
@@ -29,7 +29,7 @@
 --                           (0055) and read within a minute — and the pins keep it there. Only his own
 --                           later "Remove this post" or "Split" of it takes it out.
 -- internal.narrative.fight  the countries whose users are trading memes and insults with each other
---                           in it (policy.v153 Policy.narrative.fight), as the titler answered in the
+--                           in it (policy.v155 Policy.narrative.fight), as the titler answered in the
 --                           same call as its title: two or more names, alphabetical; an empty array
 --                           when it said no; null when it was never asked (the runner asks those,
 --                           a few a pass). `fight_model` is the model that answered, `fight_at` when.
@@ -67,7 +67,7 @@ alter table internal.narrative add column fight_model text;
 alter table internal.narrative add column fight_at timestamptz;
 grant update (fight, fight_model, fight_at) on internal.narrative to insidor_people;
 comment on column internal.narrative.fight is
-  'The countries whose users trade memes in it (an online meme war, 0129), alphabetical; empty: asked, not one; null: never asked.';
+  'The countries whose users trade memes in it (an online meme war, 0130), alphabetical; empty: asked, not one; null: never asked.';
 
 comment on column internal.narrative.title_model is
-  'The model that wrote the title, or ''owner'' when the owner typed it (0129): the titler never writes over an owner title.';
+  'The model that wrote the title, or ''owner'' when the owner typed it (0130): the titler never writes over an owner title.';

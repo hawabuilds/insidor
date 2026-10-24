@@ -115,7 +115,7 @@ test('★ a rename is saved as a call AND written as the narrative\'s title, mar
   assert.deepEqual(f.titles[0], ['n-x:1', 'Twitter World War', 'owner', 3], 'title_model owner: the titler never writes over it');
 });
 
-test('before 0129 a rename is a 404 "not set up yet", and no title is written', async () => {
+test('before 0130 a rename is a 404 "not set up yet", and no title is written', async () => {
   const f = fakeDb(true, { 'n-x:1': ['x:1'] }, [], true);
   const r = await ownerNarrativeRoute('POST', { action: 'rename', storyId: 'n-x:1', title: 'New name' }, 'u1', 'wallet:abc', f.db);
   assert.equal(r.status, 404);
