@@ -2919,6 +2919,24 @@ export interface RisingPolicy {
     };
   };
   /**
+   * ★ A PROMOTION IS NEVER WHAT WE SHOW (policy.v165; the owner, 2026-10-24). A post that re-shares,
+   * quotes or links another account's post (core match/coin-origin.ts `promoPointsAt`, one hop), when
+   * that post was seen at least as widely (`promoFollows`), is a promotion wherever we found it, and is
+   * on neither For You nor Popular by any route (services/project promotions.ts) — unless it was seen
+   * by For You's own views bar (`fypMinReach`) itself: a commentary quote that went viral on its own is
+   * a post people saw, not a pointer (replayed 21-24 Oct: 16 of the 40 For You posts the bare rule
+   * catches were such quotes, 93K-515K views; every one under the bar had 0-28K). A post pointing at
+   * one we do not hold is left as it was: who posted that one, and how widely it was seen, are unknown.
+   * Its coin goes to the original: carried on the original's card when the original was at most the
+   * coin-link age (`finders.coinLinks.creditMaxAgeMs`, `oneCoin.linkMaxAgeMs`) old at the coin's
+   * launch; an older original carries it, and is brought back to For You, only while the coin runs by
+   * `notify.savedPost`'s bars within `notify.launch.lateRunningMs` of its launch — and is then pushed
+   * once (services/notify launch.ts). Off: every post is shown or held as before.
+   */
+  readonly promotion: {
+    readonly on: boolean;
+  };
+  /**
    * ★ THE QUICK FRAME (the owner, 2026-10-16: "event-driven FYP"). Between the full frames, the
    * project service checks every `checkEveryMs` whether a judge's answer, a coin's link to a post the
    * judge passed or the owner's call on a post has landed since the last frame began. When one has, and the answers have
@@ -5242,7 +5260,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v164',
+  version: 'policy.v165',
 
   admit: {
     maxAgeMin: 240,
@@ -6929,6 +6947,11 @@ const POLICY_V1: Policy = {
        311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
        hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
     quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true },
+    /* policy.v165, replayed read-only over 21-24 Oct: 24 For You posts (2 Popular) would have left
+       (the @Infinitidigits promotion of @prtygal777's 6-day-old "Light Baby" among them); of 784 posts
+       picked a coin, 239 were promotions: 136 originals take the coin, 19 older ones wait for it to run,
+       2 of which did ($BI, $9daaq). No read, no judge call, no new spend. */
+    promotion: { on: true },
   },
 
   rank: {

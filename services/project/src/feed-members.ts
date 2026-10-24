@@ -13,6 +13,10 @@
  *     the scroll where the person already saw it.
  *   - The owner's "Not a meme" withdraws it (`withdrawn_at`), on every feed, at the next run; the
  *     owner calling it a meme again brings it back at its old place.
+ *   - ★ So does a member the frame finds to be a PROMOTION (promotions.ts, the owner 2026-10-24: a
+ *     post only pointing at another account's bigger post is never what we show). Withdrawn after the
+ *     owner's calls are applied, so his "Is a meme" on a promotion does not bring it back; nothing
+ *     restores it, since the rule is about what the post is, not about a judge's answer.
  *
  * ★ EACH MEMBER'S CARD IS KEPT CURRENT WHILE IT CAN BE. A member in this run's frame or day window
  * gets this run's card; older members are re-projected a few at a time, longest-untried first
@@ -118,6 +122,8 @@ export async function writeMembership(
   shown: { readonly fyp: readonly FeedCard[]; readonly popular: readonly FeedCard[] },
   projected: readonly FeedCard[],
   tried: readonly string[],
+  /** Members found to be promotions this run (rising.ts `RisingFrame.promotions`): withdrawn from every feed. */
+  promotions: readonly string[] = [],
 ): Promise<void> {
   if (!(await migrated(db))) return;
   const now = new Date(nowMs).toISOString();
@@ -160,5 +166,8 @@ export async function writeMembership(
           and (f.withdrawn_at is null) = (o.verdict = 'not')`,
       [now],
     );
+    if (promotions.length > 0) {
+      await db.query(`update public.feed_post set withdrawn_at = $1::timestamptz where withdrawn_at is null and item_id = any($2::text[])`, [now, [...promotions]]);
+    }
   });
 }
