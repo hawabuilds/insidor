@@ -114,6 +114,7 @@ import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
 import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
 import { noteTap } from '../../shared/tap-log.ts';
 import styles from './feed.module.css';
+import { Mark } from '../onboarding/Frame.tsx';
 
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
 const CARD_GUESS_PX = 196;
@@ -322,7 +323,10 @@ export function Feed({
       <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={styles['screen']} style={pullStyle(pull)}>
         <ScreenHeader as="header" gutter>
-          <span className={styles['wordmark']}>INSIDOR</span>
+          <span className={styles['brand']}>
+            <Mark size={26} />
+            <span className={styles['wordmark']}>INSIDOR</span>
+          </span>
         </ScreenHeader>
 
         {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}
