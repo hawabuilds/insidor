@@ -25,7 +25,7 @@
 
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
-import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
+import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, forYouKeptFrom, parseCursor, startCursor } from './feed-page.ts';
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
@@ -372,14 +372,15 @@ async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<
   const before = query.get('before');
   const cursor = parseCursor(before);
   if (cursor === null) return BAD_REQUEST;
+  const nowMs = Date.now();
   try {
     let rows: readonly Row[];
     if (feedId === 'fyp') {
       /* No cursor: the first page, under the phone's last card or else the frame's oldest. */
       const from = before === null || before === '' ? startCursor(await deps.db.query(FOR_YOU_START_SQL, [query.get('after') ?? ''])) : cursor;
-      rows = await deps.db.query(FOR_YOU_PAGE_SQL, [new Date(from.atMs).toISOString(), from.id, FEED_PAGE_SIZE]);
+      rows = await deps.db.query(FOR_YOU_PAGE_SQL, [new Date(from.atMs).toISOString(), from.id, FEED_PAGE_SIZE, forYouKeptFrom(nowMs)]);
     } else rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
-    const page = feedPage(rows, Date.now());
+    const page = feedPage(rows, nowMs);
     return json(200, { ...page, posts: await withCardAdditions(deps.db, page.posts) });
   } catch (e) {
     if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return NOT_FOUND;

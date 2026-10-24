@@ -8,7 +8,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SILENT } from './log.ts';
-import { FEED_PAGE_SIZE, FEED_PAGE_SQL, FIRST_PAGE, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, cursorText, feedPage, parseCursor, startCursor, withCurrentMarket } from './feed-page.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts';
+
+import { FEED_PAGE_SIZE, FEED_PAGE_SQL, FIRST_PAGE, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, cursorText, feedPage, forYouKeptFrom, parseCursor, startCursor, withCurrentMarket } from './feed-page.ts';
 import type { Row } from './queries.ts';
 import { handle, type Deps } from './routes.ts';
 
@@ -53,7 +55,8 @@ test('the route reads one page with the cursor as parameters: For You by its tim
   assert.equal(reply.status, 200);
   assert.deepEqual(JSON.parse(reply.body), { posts: [], next: null });
   assert.equal(calls[0]?.sql, FOR_YOU_PAGE_SQL);
-  assert.deepEqual(calls[0]?.params, [new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
+  assert.deepEqual(calls[0]?.params?.slice(0, 3), [new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
+  assert.equal(calls[0]?.params?.length, 4, 'and the oldest join it serves');
   await handle('GET', `/rising/popular/older?before=${encodeURIComponent('1760000000000~x:1')}`, db);
   assert.equal(calls[1]?.sql, FEED_PAGE_SQL);
   assert.deepEqual(calls[1]?.params, ['popular', new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
@@ -69,14 +72,29 @@ test("★ For You's first page starts under the phone's last card, else the fram
   await handle('GET', '/rising/fyp/older?after=x%3Alast', db);
   assert.deepEqual(calls.map((c) => c.sql), [FOR_YOU_START_SQL, FOR_YOU_PAGE_SQL]);
   assert.deepEqual(calls[0]?.params, ['x:last']);
-  assert.deepEqual(calls[1]?.params, [at.toISOString(), 'x:last', FEED_PAGE_SIZE], 'strictly under the card already shown');
+  assert.deepEqual(calls[1]?.params?.slice(0, 3), [at.toISOString(), 'x:last', FEED_PAGE_SIZE], 'strictly under the card already shown');
   assert.deepEqual(startCursor([]), FIRST_PAGE, 'no frame and no card: the top of the list');
 });
 
 test('★ For You\'s page orders and cuts by the frame\'s key: posted (else first seen) to the millisecond, then the id in byte order', () => {
   assert.match(FOR_YOU_PAGE_SQL, /date_trunc\('milliseconds', coalesce\(i\.posted_at, i\.first_seen_at\)\)/);
   assert.match(FOR_YOU_PAGE_SQL, /order by cursor_at desc, f\.item_id collate "C" asc/);
-  assert.doesNotMatch(FOR_YOU_PAGE_SQL, /first_shown_at/, 'when a post joined is not its place');
+  assert.doesNotMatch(FOR_YOU_PAGE_SQL.split('order by')[1] ?? '', /first_shown_at/, 'when a post joined is not its place');
+});
+
+test("★ For You's scroll reaches back three days of joins, a bound and never an order", async () => {
+  assert.equal(DEFAULT_POLICY.rising.scrollKeepMs, 3 * 24 * 3_600_000, 'the owner, 2026-10-24: keep it 3 days');
+  assert.equal(forYouKeptFrom(1_760_000_000_000, 3_600_000), new Date(1_760_000_000_000 - 3_600_000).toISOString());
+  assert.match(FOR_YOU_PAGE_SQL, /and f\.first_shown_at >= \$4::timestamptz/, 'every page, the first and the later ones');
+  const calls: { sql: string; params: readonly unknown[] }[] = [];
+  const db = deps(async (sql, params) => {
+    calls.push({ sql, params });
+    return [];
+  });
+  const before = Date.now();
+  await handle('GET', `/rising/fyp/older?before=${encodeURIComponent('1760000000000~x:1')}`, db);
+  const from = Date.parse(String(calls[0]?.params?.[3]));
+  assert.ok(from >= before - DEFAULT_POLICY.rising.scrollKeepMs && from <= Date.now() - DEFAULT_POLICY.rising.scrollKeepMs, 'three days before the read');
 });
 
 test('a bad cursor is a 400, an unknown feed and a database without the table are 404s', async () => {
