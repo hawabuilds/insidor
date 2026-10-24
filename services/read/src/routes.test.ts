@@ -16,6 +16,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { WAR_COIN_SQL } from './war-coin.ts';
 import { SILENT } from './log.ts';
 import {
   BOARD_ROWS_SQL,
@@ -661,8 +662,11 @@ test('★ the meme wars: the pages that name their countries, most viewed first,
   const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9', provenance: OBSERVED }], [FIGHT_NARRATIVES_SQL]: [{ payload: war }] });
   const reply = await handle('GET', '/narratives/default/fights', deps);
   assert.equal(reply.status, 200);
-  assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [war], provenance: { kind: 'observed' } });
+  assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [war], provenance: { kind: 'observed' }, warCoin: null }, 'no coin chosen: null');
   assert.ok(calls.some((c) => c.sql === FIGHT_NARRATIVES_SQL));
+  const coin = { address: 'COIN1111111111111111111111111111111', symbol: 'MWW', name: 'Meme World War', image_uri: null, market_cap_usd: 13987, market_cap_absent: null, price_change_24h_pct: -6.5, price_change_24h_absent: null, tradable: true, taken_ms: Date.now() };
+  const withCoin = await handle('GET', '/narratives/default/fights', fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9', provenance: OBSERVED }], [FIGHT_NARRATIVES_SQL]: [{ payload: war }], [WAR_COIN_SQL]: [coin] }).deps);
+  assert.deepEqual(JSON.parse(withCoin.body).warCoin, { address: coin.address, ticker: 'MWW', name: 'Meme World War', imageUrl: null, marketCapUsd: { v: 13987 }, priceChange24h: { v: -6.5 }, tradable: true });
   assert.match(FIGHT_NARRATIVES_SQL, /jsonb_array_length\(payload -> 'countries'\) >= 2/);
   assert.equal((await handle('GET', '/narratives/nope/fights', fakeDb({}).deps)).status, 404);
 });
