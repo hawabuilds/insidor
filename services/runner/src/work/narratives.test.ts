@@ -302,3 +302,43 @@ test('★ the meme-war answer rides on the title call, and a live narrative neve
   assert.deepEqual(s.titles, [[made, 'GTA 6 Trailer Two']], 'only the new narrative is titled: his title stands');
   assert.deepEqual(fights.sort(), [[made, []], ['n-war', ['China', 'Turkey']]], 'both answers are kept: the new one is not a war, his is');
 });
+
+const warPost = (itemId: string, lang: string, body: string, reach: number, authorKey = `a:${itemId}`) => ({ itemId, authorKey, lang, body, atMs: NOW - 3_600_000, reach });
+
+test('★ a post naming the other country in its own language joins the live war, judged no or not; the owner\'s "Not a meme" and an English post do not', async () => {
+  const war: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: true, firstShownAtMs: NOW - DAY, postsChangedAtMs: NOW - DAY, title: 'Turkey and China Meme War', titlePosts: 3, fight: ['China', 'Turkey'], fightModel: 'm', newestPostAtMs: NOW - DAY, early: [] };
+  const more = {
+    fightPosts: async () => [warPost('zh1', 'zh', '我们不吃土耳其人，请不要误会。', 340_862), warPost('tr1', 'tr', 'Binlerce yıllık kadim Çin kültürü', 776_905), warPost('tr-hid', 'tr', 'Çinliler tw kullanıyor', 500_000), warPost('en1', 'en', 'Turkey and China at war', 900_000)],
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { coinable: false, confidence: 0.9, ownerCall: id === 'tr-hid' ? 'not' : null, body: 'a post' })),
+    fights: async () => [war],
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  const r = await s.grouper.pass();
+  const entry = s.saved[0]?.narratives.find((x) => x.id === 'n-war');
+  assert.deepEqual([...(entry?.added ?? [])].sort(), ['tr1', 'zh1']);
+  assert.equal(entry?.shown, true);
+  assert.equal(r.joinedFight, 2);
+  assert.deepEqual(s.saved[0]?.fights, []);
+});
+
+test('★ a pair no war holds seeds a narrative off the board; the titler naming both countries shows it', async () => {
+  const shownNow: string[] = [];
+  const seed: StoredNarrative = { id: 'n-war', members: ['w1', 'w2', 'w3'], anchor: 'w1', shown: false, firstShownAtMs: null, postsChangedAtMs: NOW - DAY, title: null, titlePosts: null, fight: ['China', 'Turkey'], fightModel: 'native-names', newestPostAtMs: NOW - DAY, early: [] };
+  const more = {
+    fightPosts: async () => [warPost('fr1', 'fr', 'Les japonais quand tu leurs dit que végéta est algérien', 164_530), warPost('fr2', 'fr', 'Le japonais qui remercie son patron', 288_592), warPost('fr3', 'fr', 'Moi, vais bientôt m’installer au Japon', 127_991)],
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { coinable: false, confidence: 0.9, body: 'a post' })),
+    fights: async () => [],
+    fightPending: async () => [seed],
+    showFight: async (id: string) => void shownNow.push(id),
+    setFight: async () => undefined,
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  const r = await s.grouper.pass();
+  assert.equal(r.seededFight, 1);
+  const made = s.saved[0]?.narratives.find((x) => x.id === 'n-fr1');
+  assert.deepEqual(made?.members, ['fr1', 'fr2', 'fr3']);
+  assert.equal(made?.shown, false, 'off the board until the titler says it is the war');
+  assert.deepEqual(s.saved[0]?.fights, [{ id: 'n-fr1', countries: ['France', 'Japan'] }]);
+  assert.deepEqual(shownNow, ['n-war'], 'the waiting seed the titler named China and Turkey for is shown');
+  assert.ok(s.titles.some(([id]) => id === 'n-war'), 'and titled');
+});
