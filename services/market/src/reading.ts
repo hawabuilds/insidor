@@ -176,11 +176,26 @@ export interface LastAnswer extends TradeAnswer {
  *
  * Only the aggregator's answers are reused. A curve's state is read on every pass: a curve
  * that has just finished cannot be traded on it, and the card must say so within one pass.
+ *
+ * ★ EACH COIN'S WINDOW STARTS AT ITS OWN MOMENT (`key`, hashed to an offset). With one window
+ * for every coin, all ~110 coins off their curve fell due on the same pass; the pass may ask 40,
+ * and the other 70 were written "nobody asked" and shown as "can't be traded yet" for coins the
+ * aggregator had routed minutes before (the project log, 2026-10-24: probed=40 not_asked=66).
+ * Offset per coin, about the same number fall due on every pass.
  */
-export function reusableRoute(last: LastAnswer | undefined, nowMs: Millis, reuseMs: number): 'pool' | 'none' | null {
+export function reusableRoute(last: LastAnswer | undefined, nowMs: Millis, reuseMs: number, key = ''): 'pool' | 'none' | null {
   if (last === undefined || last.quotedBy !== ROUTE_VENUE.pool) return null;
-  if (Math.floor(last.takenAt / reuseMs) !== Math.floor(nowMs / reuseMs)) return null;
+  const offset = offsetOf(key, reuseMs);
+  if (Math.floor((last.takenAt + offset) / reuseMs) !== Math.floor((nowMs + offset) / reuseMs)) return null;
   return last.tradable ? 'pool' : 'none';
+}
+
+/** Where in the window a coin's own window starts: a stable hash of its key (FNV-1a), so every pass agrees. No key: the plain clock. */
+function offsetOf(key: string, reuseMs: number): number {
+  if (key === '') return 0;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
+  return h % reuseMs;
 }
 
 export interface ReadingContext {
