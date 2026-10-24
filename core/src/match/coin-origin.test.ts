@@ -1,13 +1,14 @@
 /**
  * Which post the coin-first route takes: the original a coin's linked post points at, the bigger
  * post kept when a big account quoted a small one, a launcher's own post never taken, and an unread
- * post asked for rather than guessed.
+ * post asked for rather than guessed. At the launch, one hop: re-share, then quote, then the first
+ * link; never the same account's own post, never a smaller post behind a bigger one.
  */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isLauncher, resolveOrigin, type OriginFacts, type OriginLookup } from './coin-origin.ts';
+import { isLauncher, promoFollows, promoPointsAt, resolveOrigin, type OriginFacts, type OriginLookup, type PromoFacts } from './coin-origin.ts';
 
 const BARS = { maxDepth: 3 };
 
@@ -87,4 +88,20 @@ test('a launcher: many coined posts, most of its posts, a small following; an un
   assert.equal(isLauncher({ posts: 10, linked: 9, followers: 100 }, bars), false, 'too few');
   assert.equal(isLauncher({ posts: 100, linked: 50, followers: 100 }, bars), false, 'not mostly');
   assert.equal(isLauncher({ posts: 100, linked: 99, followers: null }, bars), false);
+});
+
+const promo = (over: Partial<PromoFacts> = {}): PromoFacts => ({ itemId: 'x:promo', authorKey: 'a:launcher', reach: 15, rebroadcastOf: null, reproductionOf: null, links: [], ...over });
+
+test('at the launch a promotion points at its quote before its links, and at its first link when it quotes nothing', () => {
+  assert.deepEqual(promoPointsAt(promo({ reproductionOf: 'x:viral', links: ['x:other'] })), { itemId: 'x:viral', hop: 'quote' });
+  assert.deepEqual(promoPointsAt(promo({ links: ['x:promo', 'x:first', 'x:second'] })), { itemId: 'x:first', hop: 'link' });
+  assert.deepEqual(promoPointsAt(promo({ rebroadcastOf: 'x:shared', reproductionOf: 'x:viral' })), { itemId: 'x:shared', hop: 'repost' });
+  assert.equal(promoPointsAt(promo()), null);
+});
+
+test("a promotion is followed to another account's post at least as widely seen, never to its own account's", () => {
+  assert.equal(promoFollows(promo(), { authorKey: 'a:elonmusk', reach: 39_738_128 }, 'quote'), true);
+  assert.equal(promoFollows(promo(), { authorKey: 'a:elonmusk', reach: null }, 'quote'), true);
+  assert.equal(promoFollows(promo(), { authorKey: 'a:launcher', reach: 39_738_128 }, 'quote'), false);
+  assert.equal(promoFollows(promo({ reach: 1_000_000 }), { authorKey: 'a:analyst', reach: 10 }, 'quote'), false);
 });

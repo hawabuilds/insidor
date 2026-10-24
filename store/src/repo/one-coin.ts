@@ -802,6 +802,48 @@ export class PgOneCoinRepo {
     }
   }
 
+  /**
+   * The posts whose pick holds a coin and was written since `sinceMs` (the runner hand-over's
+   * subjects, Policy.runnerLink.handover), most recently written first, at most `limit`.
+   */
+  async heldPostPicks(sinceMs: number, limit: number): Promise<readonly StoredPick[]> {
+    try {
+      const rows = await this.#db.query<{ id: string; address: string; decided_at: string; evidence: Record<string, unknown> }>(
+        `select item_id as id, address, decided_at, evidence from internal.post_coin_pick
+          where outcome = 'picked' and address is not null and updated_at >= $1
+          order by updated_at desc limit $2`,
+        [new Date(sinceMs).toISOString(), limit],
+      );
+      return rows.map((r) => ({ subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence }));
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
+  /**
+   * Each coin's last hour from its newest market reading since `sinceMs` (0127's volume and trades),
+   * with that reading's cap. A newest reading without its hour is absent: unread, never a quiet hour.
+   */
+  async lastHours(addresses: readonly string[], sinceMs: number): Promise<ReadonlyMap<string, { readonly volume1hUsd: number; readonly trades1h: number; readonly capUsd: number | null }>> {
+    if (addresses.length === 0) return new Map();
+    const rows = await this.#db.query<{ address: string; v: unknown; b: unknown; s: unknown; cap: unknown }>(
+      `select distinct on (a.address) a.address, m.volume_1h_usd as v, m.buys_1h as b, m.sells_1h as s, m.market_cap_usd as cap
+         from public.asset a join public.market_reading m on m.asset_key = a.asset_key
+        where a.address = any($1::text[]) and m.taken_at >= $2
+        order by a.address, m.taken_at desc`,
+      [[...new Set(addresses)], new Date(sinceMs).toISOString()],
+    );
+    const out = new Map<string, { volume1hUsd: number; trades1h: number; capUsd: number | null }>();
+    for (const r of rows) {
+      const v = num(r.v);
+      const b = num(r.b);
+      const s = num(r.s);
+      if (v !== null && b !== null && s !== null && Number.isFinite(v + b + s)) out.set(r.address, { volume1hUsd: v, trades1h: b + s, capUsd: num(r.cap) });
+    }
+    return out;
+  }
+
   /** The newest applied refit's bars (0113 one_coin_fit), or null. */
   async appliedFit(): Promise<Readonly<Record<string, number>> | null> {
     try {

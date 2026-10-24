@@ -272,6 +272,13 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const who = s(f['author'], '');
       const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post on For You' : `A post by ${who}`;
       const mc = cap(f);
+      /* The runner hand-over (launch.ts): "A new coin from @X's post is running: $TICKER, $45K cap" / '"Falcon 9 lands…".' */
+      if (f['runner'] === true) {
+        const v = n(f['mcUsd']);
+        const from = who === '' ? 'a post on For You' : `${possessive(who)} post`;
+        const said = words !== null ? `"${words}".` : who === '' ? 'A post on For You.' : `A post by ${who}.`;
+        return { title: `A new coin from ${from} is running: ${ticker(f)}${v === null || v <= 0 ? '' : `, $${compact(v)} cap`}`, body: said };
+      }
       /* The post that started a narrative (launch.ts, starting-post.ts): "$DOGZILLA launched from the post that started Dogzilla". */
       const started = cutWords(f['started'], STARTED_CHARS);
       const title = started !== null ? `${ticker(f)} launched from the post that started ${started}` : `${ticker(f)} launched for a post you may have seen`;

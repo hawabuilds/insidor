@@ -97,6 +97,20 @@ test('★ the matcher\'s own coin is kept when it ran higher ($FOMO over $fomo)'
   assert.equal(out[0]?.keptBigger, true);
 });
 
+test('★ never back to the coin the runner hand-over took the post from, even when it ran higher', async () => {
+  const { d, rec } = deps([BITCHES], [ORIGIN]);
+  const out = await missedRunnerPass(
+    {
+      ...d,
+      picks: async (ids) => new Map(ids.map((id) => [id, { subjectId: id, address: 'RUNNER', outcome: 'picked' as const, decidedAtMs: NOW, evidence: { runner_handover: true, handedOverFrom: BITCHES.address } }] as const)),
+      peaks: async () => new Map([['RUNNER', 1_000_000]]),
+    },
+    newMissedRunnerState(),
+  );
+  assert.equal(rec.picks.length, 0);
+  assert.equal(out[0]?.linked, false);
+});
+
 test('a coin with no post we hold is still told', async () => {
   const { d, rec } = deps([BITCHES], []);
   const out = await missedRunnerPass(d, newMissedRunnerState());

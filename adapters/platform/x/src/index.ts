@@ -25,6 +25,7 @@ import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-t
 import { billedUnits, CAPABILITIES, LOOKUP, lookupBilledUnits, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
 import type { XClient } from './client.ts';
 import { searchPage, toSearchQuery } from './discover.ts';
+import { postUrl } from './permalink.ts';
 import { chunk, observeBatch } from './observe.ts';
 import { toAuthor, toItem } from './to-item.ts';
 import { estimateResponses, readResponses } from './responses.ts';
@@ -173,6 +174,8 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
     estimateResponses: (ask) => estimateResponses(prices, ask),
 
     parseLink: (url: string) => parseLinkOf(url),
+    /* The id alone addresses a post here: an unknown account is the path's `i`, which X answers for any post. */
+    postLink: (sourceItemId: string, handle: string | null) => postUrl(handle ?? 'i', sourceItemId),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
 
     toItem(raw: unknown, at: Millis): Item {

@@ -270,6 +270,14 @@ export interface PlatformAdapter {
    */
   parseLink?(url: string): { readonly kind: 'post'; readonly sourceItemId: string; readonly handle?: string } | { readonly kind: 'account' } | null;
 
+  /**
+   * The link a person opens for one post: `parseLink`'s inverse, for a post we know by id and not by
+   * a pasted link (the original a coin's promotion quotes, recorded as the coin's post). `handle` is
+   * the account's, bare, when known. Null when this source cannot address a post without what is
+   * missing. Optional; a source without it is simply never recorded that way.
+   */
+  postLink?(sourceItemId: string, handle: string | null): string | null;
+
   /** When a post was made, from its id alone. Null when this source's ids carry no time. */
   postTimeFromId?(sourceItemId: string): Millis | null;
 
