@@ -238,7 +238,8 @@ async function main(): Promise<void> {
       readingsLoop(runtime.loopDeps.policy.feed.readings.everyMs, runtime.readings),
       /* The narrative-name and quote searches (`feed.narrativeNames`, `feed.reproductions`, the owner 2026-10-18):
          each its own loop, deadline and daily cap, so neither can hold up discovery or the judge. */
-      nameSearchLoop(runtime.loopDeps.policy.feed.narrativeNames.everyMs, runtime.nameSearch),
+      /* Turns at the faster of the name search's cadence and the meme-war word search's (`feed.fightWords`). */
+      nameSearchLoop(Math.min(runtime.loopDeps.policy.feed.narrativeNames.everyMs, runtime.loopDeps.policy.feed.fightWords.on ? runtime.loopDeps.policy.feed.fightWords.everyMs : Number.POSITIVE_INFINITY), runtime.nameSearch),
       quotesLoop(runtime.loopDeps.policy.feed.reproductions.everyMs, runtime.quoteSearch),
       /* The account watch (`feed.accountWatch`): the accounts whose posts get coined again and again,
          asked by name every few minutes, its own loop, deadline and daily cap (loops/account-watch.ts). */
