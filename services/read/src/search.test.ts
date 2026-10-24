@@ -8,7 +8,7 @@ import { SILENT } from './log.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
 import { SAME_NAME_SQL } from './same-name.ts';
-import { ASSET_SEARCH_SQL, coinHitFromQuote, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
+import { addressIn, ASSET_FACTS_SQL, ASSET_SEARCH_SQL, coinHitFromQuote, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
 
 const POLICY = DEFAULT_POLICY.search;
 
@@ -329,4 +329,77 @@ test('the list is kept a minute and counted against the per-client limit like a 
   tick(POLICY.keepMs);
   for (let i = 0; i < POLICY.perClient; i += 1) await search.postCoins(`x:${i + 2}`, 'c2');
   assert.equal((await search.postCoins('x:99', 'c2')).status, 429);
+});
+
+const MEMEWAR = '58YoqjCKAdp9W7bPq16P2YvfTsxM8h7eqos3hUuMpump';
+const PAIR = '9KxknuL6Vb1eBkYdDZ5Vt3yUqYb7JkqXo1m2cSx4Ae7Q';
+
+test('★ an address is read bare, with a dollar sign, or out of a market page\'s link; words are words', () => {
+  assert.equal(addressIn(`  ${MEMEWAR} `), MEMEWAR);
+  assert.equal(addressIn(`$${MEMEWAR}`), MEMEWAR);
+  assert.equal(addressIn(`https://pump.fun/coin/${MEMEWAR}`), MEMEWAR);
+  assert.equal(addressIn(`pump.fun/coin/${MEMEWAR}?include-nsfw=true`), MEMEWAR);
+  assert.equal(addressIn(`https://pump.fun/${MEMEWAR}`), MEMEWAR);
+  assert.equal(addressIn(`https://dexscreener.com/solana/${PAIR}`), PAIR);
+  assert.equal(addressIn('jim'), null);
+  assert.equal(addressIn('cat meme'), null);
+  assert.equal(addressIn('https://pump.fun/board'), null);
+  assert.equal(addressIn(null), null);
+});
+
+test('★ a pasted address is that one coin, listed even though we never indexed it, and its page then opens', async () => {
+  const neighbour = hit({ address: 'HAYa4qgzMKoWGvCYTQFDD5U3HUxjnC2EtzGT7dhmpump', ticker: 'japan', marketAddress: 'GDSw' });
+  const terms: string[] = [];
+  const dex = source(async () => ({ hits: [hit({ address: MEMEWAR, ticker: 'MEMEWAR', name: 'France vs Japan', venue: 'pool', marketAddress: '2FJe', marketCapUsd: 250_000 }), neighbour], capped: true }));
+  const spy: NamedSearch = { name: 'dex', source: { search: async (t) => { terms.push(t); return dex.search(t); } } };
+  const { search, queries } = harness({ sources: [spy] });
+  const r = await search.search(`https://pump.fun/coin/${MEMEWAR}`, 'c1');
+  assert.equal(r.status, 200, 'an address is longer than a word may be, and is never "bad request"');
+  const b = body(r);
+  assert.equal(b.term, MEMEWAR);
+  assert.deepEqual(terms, [MEMEWAR], 'the sources are asked for the address, not the link');
+  assert.deepEqual(b.coins.items.map((c: any) => c.coinId), [`solana:${MEMEWAR}`], 'a source\'s fuzzy neighbour is not the coin');
+  assert.equal(b.coins.capped, false);
+  assert.equal(queries.includes(STORY_SEARCH_SQL), false, 'no narrative is named by an address');
+  assert.equal(queries.includes(ASSET_FACTS_SQL), true, 'our own row of it, by address');
+  assert.ok(queries.includes(POST_SEARCH_SQL), 'posts that quote the address are found too');
+  assert.notEqual(search.recent(MEMEWAR), null, 'its token page opens, with Buy');
+
+  /* The same address again inside the minute: one call; the client's limit still counts it. */
+  await search.search(MEMEWAR, 'c1');
+  assert.equal(terms.length, 1);
+});
+
+test('★ a market page\'s link names a pair: the pair\'s coin is the hit', async () => {
+  const dex = source(async () => ({ hits: [hit({ address: MEMEWAR, ticker: 'MEMEWAR', marketAddress: PAIR })], capped: false }));
+  const { search } = harness({ sources: [{ name: 'dex', source: dex }] });
+  const b = body(await search.search(`https://dexscreener.com/solana/${PAIR}`, 'c1'));
+  assert.deepEqual(b.coins.items.map((c: any) => c.address), [MEMEWAR]);
+});
+
+test('★ an address no search source lists is looked up as a token page would, once, and shown when listed', async () => {
+  const asked: string[] = [];
+  const lookup = async (a: string) => { asked.push(a); return a === MEMEWAR ? hit({ address: MEMEWAR, ticker: 'MEMEWAR', venue: 'pool', marketCapUsd: 250_000, source: 'lookup' }) : null; };
+  const empty = source(async () => ({ hits: [], capped: false }));
+  const { search } = harness({ sources: [{ name: 'dex', source: empty }], lookup });
+  const b = body(await search.search(MEMEWAR, 'c1'));
+  assert.equal(b.coins.kind, 'read');
+  assert.deepEqual(b.coins.items.map((c: any) => [c.ticker, c.venue, c.marketCapUsd]), [['MEMEWAR', 'pool', { v: 250_000 }]]);
+  assert.deepEqual(asked, [MEMEWAR]);
+  assert.equal(await search.open(`solana:${MEMEWAR}`), true, 'its page opens without a second lookup');
+  assert.deepEqual(asked, [MEMEWAR]);
+
+  const NOBODY = 'So11111111111111111111111111111111111111113';
+  const none = body(await search.search(NOBODY, 'c1'));
+  assert.deepEqual(none.coins, { kind: 'read', capped: false, sourcesMissing: 0, items: [] }, 'listed nowhere: no coin, said as an empty list');
+});
+
+test('★ every source down, and the lookup lists it: still the coin, with the outage counted', async () => {
+  const down = source(async () => { throw new Error('429'); });
+  const lookup = async () => hit({ address: MEMEWAR, ticker: 'MEMEWAR', source: 'lookup' });
+  const { search } = harness({ sources: [{ name: 'dex', source: down }], lookup });
+  const b = body(await search.search(MEMEWAR, 'c1'));
+  assert.equal(b.coins.kind, 'read');
+  assert.equal(b.coins.sourcesMissing, 1);
+  assert.equal(b.coins.items.length, 1);
 });
