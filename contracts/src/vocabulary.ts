@@ -299,6 +299,28 @@ export const ITEM_ORIGINS = [
 
 export type ItemOrigin = (typeof ITEM_ORIGINS)[number];
 
+/**
+ * A reproduced post as another post's payload carried it (`Item.reproducedPost`). What the card
+ * shows of it and nothing else: no counters, no carriers, no pointer of its own — it is a picture
+ * of the post at `readAt`, not a reading of it.
+ */
+export interface ReproducedPost {
+  readonly itemId: ItemId;
+  readonly source: SourceId;
+  readonly sourceItemId: string;
+  readonly authorKey: AuthorKey;
+  /** The account as the payload showed it; null fields when it gave none. */
+  readonly authorHandle: string | null;
+  readonly authorName: string | null;
+  readonly authorPictureUri: string | null;
+  readonly postedAt: Millis | null;
+  readonly lang: string | null;
+  readonly text: string;
+  readonly media: readonly MediaRef[];
+  /** When we read the payload that carried it. */
+  readonly readAt: Millis;
+}
+
 export interface Item {
   readonly itemId: ItemId; // ours
   readonly source: SourceId;
@@ -330,6 +352,15 @@ export interface Item {
    * reproduction everywhere: a link in passing is not one.
    */
   readonly refersTo?: readonly ItemId[];
+
+  /**
+   * The post `reproductionOf` names, as the source sent it INSIDE this post's own payload: its
+   * words, its pictures and who posted it, at no extra read. Absent when the source sent only the
+   * pointer (or none). Kept apart from the post itself, never stored as a post row: a post we only
+   * saw inline was not found by any search, and nothing that counts, judges or groups posts may
+   * meet it. The app shows it inside the reproducing post's card, as the source does.
+   */
+  readonly reproducedPost?: ReproducedPost;
 
   /** Reusable templates — a sound, an effect, a layout. Free carrier joins. */
   readonly formatIds: readonly string[];

@@ -1,6 +1,6 @@
 /**
- * OUR COPY OF EACH POST PICTURE, NAMED ON THE CARD AT READ TIME (0119 public.post_picture): a card,
- * a narrative and its posts, and the post sheet's picture carry `thumbFile` / `posterFile` — the
+ * OUR COPY OF EACH POST PICTURE, NAMED ON THE CARD AT READ TIME (0119 public.post_picture): a card
+ * (and the post it quotes), a narrative and its posts, and the post sheet's picture carry `thumbFile` / `posterFile` — the
  * 32-hex name of the copy in our storage — beside the source's link, and the app loads
  * `post-pics/<name>` first, because the source's signed link may have expired (on 2026-10-21, 297
  * of the 311 short-video posts on the feeds had a cover that no longer loaded).
@@ -57,11 +57,12 @@ export function fileOf(files: ReadonlyMap<string, string>, link: unknown): strin
   return typeof link === 'string' ? files.get(linkPath(link)) : undefined;
 }
 
-/** The picture links a payload carries: its own, and its evidence's (a narrative's posts). */
+/** The picture links a payload carries: its own, its quoted post's, and its evidence's (a narrative's posts). */
 export function pictureLinks(p: unknown): string[] {
   if (!isObj(p)) return [];
   const out: string[] = [];
   if (typeof p['thumbUrl'] === 'string') out.push(p['thumbUrl']);
+  if (isObj(p['quote']) && typeof p['quote']['thumbUrl'] === 'string') out.push(p['quote']['thumbUrl']);
   if (Array.isArray(p['evidence'])) for (const e of p['evidence']) if (isObj(e) && typeof e['thumbUrl'] === 'string') out.push(e['thumbUrl']);
   return out;
 }
@@ -70,8 +71,10 @@ export function pictureLinks(p: unknown): string[] {
 export function withFile<T>(p: T, files: ReadonlyMap<string, string>): T {
   if (!isObj(p) || files.size === 0) return p;
   const own = fileOf(files, p['thumbUrl']);
+  const q = p['quote'];
+  const quoteFile = isObj(q) ? fileOf(files, q['thumbUrl']) : undefined;
   let evidence: unknown = p['evidence'];
-  let changed = own !== undefined;
+  let changed = own !== undefined || quoteFile !== undefined;
   if (Array.isArray(evidence)) {
     const list = evidence.map((e) => {
       const f = isObj(e) ? fileOf(files, e['thumbUrl']) : undefined;
@@ -83,7 +86,12 @@ export function withFile<T>(p: T, files: ReadonlyMap<string, string>): T {
     }
   }
   if (!changed) return p;
-  return { ...p, ...(own !== undefined ? { thumbFile: own } : {}), ...(Array.isArray(evidence) ? { evidence } : {}) } as T;
+  return {
+    ...p,
+    ...(own !== undefined ? { thumbFile: own } : {}),
+    ...(quoteFile !== undefined && isObj(q) ? { quote: { ...q, thumbFile: quoteFile } } : {}),
+    ...(Array.isArray(evidence) ? { evidence } : {}),
+  } as T;
 }
 
 /** Cards, narratives or narrative pages, each with its pictures' copies named. One read for all. */

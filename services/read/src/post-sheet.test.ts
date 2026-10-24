@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
-import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_QUOTED_MEDIA_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { QUOTE_FACES_SQL } from './quote-faces.ts';
 import { PICTURE_FILES_SQL } from './post-pics.ts';
 import type { Row } from './queries.ts';
 
@@ -103,4 +104,24 @@ test('★ a launch time is the chain\'s block time or not known: never the launc
   assert.deepEqual(launchClock('vendor_field', 3), { kind: 'unknown' }, 'a live notice is seconds off the block, still not it');
   assert.deepEqual(launchClock('vendor_field', null), { kind: 'unknown' }, 'an aggregator pair time is not a launch time');
   assert.deepEqual(launchClock(null, null), { kind: 'unknown' }, 'a time kept after the coin row was swept');
+});
+
+test('★ a quote post with no media of its own shows the quoted post\'s, with the quoted account\'s face and our picture copy', async () => {
+  const F = 'abcdefabcdefabcdefabcdefabcdef01';
+  const G = '0123456789abcdef0123456789abcdef';
+  const cat = 'https://pbs.twimg.com/media/cat.jpg';
+  const quoted = { id: 'x:2', authorLabel: '@catowner', authorName: 'Cat Owner', permalink: 'https://x.com/catowner/status/2', excerpt: 'my cat', thumbUrl: cat, thumbIsVideo: false, postedAt: { at: 1 } };
+  const sheet = createPostSheet(deps({
+    [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' }, thumbUrl: cat, quote: quoted }, media: [] }],
+    [SHEET_QUOTED_MEDIA_SQL]: [{ media: [{ kind: 'image', uri: cat, width: 900, height: 1200 }] }],
+    [PICTURE_FILES_SQL]: [{ link_path: cat, file: F }],
+    [QUOTE_FACES_SQL]: [{ id: 'x:2', picture_url: 'https://pbs.twimg.com/profile_images/1/me_400x400.jpg', picture_copy: G }],
+  }));
+  const body = JSON.parse((await sheet.sheet('x:1')).body);
+  assert.equal(body.media.posterUrl, cat, 'the meme is the sheet\'s media');
+  assert.equal(body.media.posterFile, F);
+  assert.equal(body.post.quote.thumbFile, F);
+  assert.equal(body.post.quote.authorPictureUrl, 'https://pbs.twimg.com/profile_images/1/me_400x400.jpg');
+  assert.equal(body.post.quote.authorPictureFile, G);
+  assert.equal(body.post.quote.excerpt, 'my cat');
 });

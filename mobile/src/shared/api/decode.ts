@@ -27,7 +27,7 @@ import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
+import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -38,6 +38,7 @@ import {
   FORBIDDEN_KEYS,
   FORBIDDEN_SUBSTRINGS,
   OLDER_COIN_FIELDS,
+  QUOTED_POST_FIELDS,
   RISING_POST_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
@@ -638,6 +639,45 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     runningOlder: o.runningOlder === undefined || o.runningOlder === null ? [] : arr(o.runningOlder, `${path}.runningOlder`).map((c, i) => decodeOlderCoin(c, `${path}.runningOlder[${i}]`)),
     ...decodeTranslation(o.translation, `${path}.translation`),
     ...decodeInStory(o.inStory),
+    ...decodeQuote(o.quote, `${path}.quote`),
+  };
+}
+
+/**
+ * The post a card's post quotes. Absent or null: none. One that is not a readable quote (no id, no
+ * account, nothing to draw) is dropped and the card shown without it: another account's post is
+ * never a reason to refuse the card, or the feed. The internal-vocabulary check has already run over
+ * the whole card, quote included.
+ */
+export function decodeQuote(raw: unknown, path = '$.quote'): { quote?: QuotedPost } {
+  if (raw === undefined || raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const o = pick(raw as Record<string, unknown>, QUOTED_POST_FIELDS);
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  const id = text(o.id);
+  const authorLabel = text(o.authorLabel);
+  const excerpt = typeof o.excerpt === 'string' ? o.excerpt : '';
+  const thumbUrl = httpsOrNull(o.thumbUrl);
+  if (id === null || authorLabel === null || (excerpt.trim() === '' && thumbUrl === null)) return {};
+  let postedAt: Instant;
+  try {
+    postedAt = instantAt(o.postedAt, `${path}.postedAt`, 'not_reported');
+  } catch {
+    postedAt = instantFrom(null, 'not_reported');
+  }
+  return {
+    quote: {
+      id,
+      authorLabel,
+      authorName: text(o.authorName),
+      authorPictureUrl: httpsOrNull(o.authorPictureUrl),
+      authorPictureFile: posterPicFile(o.authorPictureFile),
+      permalink: httpsOrNull(o.permalink),
+      excerpt,
+      thumbUrl,
+      thumbFile: postPicFile(o.thumbFile),
+      thumbIsVideo: o.thumbIsVideo === true,
+      postedAt,
+    },
   };
 }
 
