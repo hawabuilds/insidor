@@ -28,7 +28,9 @@
  * that two different loaders share hands one screen the other's shape — keys name their read.
  */
 
-const VERSION = 2;
+/* 3 from 2026-10-24: a narrative gained `countries` (Twitter World War), and lists kept from before
+   crashed the Narratives filters ("e.countries.length"). */
+const VERSION = 3;
 /** The phone's store's own key prefix, for tests and for clearing. */
 export const KEPT_PREFIX = `insidor.kept.v${VERSION}.`;
 const PREFIX = KEPT_PREFIX;

@@ -66,7 +66,7 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
           <div className={styles['editBody']}>
             <h3 className={styles['editLabel']}>Name</h3>
             <Row title="Rename" sub={story.title} then={() => setPane('rename')} />
-            <Row title="Twitter World War" sub={story.countries === null ? 'Not in it' : `In it: ${story.countries.join(' vs ')}`} then={() => setPane('war')} />
+            <Row title="Twitter World War" sub={story.countries == null ? 'Not in it' : `In it: ${story.countries.join(' vs ')}`} then={() => setPane('war')} />
             <h3 className={styles['editLabel']}>Coin</h3>
             {shown !== null ? (
               <Row call={{ action: 'coin_right', storyId: story.id, coin: shown.address }} title="Right coin" sub={`${name} is the coin for this story`} />

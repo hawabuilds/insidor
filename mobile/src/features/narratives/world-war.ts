@@ -29,7 +29,7 @@ export type ListItem = { readonly kind: 'story'; readonly story: Story } | { rea
 /** The key a list row is drawn and measured under; the umbrella's never collides with a narrative id. */
 export const itemKey = (i: ListItem): string => (i.kind === 'story' ? i.story.id : ' war');
 
-const isWar = (s: Story): boolean => s.countries !== null && s.countries.length >= 2;
+const isWar = (s: Story): boolean => s.countries != null && s.countries.length >= 2;
 
 /** The list with its meme wars gathered into one umbrella, standing where the first of them stood. */
 export function withWarUmbrella(rows: readonly Story[]): readonly ListItem[] {
@@ -60,7 +60,7 @@ export interface FightSection {
 export function fightSections(stories: readonly Story[]): readonly FightSection[] {
   const by = new Map<string, Story[]>();
   for (const s of stories) {
-    if (!isWar(s) || s.countries === null) continue;
+    if (!isWar(s) || s.countries == null) continue;
     const name = fightName(s.countries);
     by.set(name, [...(by.get(name) ?? []), s]);
   }
