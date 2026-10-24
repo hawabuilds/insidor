@@ -147,6 +147,7 @@ import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { sortTop } from './work/sort-top.ts';
 import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
+import { fightWordsPass } from './work/fight-words.ts';
 import { quoteClock, quoteSearchPass, type QuoteSearchResult } from './work/quote-search.ts';
 import { accountWatchPass, accountWatchState, type AccountWatchResult } from './work/account-watch.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
@@ -948,6 +949,9 @@ export async function withRuntime<T>(
       });
       /* Where each narrative's name search last began, and which ages each big post was asked at (this process). */
       const nameClock = narrativeNameClock();
+      /* When the narrative-name search last ran: its loop now turns every `feed.fightWords.everyMs` for the
+         meme-war word search, and the name search keeps its own `narrativeNames.everyMs`. */
+      let namesRanAt = Number.NEGATIVE_INFINITY;
       const quotesAsked = quoteClock();
       /* The account watch's list and each account's last answered ask (this process). */
       const watchState = accountWatchState();
@@ -1401,8 +1405,40 @@ export async function withRuntime<T>(
               },
               readingNotes,
             ),
-          nameSearch: () =>
-            narrativeNamesPass(
+          nameSearch: async () => {
+            /* ★ The meme-war word search (`feed.fightWords`, work/fight-words.ts) every turn of this loop,
+               inside the X search day's pace as the discover pass reads it. */
+            const war = await fightWordsPass({
+              sources: () => platforms.all(),
+              narratives: new PgNarrativeRepo(db),
+              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              uncredited: (ids) => repos.items.uncredited(ids),
+              ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'fight-words-lane' })),
+              searchDay: {
+                spent: async (vendor, now) => {
+                  try {
+                    const spend = new PgSpendRepo(db);
+                    const from = searchDayStart(now, policy) as Millis;
+                    const parts = await Promise.all(X_DAY_ENDPOINTS.map((e) => spend.usdSince(vendor, e, from)));
+                    return parts.reduce((a, b) => a + b, 0);
+                  } catch {
+                    return null;
+                  }
+                },
+              },
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'fight-words' }),
+              now: () => Date.now() as Millis,
+            });
+            const now = Date.now();
+            /* A minute's slack, so a loop turn a few seconds early does not skip the name search for a whole turn. */
+            if (now - namesRanAt < policy.feed.narrativeNames.everyMs - 60_000) {
+              return { narratives: 0, named: 0, asked: war.asked, returned: war.returned, fresh: war.fresh, usd: war.usd, stopped: null };
+            }
+            namesRanAt = now;
+            const names = await narrativeNamesPass(
               {
                 sources: () => platforms.all(),
                 narratives: new PgNarrativeRepo(db),
@@ -1416,7 +1452,9 @@ export async function withRuntime<T>(
                 now: () => Date.now() as Millis,
               },
               nameClock,
-            ),
+            );
+            return { ...names, asked: names.asked + war.asked, returned: names.returned + war.returned, fresh: names.fresh + war.fresh, usd: names.usd + war.usd };
+          },
           quoteSearch: () =>
             quoteSearchPass(
               {
