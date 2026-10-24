@@ -131,6 +131,9 @@ function sinceText(at: number, now: number): string {
   return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
 }
 
+/** How long before a narrative's first post a coin may launch and still be listed as made from it. */
+const COIN_LEAD_MS = 10 * 60_000;
+
 function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
   const now = useNow();
   const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
@@ -167,8 +170,15 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
   /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, every coin its posts
      made is listed on the page itself, oldest first, and the bar offers Create — never a sheet to open. */
-  const unclear = coin.kind !== 'checked' && sheet !== null && sheet.coins.length > 0;
-  const oldestFirst = useMemo(() => (sheet === null ? [] : [...sheet.coins].sort((a, b) => (a.launchedAt.known ? a.launchedAt.at : Infinity) - (b.launchedAt.known ? b.launchedAt.at : Infinity))), [sheet]);
+  /* Only coins made after the narrative's first post (a few minutes' lead for a coin launched as it went
+     up): an older coin of the same name was not made from these posts (the owner, 2026-10-24: "really
+     old coins … that don't closely match the post"). A coin whose launch we do not know is left out too. */
+  const madeHere = useMemo(() => (sheet === null || firstPost === null ? [] : sheet.coins.filter((c) => c.launchedAt.known && c.launchedAt.at >= firstPost - COIN_LEAD_MS)), [sheet, firstPost]);
+  const unclear = coin.kind !== 'checked' && madeHere.length > 0;
+  /* An unchecked top coin older than the narrative is no offer either: the bar says No coin yet, with Create. */
+  const oldTop = coin.kind === 'top' && firstPost !== null && coin.coin.sheet !== null && coin.coin.sheet.launchedAt.known && coin.coin.sheet.launchedAt.at < firstPost - COIN_LEAD_MS;
+  const barState: StoryCoinState | { readonly kind: 'unclear' } = unclear ? { kind: 'unclear' } : oldTop ? { kind: 'none' } : coin;
+  const oldestFirst = useMemo(() => [...madeHere].sort((a, b) => (a.launchedAt.known ? a.launchedAt.at : Infinity) - (b.launchedAt.known ? b.launchedAt.at : Infinity)), [madeHere]);
   const openCoin = (c: CoinFace) => (window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id)));
   const pinned = useMemo(() => firstPosted(story), [story]);
   const when = useMemo(() => moments(story), [story]);
@@ -271,7 +281,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 
-      <CoinBar state={unclear ? { kind: 'unclear' } : coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
+      <CoinBar state={barState} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
 
       {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
       {choosing && sheet !== null ? (
