@@ -26,3 +26,10 @@ test('a curve account is never borrowed for a pool', () => {
   const [m] = mergeHits([[hit({ venue: 'pool', marketAddress: null })], [hit({ venue: 'curve', marketAddress: 'curve' })]]);
   assert.equal(m?.marketAddress, null);
 });
+
+test('★ the launch is the earliest time any source knows, never a pool made later', () => {
+  const curve = hit({ address: 'M', venue: 'curve', createdAt: 1_000 });
+  const pool = hit({ address: 'M', venue: 'pool', createdAt: 9_000 });
+  assert.equal(mergeHits([[pool], [curve]])[0]?.createdAt, 1_000);
+  assert.equal(mergeHits([[{ ...pool, createdAt: null }], [curve]])[0]?.createdAt, 1_000);
+});
