@@ -9,7 +9,7 @@
  * this, after a sell is sent.
  *
  * ★ THE CARD WAITS FOR THE SELL TO LAND. The ticket knows the sell was sent; the read service knows
- * when it landed and what the market cap was then (services/read trade-card.ts). Until it has, the
+ * when it landed and what each trade's own cap was (services/read trade-card.ts). Until it has, the
  * preview says so and asks again every few seconds; a sell never seen landing gets no card.
  *
  * ★ WHAT IS LEFT OFF IS SAID UNDER THE PREVIEW. A number the record does not have is not drawn (no
