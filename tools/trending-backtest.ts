@@ -200,7 +200,7 @@ try {
           trendCoin = { capAtStart: at(t - HOUR), capNow: at(t), buys: buys.filter((b) => b.mint === coin.address && (toMs(b.at) ?? 0) > t - HOUR && (toMs(b.at) ?? 0) <= t).length };
         }
         const input = { posts, foundAtMs, coin: trendCoin };
-        const facts = trendFacts(input, t, HOUR);
+        const facts = trendFacts(input, t, HOUR, P);
         const members = posts.map((p) => p.reach);
         rows.set(n.id, { id: n.id, name: nameOf(n), posts: n.members.length, trend: facts, gained24: reachGained(members, t - 24 * HOUR, t).value, gained1: facts.gained });
         return { id: n.id, facts, foundAtMs };

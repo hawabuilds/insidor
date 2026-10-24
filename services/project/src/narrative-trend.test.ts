@@ -33,7 +33,7 @@ test('every window carries views gained, new posts and a 1-based place; the boar
   assert.deepEqual(out.order, ['fast', 'slow']);
   const fast = out.pages.get('fast') ?? [];
   assert.deepEqual(fast.map((w) => w.hours), [1, 6, 24]);
-  assert.deepEqual(fast[0], { hours: 1, viewsGained: { v: 4 * 50 * 500 }, newPosts: 4, trendingPlace: 1 });
+  assert.deepEqual(fast[0], { hours: 1, viewsGained: { v: 4 * 50 * 500 }, newPosts: 4, viralPosts: 0, trendingPlace: 1 }, '25k each: under the For You bar, none viral');
   assert.equal(JSON.stringify([...out.pages.values()]).includes('value'), false, 'no ordering number on the page');
 });
 

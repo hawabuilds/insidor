@@ -17,6 +17,14 @@
  * times is one new post to the order (the card still says how many posts arrived). Breadth — the
  * share of new posts from different accounts — rewards many voices over one loud one.
  *
+ * ★ STEADY VIRAL POSTS (the owner, 2026-10-24: "shouldn't that be the purpose of Trending since it's
+ * picking up the views" — the narratives that keep having viral posts). `viralAccounts` counts the
+ * accounts with a post that went up in the window and has For You's views (`rising.fypMinReach`, a
+ * short video at its own scale) at its newest reading; `viralSlots` how many of the window's
+ * `trend.steadySlots` equal parts hold one. A story with a viral post every few hours outranks one
+ * with a single big post: one post is a hit, a run of them is a story still going. A post with no
+ * reading is not counted as viral: an unknown is never a yes.
+ *
  * ★ A MISSING INPUT IS NOT A ZERO. A story none of whose posts was read in the window is `unread`
  * and goes after every ranked one: an outage is not a slow story. No reading in the window before:
  * the speed-up term is left out, not scored as a jump from zero. An unknown age does not fade. A
@@ -39,6 +47,8 @@ export interface TrendPost {
   /** When we first saved it; null when not known (it is then never a new post). */
   readonly foundAtMs: number | null;
   readonly reach: MemberReach;
+  /** What its views are held to For You's bar at: 1, or the short-video scale (`rising.shortVideoReachScale`). Absent: 1. */
+  readonly reachScale?: number;
 }
 
 /** The narrative's checked or proven coin, from stored market readings and our own trades. */
@@ -75,13 +85,34 @@ export interface TrendFacts {
   /** The coin's market cap now over the window's start; null without a checked coin read at both ends. */
   readonly coinCapRatio: number | null;
   readonly coinBuys: number;
+  /** Posts that went up in the window and are at For You's views now, and their accounts (each once). */
+  readonly viralPosts: number;
+  readonly viralAccounts: number;
+  /** Of the window's `steadySlots` equal parts, how many hold such a post. */
+  readonly viralSlots: number;
+  readonly steadySlots: number;
 }
 
-export function trendFacts(input: TrendInput, nowMs: number, windowMs: number): TrendFacts {
+/** A post's newest views, or null with no reading that carried a count. */
+const newestReach = (r: MemberReach): number | null => {
+  let best: { atMs: number; reach: number } | null = null;
+  for (const x of r.points) if (x.reach !== null && (best === null || x.atMs > best.atMs)) best = { atMs: x.atMs, reach: x.reach };
+  return best === null ? null : best.reach;
+};
+
+export function trendFacts(input: TrendInput, nowMs: number, windowMs: number, p?: Policy): TrendFacts {
   const from = nowMs - windowMs;
   const members = input.posts.map((p) => p.reach);
   const fresh = input.posts.filter((p) => p.foundAtMs !== null && p.foundAtMs >= from && p.foundAtMs <= nowMs);
   const c = input.coin;
+  const bar = p?.rising.fypMinReach ?? Number.POSITIVE_INFINITY;
+  const slots = Math.max(1, Math.round(p?.narrative.trend.steadySlots ?? 1));
+  const viral = input.posts.filter((x) => {
+    const at = x.reach.postedAtMs ?? x.foundAtMs;
+    const level = newestReach(x.reach);
+    return at !== null && at >= from && at <= nowMs && level !== null && level >= bar * (x.reachScale ?? 1);
+  });
+  const slotOf = (x: TrendPost) => Math.min(slots - 1, Math.floor((((x.reach.postedAtMs ?? x.foundAtMs) ?? from) - from) / (windowMs / slots)));
   return {
     windowMs,
     gained: reachGained(members, from, nowMs).value,
@@ -92,6 +123,10 @@ export function trendFacts(input: TrendInput, nowMs: number, windowMs: number): 
     ageMs: input.foundAtMs === null ? null : Math.max(0, nowMs - input.foundAtMs),
     coinCapRatio: c === null || c.capAtStart === null || c.capNow === null || c.capAtStart <= 0 ? null : c.capNow / c.capAtStart,
     coinBuys: c === null ? 0 : c.buys,
+    viralPosts: viral.length,
+    viralAccounts: new Set(viral.map((x) => x.authorKey)).size,
+    viralSlots: new Set(viral.map(slotOf)).size,
+    steadySlots: slots,
   };
 }
 
@@ -121,6 +156,8 @@ export function trendStanding(f: TrendFacts, p: Policy): TrendStanding {
   if (f.sources >= 2) sum += t.bothSourcesBoost;
   if (f.coinCapRatio !== null) sum += t.coinCapWeight * Math.log2(1 + Math.max(0, Math.min(t.coinCapMaxGrowth, f.coinCapRatio - 1)));
   sum += t.coinBuyWeight * Math.log2(1 + f.coinBuys);
+  sum += t.viralWeight * Math.log2(1 + f.viralAccounts);
+  if (f.steadySlots > 0) sum += t.steadyWeight * (f.viralSlots / f.steadySlots);
   const w = windowOf(f.windowMs, p);
   const age = f.ageMs === null ? 0 : f.ageMs * (speedingUp ? t.keepAgeing : 1);
   sum -= t.ageWeight * Math.min(t.ageMaxUnits, age / w.ageMs);

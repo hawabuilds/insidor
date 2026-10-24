@@ -4329,6 +4329,45 @@ export interface NarrativePolicy {
     readonly maxCountries: number;
     readonly minPosts: number;
     readonly maxOutputTokens: number;
+    /**
+     * ★ A COUNTRY NAMED IN ANOTHER COUNTRY'S LANGUAGE (the owner, 2026-10-24, policy.v157): "whenever
+     * those countries mention the other country in their native language, it is beef related". A
+     * stored post in a language of `home` that names another country of `names` in that language
+     * (a French post saying "Japon", a Japanese one saying フランス), at `minReach` views or more, is
+     * a meme-war post of that pair (core group/fight-native.ts). The judge's yes is not needed: on
+     * 23-24 Oct every French post mocking the Japanese (46k to 316k views) and the Chinese and Turkish
+     * posts of their war were judged not coinable, so none was ever grouped.
+     *
+     *   join     such a post in no narrative joins the open narrative whose countries hold the pair
+     *            and whose newest post is inside `activeMs` (the titler's answer, the owner's, or a
+     *            seed still waiting for the titler); at most `perPass` posts a pass
+     *   seed     a pair with no such narrative and `seedMinPosts` such posts from `seedMinAccounts`
+     *            accounts inside `seedWithinMs` becomes a NEW narrative, kept off the board (not
+     *            shown) and asked of the titler, `pendingPerPass` a pass: shown only when its answer
+     *            names both countries. A count alone cannot tell a war from the news — on 18 Oct
+     *            Japanese posts named France 40 times at 40k views or more, about the riots
+     *   names    per language, the countries it names and their words: a word ending in `*` matches
+     *            any ending ("japonais*"), any other word only whole; in a script written without
+     *            spaces (Chinese, Japanese, Korean) a word matches anywhere. Matched lower-cased in
+     *            the post's own language (Turkish "ÇİN" is "çin")
+     *   aliases  the titler's other spellings of a country, read as ours ("Türkiye" is Turkey)
+     *   maxRead  the most stored posts read a pass, highest views first
+     */
+    readonly native: {
+      readonly on: boolean;
+      readonly minReach: number;
+      readonly lookbackMs: number;
+      readonly maxRead: number;
+      readonly perPass: number;
+      readonly seedMinPosts: number;
+      readonly seedMinAccounts: number;
+      readonly seedWithinMs: number;
+      readonly seedMaxPosts: number;
+      readonly pendingPerPass: number;
+      readonly home: Readonly<Record<string, string>>;
+      readonly names: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
+      readonly aliases: Readonly<Record<string, string>>;
+    };
   };
 }
 
@@ -4350,6 +4389,11 @@ export interface NarrativePolicy {
  *   coin       only a checked or proven coin: `coinCapWeight` per doubling of its market cap over
  *              W (at most `coinCapMaxGrowth` times up), `coinBuyWeight` per doubling of the buys
  *              made through us in W. An unchecked coin never moves the order
+ *   viral      `viralWeight` per doubling of the accounts whose post went up in W and is at For You's
+ *              views (`rising.fypMinReach`) now, each account once (policy.v157, the owner 2026-10-24:
+ *              Trending is the narratives that keep having viral posts)
+ *   steady     `steadyWeight` times the share of W's `steadySlots` equal parts that hold such a post:
+ *              a viral post every hour of six beats six in one hour
  *   freshness  `ageWeight` off for every `ageMs` of the story's age (since we found its first
  *              post), at most `ageMaxUnits` of them, aging at `keepAgeing` the rate while it gains
  *              faster than the W before. Taken off the sum, never multiplied into it: a story still
@@ -4373,6 +4417,9 @@ export interface NarrativeTrendPolicy {
   readonly ageWeight: number;
   readonly ageMaxUnits: number;
   readonly keepAgeing: number;
+  readonly viralWeight: number;
+  readonly steadyWeight: number;
+  readonly steadySlots: number;
 }
 
 /**
@@ -5126,7 +5173,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v156',
+  version: 'policy.v157',
 
   admit: {
     maxAgeMin: 240,
@@ -7066,6 +7113,14 @@ const POLICY_V1: Policy = {
       ageWeight: 1,
       ageMaxUnits: 3,
       keepAgeing: 0.5,
+      /* policy.v157, uncalibrated: a doubling of viral accounts is worth a bit more than a doubling of
+         posting accounts (`postWeight`), and a viral post in every sixth of the window is worth a
+         tenfold of views gained — big enough that a war posting viral posts all day stays near the
+         top, small beside a story gaining a hundred times the views. tools/trending-backtest.ts
+         replays it. */
+      viralWeight: 0.8,
+      steadyWeight: 1,
+      steadySlots: 6,
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
@@ -7169,6 +7224,33 @@ const POLICY_V1: Policy = {
       maxCountries: 4,
       minPosts: 3,
       maxOutputTokens: 100,
+      /* policy.v157. Free: stored posts and their stored counts, no search and no judge call; a seed is
+         one title call (~$0.00006). Measured 2026-10-24 on the stored posts of the 8 days before, at
+         40k views (For You's bar, `rising.fypMinReach`): French naming Japan 0-1 a day, then 10 posts
+         from 9 accounts on 23 Oct (the war); Chinese naming Turkey 1-2 a day, Turkish naming China
+         0-1; Japanese naming France 4, 40 (the riots, 18 Oct) and 7. So three posts from three
+         accounts in a day seeds, and the titler decides whether it is shown. */
+      native: {
+        on: true,
+        minReach: 40_000,
+        lookbackMs: 172_800_000, // two days, the regroup's window
+        maxRead: 2_000,
+        perPass: 100,
+        seedMinPosts: 3,
+        seedMinAccounts: 3,
+        seedWithinMs: 86_400_000, // a day
+        seedMaxPosts: 30,
+        pendingPerPass: 5,
+        home: { fr: 'France', ja: 'Japan', zh: 'China', tr: 'Turkey', ko: 'South Korea' },
+        names: {
+          fr: { Japan: ['japon', 'japonais*', 'japonnais*'], China: ['chine', 'chinois*'], Turkey: ['turquie', 'turc', 'turcs', 'turque', 'turques'], 'South Korea': ['corée', 'coréen*'] },
+          ja: { France: ['フランス'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
+          zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
+          tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
+          ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },
+        },
+        aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China' },
+      },
     },
   },
 
