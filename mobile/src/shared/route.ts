@@ -30,7 +30,8 @@ export type Route =
      sheet goes to For You itself, so back and close both land there. */
   | { readonly screen: 'post'; readonly postId: string }
   | { readonly screen: 'narratives' }
-  | { readonly screen: 'story'; readonly storyId: string }
+  /* `coins`: the page opens on its Choose coin (`#/story/<id>/coins`), the Narratives card's "See N coins". */
+  | { readonly screen: 'story'; readonly storyId: string; readonly coins?: true }
   | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string }
   | { readonly screen: 'search' }
   /* A coin by its own id, no narrative around it: from search, a list, or a post's coin that the
@@ -74,6 +75,7 @@ export function parseRoute(hash: string): Route {
 
   if (head === 'story' && id !== undefined && rest.length === 0) {
     if (sub === undefined) return { screen: 'story', storyId: id };
+    if (sub === 'coins' && coinId === undefined) return { screen: 'story', storyId: id, coins: true };
     if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId };
     return FEED;
   }
@@ -125,7 +127,7 @@ export function hrefFor(route: Route): string {
     case 'feed':
       return '#/';
     case 'story':
-      return `#/story/${enc(route.storyId)}`;
+      return `#/story/${enc(route.storyId)}${route.coins === true ? '/coins' : ''}`;
     case 'post':
       return `#/post/${enc(route.postId)}`;
     case 'coin':
