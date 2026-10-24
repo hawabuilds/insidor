@@ -5,6 +5,11 @@ packages:
   - 'store'
   - 'ml/serve'
   - 'services/*'
+  # The self-hosted embedding model is NOT a workspace package: its runtime carries about 450 MB of
+  # native binaries for every platform, and as a workspace member every service's Railway build would
+  # install them. It has its own package-lock.json and is built alone (services/embed/railway.json);
+  # the root `check:embed` typechecks and tests it without the runtime (services/embed/src/model.ts).
+  - '!services/embed'
   # The browser wallet adapter. Top level rather than under adapters/*, because the app is
   # allowed to import it and is forbidden — by .dependency-cruiser.cjs — from importing
   # anything under adapters/. That rule is right and is not widened for this; the package is

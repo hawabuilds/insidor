@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/embed-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The self-hosted embedding model: words and pictures as unit vectors over HTTP. Outside the pnpm workspace on purpose (see src/model.ts and the root pnpm-workspace.yaml).",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --expose-gc src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.1"
+  }
+}
