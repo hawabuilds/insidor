@@ -34,6 +34,13 @@
  *            evidence says which, with the reason "no trade data" — written with every change of
  *            coin recorded (coin_pick_change).
  *
+ * ★ THE STATED NAME (Policy.runnerLink.stated, core match/stated-name.ts). A launch carrying a post's
+ * whole stated name and ticker ties it up to two days after the post, and a post new to this process
+ * is also matched against the coins launched since it was posted that carry its stated name — the
+ * launch path met those before the post was ours. Once such a coin clears the bars, every look-alike
+ * is out of the pick (core `behindStated`). Except on a post the owner made a coin call on: there
+ * the stated tie is dropped before judging, so his word is never re-opened by it.
+ *
  * ★ SHADOW AND LIVE WRITE THE SAME. Policy.oneCoin.mode only decides whether the cards and pushes
  * read the pick (services/project, services/notify); here it is recorded on each change so the
  * shadow report can tell shadow picks from live ones.
@@ -47,7 +54,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -79,6 +86,11 @@ export interface OneCoinDeps {
    * coin runs. Absent: none, as before 2026-10-20.
    */
   readonly coinFirstLaunches?: (sinceMs: number, limit: number, hashVersion: string) => Promise<readonly RecentLaunch[]>;
+  /**
+   * The posts of these ids the owner made a coin call on ("Right coin", "Wrong coin", "No coin"):
+   * their stated-name tie is never used, so the call stands. Absent: none.
+   */
+  readonly ownerCalled?: (itemIds: readonly string[]) => Promise<ReadonlySet<string>>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -170,7 +182,9 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     state.postsReadAt = now;
   }
   const posts = state.posts;
-  const bars = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, linkMaxAgeMs: P.linkMaxAgeMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: deps.policy.postCoin.minVariantLength };
+  const S = deps.policy.runnerLink.stated;
+  const statedBars = S.on ? { minVariantLength: deps.policy.postCoin.minVariantLength, genericWords: S.genericWords, withinMs: S.withinMs } : undefined;
+  const bars = { launchLeadMs: P.launchLeadMs, postWindowMs: P.postWindowMs, linkMaxAgeMs: P.linkMaxAgeMs, maxHashDistance: P.picture.maxHashDistance, minSimilarity: P.picture.minSimilarity, minVariantLength: deps.policy.postCoin.minVariantLength, ...(statedBars === undefined ? {} : { stated: statedBars }) };
 
   /* ── match: new launches to recent posts ─────────────────────────── */
   const recent = await repo.recentLaunches(now - P.rematchMs, P.perPass.launches, HASH_VERSION);
@@ -232,6 +246,16 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
       rows.push({ itemId: p.itemId, address, path: 'existing', evidence: { ties: c.ties, capUsd: c.capUsd, launchedAfterMs: c.launchedAtMs === null ? null : c.launchedAtMs - p.postedAtMs }, launchedAtMs: c.launchedAtMs, foundAtMs: now });
       watch.push({ address, untilMs: now + P.watchMs });
     }
+    /* ★ A coin carrying the post's stated name, launched after the post but before it was ours: the launch path never met them. */
+    if (statedBars !== undefined) {
+      const stated = [...names, ...statedInText(p.text)];
+      const since = await repo.coinsLaunchedBetween(stated, wordsOf(p.text), p.postedAtMs, Math.min(now, p.postedAtMs + statedBars.withinMs), PRIOR_COINS_READ);
+      for (const c of since) {
+        if (c.launchedAtMs === null || chosen.has(c.address) || !statesName(stated, c, statedBars)) continue;
+        rows.push({ itemId: p.itemId, address: c.address, path: 'launch', evidence: { ties: ['name_stated'], capUsd: c.capUsd, launchedAfterMs: c.launchedAtMs - p.postedAtMs }, launchedAtMs: c.launchedAtMs, foundAtMs: now });
+        watch.push({ address: c.address, untilMs: now + P.watchMs });
+      }
+    }
   }
   /* A post that left the window is forgotten, so the set stays the window's size. */
   const inWindow = new Set(posts.map((p) => p.itemId));
@@ -276,9 +300,12 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const ruleBars = oneCoinBars(P, fit);
   const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined): OneCoinOutcome =>
     pickOneCoin(contendersOf(rs, running ? trades : null, watched, market), holderOf(prev), now, running, ruleBars);
+  /* ★ The owner's coin call stands: his posts are judged without the stated-name tie. */
+  const called = deps.ownerCalled === undefined || byPost.size === 0 ? new Set<string>() : await deps.ownerCalled([...byPost.keys()]);
+  const withoutStated = (rs: readonly CandidateRow[]): CandidateRow[] => rs.map((r) => (Array.isArray(r.evidence['ties']) && r.evidence['ties'].includes('name_stated') ? { ...r, evidence: { ...r.evidence, ties: r.evidence['ties'].filter((t: unknown) => t !== 'name_stated') } } : r));
 
   const prevPosts = await repo.picks('post', [...byPost.keys()]);
-  const postPicks = [...byPost].map(([id, rs]) => pickWrite(id, judge(rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
+  const postPicks = [...byPost].map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);
 
   const rowsByItem = new Map<string, CandidateRow[]>();

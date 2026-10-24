@@ -419,6 +419,18 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `${finds === null ? 'Few' : finds} ${language === null ? '' : `${language} `}posts found by the ${source} searches in ${window}, against ${base ?? 'many more'} in the same hours the day before.${language === null ? ' Every language fell together.' : ''}`,
         };
       }
+      if (f['what'] === 'missed-runner') {
+        /* The runner's missed-runner net (services/runner work/missed-runners.ts): a coin over the cap
+           bar that no post's or narrative's coin was, and the post we held it came from, if any. */
+        const ticker = typeof f['ticker'] === 'string' && f['ticker'] !== '' ? `$${f['ticker']}` : s(f['name'], 'A coin');
+        const cap = n(f['capUsd']);
+        const handle = typeof f['handle'] === 'string' && f['handle'] !== '' ? `@${f['handle']}` : null;
+        const views = n(f['views']);
+        const title = `${ticker} ran to ${cap === null ? 'a big cap' : `$${compact(cap)}`} past us`;
+        if (f['itemId'] === null || f['itemId'] === undefined) return { title, body: 'It ran without a post we hold. No search found the post it came from.' };
+        const post = `${handle ?? 'a post'}'s post${views === null ? '' : ` (${views.toLocaleString('en-US')} views)`}`;
+        return { title, body: f['linked'] === true ? `It came from ${post}. That post now shows it as its coin.` : `It came from ${post}. You made a coin call on that post, so it was left as you set it.` };
+      }
       if (f['what'] === 'judge-cost') {
         /* The runner's judge cost alarm (services/runner judge-cost-alarm.ts): the last hour's booked
            cost a call against the median hour of the days before. Said as the ledger's numbers. */
