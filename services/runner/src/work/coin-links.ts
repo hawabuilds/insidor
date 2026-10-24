@@ -20,6 +20,19 @@
  * origin of a coin that ran to millions. The judge and the hold then decide, as for any post; a coin
  * naming a post does not make it a meme.
  *
+ * ★ THE VIRAL POST, NOT THE PROMOTION (the owner, 2026-10-24: "just bring in the viral post and link
+ * the coin rather than the promotion post"). The post a coin names is often its launcher's promotion
+ * ("$X is live…") quoting the viral post, re-sharing it or linking it by URL: 8,087 of the 21,740
+ * posts coins named over 21-24 Oct. Once the named post is held, the post it points at (core
+ * match/coin-origin.ts `promoPointsAt`, one hop: re-share, quote, then its first link) is read by id
+ * if we do not hold it — the same priced read, at most `readsPerPass` more, and only while its id's
+ * own time says it is young enough to be credited or tied — and, when it is another account's and at
+ * least as widely seen (`promoFollows`), the link is recorded coin → original with the promotion as
+ * its `via` (0132), and the ORIGINAL is credited under the same age, approvals and reach rules, on its
+ * own numbers. The promotion gets no link row and no credit then: every reader of the links takes a
+ * row as the coin's post. A promotion that points at nothing, or at a post we cannot read or do not
+ * follow, is recorded and credited as it always was. Before 0132 nothing is followed.
+ *
  * ★ THE FIRST COIN IS THE POST'S. Copycats link the same viral post; core's post-coin rule proves
  * the earliest-launched one, and the project service finds them all through this table.
  *
@@ -32,7 +45,7 @@
  */
 
 import type { Author, Item, ItemId, Millis } from '@insidor/contracts';
-import { itemId } from '@insidor/contracts';
+import { promoFollows, promoPointsAt } from '@insidor/core';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
@@ -54,7 +67,7 @@ export interface FollowedLink {
 }
 
 export interface CoinLinkDeps {
-  readonly finders: Pick<PgFinderRepo, 'freshUnread' | 'recordLinks'>;
+  readonly finders: Pick<PgFinderRepo, 'freshUnread' | 'recordLinks' | 'keepsVia' | 'promoFacts'>;
   readonly coins: Pick<PgCoinUniverseRepo, 'recordMetadata'>;
   readonly metadata: MetadataReader;
   readonly declared?: DeclaredReader;
@@ -77,12 +90,14 @@ export interface CoinLinkResult {
   readonly links: number;
   readonly postsRead: number;
   readonly credited: number;
+  /** Named posts taken through to the post they quote, re-share or link (the header's promotion rule). */
+  readonly followed: number;
   readonly usd: number;
   /** Seconds from each linking coin's launch to its link being recorded: what "within seconds" measures. */
   readonly secondsAfterLaunch: readonly number[];
 }
 
-const EMPTY: CoinLinkResult = { coins: 0, read: 0, links: 0, postsRead: 0, credited: 0, usd: 0, secondsAfterLaunch: [] };
+const EMPTY: CoinLinkResult = { coins: 0, read: 0, links: 0, postsRead: 0, credited: 0, followed: 0, usd: 0, secondsAfterLaunch: [] };
 
 /** Every URL in a metadata document's links and description, scheme added where it was left off. */
 export function urlsIn(m: Pick<ReadMetadata, 'description' | 'links'>): readonly string[] {
@@ -206,15 +221,7 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
     return none;
   }
 
-  /* 2. The links, recorded for every post named, whatever its age. */
-  const at = deps.now();
-  const links: CoinPostLink[] = named.flatMap(({ coin, posts }) =>
-    posts.map((p) => ({ assetKey: coin.assetKey, address: coin.address, source: String(p.adapter.id), sourceItemId: p.sourceItemId, link: p.url, mintedAt: coin.mintedAt })),
-  );
-  await deps.finders.recordLinks(links, at);
-  const secondsAfterLaunch = named.flatMap(({ coin }) => (coin.mintedAt === null ? [] : [Math.round((at - coin.mintedAt) / 1000)]));
-
-  /* 3. The posts we do not hold, read by id; then every named post credited if it qualifies. */
+  /* 2. Each named post once, against the earliest launch among this pass's coins naming it. */
   const byPost = new Map<string, { adapter: PlatformAdapter; sourceItemId: string; launchedAt: Millis | null }>();
   for (const { coin, posts } of named) {
     for (const p of posts) {
@@ -225,19 +232,147 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
       if (had === undefined || (coin.mintedAt !== null && (had.launchedAt === null || coin.mintedAt < had.launchedAt))) byPost.set(key, { adapter: p.adapter, sourceItemId: p.sourceItemId, launchedAt: coin.mintedAt });
     }
   }
-  const { items, usd, postsRead } = await readMissing(deps, byPost, c.readsPerPass, 'posts named by new coins');
 
-  const credit: ItemId[] = [];
+  /* 3. The named posts we do not hold, read by id; then the posts the held ones point at, one hop. */
+  const first = await readMissing(deps, byPost, c.readsPerPass, 'posts named by new coins');
+  const followed = (await deps.finders.keepsVia()) ? await followPromotions(deps, sources, handles, byPost, first.items) : NOT_FOLLOWED;
+
+  /* 4. The links, for every post named whatever its age: a promotion followed is recorded as its original, through it. */
+  const at = deps.now();
+  const links: CoinPostLink[] = named.flatMap(({ coin, posts }) => {
+    const rows = new Map<string, CoinPostLink>();
+    const row = (key: string, source: string, sourceItemId: string, link: string, via: string | null): void => {
+      if (!rows.has(key)) rows.set(key, { assetKey: coin.assetKey, address: coin.address, source, sourceItemId, link, mintedAt: coin.mintedAt, ...(via === null ? {} : { via }) });
+    };
+    /* The posts the document names outright first: an original it also names stands as named. */
+    for (const p of posts) {
+      const key = `${p.adapter.id}:${p.sourceItemId}`;
+      if (!followed.to.has(key)) row(key, String(p.adapter.id), p.sourceItemId, p.url, null);
+    }
+    for (const p of posts) {
+      const key = `${p.adapter.id}:${p.sourceItemId}`;
+      const o = followed.to.get(key);
+      if (o !== undefined) row(o.key, String(o.adapter.id), o.sourceItemId, o.link, key);
+    }
+    return [...rows.values()];
+  });
+  await deps.finders.recordLinks(links, at);
+  const secondsAfterLaunch = named.flatMap(({ coin }) => (coin.mintedAt === null ? [] : [Math.round((at - coin.mintedAt) / 1000)]));
+
+  /* 5. Each post a link now names credited if it qualifies: an original in its promotion's place. */
+  const credits = new Map<string, { adapter: PlatformAdapter; launchedAt: Millis | null }>();
   for (const [key, p] of byPost) {
-    const item = items.get(key);
-    if (item !== undefined && creditable(item, p.adapter, p.launchedAt, deps.policy)) credit.push(itemId(p.adapter.id, p.sourceItemId));
+    const o = followed.to.get(key);
+    const target = o === undefined ? key : o.key;
+    const had = credits.get(target);
+    if (had === undefined || (p.launchedAt !== null && (had.launchedAt === null || p.launchedAt < had.launchedAt))) credits.set(target, { adapter: o?.adapter ?? p.adapter, launchedAt: p.launchedAt });
+  }
+  const credit: ItemId[] = [];
+  for (const [key, p] of credits) {
+    const item = first.items.get(key) ?? followed.items.get(key);
+    if (item !== undefined && creditable(item, p.adapter, p.launchedAt, deps.policy)) credit.push(item.itemId);
   }
   if (deps.mode === 'live' && credit.length > 0) await deps.items.markFoundBy(credit, 'coin_link', deps.now());
 
-  const result = { coins: fresh.length, read, links: links.length, postsRead, credited: credit.length, usd, secondsAfterLaunch };
+  const result = {
+    coins: fresh.length, read, links: links.length, postsRead: first.postsRead + followed.postsRead, credited: credit.length,
+    followed: followed.to.size, usd: first.usd + followed.usd, secondsAfterLaunch,
+  };
   deps.log.info('coins pointing to posts', { ...result, secondsAfterLaunch: undefined, medianSecondsAfterLaunch: median(secondsAfterLaunch) });
   return result;
 }
+
+/** The post a named post is taken through to: its key, source and id, and the link recorded for it. */
+export interface Original {
+  readonly key: string;
+  readonly adapter: PlatformAdapter;
+  readonly sourceItemId: string;
+  readonly link: string;
+}
+
+export interface Followed {
+  /** By the named post's key. */
+  readonly to: ReadonlyMap<string, Original>;
+  /** The originals held, read or not, by key. */
+  readonly items: ReadonlyMap<string, Item>;
+  readonly usd: number;
+  readonly postsRead: number;
+}
+
+const NOT_FOLLOWED: Followed = { to: new Map(), items: new Map(), usd: 0, postsRead: 0 };
+
+/* Links in a post's own words are read as written: following a short link would be a request per post. */
+const AS_WRITTEN: FollowedLink = async (url) => url;
+
+/**
+ * The header's promotion rule over this pass's held named posts: each one's re-share, quote or first
+ * link (its source's link record, else the post links in its own words), read by id when we do not
+ * hold it and its id says it is young enough to matter, and kept when core `promoFollows` takes it
+ * and its source can address it. One hop: an original's own quote or link is never looked at.
+ */
+export async function followPromotions(
+  deps: Pick<CoinLinkDeps, 'finders' | 'items' | 'store' | 'meter' | 'mode' | 'log' | 'now' | 'policy'>,
+  sources: readonly PlatformAdapter[],
+  handles: Map<string, string>,
+  byPost: ReadonlyMap<string, { readonly launchedAt: Millis | null }>,
+  held: ReadonlyMap<string, Item>,
+): Promise<Followed> {
+  const c = deps.policy.finders.coinLinks;
+  const keys = [...byPost.keys()].filter((k) => held.has(k));
+  if (keys.length === 0) return NOT_FOLLOWED;
+  const told = await deps.finders.promoFacts(keys);
+
+  /* 1. What each points at, and through which hop. */
+  const pointed = new Map<string, { key: string; adapter: PlatformAdapter; sourceItemId: string; hop: 'repost' | 'quote' | 'link'; url: string | null }>();
+  for (const key of keys) {
+    const item = held.get(key) as Item;
+    const refs = item.refersTo ?? told.get(key)?.refersTo ?? null;
+    const inWords = refs !== null ? [] : await postsNamed(urlsIn({ description: item.text, links: { social: null, website: null, chat: null } }), sources, AS_WRITTEN);
+    const next = promoPointsAt({ ...factsOf(key, item), links: refs ?? inWords.map((p) => `${p.adapter.id}:${p.sourceItemId}`) });
+    if (next === null) continue;
+    const at = next.itemId.indexOf(':');
+    const adapter = sources.find((a) => String(a.id) === next.itemId.slice(0, at));
+    if (adapter === undefined) continue;
+    const written = inWords.find((p) => `${p.adapter.id}:${p.sourceItemId}` === next.itemId);
+    if (written !== undefined && written.handle !== null) handles.set(next.itemId, written.handle);
+    pointed.set(key, { key: next.itemId, adapter, sourceItemId: next.itemId.slice(at + 1), hop: next.hop, url: written?.url ?? null });
+  }
+  if (pointed.size === 0) return NOT_FOLLOWED;
+
+  /* 2. Read what we do not hold — only an original that could still be credited or tied: past both ages by its id's own time, neither. */
+  const maxAgeMs = Math.max(c.creditMaxAgeMs, deps.policy.oneCoin.linkMaxAgeMs);
+  const wanted = new Map<string, { adapter: PlatformAdapter; sourceItemId: string }>();
+  for (const [promo, o] of pointed) {
+    const launchedAt = byPost.get(promo)?.launchedAt ?? null;
+    const postedAt = o.adapter.postTimeFromId?.(o.sourceItemId) ?? null;
+    if (launchedAt === null || postedAt === null || launchedAt - postedAt <= maxAgeMs) wanted.set(o.key, { adapter: o.adapter, sourceItemId: o.sourceItemId });
+  }
+  const read = await readMissing(deps, wanted, c.readsPerPass, 'posts that coin-named posts point at');
+  const items = new Map<string, Item>(read.items);
+  const rest = [...new Set([...pointed.values()].map((o) => o.key))].filter((k) => !items.has(k));
+  for (const [k, v] of await deps.items.byIds(rest as ItemId[])) items.set(String(k), v);
+  const theirs = await deps.finders.promoFacts([...items.keys()]);
+
+  /* 3. Kept when another account's and at least as widely seen, and its source can address it. */
+  const to = new Map<string, Original>();
+  for (const [promo, o] of pointed) {
+    const original = items.get(o.key);
+    if (original === undefined) continue;
+    if (!promoFollows(factsOf(promo, held.get(promo) as Item), { authorKey: String(original.authorKey), reach: original.counters.reach?.value ?? null }, o.hop)) continue;
+    const link = o.url ?? o.adapter.postLink?.(o.sourceItemId, theirs.get(o.key)?.handle ?? handles.get(o.key) ?? null) ?? null;
+    if (link !== null) to.set(promo, { key: o.key, adapter: o.adapter, sourceItemId: o.sourceItemId, link });
+  }
+  return { to, items, usd: read.usd, postsRead: read.postsRead };
+}
+
+const factsOf = (key: string, item: Item) => ({
+  itemId: key,
+  authorKey: String(item.authorKey),
+  reach: item.counters.reach?.value ?? null,
+  rebroadcastOf: item.rebroadcastOf ?? null,
+  reproductionOf: item.reproductionOf ?? null,
+  links: [] as readonly string[],
+});
 
 const median = (xs: readonly number[]): number | null => {
   if (xs.length === 0) return null;

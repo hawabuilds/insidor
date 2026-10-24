@@ -9,7 +9,8 @@
  *
  * ★ SAFE BEFORE 0083. Every read answers "nothing" when its table is missing, and every write is
  * skipped the same way, so a runner deployed before the migration runs its passes empty rather
- * than failing its loop every few seconds. `missing` says which, once.
+ * than failing its loop every few seconds. `missing` says which, once. A link's `via` (0132) is
+ * written only once the column is there (`keepsVia`), looked up rather than found by a failure.
  *
  * What breaks if changed carelessly: `recordLinks` never overwrites. The first sighting's
  * `minted_at` is the coin's launch and `found_at` is when we first knew of the link — the lead-time
@@ -75,6 +76,19 @@ export interface CoinPostLink {
   readonly sourceItemId: string;
   readonly link: string;
   readonly mintedAt: Millis | null;
+  /**
+   * The promotion this row was reached through (0132): the post the coin's metadata named, which
+   * quotes or links this one. Absent or null: the metadata named this post itself.
+   */
+  readonly via?: string | null;
+}
+
+/** What the coin-link step reads of a held post to follow a promotion to its original (0118, 0002). */
+export interface PromoPostFacts {
+  /** The posts its own links name, as its source last told us; null when never told (no 0118 row). */
+  readonly refersTo: readonly string[] | null;
+  /** Its account's handle as last seen; null when none. */
+  readonly handle: string | null;
 }
 
 export interface ShortLinkCandidate {
@@ -149,14 +163,33 @@ export class PgFinderRepo {
     return rows.map((r) => ({ assetKey: r.asset_key, address: r.address, metadataUri: r.metadata_uri, mintedAt: toMillis(r.minted_at) }));
   }
 
+  /** Whether 0132's `via` column is there; looked up once, never found missing by a failed statement. */
+  #viaPresent: boolean | null = null;
+
+  /**
+   * Whether a link row can say which promotion it was reached through (0132). Before it, the caller
+   * records every named post as it is: with nowhere to keep the promotion, following it to its
+   * original would lose the record of what the coin actually named.
+   */
+  async keepsVia(): Promise<boolean> {
+    if (this.#viaPresent !== null) return this.#viaPresent;
+    const rows = await this.#db.query<{ n: string }>(
+      `select count(*)::text as n from information_schema.columns
+        where table_schema = 'internal' and table_name = 'coin_post_link' and column_name = 'via'`,
+    );
+    this.#viaPresent = Number(rows[0]?.n ?? 0) > 0;
+    return this.#viaPresent;
+  }
+
   /** The posts a coin's metadata names; a link already recorded is kept as first recorded. */
   async recordLinks(links: readonly CoinPostLink[], at: Millis): Promise<number> {
     if (links.length === 0) return 0;
+    const via = links.some((l) => (l.via ?? null) !== null) && (await this.keepsVia());
     return this.#guard(0, async () => {
       const rows = await this.#db.query<{ n: string }>(
         `with ins as (
-           insert into internal.coin_post_link (asset_key, address, source, source_item_id, link, minted_at, found_at)
-           select * from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[], $7::timestamptz[])
+           insert into internal.coin_post_link (asset_key, address, source, source_item_id, link, minted_at, found_at${via ? ', via' : ''})
+           select * from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[], $7::timestamptz[]${via ? ', $8::text[]' : ''})
            on conflict do nothing
            returning 1)
          select count(*)::text as n from ins`,
@@ -168,10 +201,29 @@ export class PgFinderRepo {
           links.map((l) => l.link.slice(0, 600)),
           links.map((l) => toTimestamp(l.mintedAt)),
           links.map(() => toTimestamp(at)),
+          ...(via ? [links.map((l) => l.via ?? null)] : []),
         ],
       );
       return Number(rows[0]?.n ?? 0);
     });
+  }
+
+  /**
+   * For the held posts asked about: the posts their own links name (internal.post_reference, 0118)
+   * and their account's handle. A post we do not hold is absent; before 0118 every `refersTo` is
+   * null (never told), which is not "links nothing".
+   */
+  async promoFacts(itemIds: readonly string[]): Promise<ReadonlyMap<string, PromoPostFacts>> {
+    if (itemIds.length === 0) return new Map();
+    const refs = await this.#db.query<{ t: string | null }>(`select to_regclass('internal.post_reference')::text as t`);
+    const kept = (refs[0]?.t ?? null) !== null;
+    const rows = await this.#db.query<{ item_id: string; refers_to: string[] | null; handle: string | null }>(
+      `select i.item_id, ${kept ? '(select r.refers_to from internal.post_reference r where r.item_id = i.item_id)' : 'null::text[]'} as refers_to, a.handle
+         from public.item i left join public.author a on a.author_key = i.author_key
+        where i.item_id = any($1::text[])`,
+      [[...new Set(itemIds)]],
+    );
+    return new Map(rows.map((r) => [r.item_id, { refersTo: r.refers_to, handle: r.handle === null ? null : r.handle.replace(/^@/, '') }] as const));
   }
 
   /** When the first coin naming each post launched, for the posts asked about. */

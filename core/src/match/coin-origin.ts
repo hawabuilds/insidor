@@ -34,6 +34,14 @@
  * the day's cap) and the walk goes on next pass. A post read once that the source did not return is
  * `gone`, and the walk stops before it.
  *
+ * ★ AT THE LAUNCH, ONE HOP (`promoPointsAt`, `promoFollows`; the owner, 2026-10-24). The coin-link
+ * step (services/runner work/coin-links.ts) meets the post a coin's metadata names within seconds of
+ * the launch, long before the coin runs. When that post re-shares, quotes or links another — repost,
+ * then quote, then the first post its links name — the post it points at is taken as the coin's post
+ * instead, under the same bigger-post rule, and never when both are by the same account (a launcher
+ * quoting its own earlier promotion). One hop only, never this walk: a launch has no running coin to
+ * pay for more reads, and the coin-first route walks further once one does.
+ *
  * What breaks if changed carelessly: the order and the stop. Following a post that is not followed
  * would put a big account's coined words behind the small post they quoted; stopping early would
  * show the launcher's pointer again.
@@ -87,10 +95,40 @@ export function pointsAt(p: OriginFacts): { readonly itemId: string; readonly ho
 }
 
 /** Whether the walk goes from `from` to `to` by `hop` (the header's rule). */
-export function follows(from: OriginFacts, to: OriginFacts, hop: OriginHop): boolean {
+export function follows(from: Pick<OriginFacts, 'reach' | 'launcher'>, to: Pick<OriginFacts, 'reach'>, hop: OriginHop): boolean {
   if (hop === 'repost' || from.launcher) return true;
   if (from.reach === null || to.reach === null) return true;
   return to.reach >= from.reach;
+}
+
+/** What the coin-link step knows of the post a coin's metadata named, at the launch. */
+export interface PromoFacts {
+  readonly itemId: string;
+  readonly authorKey: string;
+  /** Its newest reach reading; null when none. */
+  readonly reach: number | null;
+  readonly rebroadcastOf: string | null;
+  readonly reproductionOf: string | null;
+  /** The posts its own links name, in order; empty when none or never told. */
+  readonly links: readonly string[];
+}
+
+/** The post a coin's named post points at, one hop: its re-share, else its quote, else its first link; null when none. */
+export function promoPointsAt(p: PromoFacts): { readonly itemId: string; readonly hop: Exclude<OriginHop, 'media'> } | null {
+  if (p.rebroadcastOf !== null && p.rebroadcastOf !== p.itemId) return { itemId: p.rebroadcastOf, hop: 'repost' };
+  if (p.reproductionOf !== null && p.reproductionOf !== p.itemId) return { itemId: p.reproductionOf, hop: 'quote' };
+  const link = p.links.find((id) => id !== p.itemId);
+  return link === undefined ? null : { itemId: link, hop: 'link' };
+}
+
+/**
+ * Whether the post a named post points at is taken as the coin's post (the header's launch rule):
+ * another account's, and at least as widely seen unless either reach is unknown — a big account
+ * quoting a small one made the post people coined.
+ */
+export function promoFollows(promo: PromoFacts, original: { readonly authorKey: string; readonly reach: number | null }, hop: Exclude<OriginHop, 'media'>): boolean {
+  if (original.authorKey === promo.authorKey) return false;
+  return follows({ reach: promo.reach, launcher: false }, original, hop);
 }
 
 /** The walk from the coin's linked post `start` (the header). */
