@@ -18,6 +18,8 @@
  * teaches the fit nothing a live post will ever show.
  */
 
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
 import type { Db } from '../client.ts';
 
 export interface StoredScoreTerm {
@@ -116,8 +118,9 @@ export class PgScoreModelRepo {
   /**
    * The stored facts of these posts, for the fit. Posts we do not hold are left out. `ownCoins`
    * names, per post, the coined-picture refs that are its own coin's, left out of its picture match.
+   * `space`: the picture space the match is read in (the policy's; a max across two models is no number).
    */
-  async facts(itemIds: readonly string[], ownCoins: ReadonlyMap<string, readonly string[]> = new Map()): Promise<readonly StoredPostFacts[]> {
+  async facts(itemIds: readonly string[], ownCoins: ReadonlyMap<string, readonly string[]> = new Map(), space: string = DEFAULT_POLICY.group.image.space): Promise<readonly StoredPostFacts[]> {
     if (itemIds.length === 0) return [];
     const ids = [...itemIds];
     const own = ids.map((id) => (ownCoins.get(id) ?? []).join('\u0001'));
@@ -145,11 +148,11 @@ export class PgScoreModelRepo {
          left join lateral (
                 select max(1 - (e.embedding <=> c.embedding)) as similarity
                   from internal.image_embedding e
-                  join internal.coined_picture c on c.space = e.space and c.uri <> e.uri
+                  join internal.coined_picture c on c.space = e.space and c.space = $3 and c.uri <> e.uri
                  where e.subject_kind = 'item' and e.subject_id = i.item_id
                    and c.coin_ref <> all(string_to_array(x.own, chr(1)))
               ) pic on true`,
-      [ids, own],
+      [ids, own, space],
     );
     const readings = await this.#db.query<{ item_id: string; captured_at: Date; level: number | null }>(
       `select item_id, captured_at, case when rate_per_min is not null then rate_level end as level

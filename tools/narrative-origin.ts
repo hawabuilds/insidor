@@ -37,7 +37,7 @@ const arg = (name: string): string | null => {
 const DAY_MS = 86_400_000;
 const days = Number(arg('--days') ?? 5);
 const P: Policy = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, origin: { ...DEFAULT_POLICY.narrative.origin, liveMs: days * DAY_MS } } };
-const POST_SPACE = 'multimodal-3.1024.post';
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 const SHORT_VIDEO_SOURCE = 'tiktok';
 /** The board's length (services/project narrative-frame.ts BOARD_LIMIT). */
 const BOARD = 200;

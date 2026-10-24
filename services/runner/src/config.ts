@@ -286,6 +286,13 @@ export interface RunnerConfig {
    */
   readonly embeddings: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string };
   /**
+   * Our own embedding service (services/embed), or dormant: EMBED_SERVICE_URL and EMBED_SECRET.
+   * Configured or not, it embeds only when the policy's picture space is its space
+   * (Policy.group.image.space; embed-port.ts): setting these two changes nothing on its own, so the
+   * service can be deployed and tried before the policy edit that switches to it.
+   */
+  readonly selfEmbed: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly baseUrl: string; readonly secret: string };
+  /**
    * The IPFS gateways coin metadata is read through, by content id, tried in order. Ours to
    * choose — never the host a coin's creator named. `METADATA_GATEWAY` alone when set; else the
    * launchpad's own gateway, then Pinata's public one (the daily recall check's pair). Until
@@ -526,6 +533,10 @@ export function loadRunnerConfig(env: Env, openOnly: boolean = DEFAULT_POLICY.ju
             apiKey: (env['VOYAGE_API_KEY'] ?? '').trim(),
             baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
           },
+    selfEmbed:
+      (env['EMBED_SERVICE_URL'] ?? '').trim() === '' || (env['EMBED_SECRET'] ?? '').trim() === ''
+        ? { state: 'dormant' }
+        : { state: 'configured', baseUrl: (env['EMBED_SERVICE_URL'] ?? '').trim(), secret: (env['EMBED_SECRET'] ?? '').trim() },
     metadataGateways: (env['METADATA_GATEWAY'] ?? '').trim() === '' ? METADATA_GATEWAYS : [(env['METADATA_GATEWAY'] ?? '').trim()],
     chainRpcUrl: (env['HELIUS_API_KEY'] ?? '').trim() === '' ? null : `https://mainnet.helius-rpc.com/?api-key=${(env['HELIUS_API_KEY'] ?? '').trim()}`,
     marketData: marketDataFrom(env),

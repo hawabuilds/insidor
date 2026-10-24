@@ -254,10 +254,11 @@ export class PgLearningRepo {
 
   /**
    * Every coined picture's vector, for the picture boost the projector applies — read here so the
-   * re-tune's test grades posts exactly as the feed would, without a second repo to wire.
+   * re-tune's test grades posts exactly as the feed would, without a second repo to wire. In one
+   * space (the policy's picture space): the posts' pictures they are compared with are in it too.
    */
-  async coinedPictureVectors(): Promise<readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[]> {
-    const rows = await this.#db.query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture');
+  async coinedPictureVectors(space: string): Promise<readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[]> {
+    const rows = await this.#db.query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture where space = $1', [space]);
     return rows.map((r) => ({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] }));
   }
 

@@ -234,7 +234,7 @@ async function main(): Promise<void> {
       const block = await db.query<{ text: string }>(`select text from internal.judge_examples_version where applied order by built_at desc limit 1`).catch(() => []);
       const shared = await openSharedMeter(Number(value('--cap') ?? DEFAULT_CAP_USD), process.env, 'learning');
       try {
-        const coined = await new PgLearningRepo(db).coinedPictureVectors();
+        const coined = await new PgLearningRepo(db).coinedPictureVectors(P.group.image.space);
         const r = await missedPostsPassing(db, block[0]?.text ?? null, { env: process.env, meter: shared.meter, coined, only: never, batch: false });
         fresh = new Map(r.rows.map((x) => [x.id, x]));
         console.log(`judge asked about ${never.length} never-judged posts: ${r.passed}/${r.tested} pass, unanswered ${r.unanswered.length}`);

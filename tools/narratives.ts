@@ -46,7 +46,7 @@ if (command !== 'dry') {
 }
 const out = arg('--out');
 const titleCount = Number(arg('--titles') ?? 0);
-const POST_SPACE = 'multimodal-3.1024.post';
+const POST_SPACE = P.group.image.postSpace;
 
 const quiet = { info: () => {}, warn: (m: string, f?: unknown) => console.warn(m, f ?? ''), error: (m: string, f?: unknown) => console.error(m, f ?? ''), child: () => quiet };
 

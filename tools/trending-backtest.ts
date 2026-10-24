@@ -53,7 +53,7 @@ const tried = Object.fromEntries(arg('--try', '').split(',').filter((x) => x.inc
 const P: Policy = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, trend: { ...DEFAULT_POLICY.narrative.trend, ...tried } } };
 const TOP = 10;
 const HOUR = 3_600_000;
-const POST_SPACE = 'multimodal-3.1024.post';
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 const quiet = { info: () => {}, warn: () => {}, error: (m: string, f?: unknown) => console.error(m, f ?? ''), child: () => quiet };
 
 const toMs = (v: Date | string | null | undefined): number | null => {

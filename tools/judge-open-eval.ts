@@ -302,7 +302,7 @@ const signals: Map<string, Signal> = new Map(await repo.cryptoSignals(allPosts.m
 const near = new Map<string, Near>();
 try {
   const labels: readonly LabelledVector[] = await labelRepo.all(POST_SPACE);
-  const coined = await repo.coinedPictureVectors();
+  const coined = await repo.coinedPictureVectors(P.group.image.space);
   const voyageKey = (process.env['VOYAGE_API_KEY'] ?? '').trim();
   const embed = voyageKey === '' ? null : voyageEmbed({ client: voyageClient({ apiKey: voyageKey, baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
   const parse = (t: string): number[] => JSON.parse(t) as number[];
