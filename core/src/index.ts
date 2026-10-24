@@ -206,6 +206,9 @@ export type { CoinFirstAdmitFacts, CoinFirstBars, CoinFirstStep, CoinFirstTarget
 /* Which post the coin-first route takes: the original a coin's linked post points at (match/coin-origin.ts); and at the launch, one hop. */
 export { follows, isLauncher, pointsAt, promoFollows, promoPointsAt, resolveOrigin } from './match/coin-origin.ts';
 export type { AccountCoinFacts, LauncherBars, OriginBars, OriginFacts, OriginHop, OriginLookup, OriginOutcome, PromoFacts } from './match/coin-origin.ts';
+/* A post that only points at another account's bigger post: never shown, and its coin goes to the original (match/promotion.ts). */
+export { promotionAge, promotionMaxAgeMs, promotionOf, promotionRevives } from './match/promotion.ts';
+export type { PromotedCoinHour, PromotedOriginal, PromotionBars } from './match/promotion.ts';
 export type { ReplayCase, ReplayCoin, ReplayScore, Timeline, TradeMinute } from './match/one-coin-replay.ts';
 export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
