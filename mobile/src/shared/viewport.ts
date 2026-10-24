@@ -89,7 +89,11 @@ export function followVisibleScreen(): void {
     queued = false;
     /* A page box left a keyboard short (installed app only): the bars go down by the gap, onto the glass. */
     const short = installed ? shortAfterKeyboard(window.screen.height, window.innerHeight, typing(), KEYBOARD_GAP_PX) : 0;
-    const d = bottomDrift(window.innerHeight, vv.height, vv.offsetTop) + short;
+    /* ★ NEVER UP (2026-10-24, "ffs again": the tab bar mid-screen). A visible screen reported short —
+       the keyboard's size kept after it closed, or a stale reading after the app comes back — gave a
+       large negative gap and lifted the bars halfway up. The bars only ever move down onto the glass;
+       with the keyboard open they stay where they are, behind it. */
+    const d = Math.max(0, bottomDrift(window.innerHeight, vv.height, vv.offsetTop) + short);
     if (d === last) return;
     last = d;
     root.style.setProperty('--vv-drift', `${d}px`);
@@ -104,5 +108,15 @@ export function followVisibleScreen(): void {
   window.addEventListener('scroll', soon, { passive: true });
   window.addEventListener('resize', soon);
   document.addEventListener('focusout', () => window.setTimeout(soon, 350));
+  /* Back from the background or another app: measure again, once at once and once after iOS settles. */
+  const back = () => {
+    soon();
+    window.setTimeout(soon, 400);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') back();
+  });
+  window.addEventListener('pageshow', back);
+  window.addEventListener('focus', back);
   write();
 }
