@@ -60,6 +60,12 @@ export const CAPABILITIES: Capabilities = {
   billing: 'per-item-returned',
   /** A keyword search takes the catch-all's floor and languages, and `quoted_tweet_id:` (discover.ts). */
   narrowedSearch: { filter: true, reproductionsOf: true },
+  /** ★ The lookup answers or throws (client.ts: every refusal, rate limit and error envelope is
+      an outage, never a short array), so an id it leaves out is a post X shows nobody now. It
+      cannot say whether the post was deleted or its account went private or suspended: the
+      reseller drops all three the same way, with no reason. Telling those apart is the runner's
+      (work/gone-posts.ts), from what else of that account it reads. */
+  leftOutIsGone: true,
 };
 
 /**

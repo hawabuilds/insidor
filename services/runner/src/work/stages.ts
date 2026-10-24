@@ -105,6 +105,7 @@ import { heldDecisionReads } from './decision-log-cache.ts';
 
 /** The source held to the short-video growth window (Policy.rising.shortVideoFastWindowMs), as score-posts.ts names it. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
+import { noteRereads, type GoneDeps } from './gone-posts.ts';
 import { sourceHandles } from './handle-cache.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
@@ -480,6 +481,8 @@ export interface TrackingDeps {
   readonly now: () => Millis;
   /** What a supplier's endpoint has spent since a moment, for `feed.searchDay.rereadDailyUsd`. Absent: no re-read day. */
   readonly spentSince?: (vendor: string, endpoint: string, sinceMs: Millis) => Promise<number>;
+  /** Where what each answered re-read said about a post's presence is kept (gone-posts.ts, 0131); absent, nothing is. */
+  readonly gone?: GoneDeps;
 }
 
 function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): StageWork<TrackInput> {
@@ -758,6 +761,8 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           }
           done.add(entry.receipt.rowId);
         }
+        /* What the answer said about each post's presence (gone-posts.ts): no extra call, and a failed read never gets here. */
+        await noteRereads(tracking.gone, adapter.capabilities, entries.map((e) => ({ itemId: String(e.input.item.itemId), sourceItemId: e.input.item.sourceItemId })), answered, now);
       }
       return done;
     },
