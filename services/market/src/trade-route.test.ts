@@ -123,3 +123,26 @@ test('★ the probes are spaced, and a rate limit that clears is waited out: the
   assert.equal(waits.filter((w) => w === 1_000).length, 11, 'a gap before every probe after the first');
   assert.equal(asked.length, 14, 'two refusals, each asked again once');
 });
+
+test('★ a coin over the probe bound keeps the route the aggregator gave it within the hour, written as kept', async () => {
+  const p = ports({ A: 'complete', B: 'complete', C: 'complete', D: 'complete' }, { A: 'route', B: 'route' });
+  const last = new Map([
+    /* Routed 40 minutes ago, in an earlier window: kept. */
+    ['solana:C', { takenAt: NOW - 40 * 60_000, tradable: true, quotedBy: 'solana:pool' }],
+    /* Routed two hours ago: too old to keep, so not asked. */
+    ['solana:D', { takenAt: NOW - 120 * 60_000, tradable: true, quotedBy: 'solana:pool' }],
+  ]);
+  const { routes, counts } = await routesFor(['A', 'B', 'C', 'D'], last, keyOf, p, { ...OPTS, keepMs: 3_600_000 });
+  assert.deepEqual(p.asked, ['A', 'B']);
+  assert.equal(routes.get('C'), 'kept');
+  assert.equal(routes.get('D'), null);
+  assert.equal(counts.kept, 1);
+  assert.equal(counts.notAsked, 1);
+});
+
+test('a "no route" answer is never kept as a route', async () => {
+  const p = ports({ A: 'complete', B: 'complete', C: 'complete' }, { A: 'route', B: 'route' });
+  const last = new Map([['solana:C', { takenAt: NOW - 40 * 60_000, tradable: false, quotedBy: 'solana:pool' }]]);
+  const { routes } = await routesFor(['A', 'B', 'C'], last, keyOf, p, { ...OPTS, keepMs: 3_600_000 });
+  assert.equal(routes.get('C'), null);
+});

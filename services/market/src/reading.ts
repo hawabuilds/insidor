@@ -116,10 +116,12 @@ function signedQuantity(value: number | null, whenAbsent: MarketAbsenceReason): 
  * route, or "could not tell". Spelled here as a plain union so this file stays free of the
  * module that reads the chain.
  */
-export type TradeRoute = 'curve' | 'pool' | 'none' | 'unavailable';
+export type TradeRoute = 'curve' | 'pool' | 'kept' | 'none' | 'unavailable';
 
 /** The venue ids a route is recorded under, in `quoted_by`. */
-export const ROUTE_VENUE = { curve: 'solana:curve', pool: 'solana:pool' } as const;
+/* `kept`: the aggregator's route from an earlier pass, written when this pass could not ask (`keptRoute`).
+   Its own value so it is never mistaken for an answer and reused as one: only `pool` rows are. */
+export const ROUTE_VENUE = { curve: 'solana:curve', pool: 'solana:pool', kept: 'solana:pool:kept' } as const;
 
 /** Whether the row says the coin can be traded, and who was asked. */
 export interface TradeAnswer {
@@ -151,6 +153,8 @@ export function tradeAnswer(route: TradeRoute | null): TradeAnswer {
       return { tradable: true, quotedBy: ROUTE_VENUE.curve };
     case 'pool':
       return { tradable: true, quotedBy: ROUTE_VENUE.pool };
+    case 'kept':
+      return { tradable: true, quotedBy: ROUTE_VENUE.kept };
     case 'none':
       return { tradable: false, quotedBy: ROUTE_VENUE.pool };
     default:
@@ -196,6 +200,20 @@ function offsetOf(key: string, reuseMs: number): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
   return h % reuseMs;
+}
+
+/**
+ * A coin this pass could not ask (over the probe bound, or the aggregator stopped answering): its last
+ * route, if the aggregator gave one within `keepMs`. Without it the coin was written "nobody asked" and
+ * the card said "can't be traded yet" for a coin routed minutes before — 41 to 66 coins a pass on
+ * 24 Oct, after the windows were already spread. A route found an hour ago almost never vanishes, and
+ * the Buy sheet asks the trade service again before any order, so the cost of a stale one is a refused
+ * quote, never a trade. `last` must be the last `pool` row (db.ts `lastAnswers`), never a kept one, so a
+ * kept route is never kept again past `keepMs` from the real answer.
+ */
+export function keptRoute(last: LastAnswer | undefined, nowMs: Millis, keepMs: number): 'kept' | null {
+  if (last === undefined || last.quotedBy !== ROUTE_VENUE.pool || !last.tradable) return null;
+  return nowMs - last.takenAt < keepMs ? 'kept' : null;
 }
 
 export interface ReadingContext {

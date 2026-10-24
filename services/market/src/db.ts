@@ -310,8 +310,10 @@ async function onScreenThenNewest(db: Db, chain: string, limit: number): Promise
 }
 
 /**
- * Each coin's latest stored trade answer, so the pass can reuse the aggregator's answer
- * instead of asking again (reading.ts `reusableRoute`). The same latest-per-asset seek the
+ * Each coin's latest aggregator answer (a `solana:pool` row: a route or "no route"), so the pass can
+ * reuse it instead of asking again (reading.ts `reusableRoute`) or keep it when it cannot ask
+ * (`keptRoute`). Only `pool` rows: a "nobody asked" or kept row after it must not hide it, and a kept
+ * row must never pass for an answer. The same latest-per-asset seek the
  * projector makes, on `market_reading_latest_idx`.
  */
 export async function lastAnswers(db: Db, assetKeys: readonly string[]): Promise<ReadonlyMap<string, LastAnswer>> {
@@ -320,7 +322,7 @@ export async function lastAnswers(db: Db, assetKeys: readonly string[]): Promise
   const rows = await db.query<{ asset_key: string; taken_at: Date | string; tradable: boolean; quoted_by: string | null }>(
     `select distinct on (asset_key) asset_key, taken_at, tradable, quoted_by
        from public.market_reading
-      where asset_key = any($1::text[])
+      where asset_key = any($1::text[]) and quoted_by = 'solana:pool'
       order by asset_key, taken_at desc`,
     [assetKeys],
   );

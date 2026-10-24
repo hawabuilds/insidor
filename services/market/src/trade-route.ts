@@ -12,6 +12,8 @@
  *   2. A coin off its curve reuses the aggregator's last answer inside the current window
  *      (reading.ts `reusableRoute`), else is asked, at most `maxProbes` coins a pass, in the
  *      order given — the coins on screen first.
+ *      A coin over the bound keeps the route the aggregator gave it within the hour (`keptRoute`),
+ *      written as kept, not as an answer.
  *   3. If the curve read fails, or there is no chain access, nobody is asked: every coin is
  *      `null`, written as not tradable with nobody named. An aggregator answer that is not
  *      "a route" or "no route" (a rate limit, a timeout) is waited out once (`retryAfterMs`) and
@@ -33,7 +35,7 @@
 
 import { routeAfter, type CurveState } from '@insidor/venue-solana-pumpfun/route.ts';
 
-import { reusableRoute, type LastAnswer, type TradeRoute } from './reading.ts';
+import { keptRoute, reusableRoute, type LastAnswer, type TradeRoute } from './reading.ts';
 
 export interface RoutePorts {
   /** Curve states for many mints; throws when the chain cannot be read. Null: no chain access. */
@@ -52,11 +54,14 @@ export interface RouteOptions {
   readonly probeGapMs?: number;
   /** The wait before asking a coin again after an answer that was not "route" or "no route". */
   readonly retryAfterMs?: number;
+  /** How long a route the aggregator gave may stand in for a coin this pass cannot ask (`keptRoute`); absent, never. */
+  readonly keepMs?: number;
 }
 
 export interface RouteCounts {
   curve: number;
   pool: number;
+  kept: number;
   none: number;
   unavailable: number;
   notAsked: number;
@@ -73,7 +78,7 @@ export async function routesFor(
   opts: RouteOptions,
 ): Promise<{ readonly routes: ReadonlyMap<string, TradeRoute | null>; readonly counts: RouteCounts }> {
   const routes = new Map<string, TradeRoute | null>();
-  const counts: RouteCounts = { curve: 0, pool: 0, none: 0, unavailable: 0, notAsked: 0, probed: 0, reused: 0 };
+  const counts: RouteCounts = { curve: 0, pool: 0, kept: 0, none: 0, unavailable: 0, notAsked: 0, probed: 0, reused: 0 };
   const settle = (address: string, route: TradeRoute | null): void => {
     routes.set(address, route);
     if (route === null || route === 'unavailable') counts.notAsked += 1;
@@ -114,7 +119,7 @@ export async function routesFor(
       continue;
     }
     if (!probing || counts.probed >= opts.maxProbes) {
-      settle(address, null);
+      settle(address, opts.keepMs === undefined ? null : keptRoute(last.get(keyOf(address)), opts.nowMs, opts.keepMs));
       continue;
     }
     if (counts.probed > 0) await pause(opts.probeGapMs);
@@ -126,10 +131,10 @@ export async function routesFor(
       route = await routeAfter(state, () => ports.probe(address));
     }
     if (route === 'unavailable') {
-      /* Written as nobody answering, and the probing stops for this pass. */
+      /* Written as nobody answering (or its earlier route, kept), and the probing stops for this pass. */
       probing = false;
       counts.unavailable += 1;
-      routes.set(address, null);
+      routes.set(address, opts.keepMs === undefined ? null : keptRoute(last.get(keyOf(address)), opts.nowMs, opts.keepMs));
       continue;
     }
     settle(address, route);
