@@ -132,6 +132,10 @@ test('only observed narratives and only chainwatch\'s own coins are searched —
   assert.match(ASSET_SEARCH_SQL, /from public\.coin_name/);
 });
 
+test('a ticker its creator wrote with a dollar sign is found by the ticker typed without one', () => {
+  assert.match(ASSET_SEARCH_SQL, /upper\(n\.ticker\) in \(\$1, '\$' \|\| \$1\)/);
+});
+
 test('★ an outage is not an empty list: every source down is "unavailable", one down is counted', async () => {
   const down = source(async () => { throw new Error('429'); });
   const up = source(async () => ({ hits: [hit({})], capped: true }));

@@ -119,12 +119,14 @@ select coalesce(
 /* Chainwatch's own coins, from the name index (0037), which outlives each coin's full row: a coin
    deleted by the keep rule is still found here, and its picture is used only while the full row
    lasts. Exact ticker or exact name only — the index holds every launch ever, and a fuzzy match
-   over it is not a list. */
+   over it is not a list. A ticker its creator wrote with the dollar sign ("$NANA": 310 of the
+   42,000 launches on 2026-10-24) is that ticker: the person's dollar sign is stripped from the
+   term, so without the second spelling a fresh launch named so was never found. */
 export const ASSET_SEARCH_SQL = `
 select n.address, n.ticker as symbol, n.name, a.image_uri, n.launched_at as minted_at
   from public.coin_name n
   left join public.asset a on a.chain = 'solana' and a.address = n.address
- where upper(n.ticker) = $1 or lower(n.name) = lower($3)
+ where upper(n.ticker) in ($1, '$' || $1) or lower(n.name) = lower($3)
  order by n.launched_at desc nulls last
  limit $2`;
 
