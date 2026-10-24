@@ -137,3 +137,11 @@ test('a quote that cannot be drawn is dropped, never the card; a bad face or fil
   assert.equal(odd?.thumbFile, null);
   assert.deepEqual(odd?.postedAt, { known: false, pending: 'not_reported' });
 });
+
+test('★ a post deleted from its source decodes with when; anything else is not deleted, and never refuses the card', () => {
+  assert.equal(decodeRisingPost({ ...POST, deletedAt: 1_800_000_000_000 }).deletedAt, 1_800_000_000_000);
+  assert.equal('deletedAt' in decodeRisingPost(POST), false, 'absent: not known to be deleted');
+  for (const bad of [null, 0, -5, 1.5, '1800000000000', true, {}]) {
+    assert.equal('deletedAt' in decodeRisingPost({ ...POST, deletedAt: bad }), false, `${JSON.stringify(bad)} is not a time`);
+  }
+});

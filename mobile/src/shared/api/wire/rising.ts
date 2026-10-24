@@ -67,6 +67,12 @@ export interface RisingPost {
    * above IS this post's picture (`quotePictureLeads`), so the meme leads the card.
    */
   readonly quote?: QuotedPost;
+  /**
+   * When the post was found deleted from its source, in ms. Absent when it is not known to be — a
+   * post we merely could not read again is never sent as deleted. The card keeps its words, picture
+   * and views as last read, says it was deleted, and offers no link out to a page that is gone.
+   */
+  readonly deletedAt?: number;
 }
 
 /** A quoted post inside a card: who posted it (with their picture), a link, its words and its picture. */

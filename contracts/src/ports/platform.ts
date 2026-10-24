@@ -69,6 +69,15 @@ export interface Capabilities {
    * rather than sending a filter that would be silently dropped and billed as an unfiltered search.
    */
   readonly narrowedSearch?: { readonly filter: boolean; readonly reproductionsOf: boolean };
+  /**
+   * ★ WHAT AN ID LEFT OUT OF AN ANSWERED RE-READ MEANS, declared because only the adapter knows.
+   * True: the source answered the call and left the post out because it shows that post to nobody
+   * any more — deleted, or its account made private or suspended. Never because a read failed: a
+   * failed read throws and leaves nothing out. Absent or false: a left-out id may also be a read
+   * this source (or its backup route) did not make, so nothing may be concluded from it, and the
+   * runner records nothing (services/runner work/gone-posts.ts).
+   */
+  readonly leftOutIsGone?: boolean;
 }
 
 export interface DiscoveryQuery {

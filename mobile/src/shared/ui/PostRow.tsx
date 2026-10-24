@@ -49,6 +49,11 @@
  * `inStory`) that opens the narrative, when the screen passes `openStory`; the narrative's own page
  * does not, since the post is already in front of its narrative there.
  *
+ * ★ A POST DELETED FROM ITS SOURCE SAYS SO ("Deleted on X", the owner 2026-10-24) under the byline,
+ * and keeps everything we stored: its words, picture and views as last read. The server sends
+ * `deletedAt` only with proof (services/runner work/gone-posts.ts); a post we merely could not read
+ * again carries nothing and shows as before.
+ *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
@@ -62,7 +67,7 @@ import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
 import { compact, formatCount } from '../format/number.ts';
 import { tickerText } from '../format/ticker.ts';
-import { platformOf } from '../platform.ts';
+import { deletedLine, platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
 import { QuoteInset } from './QuoteInset.tsx';
@@ -149,6 +154,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
               </span>
               <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
             </div>
+            {post.deletedAt !== undefined ? <span className={styles['gone']}>{deletedLine(post.sourceLabel)}</span> : null}
             {sortLine !== null ? <span className={sortLine.up ? styles['gained'] : styles['speed']}>{sortLine.text}</span> : null}
           </div>
         </div>

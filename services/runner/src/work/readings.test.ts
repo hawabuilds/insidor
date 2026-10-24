@@ -109,7 +109,7 @@ function setup(opts: { policy?: Policy; candidates?: ReadingCandidate[]; ledger?
   const adapter = (source: string, usdPerRead: number) =>
     ({
       id: source,
-      capabilities: {},
+      capabilities: source === 'x' ? { leftOutIsGone: true } : {},
       estimate: (call: { sourceItemIds: readonly string[] }) => ({ vendor: `v-${source}`, endpoint: 'lookup', unit: 'per-item-returned', estUnits: call.sourceItemIds.length, usd: usdPerRead * call.sourceItemIds.length }),
       observe: async (ids: readonly string[]) => {
         calls.push({ source, ids: [...ids] });
@@ -267,4 +267,29 @@ test('a held reason is said once while it lasts', async () => {
   await readingsPass({ ...deps, log }, memory);
   await readingsPass({ ...deps, log }, memory);
   assert.equal(lines.filter((l) => l.endsWith(':book')).length, 1);
+});
+
+test('★ what an answered read said about each post is handed on (gone-posts.ts): no extra call, and a failed read hands on nothing', async () => {
+  const seen = { returned: [] as string[], leftOut: [] as string[] };
+  const gone = {
+    log: quiet,
+    repo: {
+      returned: async (ids: readonly string[]) => void seen.returned.push(...ids),
+      leftOut: async (ids: readonly string[]) => void seen.leftOut.push(...ids),
+      pending: async () => [],
+      markDeleted: async () => 0,
+    },
+  };
+  const { deps, calls } = setup();
+  await readingsPass({ ...deps, gone });
+  assert.equal(calls.filter((c) => c.source === 'x').length, 1, 'one call for the source, as without it');
+  assert.deepEqual(seen.leftOut, ['x:gone']);
+  assert.ok(seen.returned.includes('x:1'));
+
+  const failing = setup();
+  const x = failing.deps.platforms.get('x' as never);
+  const broken = { ...x, observe: async () => { throw new Error('rate limited'); } } as unknown as PlatformAdapter;
+  const after = { returned: seen.returned.length, leftOut: seen.leftOut.length };
+  await readingsPass({ ...failing.deps, gone, platforms: { has: (s) => String(s) === 'x', get: () => broken } as ReadingsDeps['platforms'], readings: { ...failing.deps.readings, candidates: async () => [post('1', { lastReadAt: NOW - 2 * MIN }), post('gone')] } });
+  assert.deepEqual({ returned: seen.returned.length, leftOut: seen.leftOut.length }, after);
 });

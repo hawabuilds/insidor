@@ -40,6 +40,7 @@ import type { PgObservationRepo, PgReadingsRepo, ReadingCandidate } from '@insid
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
+import { noteRereads, type GoneDeps } from './gone-posts.ts';
 import { sourceHandles } from './handle-cache.ts';
 import type { LaneLedger } from './lane-ledger.ts';
 
@@ -59,6 +60,8 @@ export interface ReadingsDeps {
   readonly now: () => Millis;
   /** The sorts' top text-source posts (sort-top.ts); absent, none are read for the sorts. */
   readonly sortTop?: () => Promise<ReadonlySet<string>>;
+  /** Where what each answered read said about a post's presence is kept (gone-posts.ts, 0131); absent, nothing is. */
+  readonly gone?: GoneDeps;
 }
 
 export interface ReadingsResult {
@@ -250,6 +253,8 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
       answered += 1;
       if (c.openedAt !== null) done.push(c.itemId);
     }
+    /* What the answer said about each post's presence (gone-posts.ts): no extra call, and a failed read never gets here. */
+    await noteRereads(deps.gone, adapter.capabilities, mine, read, askedAt as Millis);
     /* Only the opens a stored reading answered; an open asked while the read was out stays. */
     if (done.length > 0) await deps.readings.answered(done, new Date(askedAt)).catch((e: unknown) => deps.log.warn('answered opens could not be cleared; they expire', { err: errorText(e) }));
   }
