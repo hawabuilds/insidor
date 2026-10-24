@@ -452,7 +452,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       id: n.id,
       input: {
         foundAtMs,
-        posts: members.map((m, i) => ({ authorKey: rowOf.get(m.itemId)?.author_key ?? m.itemId, sourceKey: rowOf.get(m.itemId)?.source ?? '', foundAtMs: foundOf(m), reach: memberReach[i] ?? { postedAtMs: null, points: [] } })),
+        posts: members.map((m, i) => ({ authorKey: rowOf.get(m.itemId)?.author_key ?? m.itemId, sourceKey: rowOf.get(m.itemId)?.source ?? '', foundAtMs: foundOf(m), reach: memberReach[i] ?? { postedAtMs: null, points: [] }, reachScale: rowOf.get(m.itemId)?.source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1 })),
       },
       coin: checkedCoinOf(coin),
     });

@@ -93,3 +93,23 @@ test('the "All" line: half-hour slots from the first reading to now, bounded', (
   assert.equal(s.values.at(-1), 300);
   assert.equal(gainedSeries([reach(NOW - 99 * HOUR, 10)], NOW - 99 * HOUR, NOW, 30 * MIN, 96).values.length, 96);
 });
+
+test('★ steady viral posts (policy.v157): each account once, every slot it fills; an unread or small post is not viral', () => {
+  const W = 6 * HOUR;
+  const steady = [0, 1, 2, 3, 4, 5].map((k) => post(`a${k}`, NOW - k * HOUR - 50 * MIN, reach(NOW - k * HOUR - 50 * MIN, 2_000)));
+  const small = post('small', NOW - 2 * HOUR, reach(NOW - 2 * HOUR, 10));
+  const unread = post('unread', NOW - HOUR, { postedAtMs: NOW - HOUR, points: [] });
+  const twice = post('a0', NOW - 40 * MIN, reach(NOW - 40 * MIN, 2_500));
+  const all = story([...steady, small, unread, twice]);
+  const f = trendFacts(all, NOW, W, P);
+  assert.equal(f.viralPosts, 7);
+  assert.equal(f.viralAccounts, 6, 'one account twice is once');
+  assert.equal(f.viralSlots, 6);
+  const without = trendStanding(trendFacts(all, NOW, W), P);
+  const withIt = trendStanding(f, P);
+  assert.ok(without.kind === 'ranked' && withIt.kind === 'ranked');
+  const t = P.narrative.trend;
+  assert.ok(Math.abs(withIt.value - without.value - (t.viralWeight * Math.log2(7) + t.steadyWeight)) < 1e-9);
+  const oneHit = trendFacts(story([post('big', NOW - 50 * MIN, reach(NOW - 50 * MIN, 20_000))]), NOW, W, P);
+  assert.equal(oneHit.viralSlots, 1);
+});

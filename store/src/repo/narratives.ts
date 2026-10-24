@@ -175,6 +175,8 @@ export interface StoredNarrative {
    * the titler said it is not one; null when never asked (and before 0130).
    */
   readonly fight?: readonly string[] | null;
+  /** Who answered `fight`: the titler's model, the owner, or `FIGHT_SEED_MODEL` for a seed still waiting for the titler. Absent from an older reader. */
+  readonly fightModel?: string | null;
   /** Its newest post's time as last counted (narrative.newest_post_at); absent from an older reader. */
   readonly newestPostAtMs?: number | null;
   /** When tools/narrative-rebuild.ts rebuilt it from stored posts (0106); null or absent: the runner made it. */
@@ -223,6 +225,23 @@ export interface NarrativePass {
    * and only into an open narrative: a post still queued for the runner to read waits for a later pass.
    */
   readonly added?: readonly { readonly itemId: string; readonly into: string }[];
+  /**
+   * The meme-war seeds (core group/fight-native.ts, policy.v157): new narratives of `narratives`
+   * made from posts naming another country in their own language, written with their pair and
+   * `fight_model` `FIGHT_SEED_MODEL`, kept off the board until the titler names both countries.
+   * Only where `fight` is still null: never over the titler's or the owner's answer.
+   */
+  readonly fights?: readonly { readonly id: string; readonly countries: readonly string[] }[];
+}
+
+/** A stored post the meme-war rule reads (`fightPosts`): its words, language, account and views as last read. */
+export interface FightPostRow {
+  readonly itemId: string;
+  readonly authorKey: string | null;
+  readonly lang: string | null;
+  readonly body: string;
+  readonly atMs: number;
+  readonly reach: number | null;
 }
 
 /** A narrative's state, for the owner's merges and the ids already given out. */
@@ -246,6 +265,12 @@ export interface NarrativeCallRecord {
 
 /** `title_model` on a title the owner typed (0130; services/social owner-narrative.ts writes it). */
 export const OWNER_TITLE_MODEL = 'owner';
+
+/**
+ * `fight_model` on a meme-war seed (policy.v157 `narrative.fight.native`) the titler has not answered
+ * yet: the pair is the rule's, the narrative is not shown. The titler's answer replaces it.
+ */
+export const FIGHT_SEED_MODEL = 'native-names';
 
 export class PgNarrativeRepo {
   readonly #db: Db;
@@ -392,14 +417,16 @@ export class PgNarrativeRepo {
   /** Open narratives with their posts, as `where` (on `n`) and `tail` (order and limit) choose them. */
   async #narratives(where: string, params: readonly unknown[], tail = ''): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; fight: string[] | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; title_model: string | null; fight: string[] | null; fight_model: string | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
     const early = (await this.earlyMigrated())
       ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
       : 'null::text[]';
     const restored = (await this.#hasColumn('narrative', 'restored_at')) ? 'n.restored_at' : 'null::timestamptz';
-    const fight = (await this.#hasColumn('narrative', 'fight')) ? 'n.fight' : 'null::text[]';
+    const withFight = await this.#hasColumn('narrative', 'fight');
+    const fight = withFight ? 'n.fight' : 'null::text[]';
+    const fightModel = withFight ? 'n.fight_model' : 'null::text';
     const rows = await orEmpty(() => this.#db.query<Row>(
-      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, ${fight} as fight, n.newest_post_at, ${restored} as restored_at,
+      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.title_model, ${fight} as fight, ${fightModel} as fight_model, n.newest_post_at, ${restored} as restored_at,
               (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
               ${early} as early
          from internal.narrative n
@@ -418,6 +445,7 @@ export class PgNarrativeRepo {
       titlePosts: r.title_posts,
       titleModel: r.title_model,
       fight: r.fight,
+      fightModel: r.fight_model,
       newestPostAtMs: toMs(r.newest_post_at),
       restoredAtMs: toMs(r.restored_at),
       early: r.early ?? [],
@@ -465,6 +493,55 @@ export class PgNarrativeRepo {
       `update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1 and fight_model is distinct from $4`,
       [id, [...countries], model, OWNER_TITLE_MODEL],
     );
+  }
+
+  /**
+   * ★ THE OPEN MEME WARS (0130 `fight`, two countries or more) with a post since `sinceMs`, shown or
+   * not: what a post naming another country in its own language may join (core group/fight-native.ts),
+   * a seed still waiting for the titler included, so its new posts gather there rather than seed again.
+   */
+  async fights(sinceMs: number): Promise<readonly StoredNarrative[]> {
+    if (!(await this.migrated()) || !(await this.#hasColumn('narrative', 'fight'))) return [];
+    return this.#narratives('coalesce(cardinality(n.fight), 0) >= 2 and n.newest_post_at >= $1', [new Date(sinceMs).toISOString()]);
+  }
+
+  /** The meme-war seeds the titler has not answered (`FIGHT_SEED_MODEL`, not shown), newest post first, at most `limit`. */
+  async fightPending(sinceMs: number, limit: number): Promise<readonly StoredNarrative[]> {
+    if (limit <= 0 || !(await this.migrated()) || !(await this.#hasColumn('narrative', 'fight'))) return [];
+    return this.#narratives('not n.shown and n.fight_model = $3 and n.newest_post_at >= $1', [new Date(sinceMs).toISOString(), limit, FIGHT_SEED_MODEL], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $2');
+  }
+
+  /** A seed the titler said is the war: on the board from now, as any narrative first shown. */
+  async showFight(id: string): Promise<void> {
+    await this.#db.query(
+      `update internal.narrative set shown = true, first_shown_at = coalesce(first_shown_at, now()), updated_at = now() where narrative_id = $1 and state = 'open'`,
+      [id],
+    );
+  }
+
+  /**
+   * ★ STORED POSTS THAT MAY NAME ANOTHER COUNTRY (policy.v157 `narrative.fight.native`): found and
+   * gone up since `sinceMs`, in one of `langs`, at `minReach` views or more as last read, in no
+   * narrative; highest views first, at most `limit`. Light rows: the words are matched in core and
+   * only the matches' standing is read (`standingRows`). By the first-seen index — measured
+   * 2026-10-24 on live data, 1,653 rows of two days in 0.19 s.
+   */
+  async fightPosts(sinceMs: number, langs: readonly string[], minReach: number, limit: number): Promise<readonly FightPostRow[]> {
+    if (langs.length === 0 || limit <= 0 || !(await this.migrated())) return [];
+    const since = new Date(sinceMs).toISOString();
+    const rows = await orEmpty(() => this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; body: string; at: Date | string; reach: number | string | null }>(
+      `select i.item_id, i.author_key, i.lang, i.body, coalesce(i.posted_at, i.first_seen_at) as at,
+              (i.counters->'reach'->>'value')::double precision as reach
+         from public.item i
+        where i.first_seen_at >= $1 and coalesce(i.posted_at, i.first_seen_at) >= $1
+          and i.origin = 'observed' and i.lang = any($2::text[])
+          and (i.counters->'reach'->>'value')::double precision >= $3
+          and not exists (select 1 from internal.narrative_member m where m.item_id = i.item_id)
+        order by reach desc, i.item_id
+        limit $4`,
+      [since, [...langs], minReach, limit],
+    ), []);
+    return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach) }));
   }
 
   /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */
@@ -611,6 +688,14 @@ export class PgNarrativeRepo {
             : `insert into internal.narrative_member (narrative_id, item_id) select * from unnest($1::text[], $2::text[]) on conflict do nothing`,
           withEarly ? [ids, items, early] : [ids, items],
         );
+      }
+
+      /* The meme-war seeds' pair, only where nothing has answered yet. */
+      const fights = (pass.fights ?? []).filter((f) => f.countries.length >= 2);
+      if (fights.length > 0 && (await this.#hasColumn('narrative', 'fight'))) {
+        for (const f of fights) {
+          await this.#db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1 and fight is null`, [f.id, [...f.countries], FIGHT_SEED_MODEL]);
+        }
       }
 
       /* The owner's merges: every post moves to the narrative he chose; the merged one stays, pointing there. */

@@ -73,6 +73,9 @@ export type { NarrativeSubject, SubjectPost } from './group/narrative-same.ts';
 export { barWindowMs, linkReach, standsOnViralPost, traceStories, withReproductions } from './group/narrative-origin.ts';
 export { cjkPieces, contentWords, phrasesOf, rarePhrases, storyWords } from './group/narrative-phrase.ts';
 export type { OriginInput, OriginNarrative, OriginTie, StoryMerge, StoryPlan, TracedPost } from './group/narrative-origin.ts';
+/* Meme-war posts by the country they name in their own language (group/fight-native.ts). */
+export { answerHoldsPair, canonicalCountry, countriesNamed, fightPairsOf, planFights } from './group/fight-native.ts';
+export type { FightNarrative, FightPlan, FightPost } from './group/fight-native.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';
 export type { TrendCoin, TrendFacts, TrendInput, TrendPost, TrendStanding } from './group/narrative-trend.ts';
