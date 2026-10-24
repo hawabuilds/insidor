@@ -4381,6 +4381,12 @@ export interface FindersPolicy {
     /** A text-source post is credited only at this many approvals: most coins name a post nobody saw. */
     readonly textMinApprovals: number;
     /**
+     * …or at this many views (policy.v153): a post already past For You's views bar when a coin names
+     * it was seen, whatever its approvals. Without it such a post is stored with no lane and can
+     * never be a For You candidate.
+     */
+    readonly textMinReach: number;
+    /**
      * ★ THE INSTANT JUDGE (the owner, 2026-10-16: "to For You in 60 s"). Right after each pass, a
      * post a coin named in the last `lookbackMs` that `rising.coinLinked` would put on For You, held
      * by a lane and never answered, is judged at once — the post judge, its kind question and the
@@ -4712,6 +4718,61 @@ export interface RunningCoinsPolicy {
 }
 
 /**
+ * THE COIN THAT RUNS, AND ITS POST (policy.v153, after the $BITCHES miss of 23 Oct): three layers
+ * that tie a running coin back to the post it came from when the one-coin pick missed it.
+ *
+ *   stated   a coin carrying the post's whole stated name and ticker (core match/stated-name.ts)
+ *            ties the post up to `withinMs` after it and, once it clears the bars, puts out of the
+ *            pick every look-alike trading no more than it (core match/one-coin.ts `behindStated`) —
+ *            never over the owner's coin call.
+ *   running  a post whose picked coin is trading now (the running coins strip's own test, on the
+ *            newest market reading's last hour, or a cap of `minCapUsd`) is on For You whatever its
+ *            views (services/project running-picks.ts); and the market reader reads the picked and
+ *            stated coins of the last `pickWithinMs` every pass, at most `marketReadsPerPass`, so a
+ *            picked coin is never left unread.
+ *   missed   every `everyMs`, a coin launched in the last `seenWithinMs` whose cap read `minCapUsd`
+ *            or more on `minReadings` readings with a pool, that no post or narrative of ours holds,
+ *            is looked for in the stored posts of the `postLookbackMs` before it launched; the origin
+ *            (`originShareOfTop`) gets it as its pick (evidence
+ *            `missed_runner`), and the owner is told either way, on his alerts list (kind
+ *            'outage', what 'missed-runner'; services/runner work/missed-runners.ts). No migration:
+ *            the pick, its candidate and the alert are the record.
+ */
+export interface RunnerLinkPolicy {
+  readonly stated: {
+    readonly on: boolean;
+    readonly withinMs: number;
+    /** A coin name's last words that carry no name of their own, dropped before comparing ("You Missed Coin" states "You Missed"). */
+    readonly genericWords: readonly string[];
+  };
+  readonly running: {
+    readonly on: boolean;
+    /** A picked coin at this cap or more counts as running whatever its last hour. */
+    readonly minCapUsd: number;
+    /** The newest reading counts only this recently. */
+    readonly readingWithinMs: number;
+    /** Picks updated this recently are the market reader's and For You's to look at. */
+    readonly pickWithinMs: number;
+    readonly marketReadsPerPass: number;
+  };
+  readonly missed: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly seenWithinMs: number;
+    readonly minCapUsd: number;
+    /** …on at least this many readings with a pool: one reading is one quote. */
+    readonly minReadings: number;
+    readonly postLookbackMs: number;
+    /** The origin: of the posts tied by a name, the earliest with at least this share of the biggest one's reach (core missed-runner.ts). */
+    readonly originShareOfTop: number;
+    /** Coins looked at a pass, biggest first. */
+    readonly perPass: number;
+    /** Queue the owner's alert for each new missed runner. */
+    readonly alert: boolean;
+  };
+}
+
+/**
  * The database host's disk and bill, as the owner's alerts model them (services/runner
  * disk-alarm.ts). Neither the provisioned disk nor the bill is readable from SQL, so both are
  * modelled from the database's hourly size (internal.disk_sample, 0105) and the host's published
@@ -4824,6 +4885,8 @@ export interface Policy {
   readonly runningCoins: RunningCoinsPolicy;
   /** Posts found late with no running coin yet, on For You (services/project late-no-coin.ts). */
   readonly lateNoCoin: LateNoCoinPolicy;
+  /** A running coin tied back to its post: the stated name, the running pick, the missed-runner net (policy.v153). */
+  readonly runnerLink: RunnerLinkPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -7085,6 +7148,10 @@ const POLICY_V1: Policy = {
       /* 5,000: about 61 coined X posts a day we did not already have clear it (48 hours to 2026-10-15
          17:00 UTC), against 119 at 1,000 — half the judging, inside the room left on the live book. */
       textMinApprovals: 5_000,
+      /* policy.v153: For You's own views bar (`rising.fypMinReach`). 3 days to 24 Oct: 564 coin-named X
+         posts had 40k+ views and no lane; 337 were judged anyway (113 yes), so about 76 a day more are
+         judged — two questions at the open judge's ~$0.0003, about $0.02 a day. @TocRadio was one. */
+      textMinReach: 40_000,
       /* 2026-10-16, three days: 144 posts `rising.coinLinked` passes had no answer yet when the link
          was recorded, about 50 a day, a few in the busiest minute; at the open judge's $0.00017 a
          post, under a cent a day with the kind question. */
@@ -7343,6 +7410,23 @@ const POLICY_V1: Policy = {
     on: true,
     maxPostAgeMs: 259_200_000, // 72 hours
     nearBar: true,
+  },
+
+  /* policy.v153 adds `runnerLink` (RunnerLinkPolicy above), after v152's `lateNoCoin`. The miss: on
+     23 Oct "You Missed Coin" ($BITCHES) launched 71 minutes after the post that stated that name,
+     ran to about $3.7M, and never took the post's pick from the copycat "You Missed Bitches" ($YMB):
+     it had no market reading at all (the reader reads the newest 300 coins a pass; 3,026 of the
+     11,242 coins first seen 18:00-22:00 UTC that day were never read) and the trade feed was at its
+     day cap. Two days for the stated name: the owner's link bound (oneCoin.linkMaxAgeMs).
+     running: $250k is about the cap a launch reaches when people are buying it hard; picks over it
+     or over the strip's last-hour bar, one post a coin, pulled back 45 posts For You never showed in
+     the three days to 24 Oct. missed: replayed over the same three days with two pooled readings,
+     $250k found 90 coins no pick held, $500k 25 (10 tied to a post we hold, 15 without), $1M 18:
+     $500k is about eight alerts a day. A half for the origin: @TocRadio over @LauraLoomer's retelling. */
+  runnerLink: {
+    stated: { on: true, withinMs: 172_800_000, genericWords: ['coin', 'token'] },
+    running: { on: true, minCapUsd: 250_000, readingWithinMs: 1_800_000, pickWithinMs: 172_800_000, marketReadsPerPass: 60 },
+    missed: { on: true, everyMs: 600_000, seenWithinMs: 86_400_000, minCapUsd: 500_000, minReadings: 2, postLookbackMs: 172_800_000, originShareOfTop: 0.5, perPass: 50, alert: true },
   },
 
   scorers: {

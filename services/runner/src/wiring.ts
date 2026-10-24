@@ -95,6 +95,7 @@ import {
   PgImageEmbeddingRepo,
   PgCoinFirstRepo,
   PgOneCoinRepo,
+  PgOwnerCoinCallRepo,
   PgImagePairRepo,
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
@@ -1596,6 +1597,12 @@ export async function withRuntime<T>(
                 {
                   repo: oneCoinRepo,
                   coinFirstLaunches: (sinceMs, limit, hashVersion) => new PgOneCoinRepo(db).coinFirstLaunches(sinceMs, limit, hashVersion),
+                  /* The posts whose newest coin call is not "cleared": the stated name never re-opens the owner's call. */
+                  ownerCalled: async (ids) => {
+                    const newest = new Map<string, string>();
+                    for (const r of await new PgOwnerCoinCallRepo(db).rows(ids)) newest.set(r.itemId, r.verdict);
+                    return new Set([...newest].filter(([, v]) => v !== 'cleared').map(([id]) => id));
+                  },
                   ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
                   policy,
                   log: log.child({ step: 'one-coin' }),
