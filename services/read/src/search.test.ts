@@ -85,8 +85,8 @@ test('★ one coin per address across the sources, biggest first, and only the p
 });
 
 test('★ a post found by search carries no narrative and no coin, so nothing can put a Buy button on it', async () => {
-  const live = { id: 'x:9', permalink: 'https://x.com/b/status/9', authorLabel: '@b', excerpt: 'JIM to the moon', postedAt: { at: 1 }, storyId: 'st_jim', coins: { kind: 'one' }, sourceLabel: 'X', thumbUrl: null };
-  const { search } = harness({ rows: { [POST_SEARCH_SQL]: [{ payload: live }], [STORY_SEARCH_SQL]: [STORY_ROW] } });
+  const live = { id: 'x:9', permalink: 'https://x.com/b/status/9', authorLabel: '@b', excerpt: 'JIM to the moon', postedAt: { at: 1_000 }, storyId: 'st_jim', coins: { kind: 'one' }, sourceLabel: 'X', thumbUrl: null };
+  const { search } = harness({ rows: { [POST_SEARCH_SQL]: [{ payload: live, live: true }], [STORY_SEARCH_SQL]: [STORY_ROW] } });
   const r = body(await search.search('jim', 'c1'));
   assert.equal(r.posts.items.length, 2, 'one live from the feed, one historical from the narrative');
   for (const p of r.posts.items) {
@@ -95,6 +95,24 @@ test('★ a post found by search carries no narrative and no coin, so nothing ca
     assert.equal('coin' in p, false);
   }
   assert.deepEqual(r.posts.items.map((p: any) => p.live), [true, false]);
+});
+
+test('★ a post of any age is found, newest posted first, and only the frame\'s own is live', async () => {
+  const card = (id: string, at: number) => ({ id, permalink: `https://x.com/a/status/${id}`, authorLabel: '@a', excerpt: `o rato caiu na ratoeira ${id}`, postedAt: { at }, sourceLabel: 'X', thumbUrl: null });
+  const rows = [{ payload: card('old', 100), live: false }, { payload: card('now', 9_000), live: true }, { payload: null, live: false }];
+  const { search } = harness({ rows: { [POST_SEARCH_SQL]: rows } });
+  const r = body(await search.search('mousetrap', 'c1'));
+  assert.deepEqual(r.posts.items.map((p: any) => [p.excerpt.split(' ').at(-1), p.live]), [['now', true], ['old', false]], 'a row with no card is left out, never sent half');
+});
+
+test('★ the post search reaches every For You post and every narrative\'s post, by its words or their English, never one the owner withdrew', () => {
+  assert.match(POST_SEARCH_SQL, /from public\.feed_post f where f\.feed_id = 'fyp' and f\.withdrawn_at is null/);
+  assert.match(POST_SEARCH_SQL, /from public\.story_post s/);
+  assert.match(POST_SEARCH_SQL, /i\.body ilike \$1/);
+  assert.match(POST_SEARCH_SQL, /t\.text_en ilike \$1/);
+  assert.match(POST_SEARCH_SQL, /w\.withdrawn_at is not null/);
+  assert.match(POST_SEARCH_SQL, /provenance,kind\}' = 'observed'/, 'a seeded narrative\'s posts are a fiction and are not searched');
+  assert.match(POST_SEARCH_SQL, /limit \$2/);
 });
 
 test('★ a historical narrative\'s line: first post, first coin, and its peak from the price history', async () => {

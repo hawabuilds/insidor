@@ -1,7 +1,8 @@
 /**
  * GET /search?q= — the Search tab. A person's term, searched at the moment they type it: our
- * own narratives and posts, our own chainwatch coins, and the market data sources' coins on the
- * launchpad. No new table; every answer is held in memory for a minute.
+ * own narratives and posts (every post ever on For You or in a narrative, at any age), our own
+ * chainwatch coins, and the market data sources' coins on the launchpad. No new table; every
+ * answer is held in memory for a minute.
  *
  * ★ SEARCH IS A LIST, NEVER A LINK. A coin in this reply is a coin with that name, and nothing
  * more. A coin is labelled as matched to a narrative only when the narrative's own page already
@@ -63,12 +64,56 @@ select s.story_id, s.payload, (b.story_id is not null) as live
  order by live desc, s.story_id desc
  limit $4`;
 
+/*
+ * ★ A POST IS FOUND AT ANY AGE (the owner, 2026-10-24: "I still want them searchable regardless of
+ * age"). Every post that was ever on For You (0075 public.feed_post) and every post a narrative
+ * lists (0093 public.story_post), plus the frame showing now, by its words or by their English
+ * (0081 public.post_translation), newest posted first. A post the owner called not a meme is
+ * withdrawn from the scroll and is withdrawn from here too.
+ *
+ * The words are the post row's own `body`: the card's excerpt is cut at 280 characters, and on
+ * 2026-10-24 no For You post matched a term in its excerpt that its body did not. The members are
+ * picked from narrow columns and only the page's own cards are then read whole, so no card's JSON
+ * is opened to be searched. A narrative's post with no For You card is shown as its narrative
+ * lists it (the story's evidence row), the same fields a card carries.
+ *
+ * What breaks if changed carelessly: the cost. There is no text index: the members are a few
+ * thousand (4,500 on 2026-10-24, growing a few hundred a day) and each is one primary-key read of
+ * its post row, measured at 100–250 ms; a match over all of public.item (277,000 rows) would need
+ * a trigram index, and so would this once the members reach tens of thousands. `live` is the frame
+ * holding the post now.
+ */
 export const POST_SEARCH_SQL = `
-select distinct on (payload ->> 'id') payload
-  from public.rising_row
- where payload ->> 'excerpt' ilike $1 escape '\\'
- order by payload ->> 'id'
- limit $2`;
+with member as (
+  select r.item_id from public.rising_row r
+  union
+  select f.item_id from public.feed_post f where f.feed_id = 'fyp' and f.withdrawn_at is null and f.payload is not null
+  union
+  select s.item_id from public.story_post s
+    join public.story_view v on v.story_id = s.story_id and v.payload #>> '{provenance,kind}' = 'observed'
+),
+hit as (
+  select m.item_id, coalesce(i.posted_at, i.first_seen_at) as at
+    from member m
+    join public.item i on i.item_id = m.item_id
+    left join public.post_translation t on t.item_id = m.item_id
+   where (i.body ilike $1 escape '\\' or t.text_en ilike $1 escape '\\')
+     and not exists (select 1 from public.feed_post w where w.item_id = m.item_id and w.withdrawn_at is not null)
+   order by at desc nulls last, m.item_id
+   limit $2
+)
+select coalesce(
+         (select r.payload - 'sheet' from public.rising_row r where r.item_id = h.item_id limit 1),
+         (select f.payload - 'sheet' from public.feed_post f where f.feed_id = 'fyp' and f.item_id = h.item_id and f.payload is not null),
+         (select e.value
+            from public.story_post s
+            join public.story_view v on v.story_id = s.story_id
+            cross join lateral jsonb_array_elements(case when jsonb_typeof(v.payload -> 'evidence') = 'array' then v.payload -> 'evidence' else '[]'::jsonb end) e
+           where s.item_id = h.item_id and e.value ->> 'evidenceId' = h.item_id
+           limit 1)) as payload,
+       exists (select 1 from public.rising_row r where r.item_id = h.item_id) as live
+  from hit h
+ order by h.at desc nulls last, h.item_id`;
 
 /* Chainwatch's own coins, from the name index (0037), which outlives each coin's full row: a coin
    deleted by the keep rule is still found here, and its picture is used only while the full row
@@ -427,12 +472,12 @@ export function createSearch(deps: SearchDeps) {
       };
     });
 
-    /* ── posts: live from the feeds, historical from matching narratives' own evidence ── */
+    /* ── posts: every post ever on For You or in a narrative, then matching narratives' own evidence ── */
     const lower = term.toLowerCase();
-    const live = postRows.map((r) => rec(r['payload']));
+    const found = postRows.map((r) => ({ r: rec(r['payload']), live: r['live'] === true }));
     const historical = stories.flatMap((s) => s.evidence).filter((e) => (str(e['excerpt']) ?? '').toLowerCase().includes(lower));
     const seen = new Set<string>();
-    const posts = [...live.map((r) => ({ r, live: true })), ...historical.map((r) => ({ r, live: false }))].flatMap(({ r, live: isLive }) => {
+    const posts = [...found, ...historical.map((r) => ({ r, live: false }))].flatMap(({ r, live: isLive }) => {
       const key = str(r['permalink']) ?? str(r['id']) ?? str(r['evidenceId']);
       const excerpt = str(r['excerpt']);
       const authorLabel = str(r['authorLabel']);
@@ -449,7 +494,7 @@ export function createSearch(deps: SearchDeps) {
         postedAt: rec(r['postedAt'])['at'] === undefined ? instant(null, 'not_reported') : (r['postedAt'] as Instant),
         live: isLive,
       }];
-    });
+    }).sort((a, b) => (b.postedAt.at ?? 0) - (a.postedAt.at ?? 0)); // newest posted first; an unknown time last
 
     /* ── coins ── */
     const failed = deps.sources.filter((_, i) => answers[i]?.status === 'rejected').map((s) => s.name);
