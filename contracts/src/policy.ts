@@ -4486,6 +4486,14 @@ export interface NarrativePolicy {
      *               the same name must be (`narrative.nameMeaning`). Measured 23-24 Oct at 40k+: the
      *               posts about the French–Japanese beef sit 0.61-0.76 from the war, the news naming
      *               both (a PHP bug, the riots, a K-pop tour) 0.29-0.49
+     *   answersOn    ★ A QUOTE OF THE WAR IN THE OTHER SIDE'S LANGUAGE (policy.v169, the owner
+     *               2026-10-24: France vs Japan had 24 French posts and no Japanese one). A stored post
+     *               at `minReach` views that quotes or links a post of a live war (titled by the titler
+     *               or the owner, not a waiting seed), in the language of one of its countries other
+     *               than the quoted post's, joins it though it names no country: the Japanese answer to
+     *               the 14.9M "végéta est algérien" post (4.9M views). Same window and guards as the
+     *               words; read on the catch-up's cadence. A quote in the same language, or in English,
+     *               does not join by this
      *   moveMaxPosts  a war post in another narrative: a narrative all of whose posts are that war's
      *               (one of its own included) is merged into the war; one of at most this many posts
      *               with other posts too gives up only that post. Never a narrative the owner made a
@@ -4500,6 +4508,7 @@ export interface NarrativePolicy {
       readonly catchUpEveryMs: number;
       readonly warLeadMs: number;
       readonly moveMaxPosts: number;
+      readonly answersOn: boolean;
       readonly seedMinPosts: number;
       readonly seedMinAccounts: number;
       readonly seedWithinMs: number;
@@ -5365,7 +5374,8 @@ const POLICY_V1: Policy = {
      one — is never on For You or Popular; its coin goes to the original).
 
      v169 adds Japanese words for France (`narrative.fight.native.names.ja`: フランス人, 仏人, 仏蘭西)
-     and the meme-war word search's per-language bar (`feed.fightWords.byLang`, Japanese at 100). */
+     and the meme-war word search's per-language bar (`feed.fightWords.byLang`, Japanese at 100),
+     and the quote of a war post in the other side's language (`narrative.fight.native.answersOn`). */
   version: 'policy.v169',
 
   admit: {
@@ -7516,6 +7526,10 @@ const POLICY_V1: Policy = {
         catchUpEveryMs: 600_000,
         warLeadMs: 172_800_000, // two days, the regroup's window
         moveMaxPosts: 3,
+        /* policy.v169. Free: stored posts, their stored quotes and links. Replayed read-only 2026-10-24
+           over 7 days: France vs Japan gains 1 post (the 4.9M Japanese Vegeta answer, as early), China
+           vs Turkey none (its Chinese quote of a Turkish post, 8.9M, was in already). 0.4-0.9 s a read. */
+        answersOn: true,
         seedMinPosts: 3,
         seedMinAccounts: 3,
         seedWithinMs: 86_400_000, // a day

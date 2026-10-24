@@ -35,13 +35,20 @@
  *            English post: English has no home country) joins only when its vector is at least
  *            `narrative.nameMeaning` from one of W's posts — the grouping's own bar for two posts
  *            sharing a name; with no vector it waits, never joins on the words alone
+ *   quote    a post that quotes or links one of W's posts (`posts`), in the language of one of W's
+ *            countries that is not the quoted post's own (a Japanese quote of a French war post),
+ *            joins W though it names no country (`answersOn`, policy.v169): answering the other
+ *            side's post is taking part. Same views bar, same window; a quote in the quoted post's
+ *            own language, or in one with no home (English), does not join by this rule
  *   placed   a narrative all of whose posts are W's is merged into W (its link then leads there); one
  *            of at most `moveMaxPosts` posts gives up only its posts at the views bar that are W's.
  *            The caller never offers a war, a narrative the owner called on, or one he renamed
  *
  * What breaks if changed carelessly: the word match. A word without `*` matches only whole, so
  * Turkish "çin" is not "çini" (tile) or "çinko" (zinc); in a script written without spaces a word
- * matches anywhere, because there is no word edge to find (일본은, 土耳其人).
+ * matches anywhere, because there is no word edge to find (일본은, 土耳其人). And the quote rule's side:
+ * a quote in the quoted post's own language joining would let one side's pile-on of its own post
+ * (a French quote of a French post about Algeria) into the war with no word of the other country.
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
@@ -61,6 +68,8 @@ export interface FightPost {
   readonly reach: number | null;
   /** Its words-and-picture vector (unit length); absent or null: none, so it cannot be alike. */
   readonly vector?: Float32Array | null;
+  /** The posts it quotes or links; absent: none known, so it cannot join by a quote. */
+  readonly refersTo?: readonly string[];
 }
 
 /** An open narrative a pair's posts could join. */
@@ -73,6 +82,12 @@ export interface FightNarrative {
   readonly startAtMs?: number | null;
   /** Its posts' vectors, for the alike rule; absent: none. */
   readonly vectors?: readonly Float32Array[];
+  /**
+   * Its posts (own and early) and each one's language, for the quote rule; absent: no post joins it
+   * by a quote. ★ The caller leaves this out for a seed still waiting for the titler: a count of
+   * posts naming a country may be the news, and a quote of the news is not a war post.
+   */
+  readonly posts?: ReadonlyMap<string, string | null>;
 }
 
 /** A small narrative that is not a war, holding a post of the catch-up, with all its posts. */
@@ -202,6 +217,17 @@ function warOf(post: FightPost, live: readonly LiveWar[], nowMs: number, p: Poli
   const pairs = fightPairsOf(post, p);
   const native = live.find((w) => within(w) && pairs.some(([a, b]) => w.holds.has(a) && w.holds.has(b)));
   if (native !== undefined) return as(native);
+  /* ★ The quote rule: the other side answering a war post, in its own language (see the header). */
+  const side = post.lang === null ? undefined : n.home[post.lang];
+  if (n.answersOn && side !== undefined && (post.refersTo ?? []).length > 0) {
+    const answers = (w: LiveWar): boolean => w.holds.has(side) && (post.refersTo ?? []).some((ref) => {
+      if (w.posts === undefined || !w.posts.has(ref)) return false;
+      const lang = w.posts.get(ref) ?? null;
+      return (lang === null ? undefined : n.home[lang]) !== side;
+    });
+    const quoted = live.find((w) => within(w) && answers(w));
+    if (quoted !== undefined) return as(quoted);
+  }
   const v = post.vector;
   if (v === null || v === undefined) return null;
   const named = new Set(countriesIn(post.lang, post.text, p).map((c) => canonicalCountry(c, p)));

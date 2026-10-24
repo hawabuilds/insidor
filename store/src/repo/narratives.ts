@@ -621,6 +621,42 @@ export class PgNarrativeRepo {
     return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach), narrativeId: r.narrative_id }));
   }
 
+  /**
+   * ★ THE QUOTES OF A MEME WAR'S POSTS (policy.v169 `narrative.fight.native.answersOn`): stored posts
+   * found and gone up since `sinceMs`, in one of `langs`, at `minReach` views or more, that quote one
+   * of `targets` (public.item.reproduction_of) or name one among their links (internal.post_reference,
+   * 0118) — in no narrative, or in an open one that is not a meme war with at most `maxPosts` posts,
+   * as `fightWarPosts`. Each with what it quotes and links, once each (`refersTo`). Highest views
+   * first, at most `limit`. Measured 2026-10-24 on live data: seven days, 58 war posts, 0.4-0.9 s by
+   * the first-seen index — so on the catch-up's cadence, not every pass. Before 0118 the quotes only.
+   */
+  async fightQuotes(sinceMs: number, targets: readonly string[], langs: readonly string[], minReach: number, limit: number, maxPosts: number): Promise<readonly (FightPostRow & { readonly narrativeId: string | null; readonly refersTo: readonly string[] })[]> {
+    if (targets.length === 0 || langs.length === 0 || limit <= 0 || !(await this.migrated())) return [];
+    const refs = await this.#db.query<{ t: string | null }>(`select to_regclass('internal.post_reference')::text as t`);
+    const linked = (refs[0]?.t ?? null) !== null;
+    const withFight = await this.#hasColumn('narrative', 'fight');
+    const notWar = withFight ? 'coalesce(cardinality(n.fight), 0) < 2' : 'true';
+    const since = new Date(sinceMs).toISOString();
+    const rows = await orEmpty(() => this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; body: string; at: Date | string; reach: number | string | null; narrative_id: string | null; refs: string[] | null }>(
+      `select i.item_id, i.author_key, i.lang, i.body, coalesce(i.posted_at, i.first_seen_at) as at,
+              (i.counters->'reach'->>'value')::double precision as reach, m.narrative_id,
+              array_remove(array[i.reproduction_of], null) || ${linked ? "coalesce(r.refers_to, '{}'::text[])" : "'{}'::text[]"} as refs
+         from public.item i
+         ${linked ? 'left join internal.post_reference r on r.item_id = i.item_id' : ''}
+         left join internal.narrative_member m on m.item_id = i.item_id
+         left join internal.narrative n on n.narrative_id = m.narrative_id
+        where i.first_seen_at >= $1 and coalesce(i.posted_at, i.first_seen_at) >= $1
+          and i.origin = 'observed' and i.lang = any($3::text[])
+          and (i.counters->'reach'->>'value')::double precision >= $4
+          and (i.reproduction_of = any($2::text[])${linked ? ' or r.refers_to && $2::text[]' : ''})
+          and (m.item_id is null or (n.state = 'open' and ${notWar} and n.member_count <= $6))
+        order by reach desc, i.item_id
+        limit $5`,
+      [since, [...targets], [...langs], minReach, limit, maxPosts],
+    ), []);
+    return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach), narrativeId: r.narrative_id, refersTo: [...new Set(r.refs ?? [])] }));
+  }
+
   /** These posts as the meme-war rule reads them (`fightPosts`' columns), any views, in any narrative. */
   async fightRowsOf(itemIds: readonly string[]): Promise<readonly FightPostRow[]> {
     if (itemIds.length === 0) return [];
