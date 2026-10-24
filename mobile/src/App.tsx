@@ -62,6 +62,7 @@ import { preloadWhenQuiet } from './shared/preload.ts';
 import { later } from './shared/ui/later.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
+import { LateFlex } from './features/trade/late-flex.tsx';
 
 /*
  * ★ For You and Narratives come with the app; every other screen is its own chunk, fetched ahead
@@ -387,6 +388,8 @@ export function App() {
       <RankUp signedIn={inside} />
       {/* Trador's ask for notifications, after sign-in, when push-ask.ts says this phone can and has not answered. */}
       <PushAsk signedIn={signedIn} />
+      {/* A sell's flex card when its ticket was closed before the sell landed (late-flex.tsx). */}
+      <LateFlex />
       {creating !== null ? (
         <Suspense fallback={null}>
           <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} />
