@@ -4389,6 +4389,11 @@ export interface NarrativePolicy {
  *   coin       only a checked or proven coin: `coinCapWeight` per doubling of its market cap over
  *              W (at most `coinCapMaxGrowth` times up), `coinBuyWeight` per doubling of the buys
  *              made through us in W. An unchecked coin never moves the order
+ *   viral      `viralWeight` per doubling of the accounts whose post went up in W and is at For You's
+ *              views (`rising.fypMinReach`) now, each account once (policy.v157, the owner 2026-10-24:
+ *              Trending is the narratives that keep having viral posts)
+ *   steady     `steadyWeight` times the share of W's `steadySlots` equal parts that hold such a post:
+ *              a viral post every hour of six beats six in one hour
  *   freshness  `ageWeight` off for every `ageMs` of the story's age (since we found its first
  *              post), at most `ageMaxUnits` of them, aging at `keepAgeing` the rate while it gains
  *              faster than the W before. Taken off the sum, never multiplied into it: a story still
@@ -4412,6 +4417,9 @@ export interface NarrativeTrendPolicy {
   readonly ageWeight: number;
   readonly ageMaxUnits: number;
   readonly keepAgeing: number;
+  readonly viralWeight: number;
+  readonly steadyWeight: number;
+  readonly steadySlots: number;
 }
 
 /**
@@ -7105,6 +7113,14 @@ const POLICY_V1: Policy = {
       ageWeight: 1,
       ageMaxUnits: 3,
       keepAgeing: 0.5,
+      /* policy.v157, uncalibrated: a doubling of viral accounts is worth a bit more than a doubling of
+         posting accounts (`postWeight`), and a viral post in every sixth of the window is worth a
+         tenfold of views gained — big enough that a war posting viral posts all day stays near the
+         top, small beside a story gaining a hundred times the views. tools/trending-backtest.ts
+         replays it. */
+      viralWeight: 0.8,
+      steadyWeight: 1,
+      steadySlots: 6,
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
