@@ -92,23 +92,87 @@ export async function assetsToRead(
   weighing: OlderCandidates | null = null,
   saved: SavedCoins | null = null,
   picked: PickedCoins | null = null,
+  firstHour: FirstHourCoins | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
   const savedCoins = saved === null ? [] : await savedPostCoins(db, chain, saved);
   const held = picked === null ? [] : await pickedCoins(db, chain, picked);
+  const young = firstHour === null ? [] : await firstHourCoins(db, chain, firstHour);
   const rest = await onScreenThenNewest(db, chain, limit);
-  /* The coins tied to saved posts, then the picked and stated coins, then the older coins a pick is
-     weighing, then the hour's coins, go first among the newest, never ahead of the coins on screen:
-     those are what a card shows. Each list has its own limit, and the pass its bound. */
+  /* The tied candidates in their first hour, then the coins tied to saved posts, then the picked and
+     stated coins, then the older coins a pick is weighing, then the hour's coins, go first among the
+     newest, never ahead of the coins on screen: those are what a card shows. Each list has its own
+     limit, and the pass its bound — so on a full pass what gives way is the newest end. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...rest.filter((r) => r.tier === 0), ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...rest.filter((r) => r.tier === 0), ...young, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
   }
   return out;
+}
+
+/** The tied candidates launched in the last `withinMs` of `nowMs` (Policy.market.firstHour): at most `limit` a pass. */
+export interface FirstHourCoins {
+  readonly nowMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+}
+
+/**
+ * ★ A TIED CANDIDATE IS READ EVERY PASS IN ITS FIRST HOUR (the owner, 2026-10-24: "make sure I
+ * would've caught the right baldcat coin early before it took off"). The newest-first bound reads a
+ * launch once, at a minute or two old, if a pass falls then: on 21-24 Oct a candidate got a median 0
+ * readings in its first 10 minutes, and of 94 coins that ran only 7 were ever read under $20K in their
+ * first half hour. $baldcat was read at +3.7 and +8.8 minutes and then not until +72, at $52.8K —
+ * so the early pick (services/runner work/early-pick.ts) had two looks, and the ordinary rule none
+ * until it was over.
+ *
+ * Every candidate (0113) launched in the last `withinMs` that a post ties by a link, its stated name
+ * or its picture — a narrative's coins are its posts' candidates, so they are here too. In order:
+ * the coins of a post on For You, or of a narrative with a post on For You, or of a coin-first post
+ * (those are the ones a push can be about); then a link or stated name before a picture alone; then
+ * the newest launch. At most `limit`. A failed read is an empty list: the pass reads its usual coins.
+ *
+ * What breaks if changed carelessly: dropping the For You order. There are a median 138 coins with a
+ * link or stated name in any hour (most are launchers linking their own promotion), so without it the
+ * bound fills with them and the coins of the posts we actually show are the ones left out.
+ */
+async function firstHourCoins(db: Db, chain: string, w: FirstHourCoins): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `with c as (
+         select o.address, max(o.launched_at) as launched,
+                bool_or(o.evidence->'ties' ?| array['link','name_stated']) as made,
+                bool_or(exists (select 1 from public.feed_post f where f.feed_id = 'fyp' and f.item_id = o.item_id)
+                     or exists (select 1 from internal.narrative_member m join internal.narrative_member n on n.narrative_id = m.narrative_id
+                                  join public.feed_post f on f.feed_id = 'fyp' and f.item_id = n.item_id
+                                 where m.item_id = o.item_id)
+                     or exists (select 1 from internal.coin_first_post p where p.item_id = o.item_id and p.admitted_at is not null)) as shown
+           from internal.one_coin_candidate o
+          where o.found_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+            and o.launched_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+            and o.launched_at <= $2::timestamptz
+            and o.evidence->'ties' ?| array['link','name_stated','picture']
+          group by o.address
+       )
+       select a.chain, a.address, 6 as tier
+         from c join public.asset a on a.chain = $1 and a.address = c.address
+        where a.origin = any($5::text[])
+        order by c.shown desc, c.made desc, c.launched desc, a.asset_key asc
+        limit $4`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** The tied candidates in their first hour alone: the light pass's whole list (main.ts `light`). */
+export async function firstHourOnly(db: Db, chain: string, w: FirstHourCoins): Promise<readonly AssetRow[]> {
+  return (await firstHourCoins(db, chain, w)).map((r) => ({ chain: r.chain, address: r.address }));
 }
 
 /** The coins tied to saved posts, launched in the last `withinMs` of `nowMs`: at most `limit` a pass. */
