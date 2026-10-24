@@ -82,7 +82,8 @@ const PLOT_HEIGHT = 150;
 
 export function NarrativePage({ storyId, onCreate }: {
   storyId: string;
-  onCreate: (story: Story) => void;
+  /** `from`: the post that started it, so the create popup fills its link and name ideas as For You's does. */
+  onCreate: (story: Story, from?: { readonly link: string; readonly postId: string }) => void;
 }) {
   const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal), 'phone');
   const [sheet] = useLoad(`story-sheet:${storyId}`, (signal) => fetchStorySheet(storyId, signal), 'phone');
@@ -130,7 +131,7 @@ function sinceText(at: number, now: number): string {
   return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
 }
 
-function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story) => void }) {
+function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
   const now = useNow();
   const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
   const factsAt: GainInterval = interval === 'All' ? ALL_FACTS : interval;
@@ -178,6 +179,8 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   const cards = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
   const pinnedCard = pinned === null ? undefined : cards.get(pinned.post.evidenceId);
   const started = startedByHandle(story, pinned?.post ?? null);
+  /* Create from the narrative's starting post, as For You's popup does from its post (the owner, 2026-10-24). */
+  const create = () => onCreate(story, pinned === null ? undefined : { link: pinned.post.permalink, postId: pinned.post.evidenceId });
   const end = useEndInView(() => setShownCount((n) => (n < rest.length ? n + PAGE : n)));
   /* The owner's screen (features/owner/useSeen.ts): this page's posts in view for two seconds, the owner's sign-in only. */
   const owner = useIsOwner();
@@ -268,12 +271,12 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 
-      <CoinBar state={unclear ? { kind: 'unclear' } : coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={() => onCreate(story)} />
+      <CoinBar state={unclear ? { kind: 'unclear' } : coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
 
       {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
       {choosing && sheet !== null ? (
         <Sheet label="Choose coin" onClose={() => setChoosing(false)}>
-          <ChooseCoin data={{ coins: sheet.coins, coinName: story.title, sourcesMissing: sheet.sourcesMissing }} onBack={() => setChoosing(false)} onOpenCoin={(c: SheetCoin) => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} onCreate={() => onCreate(story)} onNote={setNote} />
+          <ChooseCoin data={{ coins: sheet.coins, coinName: story.title, sourcesMissing: sheet.sourcesMissing }} onBack={() => setChoosing(false)} onOpenCoin={(c: SheetCoin) => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} onCreate={create} onNote={setNote} />
         </Sheet>
       ) : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
