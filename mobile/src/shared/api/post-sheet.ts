@@ -67,7 +67,7 @@ export interface PostSheetData {
   readonly foundAt: Instant;
   readonly media: SheetMedia | null;
   /** The narrative the post is in, with how many posts its page lists (null from an older server). */
-  readonly narrative: { readonly storyId: string; readonly title: string | null; readonly posts: number | null } | null;
+  readonly narrative: { readonly storyId: string; readonly title: string | null; readonly posts: number | null; readonly firstPostedAt?: number | null } | null;
   /** The "Part of a story" card: only for a narrative the board lists now, with its picture. Null otherwise. */
   readonly storyCard: { readonly storyId: string; readonly title: string | null; readonly posts: number | null; readonly thumbUrl: string | null; readonly thumbFile: string | null } | null;
   /** The name the coins share, for "Top Goliath coin by MC" and "Goliath coins". */
@@ -177,7 +177,7 @@ export function decodePostSheet(raw: unknown, path = '$'): PostSheetData {
     author: { name: text(author['name']), pictureUrl: https(author['pictureUrl']), pictureFile: posterPicFile(author['pictureFile']), followers: measuredOf(author['followers']) },
     foundAt: instantOf(o['foundAt']),
     media: mediaOf(o['media']),
-    narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']), posts: num(narrative?.['posts']) },
+    narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']), posts: num(narrative?.['posts']), firstPostedAt: num(narrative?.['firstPostedAt']) },
     storyCard: (() => {
       const c = typeof o['storyCard'] === 'object' && o['storyCard'] !== null ? (o['storyCard'] as Record<string, unknown>) : null;
       const id = text(c?.['storyId']);

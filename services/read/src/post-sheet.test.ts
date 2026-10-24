@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
-import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_QUOTED_MEDIA_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_QUOTED_MEDIA_SQL, SHEET_STORY_FIRST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
 import { QUOTE_FACES_SQL } from './quote-faces.ts';
 import { PICTURE_FILES_SQL } from './post-pics.ts';
 import type { Row } from './queries.ts';
@@ -57,8 +57,9 @@ test('an outage is not an empty market: every cap is "not read yet"', async () =
 
 test('a post no feed holds is a 404, and its narrative is named when it is in one', async () => {
   assert.equal((await createPostSheet(deps({})).sheet('x:gone')).status, 404);
-  const sheet = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' } }, media: [] }], [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath', posts: 12 }] }));
-  assert.deepEqual(JSON.parse((await sheet.sheet('x:1')).body).story, { storyId: 'st_1', title: 'Goliath', posts: 12 });
+  const sheet = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' } }, media: [] }], [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath', posts: 12 }], [SHEET_STORY_FIRST_SQL]: [{ first: 1_792_400_000_000 }] }));
+  /* With when its oldest post went up, so the app lists only the coins made after it. */
+  assert.deepEqual(JSON.parse((await sheet.sheet('x:1')).body).story, { storyId: 'st_1', title: 'Goliath', posts: 12, firstPostedAt: 1_792_400_000_000 });
   assert.equal(JSON.parse((await sheet.sheet('x:1')).body).storyCard, null, 'a story the board does not list gets no card');
   const listed = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' } }, media: [] }], [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath', posts: 12, thumb_url: 'https://p/t.jpg', listed: true }] }));
   assert.deepEqual(JSON.parse((await listed.sheet('x:1')).body).storyCard, { storyId: 'st_1', title: 'Goliath', posts: 12, thumbUrl: 'https://p/t.jpg' });

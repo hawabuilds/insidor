@@ -78,6 +78,7 @@ import { useMcChange } from './useMcChange.ts';
 import { useOpenedPost } from '../owner/useSeen.ts';
 import styles from './post-sheet.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
+import { coinsMadeAfter } from '../../shared/coins-made.ts';
 
 export interface PostSheetProps {
   /** The feed post's id: `RisingPost.id`, or `AboutPost.postId` on a coin page. */
@@ -134,7 +135,15 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [note, setNote] = useState<SheetNote | null>(null);
   const clearNote = useCallback(() => setNote(null), []);
 
-  const data = loaded.state === 'ready' ? loaded.value : null;
+  /* Only the coins made after the post (shared/coins-made.ts): older same-name coins are not its. */
+  const data = useMemo(() => {
+    if (loaded.state !== 'ready') return null;
+    const v = loaded.value;
+    /* A post in a narrative: from the narrative's oldest post, so a coin its first post made still shows. */
+    const own = v.post.postedAt.known ? v.post.postedAt.at : null;
+    const first = v.narrative?.firstPostedAt ?? null;
+    return { ...v, coins: coinsMadeAfter(v.coins, own === null ? first : first === null ? own : Math.min(own, first)) };
+  }, [loaded]);
   /* Leaving for another screen: the sheet stays open on the page it was opened over, which stays
      drawn behind (App.tsx, shared/ui/dismiss.ts), so Back from that screen finds this sheet as it
      was, on the same view (the owner, 2026-10-21: Back must not reset the page it returns to). */

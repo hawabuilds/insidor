@@ -92,6 +92,16 @@ select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v
  order by m.joined_at asc
  limit 1`;
 
+/**
+ * When a narrative's oldest listed post went up, in ms: the app lists only coins launched after it
+ * (mobile shared/coins-made.ts; the owner, 2026-10-24: "a coin not older than the oldest post that
+ * started the narrative"), so a later post of the narrative still offers the coin its first post made.
+ */
+export const SHEET_STORY_FIRST_SQL = `
+select (extract(epoch from min(i.posted_at)) * 1000)::float8 as first
+  from public.story_post p join public.item i on i.item_id = p.item_id
+ where p.story_id = $1`;
+
 /** A narrative's title and post count by id, when the post's coin link names a narrative it is not listed in. */
 export const SHEET_TITLE_SQL = `select payload ->> 'title' as title, coalesce((payload ->> 'postCount')::int, jsonb_array_length(coalesce(payload -> 'evidence', '[]'::jsonb))) as posts from public.story_view where story_id = $1`;
 
@@ -313,6 +323,8 @@ export function createPostSheet(deps: PostSheetDeps) {
     const followers = row['follower_count'] === null || row['follower_count'] === undefined ? null : Number(row['follower_count']);
     /* The narrative's name and how many posts it lists, for "Part of the … narrative, 12 posts". */
     const titled = storyId === null ? null : str(storyRow?.['story_id']) === storyId ? storyRow : (await deps.db.query(SHEET_TITLE_SQL, [storyId]))[0];
+    /* Read on its own and never fatal: a missing answer is no first post, and the app falls back to the post's own time. */
+    const firstPosted = storyId === null ? null : await deps.db.query(SHEET_STORY_FIRST_SQL, [storyId]).then((r) => num(Number(r[0]?.['first'] ?? NaN)), () => null);
     return json(200, {
       post: payload,
       author: {
@@ -326,7 +338,7 @@ export function createPostSheet(deps: PostSheetDeps) {
       /* `posterFile`: our copy of the picture, which the app loads first at the sheet's size. */
       media: media === null ? null : { ...media, ...(fileOf(files, media.posterUrl) !== undefined ? { posterFile: fileOf(files, media.posterUrl) } : {}) },
       /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
-      story: storyId === null ? null : { storyId, title: str(titled?.['title']), posts: num(Number(titled?.['posts'] ?? NaN)) },
+      story: storyId === null ? null : { storyId, title: str(titled?.['title']), posts: num(Number(titled?.['posts'] ?? NaN)), firstPostedAt: firstPosted },
       /* The "Part of a story" card: only a narrative the board lists now (public.story_post), with its picture. */
       storyCard: storyRow?.['listed'] === true && str(storyRow['story_id']) !== null
         ? { storyId: str(storyRow['story_id']), title: str(storyRow['title']), posts: num(Number(storyRow['posts'] ?? NaN)), thumbUrl: storyThumb, ...(fileOf(storyFiles, storyThumb) !== undefined ? { thumbFile: fileOf(storyFiles, storyThumb) } : {}) }
