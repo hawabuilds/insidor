@@ -205,7 +205,7 @@ export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
 export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints } from './social/rank.ts';
 export type { RankId, Standing } from './social/rank.ts';
-export { ALERT_KINDS, FEED_KINDS, GROUPED_KINDS, LIST_ONLY, OWNER_ALARM_KINDS, PUSHED_KINDS, SWITCHES, pushable, defaultPrefs, deliveryFor, groupDue, highestMilestone, isQuiet, normalisePrefs, pacedScope, pacingOf, spentWith, underDailyAllowance, wants } from './notify/alerts.ts';
+export { ALERT_KINDS, FEED_KINDS, GROUPED_KINDS, LIST_ONLY, OWNER_ALARM_KINDS, PUSHED_KINDS, SWITCHES, UNCOUNTED_PUSH_KINDS, pushable, defaultPrefs, deliveryFor, groupDue, highestMilestone, isQuiet, normalisePrefs, pacedScope, pacingOf, spentWith, underDailyAllowance, wants } from './notify/alerts.ts';
 export type { AlertKind, AlertPrefs, AlertSwitch, Delivery, Pacing, PushedOfKind } from './notify/alerts.ts';
 export { dropped, recovered, replayLanguageDrops } from './notify/language-drop.ts';
 export type { LanguageDropChange, LanguageDropReplay, LanguageFinds, LanguageNow } from './notify/language-drop.ts';

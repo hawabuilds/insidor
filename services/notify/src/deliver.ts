@@ -8,7 +8,11 @@
  *      a multiple also spends every switched-on level below it, so 5× never fires after 10×;
  *   3. writes the list row with how it was delivered;
  *   4. pushes, unless quiet hours, the hourly limit, a list-only kind or no device says not to —
- *      and only with NOTIFY on and VAPID keys present; otherwise it is listed, never lost.
+ *      and only with NOTIFY on and VAPID keys present; otherwise it is listed, never lost. A saved
+ *      post's coin is not counted toward anyone's hourly limit (core UNCOUNTED_PUSH_KINDS), and a
+ *      daily cap counts only its own kind, so it never costs a launch push either. A coin that already
+ *      reached the person's phone as one of the two coin pushes (a saved post's, the launch push) is
+ *      listed `already-pushed` when the other comes for it: one coin, one push.
  *
  * Pure decisions come from core (deliveryFor, spentWith); this is the database and the push.
  * What breaks if changed carelessly: the order of 1 and 2. Claiming before reading the switch
@@ -17,7 +21,7 @@
 
 import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 import type { PushSender } from '@insidor/contracts/ports/people.ts';
-import { deliveryFor, GROUPED_KINDS, groupDue, normalisePrefs, pacedScope, pacingOf, spentWith, wants, type AlertKind, type AlertPrefs, type Pacing, type PushedOfKind } from '@insidor/core';
+import { deliveryFor, GROUPED_KINDS, groupDue, normalisePrefs, pacedScope, pacingOf, spentWith, UNCOUNTED_PUSH_KINDS, wants, type AlertKind, type AlertPrefs, type Pacing, type PushedOfKind } from '@insidor/core';
 
 import { sendToDevices, type Answers } from './devices.ts';
 import { alertText, type Facts } from './text.ts';
@@ -52,6 +56,9 @@ export function picturesOf(kind: AlertKind, facts: Facts): { readonly image: str
 }
 
 const MULTIPLE_KINDS: readonly AlertKind[] = ['holding_multiple', 'watchlist_multiple'];
+
+/* The person's pushes in the last hour, for the hourly limit — less the kinds that use up no allowance (core UNCOUNTED_PUSH_KINDS: a saved post's coin). */
+const HOURLY_SQL = `select count(*)::int as n from people.alert where user_id = $1 and delivery = 'push' and at > now() - interval '1 hour' and kind <> all($2::text[])`;
 
 export async function prefsOf(db: Db, userId: string, P: NotifyPolicy): Promise<AlertPrefs> {
   const [row] = await db.query<{ prefs: unknown }>('select prefs from people.alert_prefs where user_id = $1', [userId]);
@@ -111,14 +118,16 @@ export async function deliverQueued(deps: DeliverDeps, limit = 200): Promise<rea
       }
     }
     const devices = await deps.db.query<{ endpoint: string; p256dh: string; auth: string }>('select endpoint, p256dh, auth from people.push_subscription where user_id = $1', [q.userId]);
-    const [pushed] = await deps.db.query<{ n: number }>(`select count(*)::int as n from people.alert where user_id = $1 and delivery = 'push' and at > now() - interval '1 hour'`, [q.userId]);
+    const [pushed] = await deps.db.query<{ n: number }>(HOURLY_SQL, [q.userId, UNCOUNTED_PUSH_KINDS]);
     const pacing = pacingOf(q.kind, deps.policy);
     const ofKind = pacing === null ? undefined : await pushedOfKind(deps.db, q.userId, q.kind, q.subject, pacing);
     const decision = deliveryFor({ kind: q.kind, prefs, localMinutes: localMinutes(deps.now(), prefs.timezone), pushedLastHour: pushed?.n ?? 0, devices: deps.pushOn && deps.push.configured ? devices.length : 0, policy: deps.policy, ...(ofKind === undefined ? {} : { ofKind }) });
     const text = alertText(q.kind, facts);
     /* 'held': listed now, pushed with the rest of its group by `deliverGroups`. */
     let delivery = decision.kind === 'push' ? 'push' : decision.kind === 'list' ? decision.why : decision.kind === 'hold' ? 'held' : 'off';
-    if (decision.kind === 'push') {
+    /* One coin, one push per person: a saved post's push and the launch push for the same coin never both reach a phone. */
+    if (decision.kind === 'push' && (await alreadyPushedCoin(deps.db, q.userId, q.kind, facts))) delivery = 'already-pushed';
+    if (delivery === 'push') {
       /* The tag is the claim's own key: a repeat on the device replaces, never stacks. */
       const { sent } = await sendToDevices(deps.db, deps.push, deps.answers ?? new Map(), devices, { title: text.title, body: text.body, url: q.href, ...picturesOf(q.kind, facts), tag: `${q.kind}:${q.subject}` }, deps.policy.pushTtlS);
       /* Every device refused it (the push service's answer is on each device row): said as that, not as "no device". */
@@ -131,6 +140,17 @@ export async function deliverQueued(deps: DeliverDeps, limit = 200): Promise<rea
     out.push({ queueId: q.queueId, outcome: delivery });
   }
   return out;
+}
+
+/** The two pushes about one launched coin (launch.ts, saved-post.ts): whichever reaches a person first, the other is listed. */
+const SAME_COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin'];
+
+/** Whether this coin already reached this person's phone in the last day by the other of the two kinds. */
+async function alreadyPushedCoin(db: Db, userId: string, kind: AlertKind, facts: Facts): Promise<boolean> {
+  const address = facts['address'];
+  if (!SAME_COIN_KINDS.includes(kind) || typeof address !== 'string' || address === '') return false;
+  const rows = await db.query(`select 1 from people.alert where user_id = $1 and kind = any($2::text[]) and delivery = 'push' and facts ->> 'address' = $3 and at > now() - interval '1 day' limit 1`, [userId, SAME_COIN_KINDS, address]);
+  return rows.length > 0;
 }
 
 /** How many of a paced kind reached this person's phone in the last day, and how long ago the last did — of the kind, or of this narrative. */
@@ -174,7 +194,7 @@ export async function deliverGroups(deps: DeliverDeps): Promise<readonly { reado
     if (!groupDue(Math.max(...rows.map((r) => Number(r.ago))), sinceLast, groupRule(first.kind, deps.policy))) continue;
     const prefs = await prefsOf(deps.db, first.userId, deps.policy);
     const devices = await deps.db.query<{ endpoint: string; p256dh: string; auth: string }>('select endpoint, p256dh, auth from people.push_subscription where user_id = $1', [first.userId]);
-    const [pushed] = await deps.db.query<{ n: number }>(`select count(*)::int as n from people.alert where user_id = $1 and delivery = 'push' and at > now() - interval '1 hour'`, [first.userId]);
+    const [pushed] = await deps.db.query<{ n: number }>(HOURLY_SQL, [first.userId, UNCOUNTED_PUSH_KINDS]);
     const decision = deliveryFor({ kind: first.kind, prefs, localMinutes: localMinutes(deps.now(), prefs.timezone), pushedLastHour: pushed?.n ?? 0, devices: deps.pushOn && deps.push.configured ? devices.length : 0, grouped: true });
     const facts = groupFacts(first.kind, rows.map((r) => (typeof r.facts === 'string' ? (JSON.parse(r.facts) as Facts) : r.facts)));
     let outcome = decision.kind === 'push' ? 'push' : decision.kind === 'list' ? decision.why : decision.kind === 'skip' ? decision.why : 'held';

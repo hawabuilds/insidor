@@ -150,6 +150,34 @@ test('★ the older coins a one-coin pick is weighing are read after the coins o
   assert.equal(older.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
 });
 
+test('★ the coins tied to saved posts are read every pass, right after the coins on screen, through 0129\'s function and the origin allowlist', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes('internal.saved_post_coins')) return [{ chain: 'solana', address: 'saved1', tier: 4 }, { chain: 'solana', address: 'screen1', tier: 4 }] as R[];
+      if (s.includes('internal.one_coin_candidate')) return [{ chain: 'solana', address: 'older1', tier: 3 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  const rows = await assetsToRead(db, 'solana', 3, null, { nowMs: Date.UTC(2026, 9, 24), withinMs: 3_600_000, limit: 50 }, { nowMs: Date.UTC(2026, 9, 24), withinMs: 10_800_000, limit: 60 });
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'saved1', 'older1'], 'within the bound, a saved post\'s coin before the pick\'s older coins and the newest');
+  const saved = statements.find((s) => s.sql.includes('internal.saved_post_coins'));
+  assert.ok(saved !== undefined);
+  assert.match(saved.sql, /a\.origin = any\(\$\d+::text\[\]\)/);
+  assert.equal(saved.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+});
+
+test('a database without 0129: the saved posts\' list is empty and the pass reads its usual coins', async () => {
+  const db = {
+    query: async <R>(s: string): Promise<R[]> => {
+      if (s.includes('internal.saved_post_coins')) throw Object.assign(new Error('function does not exist'), { code: '42883' });
+      return [{ chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  assert.deepEqual((await assetsToRead(db, 'solana', 3, null, null, { nowMs: 0, withinMs: 1, limit: 1 })).map((r) => r.address), ['new1']);
+});
+
 test('without the hour, the pass reads exactly what it read before', async () => {
   let calls = 0;
   const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;

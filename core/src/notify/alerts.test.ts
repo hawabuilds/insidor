@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { ALERT_KINDS, defaultPrefs, deliveryFor, groupDue, highestMilestone, isQuiet, LIST_ONLY, normalisePrefs, OWNER_ALARM_KINDS, PUSHED_KINDS, pacedScope, pacingOf, spentWith, underDailyAllowance, type AlertPrefs } from './alerts.ts';
+import { ALERT_KINDS, defaultPrefs, deliveryFor, groupDue, highestMilestone, isQuiet, LIST_ONLY, normalisePrefs, OWNER_ALARM_KINDS, PUSHED_KINDS, pacedScope, pacingOf, spentWith, UNCOUNTED_PUSH_KINDS, underDailyAllowance, type AlertPrefs } from './alerts.ts';
 
 const P = DEFAULT_POLICY.notify;
 const base = defaultPrefs(P);
@@ -77,13 +77,24 @@ test('★ one push (2026-10-20): only a coin launched for a For You post reaches
     else if (kind === 'watchlist_multiple') assert.deepEqual(d, { kind: 'skip', why: 'off' }, kind);
     else assert.deepEqual(d, { kind: 'list', why: 'list-only' }, `${kind} is listed, not pushed`);
   }
-  for (const kind of ['watched_first_coin', 'starred_first_coin', 'reply', 'holding_multiple', 'holding_down', 'creator_buyers', 'starred_speed', 'starred_big_account', 'blowing_up', 'story_post', 'follow', 'comment_useful'] as const) assert.deepEqual(at(kind), { kind: 'list', why: 'list-only' }, kind);
+  for (const kind of ['starred_first_coin', 'reply', 'holding_multiple', 'holding_down', 'creator_buyers', 'starred_speed', 'starred_big_account', 'blowing_up', 'story_post', 'follow', 'comment_useful'] as const) assert.deepEqual(at(kind), { kind: 'list', why: 'list-only' }, kind);
   assert.deepEqual(deliveryFor({ kind: 'follow', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, grouped: true }), { kind: 'list', why: 'list-only' }, 'a group of follows is listed, not pushed');
   assert.ok(LIST_ONLY.includes('rank_up'), 'the bell\'s quiet list is unchanged');
   assert.equal(base.on.launches, true, 'on for everyone, nothing to star');
   const alarmsOff = { ...P, launch: { ...P.launch, ownerAlarmsPush: false } };
   assert.deepEqual(deliveryFor({ kind: 'outage', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, policy: alarmsOff }), { kind: 'list', why: 'list-only' }, 'the owner\'s alarms follow their switch');
   assert.deepEqual(deliveryFor({ kind: 'outage', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, policy: P }), { kind: 'push' });
+});
+
+test('★ a saved post always pushes (2026-10-24): past the hourly limit, never under a daily cap, still muted and quiet by choice', () => {
+  assert.deepEqual(at('watched_first_coin'), { kind: 'push' });
+  assert.deepEqual(at('watched_first_coin', base, P.maxPerHour + 1), { kind: 'push' }, 'a busy hour does not hold it back');
+  assert.equal(pacingOf('watched_first_coin', P), null, 'no daily cap of its own');
+  assert.deepEqual(deliveryFor({ kind: 'watched_first_coin', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, policy: P, ofKind: { lastDay: P.launch.perDay, sinceLastMs: 0 } }), { kind: 'push' }, 'a full day of launch pushes does not hold it back');
+  assert.ok(UNCOUNTED_PUSH_KINDS.includes('watched_first_coin'), 'and it uses up none of the person\'s allowance');
+  assert.deepEqual(at('watched_first_coin', { ...base, muted: true }), { kind: 'skip', why: 'muted' });
+  const quiet = normalisePrefs({ quietStart: '22:00', quietEnd: '07:00', timezone: 'UTC' }, P);
+  assert.deepEqual(at('watched_first_coin', quiet, 0, 1, 3 * 60), { kind: 'list', why: 'quiet' });
 });
 
 test('★ the launch push: at most launch.perDay a day, no gap between two', () => {
