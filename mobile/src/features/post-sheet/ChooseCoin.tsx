@@ -115,7 +115,10 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote, order =
       <SheetBody>
         <div className={styles['scroll']}>
           {TRADING && limits === null && data.coins.length > 0 ? <p className={styles['note']}>Quick buy isn't available just now. Tap a coin to buy from its page.</p> : null}
-          {noneProven ? <p className={styles['banner']}>None proven from this post. Tap a coin to check its chart.</p> : null}
+          {data.coins.length === 0 ? (
+            /* Every coin with the name launched before the post went up (shared/coins-made.ts): none was made from it. */
+            <p className={styles['banner']}>No coin has been made from this yet. Coins with this name from before it went up are left out.</p>
+          ) : noneProven ? <p className={styles['banner']}>None proven from this post. Tap a coin to check its chart.</p> : null}
           {data.sourcesMissing > 0 ? <p className={styles['note']}>The market could not be read, so some numbers are missing.</p> : null}
 
           <div className={styles['chooseList']}>
@@ -136,7 +139,11 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote, order =
       </SheetBody>
 
       <SheetFoot>
-        <Button look="link" size="large" className={styles['wide']} onClick={onCreate}>None of these, create one</Button>
+        {data.coins.length === 0 ? (
+          <Button look="primary" size="large" className={styles['wide']} onClick={onCreate}>Create a coin</Button>
+        ) : (
+          <Button look="link" size="large" className={styles['wide']} onClick={onCreate}>None of these, create one</Button>
+        )}
       </SheetFoot>
 
       {panel && choice !== null ? (
