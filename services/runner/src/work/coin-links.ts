@@ -13,8 +13,12 @@
  * report and the learned words read: it is written for every link, whatever the post's age. A post
  * is credited to the `coin_link` lane — which only queues it for the judge, never shows it — when it
  * was under `creditMaxAgeMs` old at the launch, and a post of a source with a catch-all search only
- * at `textMinApprovals` approvals: most coins name a text post nobody saw. The judge and the hold
- * then decide, as for any post; a coin naming a post does not make it a meme.
+ * at `textMinApprovals` approvals — or `textMinReach` views: most coins name a text post nobody saw,
+ * but a post already past For You's views bar when a coin names it is one people saw. @TocRadio
+ * (23 Oct, 84.5k views, 950 likes) was stored by a coin's link 98 minutes after it was posted, under
+ * the approvals bar, and so never became a For You candidate whatever the judge said; it was the
+ * origin of a coin that ran to millions. The judge and the hold then decide, as for any post; a coin
+ * naming a post does not make it a meme.
  *
  * ★ THE FIRST COIN IS THE POST'S. Copycats link the same viral post; core's post-coin rule proves
  * the earliest-launched one, and the project service finds them all through this table.
@@ -123,7 +127,7 @@ export function creditable(item: Item, adapter: PlatformAdapter, launchedAt: Mil
   const c = policy.finders.coinLinks;
   if (item.postedAt === null || launchedAt === null || launchedAt - item.postedAt > c.creditMaxAgeMs) return false;
   if (!adapter.capabilities.discovery.includes('catchall')) return true;
-  return (item.counters.approval?.value ?? 0) >= c.textMinApprovals;
+  return (item.counters.approval?.value ?? 0) >= c.textMinApprovals || (item.counters.reach?.value ?? 0) >= c.textMinReach;
 }
 
 /**
