@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import type { RisingPost } from '../../shared/api/index.ts';
 import { newestPosted } from './feed-order.ts';
-import { appendPage, withOlder } from './older-feed.ts';
+import { appendPage, bridgeReached, needsBridge, withOlder } from './older-feed.ts';
 
 const p = (id: string) => ({ id }) as RisingPost;
 const ids = (rows: readonly RisingPost[]) => rows.map((r) => r.id);
@@ -44,4 +44,26 @@ test('For You: equal times go by id in byte order, as the server sorts them', ()
 
 test('For You: a page card with no posted time goes at the end of what arrived, never guessed into a place', () => {
   assert.deepEqual(ids(withOlder([at('f1', 1000), at('f2', 800)], [at('dash', null), at('p1', 700)], newestPosted)), ['f1', 'f2', 'p1', 'dash']);
+});
+
+test('★ the frame moved on past where the pages start: the posts between are read, not lost (the owner, 2026-10-24)', () => {
+  const held = [at('p1', 500), at('p2', 400)];
+  assert.equal(needsBridge('f3', ['f1', 'f2', 'f3'], held), false, 'the card the pages continue is still the frame\'s: no hole');
+  assert.equal(needsBridge('f3', ['n1', 'f1', 'f2', 'f3'], held), false, 'new posts above do not make one');
+  assert.equal(needsBridge('f3', ['n1', 'n2', 'n3'], held), true, 'it left the frame: what was between is on no list');
+  assert.equal(needsBridge('f3', ['n1'], []), false, 'no pages held: the first page starts under the new frame anyway');
+  assert.equal(needsBridge(null, ['n1'], held), false);
+  assert.equal(needsBridge('f3', [], held), false, 'an empty frame has no card to read under');
+});
+
+test('a bridge stops where it meets the pages held, by id or by time, and on an empty page', () => {
+  const held = [at('p1', 500), at('p2', 400)];
+  assert.equal(bridgeReached([at('g1', 900), at('g2', 800)], held, newestPosted), false, 'still above the pages: read on');
+  assert.equal(bridgeReached([at('g3', 600), at('p1', 500)], held, newestPosted), true, 'it holds one of them');
+  /* p1 was taken off For You since: no held id comes back, but the time says the hole is filled. */
+  assert.equal(bridgeReached([at('g3', 600), at('g4', 450)], held, newestPosted), true);
+  assert.equal(bridgeReached([], held, newestPosted), true);
+  assert.equal(bridgeReached([at('g1', 900)], held, null), false, 'no order: only a held id ends it');
+  const list = withOlder([at('n1', 1000)], appendPage(held, [at('g1', 900), at('g3', 600), at('p1', 500)], newestPosted), newestPosted);
+  assert.deepEqual(ids(list), ['n1', 'g1', 'g3', 'p1', 'p2'], 'the bridge goes in between, in order, each post once');
 });

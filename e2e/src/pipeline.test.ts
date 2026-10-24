@@ -510,7 +510,9 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   /* ★ A member no longer on the frame is on the scroll under it when it was posted before the
      frame's oldest card — For You is newest posted first all the way down (services/read
      feed-page.ts) — and one posted after it waits off the scroll rather than land under older
-     cards; a frame's own posts are not repeated there. The time is the post's, not when it joined. */
+     cards; a frame's own posts are not repeated there. The time is the post's, not when it joined.
+     And it reaches back three days of joins (`rising.scrollKeepMs`): one that joined before that is
+     still a member but no longer on the scroll. */
   const edge = await db.query<{ author_key: string; newest: Date }>(
     `select min(i.author_key) as author_key, max(coalesce(i.posted_at, i.first_seen_at)) as newest
        from public.rising_row r join public.item i on i.item_id = r.item_id where r.feed_id = 'fyp'`,
@@ -528,15 +530,17 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   };
   const newest = new Date(edge[0]?.newest ?? NOW);
   await member('x:gone', new Date(NOW - 3 * 24 * 60 * MINUTE), new Date(NOW));
-  await member('x:newer', new Date(newest.getTime() + MINUTE), new Date(NOW - 3 * 24 * 60 * MINUTE));
+  await member('x:newer', new Date(newest.getTime() + MINUTE), new Date(NOW - 2 * 24 * 60 * MINUTE));
+  await member('x:past', new Date(NOW - 5 * 24 * 60 * MINUTE), new Date(NOW - 4 * 24 * 60 * MINUTE));
   const older = JSON.parse((await handle('GET', '/rising/fyp/older', read)).body) as { posts: { id: string }[]; next: string | null };
   assert.deepEqual(older.posts.map((p) => p.id), ['x:gone'], 'joined last but posted three days ago: under the frame; posted after the frame: not under it');
   assert.equal(older.next, null, 'a short page ends the scroll');
   const fromTop = JSON.parse((await handle('GET', '/rising/fyp/older?before=253402300799999~z', read)).body) as { posts: { id: string }[] };
   assert.equal(fromTop.posts[0]?.id, 'x:newer', 'from the top, the newest posted member is first');
   assert.equal(fromTop.posts[fromTop.posts.length - 1]?.id, 'x:gone', 'and the oldest posted last');
-  await db.query(`delete from public.feed_post where item_id in ('x:gone', 'x:newer')`);
-  await db.query(`delete from public.item where item_id in ('x:gone', 'x:newer')`);
+  assert.ok(!fromTop.posts.some((p) => p.id === 'x:past'), 'joined four days ago: past the three days the scroll keeps');
+  await db.query(`delete from public.feed_post where item_id in ('x:gone', 'x:newer', 'x:past')`);
+  await db.query(`delete from public.item where item_id in ('x:gone', 'x:newer', 'x:past')`);
 
   /* The weather post passes the owner's call and meets the reach bar like any other post: its
      views were never read as a rate, so with only measured readings counted it waits, for that
