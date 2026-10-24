@@ -61,19 +61,19 @@ export function narrativeAnchors(rows: readonly NarrativeCallRecord[]): readonly
   return out;
 }
 
-const vectors = (withKept: boolean, param: string, labelFirst: boolean) => {
-  const label = `select item_id, space, embedding, ${labelFirst ? 0 : 1} as pref from internal.label_embedding where item_id = any(${param}::text[])`;
-  const kept = `select item_id, space, embedding, ${labelFirst ? 1 : 0} as pref from internal.post_embedding where item_id = any(${param}::text[])`;
+const vectors = (withKept: boolean, param: string, labelFirst: boolean, spaceParam: string) => {
+  const label = `select item_id, space, embedding, ${labelFirst ? 0 : 1} as pref from internal.label_embedding where item_id = any(${param}::text[]) and space = ${spaceParam}`;
+  const kept = `select item_id, space, embedding, ${labelFirst ? 1 : 0} as pref from internal.post_embedding where item_id = any(${param}::text[]) and space = ${spaceParam}`;
   return `select distinct on (item_id, space) item_id, space, embedding from (${withKept ? `${label} union all ${kept}` : label}) v order by item_id, space, pref`;
 };
 
-async function similarities(db: Db, postIds: readonly string[], anchorIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+async function similarities(db: Db, postIds: readonly string[], anchorIds: readonly string[], space: string): Promise<ReadonlyMap<string, number>> {
   const run = (withKept: boolean) =>
     db.query<{ item_id: string; anchor: string; similarity: number | string }>(
-      `with p as (${vectors(withKept, '$1', false)}), a as (${vectors(withKept, '$2', true)})
+      `with p as (${vectors(withKept, '$1', false, '$3')}), a as (${vectors(withKept, '$2', true, '$3')})
        select p.item_id, a.item_id as anchor, 1 - (p.embedding <=> a.embedding) as similarity
          from p join a on a.space = p.space and a.item_id <> p.item_id`,
-      [[...postIds], [...anchorIds]],
+      [[...postIds], [...anchorIds], space],
     );
   /* Asked first, never caught: inside the projector's transaction a failed statement aborts the rest. */
   const [have] = await db.query<{ kept: boolean; labels: boolean }>(
@@ -122,7 +122,7 @@ export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: 
   const bare = [...anchorsOf(calls), ...narrativeAnchors(await new PgNarrativeRepo(db).calls())];
   if (postIds.length === 0 || bare.length === 0) return new Map();
   const anchorIds = [...new Set(bare.map((a) => a.itemId))];
-  const sims = await similarities(db, postIds, anchorIds);
+  const sims = await similarities(db, postIds, anchorIds, policy.group.image.postSpace);
   if (sims.size === 0) return new Map();
   const meta = await namesAndStories(db, [...new Set([...postIds, ...anchorIds])]);
   const coinNames = await namesOfCoins(db, [...new Set(bare.map((a) => a.coin))]);

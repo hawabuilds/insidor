@@ -47,7 +47,7 @@ import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 
@@ -171,7 +171,7 @@ const coined: { coinRef: string; uri: string; v: number[] }[] = [];
 const postVectors = new Map<string, number[] | null>();
 if (BOOST) {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-pass-rates' });
-  for (const r of await asDb(pool).query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture')) {
+  for (const r of await asDb(pool).query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture where space = $1', [SPACE])) {
     coined.push({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] });
   }
   await pool.end();
