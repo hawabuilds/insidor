@@ -54,7 +54,7 @@ test('a war is searched in each side\'s own language for the other country, the 
   const ct = fightWords({ id: 'n-ct', countries: ['China', 'Türkiye'] }, P).map((w) => `${w.lang}:${w.word}`);
   assert.deepEqual(ct, ['zh:土耳其', 'tr:çin', 'tr:çinli']);
   const fj = fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, P).map((w) => `${w.lang}:${w.word}`);
-  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス', 'ja:フランス人', 'ja:仏人', 'ja:アルジェリア人', 'ja:ベジータ アルジェリア', 'ja:日仏', 'ja:フランス人 日本人']);
+  assert.deepEqual(fj, ['fr:japon', 'fr:japonais', 'ja:フランス', 'ja:フランス人', 'ja:仏人', 'ja:アルジェリア人', 'ja:ベジータ アルジェリア', 'ja:日仏', 'ja:フランス人 日本人', 'ja:悪口合戦', 'ja:レスバ']);
   assert.deepEqual(fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, P, { phrases: false }).map((w) => w.word), ['japon', 'japonais', 'フランス', 'フランス人', '仏人']);
   assert.deepEqual(fightWords({ id: 'n-x', countries: ['China', 'Argentina'] }, P), [], 'no language is home to one and names the other: nothing to ask');
 });
@@ -66,7 +66,8 @@ test('★ each word one language at the floor over the last 90 minutes; posts cr
   assert.deepEqual(s.seen.map((q) => `${q.filter?.langs.join()}:${q.term}`), ['zh:土耳其', 'tr:çin', 'tr:çinli']);
   for (const q of s.seen) {
     assert.equal(q.mode, 'keyword');
-    assert.equal(q.filter?.minApproval, P.feed.fightWords.minApproval);
+    const lang = q.filter?.langs[0] ?? '';
+    assert.equal(q.filter?.minApproval, P.feed.fightWords.byLang[lang]?.minApproval ?? P.feed.fightWords.minApproval, 'the language\'s own floor (Turkish 150, policy.v178), else the search\'s');
     assert.equal(q.sinceMs, NOW - P.feed.fightWords.lookbackMs);
   }
   assert.ok(s.stored.every((l) => l === 'narrative_name'));
@@ -104,8 +105,10 @@ test('★ a war phrase is one ask holding all its words, at the language\'s floo
     ['ベジータ アルジェリア', ['ベジータ', 'アルジェリア'], 'ja', 100],
     ['日仏', null, 'ja', 100],
     ['フランス人 日本人', ['フランス人', '日本人'], 'ja', 100],
+    ['悪口合戦', null, 'ja', 100],
+    ['レスバ', null, 'ja', 100],
   ]);
-  assert.equal(P.feed.fightWords.byLang.ja?.phrasesPerSide, 4);
+  assert.equal(P.feed.fightWords.byLang.ja?.phrasesPerSide, 6);
   const two: Policy = { ...LIVE_ONLY, feed: { ...P.feed, fightWords: { ...P.feed.fightWords, byLang: { ja: { minApproval: 100, wordsPerSide: 3 } } } } };
   assert.equal(fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, two).filter((w) => w.lang === 'ja').length, 3 + P.feed.fightWords.phrasesPerSide, 'the default count when the language sets none');
 });
