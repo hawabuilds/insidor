@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceWindow, slowLaneDue, startFloors } from './feed-floor.ts';
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
    The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
@@ -142,6 +142,20 @@ test('the slow slice holding a late band\'s age is covered, its neighbours are n
   assert.equal(sliceCoveredByLateBand(225, 15, LATE), false);
   assert.equal(sliceCoveredByLateBand(300, 15, LATE), false, 'ages 300 to 315: the band asked at 300, the slice\'s youngest edge');
   assert.equal(sliceCoveredByLateBand(285, 15, FRESH), false, 'late off: nothing covered');
+});
+
+/* ── the slow slices: a window by clock ── */
+
+test('★ a slice\'s window starts where its last ask ended, so passes further apart than its width leave no gap', () => {
+  const now = 1_800_000_000_000;
+  const MIN = 60_000;
+  assert.deepEqual(sliceWindow(345, 15, null, now, P), { since: now - 360 * MIN, until: now - 345 * MIN }, 'a start: its own width');
+  /* The last ask ended 17 minutes of posting time ago (a pass 17 minutes late against a 15-minute slice). */
+  const last = now - 345 * MIN - 17 * MIN;
+  assert.deepEqual(sliceWindow(345, 15, last, now, P), { since: last, until: now - 345 * MIN });
+  /* Held back for two hours: it reaches back one slice's spacing (an hour), no further. */
+  assert.deepEqual(sliceWindow(345, 15, now - 345 * MIN - 120 * MIN, now, P), { since: now - 405 * MIN, until: now - 345 * MIN });
+  assert.equal(sliceWindow(345, 15, now - 345 * MIN, now, P), null, 'nothing new');
 });
 
 test('★ a language cut short by a day raises its floor, whatever its truncated count says', () => {

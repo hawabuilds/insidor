@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceWindow, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -448,24 +448,42 @@ export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, po
  * consecutive passes and pays for them twice; narrower leaves gaps no pass looks at. A full band
  * is not paged: its floor rises with the lane's target instead, which is the money lever.
  */
-export function slowSliceQueries(floors: LaneFloors, now: Millis, policy: Policy): readonly DiscoveryQuery[] {
+export function slowSliceQueries(floors: LaneFloors, now: Millis, policy: Policy, clock?: FreshClock, source = ''): readonly DiscoveryQuery[] {
+  return slowSlices(source, floors, now, policy, clock).map((s) => s.query);
+}
+
+/** The clock key of one slow slice, by its oldest age: its own window (core `sliceWindow`), shared by its languages. */
+export const sliceKey = (source: string, oldestAgeMin: number): string => `${source}:slow:${oldestAgeMin}`;
+
+/**
+ * The slow lane's slices this pass, each with the key its window is kept under.
+ *
+ * ★ TILED BY A CLOCK (core `sliceWindow`): each slice asks from where its last
+ * answered ask ended, so slow passes 15 to 17 minutes apart, or one held back, leave no posting time
+ * unasked at that age. Without a clock (a start, or no clock given) a slice is its nominal width.
+ */
+export function slowSlices(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock?: FreshClock): readonly { readonly query: DiscoveryQuery; readonly clockKey: string }[] {
   const base = feedQueryFor('slow', floors, now, policy);
+  const sent = base.filter?.minApproval ?? 0;
   const slices = Math.max(1, Math.floor(policy.feed.slow.slices));
-  const step = (laneWindowMin('slow', policy) * MS_PER_MINUTE) / slices;
-  const width = Math.min(policy.feed.slow.everyMs, step);
+  const stepMin = laneWindowMin('slow', policy) / slices;
+  const widthMin = Math.min(policy.feed.slow.everyMs, stepMin * MS_PER_MINUTE) / MS_PER_MINUTE;
   return Array.from({ length: slices }, (_, i) => {
-    const oldest = now - (i + 1) * step;
-    return { ...base, sinceMs: Math.round(oldest) as Millis, untilMs: Math.round(oldest + width) as Millis };
-  }).filter((q) => {
-    const youngest = (now - (q.untilMs ?? now)) / MS_PER_MINUTE;
+    const oldestAgeMin = (i + 1) * stepMin;
+    const youngestAgeMin = oldestAgeMin - widthMin;
+    const clockKey = sliceKey(source, oldestAgeMin);
+    return { oldestAgeMin, youngestAgeMin, clockKey, window: sliceWindow(youngestAgeMin, widthMin, clock?.lastUntil(clockKey) ?? null, now, policy) };
+  }).filter((s) =>
     /* A late band (`feed.fresh.late`) at an age inside this slice asks the same posts at a floor no higher;
        so does the middle lane (`feed.middle`) over a slice wholly inside its window. */
-    return (
-      !sliceCoveredByBands(youngest, policy) &&
-      !sliceCoveredByLateBand(youngest, width / MS_PER_MINUTE, policy) &&
-      !sliceCoveredByMiddle(youngest, width / MS_PER_MINUTE, base.filter?.minApproval ?? 0, policy)
-    );
-  });
+    s.window !== null &&
+    !sliceCoveredByBands(s.youngestAgeMin, policy) &&
+    !sliceCoveredByLateBand(s.youngestAgeMin, widthMin, policy) &&
+    !sliceCoveredByMiddle(s.youngestAgeMin, widthMin, sent, policy),
+  ).map((s) => ({
+    clockKey: s.clockKey,
+    query: { ...base, sinceMs: Math.round(s.window!.since) as Millis, untilMs: Math.round(s.window!.until) as Millis },
+  }));
 }
 
 /**
@@ -851,7 +869,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (hasCatchAll && !middleOnly) {
       const fresh = deps.policy.feed.fresh.enabled;
       for (const lane of deps.lanes ?? MAIN_LANES) {
-        if (lane === 'slow') for (const query of slowSliceQueries(floors, now, deps.policy)) asks.push({ query, lane, slice: true });
+        if (lane === 'slow') for (const { query, clockKey } of slowSlices(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane, slice: true, languages: languageAsks(query).map((l) => ({ ...l, clockKey })) });
         /* Fresh bands replace both main lanes: the media lane's posts clear the bands' floor too. */
         else if (fresh && lane === 'media') continue;
         /* A late band's posts are the slow lane's kind (found hours in), so they are stored as its finds. */
@@ -1378,6 +1396,11 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         if (t.query.untilMs === null) continue;
         deps.fresh?.ran(t.clockKey ?? (late ? lateBandKey(source, band) : bandKey(source, band)), t.query.untilMs);
       }
+    }
+    /* A slow slice's window (`slowSlices`), shared by its languages: its next ask starts where this one
+       ended once any language answered. A slice no language answered keeps its window open. */
+    if (slice) {
+      for (const t of answeredThreads) if (t.clockKey !== undefined && t.query.untilMs !== null) deps.fresh?.ran(t.clockKey, t.query.untilMs);
     }
 
     /* ★ THE MIDDLE LANE'S DAY: its pages' bill, and the judging of the posts it found first, counted
