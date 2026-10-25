@@ -78,7 +78,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 import { errorText, type Logger } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
 import type { CappedLane, LaneLedger } from './lane-ledger.ts';
-import { languageAsks, roundOrder, type LanguageAsk } from './languages.ts';
+import { languageAsks, roundOrder, waitedLongestFirst, type LanguageAsk } from './languages.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Page sizes and lookbacks — how much is fetched, never what is decided. Nothing
@@ -690,6 +690,8 @@ interface PageRule {
 
 /** Why one language's search stopped, for the log: the source's end, or which of our limits. */
 type Stop = 'end' | 'short' | 'pages' | 'meter' | 'cap' | 'day' | 'deadline' | 'empty' | 'aborted' | 'failed';
+/* The stops that are a day running out — the search's own, the X search day's, the meter's line — as opposed to the window, a page limit or the clock. */
+const MONEY_STOPS: ReadonlySet<Stop> = new Set<Stop>(['cap', 'day', 'meter']);
 
 /** One language's search inside an ask (work/languages.ts): its own cursor, pages, empty run and end. */
 interface Thread {
@@ -1024,7 +1026,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   /* What each catch-all lane returned this pass, per source — the input to its next floor. */
   const laneReturned = new Map<string, Partial<Record<FeedLane, number>>>();
   /* ★ WHAT EACH LANGUAGE'S FRESH BANDS RETURNED, and over how many minutes of posting time (`feed.langSplit`). */
-  const langReturned = new Map<string, Map<string, { returned: number; windowMin: number }>>();
+  const langReturned = new Map<string, Map<string, { returned: number; windowMin: number; cut: boolean }>>();
 
   /* ★ THE X SEARCH DAY (`feed.searchDay`): the metered bill read once a pass per vendor, and what this
      pass's own pages added since. Null when it could not be read. */
@@ -1207,7 +1209,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      * search's own day, its deadline — are totals across them, checked before every page of every
      * language. Paged round-robin: every language's first page before any language's second.
      */
-    const threads: Thread[] = (plan.languages.length > 0 ? plan.languages : [{ lang: null, query }]).map((l) => ({
+    /* The language that has waited longest asks first (work/languages.ts `waitedLongestFirst`): a cap that
+       closes inside the first round must not land on the same languages every pass. */
+    const threads: Thread[] = waitedLongestFirst(plan.languages.length > 0 ? plan.languages : [{ lang: null, query }]).map((l) => ({
       lang: l.lang, query: l.query, clockKey: 'clockKey' in l ? l.clockKey : undefined,
       cursor: null, hasMore: false, items: [], authors: [], pages: 0, emptyRun: 0, open: true, stop: 'end', error: null,
     }));
@@ -1354,12 +1358,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     }
     /* With the split, a fresh band's languages move their own floors, each on what it returned. */
     if (splitOn && band !== null && !late) {
-      const byLang = langReturned.get(source) ?? new Map<string, { returned: number; windowMin: number }>();
+      const byLang = langReturned.get(source) ?? new Map<string, { returned: number; windowMin: number; cut: boolean }>();
       for (const t of answeredThreads) {
         if (t.lang === null) continue;
-        const had = byLang.get(t.lang) ?? { returned: 0, windowMin: 0 };
+        const had = byLang.get(t.lang) ?? { returned: 0, windowMin: 0, cut: false };
         const windowMin = t.query.untilMs === null || t.query.sinceMs === null ? 0 : (t.query.untilMs - t.query.sinceMs) / MS_PER_MINUTE;
-        byLang.set(t.lang, { returned: had.returned + t.items.length, windowMin: had.windowMin + windowMin });
+        /* ★ CUT SHORT BY MONEY (core `nextFloor`'s `cut`): read, more to come, and a day closed on it. */
+        const cut = MONEY_STOPS.has(t.stop) && t.hasMore && t.cursor !== null;
+        byLang.set(t.lang, { returned: had.returned + t.items.length, windowMin: had.windowMin + windowMin, cut: had.cut || cut });
       }
       langReturned.set(source, byLang);
     }
@@ -1469,7 +1475,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       for (const [lang, got] of byLang) {
         const before = langFloor(lang);
         const target = langTarget(langPostsPerDay(lang, usdPerPost, deps.policy), got.windowMin, deps.policy);
-        const next = nextFloor(before, got.returned, target, false, deps.policy);
+        const next = nextFloor(before, got.returned, target, false, deps.policy, got.cut);
         if (next.floor !== before || langFloors[lang] === undefined) {
           try {
             await deps.floors.setLang?.(lang, next.floor, now);

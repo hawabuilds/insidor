@@ -244,16 +244,24 @@ export function slowLaneDue(now: number, lastRanAt: number | null, p: Policy): b
   return lastRanAt === null || now - lastRanAt >= p.feed.slow.everyMs;
 }
 
-export type FloorMove = 'empty' | 'held_other_lane_empty' | 'raised' | 'lowered' | 'held';
+export type FloorMove = 'empty' | 'held_other_lane_empty' | 'raised' | 'lowered' | 'held' | 'cut';
 
 /**
  * One lane's next base floor, from that lane's own result.
  *
+ *   cut short by money         raise by `raiseFactor` — what it returned is a truncated count
  *   returned nothing           lower by `emptyFactor` at once — the floor is shutting it out
  *   the other lane was empty   hold — never raise while either lane is starving
  *   over its target            raise by `raiseFactor`
  *   under `lowBand` × target   lower by `lowerFactor`
  *   otherwise                  hold
+ *
+ * ★ `cut`: the search stopped this language with more to read because a day ran out (its own,
+ * the X search day's, the meter's). Its count is then only what the money reached, which can sit
+ * under the target and LOWER a floor that is already letting in more than the day buys — and the
+ * day, not the floor, goes on deciding which posts are read, newest first, with the older part of
+ * each window never asked. Raising instead hands the steering back to the floor until the window
+ * fits the day.
  */
 export function nextFloor(
   base: number,
@@ -261,8 +269,10 @@ export function nextFloor(
   target: number,
   otherLaneEmpty: boolean,
   p: Policy,
+  cut = false,
 ): { readonly floor: number; readonly move: FloorMove } {
   const f = p.feed;
+  if (cut) return { floor: Math.min(f.floorMax, Math.ceil(base * f.raiseFactor)), move: 'cut' };
   if (returned === 0) return { floor: Math.max(f.floorMin, Math.floor(base * f.emptyFactor)), move: 'empty' };
   if (otherLaneEmpty) return { floor: base, move: 'held_other_lane_empty' };
   if (returned > target) return { floor: Math.min(f.floorMax, Math.ceil(base * f.raiseFactor)), move: 'raised' };

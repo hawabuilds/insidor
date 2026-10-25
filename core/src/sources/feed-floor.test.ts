@@ -144,6 +144,12 @@ test('the slow slice holding a late band\'s age is covered, its neighbours are n
   assert.equal(sliceCoveredByLateBand(285, 15, FRESH), false, 'late off: nothing covered');
 });
 
+test('★ a language cut short by a day raises its floor, whatever its truncated count says', () => {
+  assert.deepEqual(nextFloor(1_000, 3, 10, false, P, true), { floor: 1_200, move: 'cut' }, 'under its target only because the money stopped it');
+  assert.deepEqual(nextFloor(1_000, 3, 10, false, P), { floor: 800, move: 'lowered' }, 'not cut: lowered as before');
+  assert.equal(nextFloor(P.feed.floorMax, 3, 10, false, P, true).floor, P.feed.floorMax);
+});
+
 /* ── each language its own floor and share (feed.langSplit) ── */
 
 const SPLIT = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en', 'ja', 'ko'], fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: true, bandAgesMin: [6, 50], maxWindowMin: 15 }, langSplit: { on: true, shares: { en: 0.8, ja: 0.15, ko: 0.04, de: 0.5 }, bandsDailyUsd: 3, minPostsPerAsk: 2, maxEveryMs: 3_600_000 } } };

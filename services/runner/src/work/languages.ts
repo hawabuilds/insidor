@@ -23,6 +23,16 @@
  * the next, the first language's deep pages would spend the lane's day before the others were
  * asked at all — exactly how Japanese took the whole search for two days, from the other side.
  *
+ * ★ THE FIRST ROUND STARTS WITH THE LANGUAGE THAT HAS WAITED LONGEST (`waitedLongestFirst`), not
+ * in `feed.langs` order. Turning the order each round only helps a cap that closes mid-pass after
+ * the first round; a paced day that has room for one or two pages closes inside round one, and in
+ * list order that was English's page every time. From the pacing of the 6-minute band (2026-10-24
+ * 12:12 UTC) to 25 Oct 12:00 it cut Japanese on 21 to 27 of every ~26 asks an hour and French,
+ * Spanish, Korean, Chinese and Turkish on nearly all of them; Japanese posts of 100k views found
+ * inside 15 minutes fell from 36% to 8%. A language left out keeps its window open, so its window
+ * starts earliest and it goes first on the next pass; with the windows equal (the late band, the
+ * slow slices) the order is the list's, as before.
+ *
  * What breaks if changed carelessly: sending the split queries with one shared cursor mixes one
  * language's position into another's search; checking a cap once per ask rather than per page
  * lets the languages after the first spend past it.
@@ -49,4 +59,17 @@ export function roundOrder<T>(xs: readonly T[], round: number): readonly T[] {
   if (xs.length === 0) return xs;
   const k = ((round % xs.length) + xs.length) % xs.length;
   return [...xs.slice(k), ...xs.slice(0, k)];
+}
+
+/**
+ * The languages of one ask, the one whose window starts earliest first: the language a shared cap
+ * left out last pass, whose window is still open, before the ones asked a minute ago. Ties (every
+ * window the same) keep the given order. Stable, and a copy: the input is not reordered.
+ */
+export function waitedLongestFirst<T extends { readonly query: DiscoveryQuery }>(asks: readonly T[]): readonly T[] {
+  const start = (a: T): number => a.query.sinceMs ?? Number.POSITIVE_INFINITY;
+  return asks
+    .map((ask, i) => ({ ask, i }))
+    .sort((x, y) => start(x.ask) - start(y.ask) || x.i - y.i)
+    .map(({ ask }) => ask);
 }
