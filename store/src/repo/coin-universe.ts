@@ -20,6 +20,9 @@ import { reBrand, toMillis, toTimestamp } from '../rows.ts';
 export interface UnreadCoin {
   readonly assetKey: string;
   readonly metadataUri: string | null;
+  /** The coin's address and launch: what the coin-link step records a link under, when this read is handed to it. */
+  readonly address: string;
+  readonly mintedAt: Millis | null;
 }
 
 export interface CoinMetadataRow {
@@ -172,8 +175,8 @@ export class PgCoinUniverseRepo {
    * that reader, 40% of new coins were recorded with no picture and no links, for good.
    */
   async unread(sinceMs: Millis, maxAttempts: number, limit: number): Promise<readonly UnreadCoin[]> {
-    const rows = await this.#db.query<{ asset_key: string; metadata_uri: string | null }>(
-      `select a.asset_key, a.declared_social ->> 'metadata' as metadata_uri
+    const rows = await this.#db.query<{ asset_key: string; metadata_uri: string | null; address: string; minted_at: Date | string | null }>(
+      `select a.asset_key, a.declared_social ->> 'metadata' as metadata_uri, a.address, a.minted_at
          from public.asset a
          left join internal.coin_metadata m using (asset_key)
         where a.origin in ('live_stream', 'backfill')
@@ -183,7 +186,7 @@ export class PgCoinUniverseRepo {
         limit $3`,
       [toTimestamp(sinceMs), maxAttempts, limit],
     );
-    return rows.map((r) => ({ assetKey: r.asset_key, metadataUri: r.metadata_uri }));
+    return rows.map((r) => ({ assetKey: r.asset_key, metadataUri: r.metadata_uri, address: r.address, mintedAt: toMillis(r.minted_at) }));
   }
 
   async recordMetadata(assetKey: string, row: CoinMetadataRow, at: Millis): Promise<void> {

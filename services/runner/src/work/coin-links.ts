@@ -9,6 +9,21 @@
  * step does not reach; a coin read here has its metadata row, so the universe loop goes straight
  * to its origin check.
  *
+ * ★ WHICHEVER STEP READS THE DOCUMENT FIRST, THE COIN GETS ITS LINKS (2026-10-25). This step takes
+ * only coins with no metadata row, so a coin the universe loop read first — it got there before this
+ * step, or this step's own read failed and the universe loop's retry succeeded — was never linked:
+ * "Nuggets" named a promotion of a viral post and was never priced or shown on it; 878 coins naming
+ * an X post in the three days to 25 Oct (1.6%), about half of them retries. The universe loop now
+ * hands every document it reads to this step (work/coin-link-hand-off.ts, in process: both loops are
+ * one runner), and the next pass treats it exactly as one read here — links, the promotion followed,
+ * the credit — from the fields as read, never fetching the document again. A hand-off rather than a
+ * second query: "metadata read lately, no link row" costs 85-900 ms over 430,000 metadata rows every
+ * five seconds, and as most coins name no post it would pick the same coins each pass unless a
+ * migration marked them checked. A handed coin is taken once; the universe loop re-reads only a
+ * failed document, at most `metadataAttempts` times, so no post read is spent over and over. What is
+ * lost: a coin handed in the minute before a restart, or not taken within `lookbackMs` (counted and
+ * logged).
+ *
  * ★ FOR LEARNING FIRST, FEED SECOND (the owner, 2026-10-15). The link record is what the lead-time
  * report and the learned words read: it is written for every link, whatever the post's age. A post
  * is credited to the `coin_link` lane — which only queues it for the judge, never shows it — when it
@@ -49,10 +64,11 @@ import { promoFollows, promoPointsAt } from '@insidor/core';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import type { CoinPostLink, PgCoinUniverseRepo, PgFinderRepo, PgItemRepo } from '@insidor/store';
+import type { CoinPostLink, FreshCoin, PgCoinUniverseRepo, PgFinderRepo, PgItemRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
+import type { CoinLinkHandOff, HandedCoin } from './coin-link-hand-off.ts';
 import { readCoinMetadata, type DeclaredReader, type MetadataReader, type ReadMetadata } from './universe.ts';
 
 /** A link in a document's text: http(s) up to whitespace or a closing quote or bracket. */
@@ -71,6 +87,8 @@ export interface CoinLinkDeps {
   readonly coins: Pick<PgCoinUniverseRepo, 'recordMetadata'>;
   readonly metadata: MetadataReader;
   readonly declared?: DeclaredReader;
+  /** The coins the universe loop read first (the header's hand-off). Absent: only coins with no metadata row. */
+  readonly handOff?: CoinLinkHandOff;
   /** The sources, built on the live meter with `handles` answering a post addressed by URL. */
   readonly sources: (handles: (source: string, sourceItemId: string) => string | null) => readonly PlatformAdapter[];
   /** A source's own short-link form expanded (a short video's share link); identity for any other URL. */
@@ -87,6 +105,8 @@ export interface CoinLinkDeps {
 export interface CoinLinkResult {
   readonly coins: number;
   readonly read: number;
+  /** Coins another step read first, taken from the hand-off with the fields it read. */
+  readonly handed: number;
   readonly links: number;
   readonly postsRead: number;
   readonly credited: number;
@@ -97,7 +117,7 @@ export interface CoinLinkResult {
   readonly secondsAfterLaunch: readonly number[];
 }
 
-const EMPTY: CoinLinkResult = { coins: 0, read: 0, links: 0, postsRead: 0, credited: 0, followed: 0, usd: 0, secondsAfterLaunch: [] };
+const EMPTY: CoinLinkResult = { coins: 0, read: 0, handed: 0, links: 0, postsRead: 0, credited: 0, followed: 0, usd: 0, secondsAfterLaunch: [] };
 
 /** Every URL in a metadata document's links and description, scheme added where it was left off. */
 export function urlsIn(m: Pick<ReadMetadata, 'description' | 'links'>): readonly string[] {
@@ -196,13 +216,25 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
   if (!c.on) return EMPTY;
   const now = deps.now();
   const fresh = await deps.finders.freshUnread((now - c.lookbackMs) as Millis, c.perPass);
-  if (fresh.length === 0) return EMPTY;
+  /* A launch this step can read first goes first; the coins read elsewhere take the room left. */
+  const taken = deps.handOff?.take(c.perPass - fresh.length, now) ?? { coins: [], expired: 0 };
+  if (taken.expired > 0) deps.log.warn('coins read elsewhere dropped before their links were looked at', { expired: taken.expired });
+  if (fresh.length === 0 && taken.coins.length === 0) return EMPTY;
+  try {
+    return await linkPass(deps, fresh, taken.coins);
+  } catch (e) {
+    deps.handOff?.putBack(taken.coins);
+    throw e;
+  }
+}
 
+async function linkPass(deps: CoinLinkDeps, fresh: readonly FreshCoin[], handed: readonly HandedCoin[]): Promise<CoinLinkResult> {
+  const c = deps.policy.finders.coinLinks;
   const handles = new Map<string, string>();
   const sources = deps.sources((source, id) => handles.get(`${source}:${id}`) ?? null);
 
   /* 1. Each new coin's document, read now, `concurrency` at a time. */
-  const named: { coin: (typeof fresh)[number]; posts: Awaited<ReturnType<typeof postsNamed>> }[] = [];
+  const named: { coin: FreshCoin; posts: Awaited<ReturnType<typeof postsNamed>> }[] = [];
   let read = 0;
   for (let i = 0; i < fresh.length; i += c.concurrency) {
     await Promise.all(
@@ -215,8 +247,13 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
       }),
     );
   }
+  /* …and each coin read elsewhere, from the fields as read: its document is not fetched again. */
+  for (const h of handed) {
+    const posts = await postsNamed(urlsIn(h.metadata), sources, deps.follow);
+    if (posts.length > 0) named.push({ coin: h.coin, posts });
+  }
   if (named.length === 0) {
-    const none = { ...EMPTY, coins: fresh.length, read };
+    const none = { ...EMPTY, coins: fresh.length + handed.length, read, handed: handed.length };
     deps.log.info('coins pointing to posts', { ...none, secondsAfterLaunch: undefined, medianSecondsAfterLaunch: null });
     return none;
   }
@@ -275,7 +312,7 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
   if (deps.mode === 'live' && credit.length > 0) await deps.items.markFoundBy(credit, 'coin_link', deps.now());
 
   const result = {
-    coins: fresh.length, read, links: links.length, postsRead: first.postsRead + followed.postsRead, credited: credit.length,
+    coins: fresh.length + handed.length, read, handed: handed.length, links: links.length, postsRead: first.postsRead + followed.postsRead, credited: credit.length,
     followed: followed.to.size, usd: first.usd + followed.usd, secondsAfterLaunch,
   };
   deps.log.info('coins pointing to posts', { ...result, secondsAfterLaunch: undefined, medianSecondsAfterLaunch: median(secondsAfterLaunch) });

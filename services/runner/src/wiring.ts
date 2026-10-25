@@ -155,6 +155,7 @@ import { embedPortFor } from './embed-port.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
+import { coinLinkHandOff } from './work/coin-link-hand-off.ts';
 import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
 import { instantItems, instantJudge, type InstantResult } from './work/coin-instant.ts';
 import { coinFirstPass, newCoinFirstState, type CoinFirstResult } from './work/coin-first.ts';
@@ -1236,6 +1237,9 @@ export async function withRuntime<T>(
           throw failure ?? new Error('no metadata gateway configured');
         },
       };
+      /* The documents the universe loop reads first, handed to the coin-link finder for their links
+         (work/coin-link-hand-off.ts): one, shared by both loops, so it lives here. */
+      const coinLinkHandOffs = coinLinkHandOff(policy.finders.coinLinks.lookbackMs);
       /* The finders' sources: on the live meter, with the handles the links they read carry, and
          the warmed cache behind them. Built per pass, as the missed-posts step builds its own. */
       const finderSources = (handles: (source: string, sourceItemId: string) => string | null) =>
@@ -1483,6 +1487,7 @@ export async function withRuntime<T>(
           universe: {
             coins: new PgCoinUniverseRepo(db),
             metadata: metadataReader,
+            handOff: coinLinkHandOffs,
             /* A link with no content id, from its own host behind the adapter's address fence. */
             declared: (uri) => fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes }),
             platforms,
@@ -1656,6 +1661,7 @@ export async function withRuntime<T>(
                 coins: new PgCoinUniverseRepo(db),
                 metadata: metadataReader,
                 declared: (uri) => fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes }),
+                handOff: coinLinkHandOffs,
                 sources: finderSources,
                 follow: (url) => followLink(url, globalThis.fetch),
                 items: repos.items,

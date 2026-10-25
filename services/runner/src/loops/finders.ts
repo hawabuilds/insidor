@@ -74,7 +74,7 @@ export function findersLoop(work: FinderWork): Loop {
       /* A pass with coins logs its own line (work/coin-links.ts); one with none says so now and then. */
       if (links !== null && links.coins === 0 && now - quietSaidAt >= QUIET_LOG_EVERY_MS) {
         quietSaidAt = now;
-        log.info('coins pointing to posts: no new coin with unread metadata', { coins: 0 });
+        log.info('coins pointing to posts: no new coin with unread metadata, none read elsewhere', { coins: 0 });
       }
       if (now - repostsAt >= work.repostsEveryMs) {
         repostsAt = now;
