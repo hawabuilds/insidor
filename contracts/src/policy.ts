@@ -6383,7 +6383,11 @@ const POLICY_V1: Policy = {
         /* `paced` from policy.v158 (the owner, 2026-10-24: "spread it"): the same $1.55, spread over the
            whole UTC day instead of spent by mid-afternoon. */
         band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55, paced: true },
-        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.2 },
+        /* `paced` from policy.v181 (2026-10-25): unpaced, the 50-minute band spent its $1.20 by 20:55 UTC on
+           23 Oct and 19:22 on 24 Oct, and asked nothing for the rest of each day (its ledger, internal.
+           lane_spend); 25 Oct 05:00–12:00 it spent at $1.48 a day. The same $1.20, spread; the language
+           floors rise to fit it (a language cut short by a day raises its floor, core `nextFloor`). */
+        band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.2, paced: true },
         late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3 },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
       },
