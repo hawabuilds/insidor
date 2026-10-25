@@ -50,7 +50,7 @@ import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { watchlist } from '../../shared/watchlist.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
-import { BackIcon, StarIcon } from '../../shared/ui/icons.tsx';
+import { BackIcon, ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Sheet } from '../../shared/ui/Sheet.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
@@ -67,6 +67,8 @@ import { Avatar } from '../portfolio/Avatar.tsx';
 import styles from './narrative.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
 import { COIN_LEAD_MS, coinsMadeAfter } from '../../shared/coins-made.ts';
+import { sharePage } from '../../shared/share-link.ts';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 
 /* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
    carry hundreds of posts, and each row has a picture. A row's height before it is measured, and
@@ -108,6 +110,7 @@ export function NarrativePage({ storyId, openCoins = false, onCreate }: {
 
 function TopBar({ storyId, onEdit }: { storyId: string; onEdit: (() => void) | null }) {
   const starred = useWatchlist().includes(storyId);
+  const toast = useToast();
   return (
     <div className={styles['top']}>
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'narratives' })}>
@@ -122,6 +125,15 @@ function TopBar({ storyId, onEdit }: { storyId: string; onEdit: (() => void) | n
           onClick={() => watchlist.toggle(storyId)}
         >
           <StarIcon size={22} filled={starred} />
+        </button>
+        {/* Share this narrative's page in the app (shared/share-link.ts). */}
+        <button type="button" className={styles['star']} aria-label="Share this narrative" onClick={() => {
+          void sharePage({ screen: 'story', storyId }, 'A narrative on Insidor').then((o) => {
+            if (o === 'copied') toast('Link copied');
+            else if (o === 'failed') toast("Couldn't share the link");
+          });
+        }}>
+          <ShareIcon size={22} />
         </button>
         {onEdit !== null ? <button type="button" className={styles['edit']} onClick={onEdit}>Edit</button> : null}
       </div>
