@@ -29,7 +29,8 @@ import { pendingRendered, value } from '../../shared/format/rendered.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { ChevronIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
+import { CheckIcon, ChevronIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
+import { useCopied } from '../../shared/useCopied.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { pairChip, type PairRead } from './pair-view.ts';
@@ -87,13 +88,9 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null,
   const launched = about?.launchedAt.known === true ? about.launchedAt : facts.launchedAt;
   const ticker = facts.ticker ?? '—';
 
+  const { copied, copy: copyText } = useCopied();
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(facts.address);
-      toast('Address copied');
-    } catch {
-      toast('Could not copy', facts.address);
-    }
+    if (!(await copyText(facts.address))) toast('Could not copy', facts.address);
   };
 
   return (
@@ -124,9 +121,9 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null,
           {tradable === null ? <span className={styles['faint']}>Not measured</span> : tradable ? <b>Yes</b> : <span className={styles['faint']}>Not right now</span>}
         </Row>
         <Row label="Contract">
-          <span className={styles['mint']}>
+          <span className={`${styles['mint']} ${copied ? styles['copied'] : ''}`}>
             <span className={styles['mono']}>{facts.address.slice(0, 6)}…{facts.address.slice(-4)}</span>
-            <button type="button" onClick={() => void copy()} aria-label="Copy contract address"><CopyIcon size={13} /></button>
+            <button type="button" onClick={() => void copy()} aria-label={copied ? 'Address copied' : 'Copy contract address'}>{copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}</button>
             <a href={`https://solscan.io/token/${facts.address}`} target="_blank" rel="noopener noreferrer" aria-label="View on the explorer"><ExternalIcon size={13} /></a>
           </span>
         </Row>
