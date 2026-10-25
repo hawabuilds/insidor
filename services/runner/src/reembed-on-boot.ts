@@ -33,8 +33,10 @@ import type { RunnerConfig } from './config.ts';
 import { errorText, type Logger } from './log.ts';
 import { reembedKinds, reembedSources, type ReembedKind } from './work/reembed.ts';
 
-/** Coin pictures are left out: new coins are embedded as they launch, and old ones are archived in 30 days. */
-const KINDS: readonly ReembedKind[] = ['posts', 'labels', 'names', 'pictures'];
+/* Coin pictures only as far back as a coin can still be matched to a new post (`universe.matchWindowMs`,
+   two days; the owner, 2026-10-25): an older coin's picture is never compared again before it is
+   archived, and a fresh coin is embedded in the new space as it launches. */
+const KINDS: readonly ReembedKind[] = ['posts', 'labels', 'names', 'pictures', 'coins', 'coined'];
 /** The service runs one inference at a time; two keeps it fed while the next pictures download. */
 const CONCURRENCY = 2;
 
@@ -65,7 +67,7 @@ export function startReembed(deps: ReembedOnBootDeps): Promise<void> {
     kinds: KINDS,
     concurrency: CONCURRENCY,
     limit: Infinity,
-    sources: reembedSources({ policy, coinSinceMs: Date.now() - policy.coinVectors.keepMs }),
+    sources: reembedSources({ policy, coinSinceMs: Date.now() - policy.universe.matchWindowMs }),
     signal: deps.signal,
     log: (e) => {
       if (e.event === 'page') log.info('reembed', { kind: e.kind, done: e.done, unread: e.unread, ratePerSec: Number(e.ratePerSec.toFixed(1)) });
