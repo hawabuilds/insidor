@@ -142,6 +142,9 @@ export function toActorInput(query: DiscoveryQuery, order: SearchOrder = 'most_l
   if (!CAPABILITIES.discovery.includes(query.mode)) {
     throw new NotImplemented(`tiktok:discover:${query.mode}`, 'this source has no such entry point');
   }
+  if ((query.allWords?.length ?? 0) > 0) {
+    throw new NotImplemented('tiktok:discover:all-words', 'this source cannot ask for several words at once; dropping one would ask for something else');
+  }
 
   const term = query.term.trim();
   if (term.length === 0) throw new NotImplemented('tiktok:discover', 'no hashtag or account to enter by');

@@ -243,9 +243,12 @@ export interface NarrativePass {
    * The meme-war seeds (core group/fight-native.ts, policy.v157): new narratives of `narratives`
    * made from posts naming another country in their own language, written with their pair and
    * `fight_model` `FIGHT_SEED_MODEL`, kept off the board until the titler names both countries.
-   * Only where `fight` is still null: never over the titler's or the owner's answer.
+   * Only where `fight` is still null: never over the titler's or the owner's answer. ★ `named`: a
+   * war the owner named in the policy (policy.v175 `narrative.fight.native.named`), written as his
+   * answer (`OWNER_TITLE_MODEL`) and shown, so it does not wait for the titler and no titler answer
+   * overwrites it (`setFight`).
    */
-  readonly fights?: readonly { readonly id: string; readonly countries: readonly string[] }[];
+  readonly fights?: readonly { readonly id: string; readonly countries: readonly string[]; readonly named?: boolean }[];
 }
 
 /** A stored post the meme-war rule reads (`fightPosts`): its words, language, account and views as last read. */
@@ -850,11 +853,11 @@ export class PgNarrativeRepo {
         );
       }
 
-      /* The meme-war seeds' pair, only where nothing has answered yet. */
+      /* The meme-war seeds' pair, only where nothing has answered yet; a war the owner named as his answer. */
       const fights = (pass.fights ?? []).filter((f) => f.countries.length >= 2);
       if (fights.length > 0 && (await this.#hasColumn('narrative', 'fight'))) {
         for (const f of fights) {
-          await this.#db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1 and fight is null`, [f.id, [...f.countries], FIGHT_SEED_MODEL]);
+          await this.#db.query(`update internal.narrative set fight = $2::text[], fight_model = $3, fight_at = now() where narrative_id = $1 and fight is null`, [f.id, [...f.countries], f.named === true ? OWNER_TITLE_MODEL : FIGHT_SEED_MODEL]);
         }
       }
 

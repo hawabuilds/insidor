@@ -286,7 +286,12 @@ export function toSearchQuery(query: DiscoveryQuery): string {
     if (term.length === 0) {
       throw new NotImplemented('x:discover', 'a keyword or account search needs a term');
     }
-    parts.push(query.mode === 'account' ? `from:${term}` : term.includes(' ') ? `"${term}"` : term);
+    /* ★ Several words a post must all hold (`allWords`, the meme-war phrases): this vendor ANDs words
+       separated by a space, so each goes bare (one with a space of its own stays an exact phrase). */
+    const all = (query.allWords ?? []).map((w) => w.trim()).filter((w) => w !== '');
+    if (all.length > 0 && query.mode !== 'keyword') throw new NotImplemented('x:discover:all-words', 'only a keyword search asks for several words at once');
+    if (all.length > 0) parts.push(...all.map((w) => (w.includes(' ') ? `"${w}"` : w)));
+    else parts.push(query.mode === 'account' ? `from:${term}` : term.includes(' ') ? `"${term}"` : term);
     /* A keyword ask that carries a filter (the narrative-name search) is held to its floor and
        languages, exactly as the catch-all renders them. An account ask never carries one. */
     if (query.mode === 'keyword' && query.filter !== undefined) parts.push(...filterOperators(query, 'x:discover:keyword', 'a filtered keyword search'));
