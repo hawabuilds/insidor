@@ -18,7 +18,7 @@ import type { StoredNarrative } from '@insidor/store';
 import { createLogger } from '../log.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 
-import { FIGHT_WORDS_LANE, fightWarsToAsk, fightWords, fightWordsPass, type FightWordsDeps } from './fight-words.ts';
+import { FIGHT_WORDS_LANE, fightWarsToAsk, fightWords, fightWordsPass, forgetFirstLooks, type FightWordsDeps } from './fight-words.ts';
 import { memoryLaneLedger } from './lane-ledger.ts';
 import { NOW, openMeter, pagingSource } from './lane-search-fakes.ts';
 
@@ -108,6 +108,22 @@ test('★ a war phrase is one ask holding all its words, at the language\'s floo
   assert.equal(P.feed.fightWords.byLang.ja?.phrasesPerSide, 4);
   const two: Policy = { ...LIVE_ONLY, feed: { ...P.feed, fightWords: { ...P.feed.fightWords, byLang: { ja: { minApproval: 100, wordsPerSide: 3 } } } } };
   assert.equal(fightWords({ id: 'n-fj', countries: ['France', 'Japan'] }, two).filter((w) => w.lang === 'ja').length, 3 + P.feed.fightWords.phrasesPerSide, 'the default count when the language sets none');
+});
+
+test('★ a named war with no narrative looks back two days on its first pass, then ninety minutes like every war', async () => {
+  forgetFirstLooks();
+  const back = (q: DiscoveryQuery) => NOW - (q.sinceMs ?? NOW);
+  const first = setup([], { policy: P });
+  await fightWordsPass(first.deps);
+  assert.ok(first.seen.length > 0);
+  assert.ok(first.seen.every((q) => back(q) === P.narrative.fight.native.lookbackMs), 'its first look reads the regroup\'s two days');
+  const next = setup([], { policy: P });
+  await fightWordsPass(next.deps);
+  assert.ok(next.seen.every((q) => back(q) === P.feed.fightWords.lookbackMs), 'then its own ninety minutes, never two days every pass');
+  forgetFirstLooks();
+  const live = setup([war('n-fj', ['France', 'Japan'])]);
+  await fightWordsPass(live.deps);
+  assert.ok(live.seen.every((q) => back(q) === P.feed.fightWords.lookbackMs), 'a live war is never asked back');
 });
 
 test('★ the owner\'s named wars are asked before any narrative holds them, in both sides\' languages; Arabic only against the war\'s other side', async () => {
