@@ -33,8 +33,22 @@ export function posterPicBase(posterBase: string | undefined, coinLogoBase: stri
 export function posterPicSources(file: string | null, link: string | null, base: string): readonly string[] {
   const out: string[] = [];
   if (base !== '' && file !== null && FILE.test(file)) out.push(`${base}/${file}`);
-  if (link !== null && link.startsWith('https://')) out.push(link);
+  if (link !== null && link.startsWith('https://')) {
+    /* ★ X's profile pictures at their 400px size (the owner, 2026-10-25: "profiles made with X
+       accounts have a blurry pfp"): a sign-in with X stores the 48px `_normal` rendition, and a
+       profile page draws it many times larger. The same picture is served at `_400x400`; the link as
+       stored stays behind it, so a picture with no larger rendition still shows. */
+    const sharp = sharpXPicture(link);
+    if (sharp !== null) out.push(sharp);
+    out.push(link);
+  }
   return out;
+}
+
+/** An X profile picture's 400px rendition, or null when the link is not a smaller one of those. */
+export function sharpXPicture(link: string): string | null {
+  const m = /^(https:\/\/pbs\.twimg\.com\/profile_images\/.+)_(?:normal|bigger|mini)(\.[a-z]+)?$/i.exec(link);
+  return m === null ? null : `${m[1]}_400x400${m[2] ?? ''}`;
 }
 
 /** A copy's file name as the reply carried it; null for anything that is not one. */

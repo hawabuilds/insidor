@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { posterPicBase, posterPicFile, posterPicSources } from './poster-pic.ts';
+import { posterPicBase, posterPicFile, posterPicSources, sharpXPicture } from './poster-pic.ts';
 
 const FILE = '0123456789abcdef0123456789abcdef';
 const LINK = 'https://p16.example/avt/a.jpeg?x-expires=1';
@@ -30,4 +30,12 @@ test('a file name is 32 hex characters and nothing else can become a path', () =
   assert.equal(posterPicFile('../coin-logos/x'), null);
   assert.equal(posterPicFile(42), null);
   assert.deepEqual(posterPicSources('../x', null, 'https://s.example/b/author-pics'), []);
+});
+
+test('★ an X profile picture is asked at its 400px size first, its stored small link behind it', () => {
+  const small = 'https://pbs.twimg.com/profile_images/2068058848502374400/X61b41S3_normal.jpg';
+  assert.deepEqual(posterPicSources(null, small, ''), ['https://pbs.twimg.com/profile_images/2068058848502374400/X61b41S3_400x400.jpg', small]);
+  assert.equal(sharpXPicture('https://pbs.twimg.com/profile_images/1/a_bigger.png'), 'https://pbs.twimg.com/profile_images/1/a_400x400.png');
+  assert.equal(sharpXPicture('https://pbs.twimg.com/profile_images/1/a_400x400.jpg'), null, 'already large');
+  assert.equal(sharpXPicture('https://pbs.twimg.com/media/abc_normal.jpg'), null, 'only profile pictures');
 });
