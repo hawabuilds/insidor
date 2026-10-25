@@ -168,6 +168,28 @@ export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number,
 }
 
 /**
+ * ★ ONE SLOW SLICE'S POSTING-TIME WINDOW, tiled like a fresh band's (`bandWindow`): from where that
+ * slice's last answered ask ended to `youngestAgeMin` before now, so consecutive slow passes leave no
+ * gap at that age. With no earlier ask (a start) it is the slice's own width; it never reaches back
+ * further than the distance between two slices (`slow.windowMin / slow.slices`). Null when there is
+ * nothing new to ask.
+ *
+ * Why: the slices were anchored to now and `slow.everyMs` wide, and the slow passes come every 15 to
+ * 17 minutes, so a minute or two of posting time went unasked at every age on every pass, and a late
+ * pass left more (24 Oct: the slow lane's finds show no pass between 11:28 and 12:08 UTC, so posts of
+ * 05:43 to 06:08 were most likely never asked at six hours — a 1.96M-view post of 06:00 among them).
+ *
+ * What breaks if changed carelessly: starting before `lastUntil` re-buys posts the slice already
+ * returned; capping the reach-back below a pass's spacing brings the gaps back.
+ */
+export function sliceWindow(youngestAgeMin: number, widthMin: number, lastUntil: number | null, now: number, p: Policy): { readonly since: number; readonly until: number } | null {
+  const until = now - youngestAgeMin * MS_PER_MINUTE;
+  const step = (p.feed.slow.windowMin / Math.max(1, Math.floor(p.feed.slow.slices))) * MS_PER_MINUTE;
+  const since = lastUntil === null ? until - widthMin * MS_PER_MINUTE : Math.max(lastUntil, until - step);
+  return since < until ? { since, until } : null;
+}
+
+/**
  * ★ THE MIDDLE LANE (`feed.middle`): the posting-time window it asks this pass, `maxAgeMin` to
  * `minAgeMin` minutes before now, whole. Not tiled like the bands: see the field's note.
  */

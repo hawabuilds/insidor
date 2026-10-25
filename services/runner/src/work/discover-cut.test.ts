@@ -3,7 +3,8 @@
  * catch these?" of 2026-10-25). The claims: when a search's day has room for one page, the language
  * that has waited longest is asked, not the first in `feed.langs` every pass; a language cut short by
  * a day raises its floor rather than reading its truncated count, and one stopped by its window or a
- * page limit moves as before.
+ * page limit moves as before; and the slow slices tile posting time by a clock, so a pass that comes
+ * late leaves no gap at a slice's age.
  *
  * Why these exist: from the 6-minute band's pacing (2026-10-24 12:12 UTC) its day closed inside the
  * first round of every ask, English's page was always first, and Japanese, French, Spanish, Korean,
@@ -25,7 +26,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { discoverPass, memoryFreshClock, type FreshClock } from './discover.ts';
+import { discoverPass, memoryFreshClock, sliceKey, type FreshClock } from './discover.ts';
 import { memoryLaneLedger } from './lane-ledger.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
@@ -131,4 +132,19 @@ test('★ a language cut short by the day raises its floor; one stopped by a pag
   assert.equal(cut.setLang['ja'], undefined, 'never asked: nothing it returned to move on');
   const paged = await pass(NOW, OPEN, memoryFreshClock());
   assert.equal(paged.setLang['en'], Math.floor(1_000 * DEFAULT_POLICY.feed.lowerFactor), 'five pages and its page limit, far under target: lowered');
+});
+
+test('★ the slow slices tile posting time: a pass 17 minutes after the last asks 17 minutes at each age, from where it stopped', async () => {
+  const policy: Policy = { ...OPEN, feed: { ...OPEN.feed, slow: { ...OPEN.feed.slow, langs: ['en'] } } };
+  const isSlice = (q: DiscoveryQuery): boolean => q.untilMs !== null && NOW - q.untilMs >= 100 * MIN;
+  const clock = memoryFreshClock();
+  const one = (await pass(NOW, policy, clock, ['all', 'media', 'slow'])).asked.filter(isSlice);
+  assert.ok(one.length > 0);
+  for (const q of one) assert.equal(q.untilMs! - q.sinceMs!, 15 * MIN, 'a start: each slice its own width');
+  assert.equal(clock.lastUntil(sliceKey('x', 360)), NOW - 345 * MIN, 'the six-hour slice\'s window is kept');
+  const later = (NOW + 17 * MIN) as Millis;
+  const two = (await pass(later, policy, clock, ['all', 'media', 'slow'])).asked.filter((q) => q.untilMs !== null && later - q.untilMs >= 100 * MIN);
+  const six = two.find((q) => q.untilMs === later - 345 * MIN);
+  assert.ok(six !== undefined);
+  assert.equal(six.sinceMs, NOW - 345 * MIN, 'from where the last six-hour ask ended: the two minutes a fixed slice would skip are asked');
 });
