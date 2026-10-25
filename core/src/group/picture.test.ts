@@ -63,8 +63,9 @@ test('★ likely the same picture with no shared name is not evidence; neither i
 });
 
 test('a borderline picture counts only when the judge said yes — and still needs the name', () => {
-  assert.equal(readPicture(STORY, { [SPACE]: 0.76 }, named(['Jimothy'], true).picture, P).kind, 'nameImage');
-  assert.equal(readPicture(STORY, { [SPACE]: 0.76 }, named(['Jimothy'], false).picture, P).kind, null);
+  const borderline = (P.group.image.borderline + P.group.image.likely) / 2;
+  assert.equal(readPicture(STORY, { [SPACE]: borderline }, named(['Jimothy'], true).picture, P).kind, 'nameImage');
+  assert.equal(readPicture(STORY, { [SPACE]: borderline }, named(['Jimothy'], false).picture, P).kind, null);
   assert.equal(readPicture(STORY, { [SPACE]: 0.6 }, named(['Jimothy'], true).picture, P).kind, null, 'below borderline is never asked about');
 });
 
