@@ -77,3 +77,30 @@ test('re-reads may take $5 of the search day and no more than the day, and reply
   assert.ok(day.rereadDailyUsd <= day.dailyUsd, 're-reads are a part of the day, not beside it');
   assert.equal(DEFAULT_POLICY.attention.postsPerDay, 0);
 });
+
+test('★ the next post space carries a bar for every post-space bar, each naming one that exists', () => {
+  /* policy.v180: the switch copies these over the bars they name; a key that names nothing, or a
+     post-space bar left without a key, would switch with a bar measured for the other space. */
+  const POST_SPACE_BARS = [
+    'narrative.same.meaning', 'narrative.sameMeaning', 'narrative.mergeMeaning', 'narrative.nameMeaning',
+    'narrative.origin.mergeMeaning', 'narrative.origin.nameAverage', 'narrative.origin.phraseMeaning', 'narrative.origin.wordsMeaning',
+    'narrative.origin.linkMeaning', 'narrative.origin.looseWordsMeaning', 'narrative.origin.rootMeaning',
+    'postCoin.storyCoin.alone', 'postCoin.storyCoin.together', 'postCoin.storyCoin.near',
+    'rising.varietySameMeaning', 'judge.precedents.holdNotSimilarity',
+  ];
+  const image = DEFAULT_POLICY.group.image;
+  assert.ok(image.postSpaceNext !== null && image.postSpaceNext !== image.postSpace);
+  const bars = image.postSpaceNextBars;
+  assert.ok(bars !== null);
+  assert.deepEqual(Object.keys(bars).sort(), [...POST_SPACE_BARS].sort());
+  for (const [path, value] of Object.entries(bars)) {
+    const now = path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], DEFAULT_POLICY);
+    assert.equal(typeof now, 'number', `${path} names no bar`);
+    assert.ok(value > 0 && value < 1, `${path}: ${value}`);
+  }
+  /* The tiers keep their order in the new space, as in the old. */
+  const b = (k: string): number => bars[k] ?? NaN;
+  assert.ok(b('narrative.same.meaning') >= b('narrative.sameMeaning') && b('narrative.sameMeaning') >= b('narrative.nameMeaning'));
+  assert.ok(b('narrative.nameMeaning') >= b('narrative.origin.linkMeaning') && b('narrative.origin.linkMeaning') >= b('narrative.origin.looseWordsMeaning'));
+  assert.ok(b('narrative.origin.looseWordsMeaning') >= b('narrative.origin.rootMeaning'));
+});

@@ -23,6 +23,11 @@
  * runs one inference at a time, and two keeps its queue fed while the next request's pictures
  * download). Its CPU is shared with the runner's own embedding, so this never goes wider.
  *
+ * ★ THE POST SPACE IS A PARAMETER (`postSpace`; policy.v180). Posts, labels and name examples are filled
+ * into the post space the caller names — the policy's `postSpaceNext` while a switch is being prepared,
+ * else its `postSpace` — so the next space can be filled while every reader still reads the current
+ * one. Pictures, coins and coined pictures always go into SPACE: the picture space does not change.
+ *
  * What breaks if changed carelessly: the inputs must be built as the runner builds them — core
  * `embedInput` over the post's words and `postPicture` of its media — or the stored vectors are a
  * different representation from the live ones under the same space id. And the SQL of each work list
@@ -33,7 +38,7 @@ import type { MediaRef, Millis } from '@insidor/contracts';
 import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { embedInput, postPicture } from '@insidor/core';
-import { POST_SPACE, SPACE } from '@insidor/embed-selfhost';
+import { POST_SPACE as SELF_POST_SPACE, POST_SPACES, SPACE } from '@insidor/embed-selfhost';
 import { PgCoinedPictureRepo, PgImageEmbeddingRepo, PgLabelEmbeddingRepo, PgNameExampleRepo, PgPostEmbeddingRepo, type Db } from '@insidor/store';
 
 export const REEMBED_KINDS = ['posts', 'labels', 'names', 'pictures', 'coins', 'coined'] as const;
@@ -70,9 +75,11 @@ const after = (cols: readonly string[], from: number, given: readonly string[] |
  * Every kind's work list. `coinSinceMs` bounds the coin pictures to those embedded since then (a
  * coin's vector is archived after Policy.coinVectors.keepMs; new coins are embedded as they launch).
  */
-export function reembedSources(opts: { readonly policy: Policy; readonly coinSinceMs: number; readonly now?: () => number }): Record<ReembedKind, ReembedSource> {
+export function reembedSources(opts: { readonly policy: Policy; readonly coinSinceMs: number; readonly now?: () => number; readonly postSpace?: string }): Record<ReembedKind, ReembedSource> {
   const P = opts.policy;
   const now = opts.now ?? Date.now;
+  /* The post kinds' target: our first post space unless the caller names another (reembedPostSpace). */
+  const postSpace = opts.postSpace ?? SELF_POST_SPACE;
   return {
     /* Each judged post's words-and-picture vector (0074): the projector's story match. */
     posts: {
@@ -81,7 +88,7 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
           `select count(*) as n, count(*) filter (where jsonb_array_length(coalesce(i.media, '[]'::jsonb)) > 0) as p
              from (select distinct item_id from internal.post_embedding where space <> $1) e join public.item i using (item_id)
             where not exists (select 1 from internal.post_embedding n where n.item_id = e.item_id and n.space = $1)`,
-          [POST_SPACE],
+          [postSpace],
         );
         return { rows: Number(r?.n ?? 0), pictures: Number(r?.p ?? 0) };
       },
@@ -93,13 +100,13 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
             where not exists (select 1 from internal.post_embedding n where n.item_id = e.item_id and n.space = $1)
               and ${after(['e.at', 'e.item_id'], 3, given)}
             order by e.at desc, e.item_id desc limit $2`,
-          [POST_SPACE, REEMBED_PAGE, ...(given ?? [])],
+          [postSpace, REEMBED_PAGE, ...(given ?? [])],
         );
         const repo = new PgPostEmbeddingRepo(db);
         return rows.map((r) => ({
           key: [r.at, r.item_id],
           input: embedInput(r.body ?? '', postPicture(r.media), P),
-          write: async (values) => void (await repo.putMany([{ itemId: r.item_id, values }], POST_SPACE)),
+          write: async (values) => void (await repo.putMany([{ itemId: r.item_id, values }], postSpace)),
         }));
       },
     },
@@ -109,7 +116,7 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
         const [r] = await db.query<{ n: string; p: string }>(
           `select count(distinct l.item_id) as n, count(distinct l.item_id) filter (where l.picture is not null) as p from internal.label_embedding l
             where l.space <> $1 and not exists (select 1 from internal.label_embedding n where n.item_id = l.item_id and n.space = $1)`,
-          [POST_SPACE],
+          [postSpace],
         );
         return { rows: Number(r?.n ?? 0), pictures: Number(r?.p ?? 0) };
       },
@@ -120,14 +127,14 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
             where l.space <> $1 and not exists (select 1 from internal.label_embedding n where n.item_id = l.item_id and n.space = $1)
               and ${after(['l.updated_at', 'l.item_id'], 3, given)}
             order by l.updated_at desc, l.item_id desc limit $2`,
-          [POST_SPACE, REEMBED_PAGE, ...(given ?? [])],
+          [postSpace, REEMBED_PAGE, ...(given ?? [])],
         );
         const repo = new PgLabelEmbeddingRepo(db);
         return rows.map((r) => ({
           key: [r.updated_at, r.item_id],
           input: { text: r.text, picture: r.picture },
           write: async (values) =>
-            void (await repo.put({ itemId: r.item_id, label: r.label, kind: r.label_kind as Parameters<PgLabelEmbeddingRepo['put']>[0]['kind'], text: r.text, why: r.why, picture: r.picture }, POST_SPACE, values)),
+            void (await repo.put({ itemId: r.item_id, label: r.label, kind: r.label_kind as Parameters<PgLabelEmbeddingRepo['put']>[0]['kind'], text: r.text, why: r.why, picture: r.picture }, postSpace, values)),
         }));
       },
     },
@@ -137,7 +144,7 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
         const [r] = await db.query<{ n: string }>(
           `select count(distinct v.item_id) as n from internal.name_example_embedding v
             where v.space <> $1 and not exists (select 1 from internal.name_example_embedding n where n.item_id = v.item_id and n.space = $1)`,
-          [POST_SPACE],
+          [postSpace],
         );
         return { rows: Number(r?.n ?? 0), pictures: Number(r?.n ?? 0) };
       },
@@ -150,13 +157,13 @@ export function reembedSources(opts: { readonly policy: Policy; readonly coinSin
             where not exists (select 1 from internal.name_example_embedding n where n.item_id = v.item_id and n.space = $1)
               and ${after(['v.at', 'v.item_id'], 3, given)}
             order by v.at desc, v.item_id desc limit $2`,
-          [POST_SPACE, REEMBED_PAGE, ...(given ?? [])],
+          [postSpace, REEMBED_PAGE, ...(given ?? [])],
         );
         const repo = new PgNameExampleRepo(db);
         return rows.map((r) => ({
           key: [r.at, r.item_id],
           input: embedInput(r.text ?? '', r.picture ?? postPicture(r.media), P),
-          write: async (values) => void (await repo.putVectors([{ itemId: r.item_id, values }], POST_SPACE)),
+          write: async (values) => void (await repo.putVectors([{ itemId: r.item_id, values }], postSpace)),
         }));
       },
     },
@@ -218,6 +225,16 @@ function pictureSource(kind: 'item' | 'asset', sinceMs: number | null, now: () =
       }));
     },
   };
+}
+
+/**
+ * The post space a fill writes posts, labels and name examples into: the policy's next space when
+ * one is named, else its current one — null when neither is a space this adapter computes (the hosted
+ * vendor's), and then the post kinds are not filled at all.
+ */
+export function reembedPostSpace(policy: Policy): string | null {
+  const target = policy.group.image.postSpaceNext ?? policy.group.image.postSpace;
+  return POST_SPACES.includes(target) ? target : null;
 }
 
 export interface ReembedOptions {

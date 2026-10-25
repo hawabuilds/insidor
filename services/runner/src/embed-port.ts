@@ -22,7 +22,7 @@
 import type { Millis } from '@insidor/contracts';
 import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { httpClient as selfClient, POST_SPACE as SELF_POST_SPACE, SPACE as SELF_SPACE, selfEmbed } from '@insidor/embed-selfhost';
+import { httpClient as selfClient, POST_SPACES as SELF_POST_SPACES, SPACE as SELF_SPACE, selfEmbed } from '@insidor/embed-selfhost';
 import { httpClient as voyageClient, POST_SPACE as VOYAGE_POST_SPACE, SPACE as VOYAGE_SPACE, voyageEmbed } from '@insidor/embed-voyage';
 
 import type { RunnerConfig } from './config.ts';
@@ -44,9 +44,10 @@ export function embedPortFor(
     if (cfg.embeddings.state !== 'configured') return { port: null, dormant: 'the policy names the hosted space and VOYAGE_API_KEY is unset' };
     return { port: voyageEmbed({ client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: fetchFn }), meter, now }), dormant: null };
   }
-  if (spaces.space === SELF_SPACE && spaces.postSpace === SELF_POST_SPACE) {
+  /* Either of our own post spaces (policy.v180): the port is built for the one the policy names. */
+  if (spaces.space === SELF_SPACE && SELF_POST_SPACES.includes(spaces.postSpace)) {
     if (cfg.selfEmbed.state !== 'configured') return { port: null, dormant: 'the policy names our own model and EMBED_SERVICE_URL or EMBED_SECRET is unset' };
-    return { port: selfEmbed({ client: selfClient({ baseUrl: cfg.selfEmbed.baseUrl, secret: cfg.selfEmbed.secret, fetch: fetchFn }), meter, now }), dormant: null };
+    return { port: selfEmbed({ client: selfClient({ baseUrl: cfg.selfEmbed.baseUrl, secret: cfg.selfEmbed.secret, fetch: fetchFn }), meter, now, postSpace: spaces.postSpace }), dormant: null };
   }
   return { port: null, dormant: `no embedding port computes the policy's spaces (${spaces.space}, ${spaces.postSpace})` };
 }

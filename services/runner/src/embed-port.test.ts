@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { POST_SPACE as SELF_POST, SPACE as SELF } from '@insidor/embed-selfhost';
+import { E5_POST_SPACE, POST_SPACE as SELF_POST, SPACE as SELF } from '@insidor/embed-selfhost';
 import { POST_SPACE as HOSTED_POST, SPACE as HOSTED } from '@insidor/embed-voyage';
 
 import { embedPortFor } from './embed-port.ts';
@@ -37,6 +37,12 @@ test('★ the policy naming our own space switches to our own service', () => {
   assert.equal(got.port?.space, SELF);
   assert.equal(got.port?.postSpace, SELF_POST);
   assert.ok(got.port?.id.includes('embed-service'));
+});
+
+test('★ the policy naming our second post space builds the port for it (the switch is one policy version)', () => {
+  const got = embedPortFor(both, { space: SELF, postSpace: E5_POST_SPACE }, meter);
+  assert.equal(got.port?.space, SELF);
+  assert.equal(got.port?.postSpace, E5_POST_SPACE);
 });
 
 test('a space whose port is not configured is dormant, with the reason', () => {
