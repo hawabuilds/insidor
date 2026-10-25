@@ -53,7 +53,8 @@ import { deletedLine, platformOf } from '../../shared/platform.ts';
 import { storyWords } from '../../shared/story-words.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
-import { ChevronIcon } from '../../shared/ui/icons.tsx';
+import { ChevronIcon, ShareIcon } from '../../shared/ui/icons.tsx';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { WatchStar } from '../../shared/ui/WatchStar.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
@@ -79,6 +80,7 @@ import { useOpenedPost } from '../owner/useSeen.ts';
 import styles from './post-sheet.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
 import { coinsMadeAfter } from '../../shared/coins-made.ts';
+import { sharePage } from '../../shared/share-link.ts';
 
 export interface PostSheetProps {
   /** The feed post's id: `RisingPost.id`, or `AboutPost.postId` on a coin page. */
@@ -238,6 +240,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   onNarrative: (storyId: string) => void;
 }) {
   const now = useNow();
+  const toast = useToast();
   const post = data.post;
   const platform = platformOf(post.sourceLabel);
   const [mediaGone, setMediaGone] = useState(false);
@@ -306,6 +309,15 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
         </span>
         {/* Watch this post (the owner, 2026-10-14): its coin, when one launches or is found, is pushed within seconds. */}
         <WatchStar postId={post.id} size="sheet" />
+        {/* Share this post's page in the app (shared/share-link.ts): the phone's share sheet, or the link copied. */}
+        <button type="button" className={styles['open']} aria-label="Share this post" onClick={() => {
+          void sharePage({ screen: 'post', postId: post.id }, `${name} on Insidor`).then((o) => {
+            if (o === 'copied') toast('Link copied');
+            else if (o === 'failed') toast("Couldn't share the link");
+          });
+        }}>
+          <ShareIcon size={18} />
+        </button>
         {/* A deleted post's page is gone: no link out offered as if it worked (RisingPost.deletedAt). */}
         {post.permalink !== null && post.deletedAt === undefined ? (
           <a className={styles['open']} href={post.permalink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`}>
