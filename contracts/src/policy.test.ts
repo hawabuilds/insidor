@@ -89,7 +89,12 @@ test('★ the next post space carries a bar for every post-space bar, each namin
     'rising.varietySameMeaning', 'judge.precedents.holdNotSimilarity',
   ];
   const image = DEFAULT_POLICY.group.image;
-  assert.ok(image.postSpaceNext !== null && image.postSpaceNext !== image.postSpace);
+  /* With no switch pending (policy.v182 switched to the e5 space), both fields are empty together. */
+  if (image.postSpaceNext === null) {
+    assert.equal(image.postSpaceNextBars, null, 'no bars waiting for a space that is not coming');
+    return;
+  }
+  assert.ok(image.postSpaceNext !== image.postSpace);
   const bars = image.postSpaceNextBars;
   assert.ok(bars !== null);
   assert.deepEqual(Object.keys(bars).sort(), [...POST_SPACE_BARS].sort());
