@@ -692,6 +692,16 @@ export class PgNarrativeRepo {
     }));
   }
 
+  /**
+   * ★ THE LIVE MEME WARS: shown narratives the titler or the owner named two or more countries for
+   * (0130 `fight`), with a post that went up since `sinceMs` — the board keeps each of them while it
+   * is live (`narrative.fight.activeMs`), whatever the newest 200 are. Before 0130: none.
+   */
+  async liveWars(sinceMs: number): Promise<readonly StoredNarrative[]> {
+    if (!(await this.#hasColumn('narrative', 'fight'))) return [];
+    return this.#narratives("n.shown and cardinality(coalesce(n.fight, '{}'::text[])) >= 2 and n.newest_post_at >= $1", [new Date(sinceMs).toISOString()]);
+  }
+
   /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */
   async newest(limit: number): Promise<readonly StoredNarrative[]> {
     return this.#narratives('n.shown', [limit], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $1');
