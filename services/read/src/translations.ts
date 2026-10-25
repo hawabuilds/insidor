@@ -40,6 +40,24 @@ export function cardText(text: string, max: number = EXCERPT_MAX_CHARS): string 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** The English of each of `ids` that has one, cut as a card's words: a narrative's listed posts, card or not. */
+export async function translationsOf(db: Db, ids: readonly string[]): Promise<ReadonlyMap<string, { readonly text: string; readonly from: string }>> {
+  if (ids.length === 0) return new Map();
+  let rows: readonly Record<string, unknown>[];
+  try {
+    rows = await db.query(TRANSLATIONS_SQL, [[...ids]]);
+  } catch (e) {
+    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return new Map();
+    throw e;
+  }
+  const byId = new Map<string, { text: string; from: string }>();
+  for (const r of rows) {
+    const text = typeof r['text_en'] === 'string' ? cardText(r['text_en']) : '';
+    if (typeof r['item_id'] === 'string' && typeof r['lang_from'] === 'string' && text !== '') byId.set(r['item_id'], { text, from: r['lang_from'] });
+  }
+  return byId;
+}
+
 /** Each card with its post's English beside it, when there is one; every other card untouched. */
 export async function withTranslations<T>(db: Db, payloads: readonly T[]): Promise<readonly T[]> {
   const ids = payloads.flatMap((p) => (isObj(p) && typeof p['id'] === 'string' ? [p['id']] : []));

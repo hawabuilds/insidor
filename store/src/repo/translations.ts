@@ -43,23 +43,35 @@ export class PgTranslationRepo {
     this.#db = db;
   }
 
-  /** Feed posts shown inside `windowMs` with no translation row, the most recently shown first. Empty before 0081. */
-  async candidates(windowMs: number, limit: number): Promise<readonly TranslateCandidate[]> {
+  /**
+   * Feed posts shown inside `windowMs` with no translation row, the most recently shown first; then,
+   * when `narratives` is given, the posts of the shown narratives that joined inside its window and
+   * are in a language with words to translate (`skip`: the English and no-words codes), newest
+   * joined first — the narrative page lists posts no feed holds (the owner, 2026-10-25: "the posts
+   * listed translated to English similar to fyp"). Feed posts come first: they are on screen most.
+   * Empty before 0081.
+   */
+  async candidates(windowMs: number, limit: number, narratives?: { readonly windowMs: number; readonly skip: readonly string[] }): Promise<readonly TranslateCandidate[]> {
     try {
       const rows = await this.#db.query<{ item_id: string; body: string | null; lang: string | null }>(
         `with scope as (
-           select item_id, max(at) as at from (
-             select r.item_id, now() as at from public.rising_row r
+           select item_id, max(at) as at, max(feed) as feed from (
+             select r.item_id, now() as at, 1 as feed from public.rising_row r
              union all
-             select f.item_id, f.last_shown_at from public.feed_post f
-              where f.withdrawn_at is null and f.last_shown_at > now() - make_interval(secs => $1::float8 / 1000)) s
+             select f.item_id, f.last_shown_at, 1 from public.feed_post f
+              where f.withdrawn_at is null and f.last_shown_at > now() - make_interval(secs => $1::float8 / 1000)
+             union all
+             select m.item_id, m.joined_at, 0 from internal.narrative_member m
+               join internal.narrative n on n.narrative_id = m.narrative_id and n.state = 'open' and n.shown
+               join public.item i on i.item_id = m.item_id and coalesce(i.lang, '') <> all($4::text[])
+              where $3::float8 > 0 and m.joined_at > now() - make_interval(secs => $3::float8 / 1000)) s
             group by item_id)
          select s.item_id, i.body, i.lang
            from scope s join public.item i on i.item_id = s.item_id
           where not exists (select 1 from public.post_translation t where t.item_id = s.item_id)
-          order by s.at desc, s.item_id
+          order by s.feed desc, s.at desc, s.item_id
           limit $2`,
-        [windowMs, limit],
+        [windowMs, limit, narratives?.windowMs ?? 0, [...(narratives?.skip ?? [])]],
       );
       return rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', lang: r.lang }));
     } catch (e) {
@@ -68,7 +80,6 @@ export class PgTranslationRepo {
     }
   }
 
-  /** Writes each post's row once; a post already holding one keeps it. False before 0081. */
   async put(rows: readonly TranslationRow[]): Promise<boolean> {
     if (rows.length === 0) return true;
     try {

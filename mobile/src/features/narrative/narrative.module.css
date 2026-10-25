@@ -205,6 +205,12 @@
   min-width: 0;
 }
 
+/* A translated row's "Translated from …" line under its words (shared/ui/Translated.tsx); absent otherwise. */
+.rowTranslated {
+  min-width: 0;
+  align-self: flex-start;
+}
+
 .rowLine {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -14,10 +14,10 @@
  */
 
 import { instant, pendingInstant, type Instant } from '../format/measure.ts';
-import { assertNoInternalVocabulary, decodeRisingPost, WireShapeError } from './decode.ts';
+import { assertNoInternalVocabulary, decodeRisingPost, decodeTranslation, WireShapeError } from './decode.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import { coinOf, type SheetCoin, type ViewReading } from './post-sheet.ts';
-import type { RisingPost } from './wire/rising.ts';
+import type { PostTranslation, RisingPost } from './wire/rising.ts';
 
 export interface StoryMember {
   /** The post's id, as the narrative's listing and the feed both name it. */
@@ -29,6 +29,8 @@ export interface StoryMember {
   /** The account's picture whether or not a feed holds the post: its handle's face on the page. */
   readonly authorPictureUrl: string | null;
   readonly authorPictureFile: string | null;
+  /** Its English when it was written in another language, card or not; absent when there is none. */
+  readonly translation?: PostTranslation;
 }
 
 export interface StorySheet {
@@ -68,7 +70,7 @@ export function decodeStorySheet(raw: unknown, path = '$'): StorySheet {
       return atMs === null ? [] : [{ atMs, value: num(q['value']) }];
     });
     const pictureUrl = typeof r['authorPictureUrl'] === 'string' && r['authorPictureUrl'].startsWith('https://') ? r['authorPictureUrl'] : null;
-    return [{ id, postedAt: at === null ? pendingInstant('not_reported') : instant(at), post, views: views.sort((a, b) => a.atMs - b.atMs), authorPictureUrl: pictureUrl, authorPictureFile: posterPicFile(r['authorPictureFile']) }];
+    return [{ id, postedAt: at === null ? pendingInstant('not_reported') : instant(at), post, views: views.sort((a, b) => a.atMs - b.atMs), authorPictureUrl: pictureUrl, authorPictureFile: posterPicFile(r['authorPictureFile']), ...decodeTranslation(r['translation'], `${path}.members[${i}].translation`) }];
   });
   return {
     foundAt: (() => {

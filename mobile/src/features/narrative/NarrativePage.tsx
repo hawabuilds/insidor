@@ -38,6 +38,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Evidence, RisingPost, SheetCoin, Story, StorySheet } from '../../shared/api/index.ts';
+import type { PostTranslation } from '../../shared/api/wire/rising.ts';
 import { fetchStoryPosts, fetchStorySheet } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatUsd } from '../../shared/format/number.ts';
@@ -54,6 +55,7 @@ import { BackIcon, ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Sheet } from '../../shared/ui/Sheet.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { TranslatedLine, useShownWords } from '../../shared/ui/Translated.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { useSeenOnScreen } from '../owner/useSeen.ts';
@@ -304,6 +306,10 @@ function PostRow({ e, story, card, face, now, onOpen, rowRef }: { e: Evidence; s
   const pv = story.postViews?.get(e.evidenceId) ?? null;
   const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
   const age = formatAge(e.postedAt, now);
+  /* In English when it was written in another language, as on For You (Translated.tsx): the card's
+     English first, else the sheet's own for a post no feed holds; the original one tap away. */
+  const translation = card?.translation ?? face?.translation;
+  const words = useShownWords(translation === undefined ? { excerpt: e.excerpt } : { excerpt: e.excerpt, translation });
   const tap = () => {
     if (card !== undefined) onOpen(card.id);
     else window.open(e.permalink, '_blank', 'noopener');
@@ -312,7 +318,8 @@ function PostRow({ e, story, card, face, now, onOpen, rowRef }: { e: Evidence; s
     <button type="button" className={styles['row']} onClick={tap} ref={rowRef}>
       <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} file={e.thumbUrl !== null ? e.thumbFile : (card?.thumbFile ?? null)} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} hideEmpty />
       <span className={styles['rowText']}>
-        <span className={styles['rowLine']}>{e.excerpt}</span>
+        <span className={styles['rowLine']}>{words.text}</span>
+        <TranslatedLine line={words.line} compact className={styles['rowTranslated']} />
         <span className={styles['rowBy']}>
           {/* Every @handle with its picture (the owner, 2026-10-21): the stored copy first, then the link, then the letter. */}
           <Avatar name={e.authorLabel.replace(/^@/, '')} seed={e.authorLabel} src={card?.authorPictureUrl ?? face?.url ?? null} file={card?.authorPictureFile ?? face?.file ?? null} size={18} />
@@ -338,6 +345,8 @@ function PostRow({ e, story, card, face, now, onOpen, rowRef }: { e: Evidence; s
 export interface Face {
   readonly url: string | null;
   readonly file: string | null;
+  /** Its English when it was written in another language (the sheet's, card or not). */
+  readonly translation?: PostTranslation;
 }
 
 function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evidence[]): { readonly cards: ReadonlyMap<string, RisingPost>; readonly faces: ReadonlyMap<string, Face> } {
@@ -345,7 +354,7 @@ function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evid
   const [moreFaces, setMoreFaces] = useState<ReadonlyMap<string, Face>>(new Map());
   const asked = useRef(new Set<string>());
   const fromSheet = useMemo(() => new Map((sheet?.members ?? []).flatMap((m) => (m.post === null ? [] : [[m.id, m.post] as const]))), [sheet]);
-  const facesFromSheet = useMemo(() => new Map((sheet?.members ?? []).map((m) => [m.id, { url: m.authorPictureUrl, file: m.authorPictureFile }] as const)), [sheet]);
+  const facesFromSheet = useMemo(() => new Map((sheet?.members ?? []).map((m) => [m.id, { url: m.authorPictureUrl, file: m.authorPictureFile, ...(m.translation === undefined ? {} : { translation: m.translation }) }] as const)), [sheet]);
   const carried = useMemo(() => new Set((sheet?.members ?? []).map((m) => m.id)), [sheet]);
   const want = sheet === null ? [] : rows.map((e) => e.evidenceId).filter((id) => !carried.has(id) && !asked.current.has(id));
   const key = want.join(',');
@@ -357,7 +366,7 @@ function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evid
     fetchStoryPosts(storyId, ask)
       .then((ms) => {
         setMore((m) => new Map([...m, ...ms.flatMap((x) => (x.post === null ? [] : [[x.id, x.post] as const]))]));
-        setMoreFaces((f) => new Map([...f, ...ms.map((x) => [x.id, { url: x.authorPictureUrl, file: x.authorPictureFile }] as const)]));
+        setMoreFaces((f) => new Map([...f, ...ms.map((x) => [x.id, { url: x.authorPictureUrl, file: x.authorPictureFile, ...(x.translation === undefined ? {} : { translation: x.translation }) }] as const)]));
       })
       .catch(() => undefined);
     /* Keyed on the ids asked for, not the array: a new array of the same ids asks nothing new. */

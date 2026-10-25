@@ -4139,6 +4139,11 @@ export interface TranslatePolicy {
   readonly maxOutputTokens: number;
   /** How far back a feed post is still translated: the scroll's members shown inside it. */
   readonly windowMs: number;
+  /**
+   * How far back a shown narrative's posts are translated too (by when they joined): its page lists
+   * posts no feed holds. 0: feed posts only, as before policy.v176.
+   */
+  readonly narrativesWindowMs: number;
   /** Fewer letters than this once tags, handles, $tickers, links, digits and emoji are taken out: nothing to translate. */
   readonly minLetters: number;
   /** Source language tags that mean English: such a post is never sent. */
@@ -5444,8 +5449,12 @@ const POLICY_V1: Policy = {
      (0.92: 135, 0.93: 82) and about as many as before at 0.945 (0.94: 51, 0.95: 19). For You took 4
      posts after 06:44 on 25 Oct. In our space the nearest "not" label hardly tells a meme from a
      non-meme (0.95 holds 6% of the meme labels and 7% of the not labels), so it holds no more than
-     the old bar did. */
-  version: 'policy.v174',
+     the old bar did.
+
+     v176 adds \`translate.narrativesWindowMs\` (seven days): the posts of shown narratives are
+     translated like feed posts, so a narrative's page lists them in English as For You does. (v175
+     is the meme-war languages, on its own branch.) */
+  version: 'policy.v176',
 
   admit: {
     maxAgeMin: 240,
@@ -7375,6 +7384,10 @@ const POLICY_V1: Policy = {
     maxChars: 600,
     maxOutputTokens: 3_000,
     windowMs: 21_600_000, // six hours
+    /* policy.v176, the owner's yes (2026-10-25): about 50 posts a day join a shown narrative in a
+       language other than English and are on no feed (330 over the week to then), at the translate
+       line's measured ~$0.0014 a post, about $0.07 a day; the week behind it once, about $0.45. */
+    narrativesWindowMs: 604_800_000, // seven days
     minLetters: 2,
     englishCodes: ['en'],
     /* 'zxx' no linguistic content, 'und'/'un' undetermined, 'qme' media only, 'qam' mentions only, 'qht' hashtags only, 'qst' very short, 'qct' cashtags only. */
