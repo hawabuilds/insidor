@@ -137,6 +137,22 @@ export interface FightWordsResult {
   readonly stopped: LaneAskEnd | 'day' | null;
 }
 
+/**
+ * ★ A NAMED WAR'S FIRST LOOK REACHES BACK (the owner, 2026-10-25: Saudi Arabia vs Argentina's posts of
+ * 479k, 193k and 123k views went up between 02:00 and 06:00 UTC, the search was named at 14:50 and
+ * reads ninety minutes, so none was ever stored and the war never seeded). A named war with no
+ * narrative yet is asked once per process over `narrative.fight.native.lookbackMs` (two days, the
+ * regroup's window), then over `lookbackMs` like every war. Once per process, not per pass: a named
+ * war that never seeds would otherwise pay two days of posts every half hour inside the search's own
+ * day cap and starve the live wars. A restart asks it once more, which is the only repeat.
+ */
+const lookedBack = new Set<string>();
+
+/** For a test: forget which named wars already had their first look. */
+export function forgetFirstLooks(): void {
+  lookedBack.clear();
+}
+
 const NONE: FightWordsResult = { wars: 0, asked: 0, returned: 0, fresh: 0, usd: 0, stopped: null };
 const PASS_ENDS: ReadonlySet<LaneAskEnd> = new Set(['capped', 'unreadable', 'budget', 'deadline', 'dry']);
 
@@ -150,6 +166,7 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
   const deadline = (started + fw.passDeadlineMs) as Millis;
   const wars = fightWarsToAsk(await deps.narratives.fights(started - p.narrative.fight.activeMs), p);
   const words = wars.flatMap((x) => fightWords(x, p, { phrases: x.phrases }));
+  const firstLook = new Set(wars.filter((x) => x.id.startsWith('named:') && !lookedBack.has(x.id)).map((x) => x.id));
   let asked = 0;
   let returned = 0;
   let fresh = 0;
@@ -161,7 +178,7 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
       mode: 'keyword',
       term: w.word,
       ...(w.allWords === undefined ? {} : { allWords: w.allWords }),
-      sinceMs: (now - fw.lookbackMs) as Millis,
+      sinceMs: (now - (firstLook.has(w.war) ? p.narrative.fight.native.lookbackMs : fw.lookbackMs)) as Millis,
       untilMs: null,
       limit: p.feed.pageLimit,
       cursor: null,
@@ -181,6 +198,8 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
     returned += r.returned;
     fresh += r.fresh;
     if (r.pages > 0) asked += 1;
+    /* Its first look is spent once one of its words was answered; a pass stopped before it asks again. */
+    if (r.pages > 0 && firstLook.has(w.war)) lookedBack.add(w.war);
     if (r.end === 'failed') deps.log.warn('a meme-war word search failed; the next pass reads its window again', { war: w.war, lang: w.lang, word: w.word, err: r.error });
     if (PASS_ENDS.has(r.end)) {
       stopped = r.end;
