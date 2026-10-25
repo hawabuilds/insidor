@@ -134,10 +134,10 @@ test('★ the owner\'s named wars are asked before any narrative holds them, in 
   const r = await fightWordsPass(s.deps);
   assert.equal(r.wars, 3);
   assert.deepEqual(s.seen.map((q) => `${q.filter?.langs.join()}:${q.term}:${q.filter?.minApproval}`), [
-    'ar:الأرجنتين:200', 'ar:الارجنتين:200', 'es:saudí:200', 'es:saudi:200',
+    'ar:الأرجنتين:200', 'ar:الارجنتين:200', 'es:saudí:200', 'es:saudi:200', 'es:arabia saudita:200', 'es:árabe:200', 'es:arabe:200',
     'ar:البرازيل:200', 'pt:egito:200',
     'ko:베트남:300', 'vi:hàn quốc:100',
-  ], 'eight asks a pass for the three named wars; no phrase for a war with no narrative');
+  ], 'eleven asks a pass for the three named wars (Spanish asks all five, policy.v179); no phrase for a war with no narrative');
   /* A named war a live narrative holds (in the titler's spelling) is asked once, as that narrative, with its phrases. */
   const asked = fightWarsToAsk([war('n-sa', ['KSA', 'Argentina'])], P);
   assert.deepEqual(asked.map((w) => [w.id, w.phrases]), [['n-sa', true], ['named:Brazil|Egypt', false], ['named:South Korea|Vietnam', false]]);
