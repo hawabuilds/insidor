@@ -8,6 +8,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import {
   climbPerMinute,
@@ -25,7 +26,7 @@ import {
   type NarrativePost,
 } from './narrative.ts';
 
-const P = DEFAULT_POLICY;
+const P = withMeasuredBars(DEFAULT_POLICY);
 const HOUR = 3_600_000;
 const yes = { coinable: true, confidence: 0.99, lookedAt: 'picture' as const, proposedName: 'GTA 6' };
 const NO_CALLS = foldNarrativeCalls([]);

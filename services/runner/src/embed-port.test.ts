@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { POST_SPACE as SELF_POST, SPACE as SELF } from '@insidor/embed-selfhost';
+import { POST_SPACE as HOSTED_POST, SPACE as HOSTED } from '@insidor/embed-voyage';
 
 import { embedPortFor } from './embed-port.ts';
 
@@ -18,10 +19,16 @@ const both = {
   selfEmbed: { state: 'configured', baseUrl: 'http://embed.internal:8790', secret: 's'.repeat(30) },
 } as const;
 
-test('★ the default policy keeps the hosted port, whatever else is configured', () => {
+test('★ the default policy (v172) runs on our own service, whatever else is configured', () => {
   const got = embedPortFor(both, DEFAULT_POLICY.group.image, meter);
   assert.equal(got.port?.space, DEFAULT_POLICY.group.image.space);
   assert.equal(got.port?.postSpace, DEFAULT_POLICY.group.image.postSpace);
+  assert.ok(got.port?.id.includes('embed-service'));
+});
+
+test('★ the policy naming the hosted space goes back to the hosted port: the rollback', () => {
+  const got = embedPortFor(both, { space: HOSTED, postSpace: HOSTED_POST }, meter);
+  assert.equal(got.port?.space, HOSTED);
   assert.ok(!got.port?.id.includes('embed-service'));
 });
 
@@ -39,7 +46,7 @@ test('a space whose port is not configured is dormant, with the reason', () => {
 });
 
 test('★ a picture space and a post space of two different models is refused', () => {
-  const got = embedPortFor(both, { space: SELF, postSpace: DEFAULT_POLICY.group.image.postSpace }, meter);
+  const got = embedPortFor(both, { space: SELF, postSpace: HOSTED_POST }, meter);
   assert.equal(got.port, null);
   assert.match(got.dormant ?? '', /no embedding port/);
 });

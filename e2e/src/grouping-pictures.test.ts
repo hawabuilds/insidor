@@ -15,7 +15,8 @@ import { before, test } from 'node:test';
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId, storyId } from '@insidor/contracts/ids.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
+import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 import { voyageEmbed } from '@insidor/embed-voyage';
 import { anthropicJudge, httpClient } from '@insidor/judge-anthropic';
 import { policyHash } from '@insidor/runner/src/hash.ts';
@@ -41,7 +42,7 @@ import { migratedDb } from './db.ts';
 
 const NOW = Date.now() as Millis;
 const MIN = 60_000;
-const P = DEFAULT_POLICY;
+const P = withMeasuredBars(LIVE_POLICY);
 const X = sourceId('x');
 const STORY = storyId('jimothy');
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };

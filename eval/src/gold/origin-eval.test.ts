@@ -8,12 +8,13 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import type { CoinEvidence } from './coin-evidence.ts';
 import type { GoldCoin } from './coin-origins.ts';
 import { evaluateCoin, pictureTier } from './origin-eval.ts';
 
-const P = DEFAULT_POLICY;
+const P = withMeasuredBars(DEFAULT_POLICY);
 const LAUNCH = '2026-07-01T12:00:00.000Z';
 const H = 3_600_000;
 const before = Date.parse(LAUNCH) - 2 * H;

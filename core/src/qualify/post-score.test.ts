@@ -59,9 +59,10 @@ test('the reason names which check a post failed, and agrees with the score', ()
 test('★ the picture boost lifts only a "yes" just under its bar, with a picture like a coined post', () => {
   const bar = DEFAULT_POLICY.qualify.minJudgeConfidence.text;
   const margin = DEFAULT_POLICY.rising.boostBarMargin;
+  const alike = DEFAULT_POLICY.rising.boostMinSimilarity;
   const near = judged({ confidence: bar - margin });
-  assert.equal(postScore(near, DEFAULT_POLICY, 0.5), 'passes');
-  assert.equal(postScore(near, DEFAULT_POLICY, 0.3), 'below', 'not alike enough');
+  assert.equal(postScore(near, DEFAULT_POLICY, alike + 0.05), 'passes');
+  assert.equal(postScore(near, DEFAULT_POLICY, alike - 0.1), 'below', 'not alike enough');
   assert.equal(postScore(near, DEFAULT_POLICY, null), 'below', 'never compared is not alike');
   assert.equal(postScore(judged({ confidence: bar - margin - 0.05 }), DEFAULT_POLICY, 0.99), 'below', 'too far under the bar');
   assert.equal(postScore(judged({ confidence: bar - margin, proposedName: 'one two three four five' }), DEFAULT_POLICY, 0.99), 'below', 'the name test still holds');
