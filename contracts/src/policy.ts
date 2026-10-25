@@ -5502,8 +5502,14 @@ const POLICY_V1: Policy = {
      views, 日本人とニガーの間の悪口合戦), so both are its phrases (`phrasesPerSide` ja 4 → 6, two more
      asks a pass); Turkish is asked at 150 likes, not 300 (`feed.fightWords.byLang.tr`: his China vs
      Turkey examples were 55k-180k views at 207-2,259 likes). About 2 more asks and ~10 more posts a
-     pass at the day's own numbers, ~$0.02 a day, inside the search's $0.25 cap. */
-  version: 'policy.v178',
+     pass at the day's own numbers, ~$0.02 a day, inside the search's $0.25 cap.
+
+     v179 asks all five of Spanish's words for Saudi Arabia, not the first two (`byLang.es`
+     wordsPerSide 2 → 5): the owner's Saudi Arabia vs Argentina examples from the Argentine side say
+     árabe, which was never asked. Replies were never left out of these searches (the X adapter has
+     not sent -filter:replies since 2026-10-13), so the replies among them come back once the word
+     is asked. Three more asks a pass, ~$0.02 a day, inside the cap. */
+  version: 'policy.v179',
 
   admit: {
     maxAgeMin: 240,
@@ -6471,7 +6477,9 @@ const POLICY_V1: Policy = {
            at 207-2,259 likes, two under 300: at 150. */
         tr: { minApproval: 150, wordsPerSide: 2 },
         ar: { minApproval: 200, wordsPerSide: 2 },
-        es: { minApproval: 200, wordsPerSide: 2 },
+        /* policy.v179: the Argentine side writes árabe ("el árabe cuando…", 332k; a reply "el árabe que…",
+           303k) far more than saudí, and only the first two words were asked: all five. */
+        es: { minApproval: 200, wordsPerSide: 5 },
         pt: { minApproval: 200, wordsPerSide: 1 },
         vi: { minApproval: 100, wordsPerSide: 1 },
       },
