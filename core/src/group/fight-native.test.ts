@@ -2,6 +2,8 @@
  * The meme-war rule by the country a post names (fight-native.ts), on the 23-24 Oct posts: the
  * French posts mocking the Japanese seed France–Japan, the Chinese and Turkish posts join the
  * China–Turkey war, an English post or a small one never counts, and Turkish "çini" is not China.
+ * This week's wars (policy.v175): Arabic home to two countries pairs only into a war holding both,
+ * Japanese joins at its own bar, the France vs Japan phrases, and the wars the owner named.
  */
 
 import assert from 'node:assert/strict';
@@ -9,7 +11,7 @@ import test from 'node:test';
 
 import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
 
-import { answerHoldsPair, canonicalCountry, countriesIn, countriesNamed, fightPairsOf, planFights, warWords, type FightPost } from './fight-native.ts';
+import { answerHoldsPair, canonicalCountry, countriesIn, countriesNamed, fightPairsOf, homesOf, joinReachOf, namedWarKeys, phrasePairsOf, planFights, warWords, type FightPost } from './fight-native.ts';
 
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 const H = 3_600_000;
@@ -69,7 +71,7 @@ test('three viral posts from three accounts in a day seed a new pair; two do not
     post('fr4', 'fr', 'Les japonnais ils sont détraqués complet sur X', null, 'a4', 4),
   ];
   const plan = planFights({ posts: fr, narratives: [], nowMs: NOW }, P);
-  assert.deepEqual(plan.seeds, [{ countries: ['France', 'Japan'], members: ['fr1', 'fr2', 'fr3'] }]);
+  assert.deepEqual(plan.seeds, [{ countries: ['France', 'Japan'], members: ['fr1', 'fr2', 'fr3'], named: false }]);
   const two = planFights({ posts: fr.slice(0, 2), narratives: [], nowMs: NOW }, P);
   assert.equal(two.seeds.length, 0);
   const oneAccount = planFights({ posts: fr.slice(0, 3).map((x) => ({ ...x, authorKey: 'same' })), narratives: [], nowMs: NOW }, P);
@@ -133,14 +135,15 @@ test('★ a narrative wholly a war\'s folds into it; a small mixed one gives up 
 test('★ a quote of a war post in the other side\'s language joins though it names no country; in the same language, in English, of a waiting seed, or under the bar, it does not', () => {
   const posts = new Map<string, string | null>([['vegeta-fr', 'fr'], ['beef-en', 'en']]);
   const fj = { ...war(20), posts };
-  const q = (itemId: string, lang: string, refersTo: readonly string[], reach = 4_946_842, hoursAgo = 30) => ({ ...post(itemId, lang, 'ベジータがアルジェリア人ではない最大の証拠がコチラ', reach, `a:${itemId}`, hoursAgo), refersTo });
+  /* A text with no name and no phrase of the war: only the quote can place it. */
+  const q = (itemId: string, lang: string, refersTo: readonly string[], reach = 4_946_842, hoursAgo = 30) => ({ ...post(itemId, lang, '最大の証拠がコチラ', reach, `a:${itemId}`, hoursAgo), refersTo });
   const plan = planFights({
     posts: [
       q('ja-answer', 'ja', ['vegeta-fr']),
       q('ja-of-en', 'ja', ['beef-en'], 90_000, 3),
       { ...q('fr-pile', 'fr', ['vegeta-fr'], 134_706, 3), text: 'Quand ils vont découvrir que Picolo est Malien' },
       { ...q('en-quote', 'en', ['vegeta-fr'], 267_536, 3), text: 'Nah man the French up like 50 rn' },
-      q('ja-small', 'ja', ['vegeta-fr'], 9_000, 3),
+      q('ja-small', 'ja', ['vegeta-fr'], 3_000, 3),
       q('ja-other', 'ja', ['x:unrelated'], 500_000, 3),
     ],
     narratives: [fj],
@@ -163,4 +166,71 @@ test('the catch-up searches each war\'s own languages for the other side, and En
   assert.ok(words.find((w) => w.lang === 'en')?.words.includes('french'));
   assert.equal(words.find((w) => w.lang === 'zh'), undefined, 'Chinese is neither side');
   assert.deepEqual(countriesIn('en', 'the French vs Japanese beef', P), ['France', 'Japan']);
+});
+
+
+test('★ a language of several homes pairs each home with the country named, and joins only a war holding both', () => {
+  assert.deepEqual(homesOf('ar', P), ['Saudi Arabia', 'Egypt']);
+  assert.deepEqual(homesOf('fr', P), ['France'], 'a plain string is one home');
+  assert.deepEqual(fightPairsOf({ lang: 'ar', text: 'جمهور الأرجنتين بعد المباراة' }, P), [['Argentina', 'Saudi Arabia'], ['Argentina', 'Egypt']]);
+  assert.deepEqual(fightPairsOf({ lang: 'ar', text: 'المصريين في كل مكان' }, P), [['Egypt', 'Saudi Arabia']], 'Egypt from the Saudi home; never Egypt against itself');
+  const wars = [
+    { id: 'n-sa', countries: ['KSA', 'Argentina'], newestPostAtMs: NOW - H },
+    { id: 'n-be', countries: ['Brasil', 'Egypt'], newestPostAtMs: NOW - H },
+  ];
+  const plan = planFights({
+    posts: [
+      post('ar-arg', 'ar', 'جمهور الأرجنتين بعد المباراة', 120_000),
+      post('ar-br', 'ar', 'البرازيل', 90_000),
+      post('ar-eg', 'ar', 'المصريين في كل مكان', 479_000),
+      post('es-sa', 'es', 'Los saudíes no saben perder', 95_000),
+    ],
+    narratives: wars,
+    nowMs: NOW,
+  }, P);
+  assert.deepEqual(plan.joins.get('n-sa'), ['ar-arg', 'es-sa']);
+  assert.deepEqual(plan.joins.get('n-be'), ['ar-br']);
+  assert.equal(plan.seeds.length, 0, 'no live Saudi Arabia–Egypt war, and Arabic seeds only a named pair');
+});
+
+test('★ Arabic seeds only a war the owner named, and that seed says so; a single-home language seeds as before', () => {
+  assert.ok(namedWarKeys(P).has('Argentina|Saudi Arabia'));
+  const eg = ['e1', 'e2', 'e3'].map((id, i) => post(id, 'ar', 'المصريين', 200_000, `a${i}`, 5 + i));
+  assert.equal(planFights({ posts: eg, narratives: [], nowMs: NOW }, P).seeds.length, 0, 'Saudi Arabia–Egypt is not named: no war invented');
+  const arg = ['s1', 's2', 's3'].map((id, i) => post(id, 'ar', 'الأرجنتين', 200_000, `a${i}`, 5 + i));
+  assert.deepEqual(planFights({ posts: arg, narratives: [], nowMs: NOW }, P).seeds, [{ countries: ['Argentina', 'Saudi Arabia'], members: ['s3', 's2', 's1'], named: true }]);
+  const pt = ['p1', 'p2', 'p3'].map((id, i) => post(id, 'pt', 'o egito não aguenta', 200_000, `a${i}`, 5 + i));
+  assert.deepEqual(planFights({ posts: pt, narratives: [], nowMs: NOW }, P).seeds.map((x) => [x.countries, x.named]), [[['Brazil', 'Egypt'], true]]);
+});
+
+test('★ Japanese joins a war at its own bar of 5k views; French still needs 40k; a seed needs 40k whatever the language', () => {
+  assert.equal(joinReachOf('ja', P), 5_000);
+  assert.equal(joinReachOf('fr', P), P.narrative.fight.native.minReach);
+  const plan = planFights({
+    posts: [post('ja-8k', 'ja', 'フランス人がまた', 8_000), post('ja-4k', 'ja', 'フランス人がまた', 4_000), post('fr-20k', 'fr', 'Les japonais', 20_000)],
+    narratives: [war(20)],
+    nowMs: NOW,
+  }, P);
+  assert.deepEqual(plan.joins.get('n-fj'), ['ja-8k']);
+  const seed = planFights({ posts: ['j1', 'j2', 'j3'].map((id, i) => post(id, 'ja', '中国の観光客', 8_000, `a${i}`)), narratives: [], nowMs: NOW }, P);
+  assert.equal(seed.seeds.length, 0, 'Japanese news at 8k does not seed');
+});
+
+test('★ a war phrase: every word must be there; ベジータ alone is merchandise, ベジータ with アルジェリア is the war', () => {
+  assert.deepEqual(phrasePairsOf({ lang: 'ja', text: 'ベジータのフィギュア予約開始' }, P), []);
+  assert.deepEqual(phrasePairsOf({ lang: 'ja', text: 'ベジータがアルジェリア出身なわけない' }, P), [['France', 'Japan']]);
+  assert.deepEqual(phrasePairsOf({ lang: 'ja', text: 'アルジェリア人って言われても' }, P), [['France', 'Japan']]);
+  assert.deepEqual(phrasePairsOf({ lang: 'fr', text: 'アルジェリア人' }, P), [], 'only in the phrase\'s own language');
+  const fj = { ...war(20), confirmed: true };
+  const posts = [
+    post('vegeta', 'ja', 'ベジータがアルジェリア出身なわけない', 30_000),
+    post('merch', 'ja', 'ベジータのフィギュア予約開始', 300_000),
+    post('small', 'ja', 'アルジェリア人って言われても', 3_000),
+  ];
+  assert.deepEqual(planFights({ posts, narratives: [fj], nowMs: NOW }, P).joins.get('n-fj'), ['vegeta']);
+  const waiting = planFights({ posts, narratives: [{ ...fj, confirmed: false }], nowMs: NOW }, P);
+  assert.equal(waiting.joins.size, 0, 'a seed still waiting for the titler takes no post by a phrase');
+  const none = planFights({ posts: ['a', 'b', 'c'].map((id, i) => post(id, 'ja', 'アルジェリア人', 300_000, `a${i}`)), narratives: [], nowMs: NOW }, P);
+  assert.equal(none.seeds.length, 0, 'a phrase never seeds');
+  assert.ok(warWords([{ countries: ['France', 'Japan'] }], P).find((w) => w.lang === 'ja')?.words.includes('ベジータ'), 'the catch-up sifts a phrase by its first word');
 });

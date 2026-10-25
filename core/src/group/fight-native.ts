@@ -20,8 +20,8 @@
  *          the board until the titler names both countries: a count alone cannot tell a war from
  *          the news (on 18 Oct Japanese posts named France 40 times at 40k views, about the riots)
  *
- * ★ "WE CANNOT TELL" IS NOT A PAIR. A post in a language with no home country (English, Spanish,
- * Portuguese: many countries speak them) or naming no other country has no pair; a post with no
+ * ★ "WE CANNOT TELL" IS NOT A PAIR. A post in a language with no home country (English: many
+ * countries speak it) or naming no other country has no pair; a post with no
  * view count is not at the bar — an unknown is never read as viral.
  *
  * ★ THE CATCH-UP (policy.v162): the caller also hands in, every `catchUpEveryMs`, the posts its words
@@ -43,6 +43,24 @@
  *   placed   a narrative all of whose posts are W's is merged into W (its link then leads there); one
  *            of at most `moveMaxPosts` posts gives up only its posts at the views bar that are W's.
  *            The caller never offers a war, a narrative the owner called on, or one he renamed
+ *
+ * ★ THIS WEEK'S WARS (policy.v175, the owner 2026-10-25):
+ *
+ *   homes    a language may be home to several countries (Arabic: Saudi Arabia and Egypt). Its post
+ *            pairs each home with each other country it names, so an Arabic post naming Argentina is
+ *            Saudi Arabia–Argentina and Egypt–Argentina, and it joins only a live war holding both
+ *            countries of one of them: never a war it is not part of. ★ It SEEDS only a pair of
+ *            `named`: from a language of several homes the post's own side is a guess, and seeding
+ *            on a guess would invent wars (an Egyptian post about Saudi news would seed Saudi
+ *            Arabia–Egypt). A language of one home seeds as before, any pair
+ *   bar      a language's own views bar (`minReachByLang`, Japanese at 5k) for joins by words,
+ *            phrases and quotes; a seed still counts only posts at `minReach`, or every Japanese
+ *            news story naming a neighbour at 5k views would be put to the titler
+ *   phrase   a post in a war's language holding one of that war's `phrases` (every word of it, each
+ *            matched as a name is) is the war's post though it names no country — only into a live
+ *            war the titler or the owner named (`confirmed`), never a waiting seed, and it never
+ *            seeds: アルジェリア人 is France vs Japan's word only while that war is on
+ *   named    a seed of a pair of `named` says so (`named`): the caller shows it as the owner's answer
  *
  * What breaks if changed carelessly: the word match. A word without `*` matches only whole, so
  * Turkish "çin" is not "çini" (tile) or "çinko" (zinc); in a script written without spaces a word
@@ -88,6 +106,8 @@ export interface FightNarrative {
    * posts naming a country may be the news, and a quote of the news is not a war post.
    */
   readonly posts?: ReadonlyMap<string, string | null>;
+  /** False: a seed still waiting for the titler, which no post joins by a phrase. Absent: named by the titler or the owner. */
+  readonly confirmed?: boolean;
 }
 
 /** A small narrative that is not a war, holding a post of the catch-up, with all its posts. */
@@ -101,8 +121,8 @@ export interface FightPlan {
   readonly joins: ReadonlyMap<string, readonly string[]>;
   /** Narrative → the posts that join it as early posts: older than its own oldest post. */
   readonly early: ReadonlyMap<string, readonly string[]>;
-  /** New narratives: the pair (alphabetical) and their posts, oldest first. */
-  readonly seeds: readonly { readonly countries: readonly [string, string]; readonly members: readonly string[] }[];
+  /** New narratives: the pair (alphabetical), their posts oldest first, and whether the owner named the pair (`named`). */
+  readonly seeds: readonly { readonly countries: readonly [string, string]; readonly members: readonly string[]; readonly named: boolean }[];
   /** Small narratives wholly a war's: merged into it. */
   readonly merges: readonly { readonly from: string; readonly into: string }[];
   /** A war's posts that leave a small mixed narrative for it. */
@@ -136,6 +156,34 @@ function hasWord(text: string, word: string): boolean {
   return false;
 }
 
+/** Whether every word of `phrase` (space-separated, each as a name's word) is in `text` (lower-cased). */
+function hasPhrase(text: string, phrase: string, lang: string): boolean {
+  const words = lower(phrase, lang).split(/\s+/u).filter((w) => w !== '');
+  return words.length > 0 && words.every((w) => hasWord(text, w));
+}
+
+/** A language's home countries (policy.v175): none, one, or several; a plain string is one. */
+export function homesOf(lang: string | null, p: Policy): readonly string[] {
+  const h = lang === null ? undefined : p.narrative.fight.native.home[lang];
+  return h === undefined ? [] : typeof h === 'string' ? [h] : h;
+}
+
+/** The views a post in `lang` must have to join a war: the language's own bar, else `minReach`. */
+export function joinReachOf(lang: string | null, p: Policy): number {
+  const n: NativePolicy = p.narrative.fight.native;
+  return (lang === null ? undefined : n.minReachByLang[lang]) ?? n.minReach;
+}
+
+/** The home languages grouped by their join bar, lowest bar first: what the stored-post reads ask. */
+export function homeLangsByReach(p: Policy): readonly { readonly minReach: number; readonly langs: readonly string[] }[] {
+  const out = new Map<number, string[]>();
+  for (const lang of Object.keys(p.narrative.fight.native.home)) {
+    const bar = joinReachOf(lang, p);
+    out.set(bar, [...(out.get(bar) ?? []), lang]);
+  }
+  return [...out].sort(([a], [b]) => a - b).map(([minReach, langs]) => ({ minReach, langs }));
+}
+
 /** Our name for a country the titler or the owner spelled another way; the name itself otherwise. */
 export const canonicalCountry = (name: string, p: Policy): string => {
   const a = p.narrative.fight.native.aliases;
@@ -154,12 +202,44 @@ export function countriesIn(lang: string | null, text: string, p: Policy): reado
   return [...new Set(out)].sort();
 }
 
-/** The other countries a post names in its own language (alphabetical); empty when its language has no home country. */
+/** The countries a post names in its own language that one of its homes is not (alphabetical); empty when its language has no home. */
 export function countriesNamed(lang: string | null, text: string, p: Policy): readonly string[] {
-  const n: NativePolicy = p.narrative.fight.native;
-  const home = lang === null ? undefined : n.home[lang];
-  if (home === undefined) return [];
-  return countriesIn(lang, text, p).filter((c) => c !== home);
+  const homes = homesOf(lang, p);
+  if (homes.length === 0) return [];
+  return countriesIn(lang, text, p).filter((c) => homes.some((h) => h !== c));
+}
+
+const sortedPair = (a: string, b: string): readonly [string, string] => (a < b ? [a, b] : [b, a]);
+
+function pairKey(pair: readonly [string, string]): string {
+  return `${pair[0]}|${pair[1]}`;
+}
+
+/** A `phrases` or `named` pair in our spelling, alphabetical; null when it is not two countries. */
+function pairOfNames(names: readonly string[], p: Policy): readonly [string, string] | null {
+  const [a, b] = names.map((c) => canonicalCountry(c, p));
+  return names.length !== 2 || a === undefined || b === undefined || a === b ? null : sortedPair(a, b);
+}
+
+/** The wars the owner named (`named`), as pair keys ('Argentina|Saudi Arabia'). */
+export function namedWarKeys(p: Policy): ReadonlySet<string> {
+  return new Set(p.narrative.fight.native.named.flatMap((x) => {
+    const pair = pairOfNames(x, p);
+    return pair === null ? [] : [pairKey(pair)];
+  }));
+}
+
+/** The wars whose `phrases` a post holds in its own language, each pair alphabetical. */
+export function phrasePairsOf(post: Pick<FightPost, 'lang' | 'text'>, p: Policy): readonly (readonly [string, string])[] {
+  const lang = post.lang;
+  if (lang === null) return [];
+  const body = lower(post.text, lang);
+  const out: (readonly [string, string])[] = [];
+  for (const [key, byLang] of Object.entries(p.narrative.fight.native.phrases)) {
+    const pair = pairOfNames(key.split('|'), p);
+    if (pair !== null && (byLang[lang] ?? []).some((ph) => hasPhrase(body, ph, lang))) out.push(pair);
+  }
+  return out;
 }
 
 /**
@@ -173,28 +253,44 @@ export function warWords(wars: readonly Pick<FightNarrative, 'countries'>[], p: 
   for (const w of wars) {
     const holds = new Set(w.countries.map((c) => canonicalCountry(c, p)));
     if (holds.size < 2) continue;
+    const add = (lang: string, words: readonly string[]) => {
+      const set = out.get(lang) ?? new Set<string>();
+      for (const word of words) set.add(word.endsWith('*') ? word.slice(0, -1) : word);
+      out.set(lang, set);
+    };
     for (const [lang, table] of Object.entries(n.names)) {
-      const home = n.home[lang];
-      if (home !== undefined && !holds.has(home)) continue;
+      const homes = homesOf(lang, p);
       for (const [country, words] of Object.entries(table)) {
-        if (country === home || !holds.has(country)) continue;
-        const set = out.get(lang) ?? new Set<string>();
-        for (const word of words) set.add(word.endsWith('*') ? word.slice(0, -1) : word);
-        out.set(lang, set);
+        if (!holds.has(country)) continue;
+        /* A home language names the other side: a country of the war that one of its homes in the war is not. */
+        if (homes.length > 0 && !homes.some((h) => h !== country && holds.has(h))) continue;
+        add(lang, words);
       }
+    }
+    /* A phrase is sifted by its first word: a post holding every word holds that one. */
+    for (const [key, byLang] of Object.entries(n.phrases)) {
+      const pair = pairOfNames(key.split('|'), p);
+      if (pair === null || !holds.has(pair[0]) || !holds.has(pair[1])) continue;
+      for (const [lang, list] of Object.entries(byLang)) add(lang, list.flatMap((ph) => ph.split(/\s+/u).filter((x) => x !== '').slice(0, 1)));
     }
   }
   return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([lang, words]) => ({ lang, words: [...words].sort() }));
 }
 
-/** The post's pairs: its language's country with each country it names, each pair alphabetical. */
+/** The post's pairs: each of its language's homes with each other country it names, each pair alphabetical, once. */
 export function fightPairsOf(post: Pick<FightPost, 'lang' | 'text'>, p: Policy): readonly (readonly [string, string])[] {
-  const home = post.lang === null ? undefined : p.narrative.fight.native.home[post.lang];
-  if (home === undefined) return [];
-  return countriesNamed(post.lang, post.text, p).map((c) => (home < c ? [home, c] as const : [c, home] as const));
+  const homes = homesOf(post.lang, p);
+  if (homes.length === 0) return [];
+  const named = countriesNamed(post.lang, post.text, p);
+  const out = new Map<string, readonly [string, string]>();
+  for (const h of homes) for (const c of named) if (c !== h) out.set(pairKey(sortedPair(h, c)), sortedPair(h, c));
+  return [...out.values()];
 }
 
-const pairKey = (pair: readonly [string, string]): string => `${pair[0]}|${pair[1]}`;
+/** Whether a post may be a war's at all, by its names or its phrases: what the stored-post read keeps. */
+export function mayBeFightPost(post: Pick<FightPost, 'lang' | 'text'>, p: Policy): boolean {
+  return fightPairsOf(post, p).length > 0 || phrasePairsOf(post, p).length > 0;
+}
 
 const dot = (a: Float32Array, b: Float32Array): number => {
   let sum = 0;
@@ -217,14 +313,17 @@ function warOf(post: FightPost, live: readonly LiveWar[], nowMs: number, p: Poli
   const pairs = fightPairsOf(post, p);
   const native = live.find((w) => within(w) && pairs.some(([a, b]) => w.holds.has(a) && w.holds.has(b)));
   if (native !== undefined) return as(native);
+  /* ★ The phrase rule (policy.v175): only a war the titler or the owner named. */
+  const phrased = phrasePairsOf(post, p);
+  const byPhrase = phrased.length === 0 ? undefined : live.find((w) => w.confirmed !== false && within(w) && phrased.some(([a, b]) => w.holds.has(a) && w.holds.has(b)));
+  if (byPhrase !== undefined) return as(byPhrase);
   /* ★ The quote rule: the other side answering a war post, in its own language (see the header). */
-  const side = post.lang === null ? undefined : n.home[post.lang];
-  if (n.answersOn && side !== undefined && (post.refersTo ?? []).length > 0) {
-    const answers = (w: LiveWar): boolean => w.holds.has(side) && (post.refersTo ?? []).some((ref) => {
+  const sides = homesOf(post.lang, p);
+  if (n.answersOn && sides.length > 0 && (post.refersTo ?? []).length > 0) {
+    const answers = (w: LiveWar): boolean => sides.some((side) => w.holds.has(side) && (post.refersTo ?? []).some((ref) => {
       if (w.posts === undefined || !w.posts.has(ref)) return false;
-      const lang = w.posts.get(ref) ?? null;
-      return (lang === null ? undefined : n.home[lang]) !== side;
-    });
+      return !homesOf(w.posts.get(ref) ?? null, p).includes(side);
+    }));
     const quoted = live.find((w) => within(w) && answers(w));
     if (quoted !== undefined) return as(quoted);
   }
@@ -257,7 +356,8 @@ export function planFights(input: { readonly posts: readonly FightPost[]; readon
     .filter((x) => x.newestPostAtMs !== null && input.nowMs - x.newestPostAtMs <= f.activeMs)
     .map((x) => ({ ...x, holds: new Set(x.countries.map((c) => canonicalCountry(c, p))) }))
     .sort((a, b) => (b.newestPostAtMs ?? 0) - (a.newestPostAtMs ?? 0) || a.id.localeCompare(b.id));
-  const atBar = (x: FightPost): boolean => x.reach !== null && x.reach >= n.minReach;
+  const atBar = (x: FightPost): boolean => x.reach !== null && x.reach >= joinReachOf(x.lang, p);
+  const named = namedWarKeys(p);
   const byReach = (a: FightPost, b: FightPost): number => (b.reach ?? 0) - (a.reach ?? 0) || a.itemId.localeCompare(b.itemId);
   const viral = input.posts.filter((x) => atBar(x) && x.atMs <= input.nowMs).sort(byReach);
   const unplaced = new Map<string, FightPost[]>();
@@ -276,7 +376,14 @@ export function planFights(input: { readonly posts: readonly FightPost[]; readon
     }
     /* ★ Only the two-day read's posts seed: a seed is a pair starting now, never the catch-up's old posts. */
     if (input.nowMs - post.atMs > n.lookbackMs) continue;
-    for (const pair of fightPairsOf(post, p)) unplaced.set(pairKey(pair), [...(unplaced.get(pairKey(pair)) ?? []), post]);
+    /* ★ A seed counts only posts at `minReach`, whatever the language's join bar (see the header). */
+    if (post.reach === null || post.reach < n.minReach) continue;
+    /* ★ From a language of several homes, only a war the owner named (see the header). */
+    const several = homesOf(post.lang, p).length > 1;
+    for (const pair of fightPairsOf(post, p)) {
+      if (several && !named.has(pairKey(pair))) continue;
+      unplaced.set(pairKey(pair), [...(unplaced.get(pairKey(pair)) ?? []), post]);
+    }
   }
   /* The small narratives: wholly the war's, merged; mixed and small, its viral war posts move. */
   for (const nar of [...(input.placed ?? [])].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -301,14 +408,14 @@ export function planFights(input: { readonly posts: readonly FightPost[]; readon
     }
   }
   const used = new Set<string>();
-  const seeds: { countries: readonly [string, string]; members: readonly string[] }[] = [];
+  const seeds: { countries: readonly [string, string]; members: readonly string[]; named: boolean }[] = [];
   for (const [key, list] of [...unplaced].sort(([a], [b]) => a.localeCompare(b))) {
     const recent = list.filter((x) => input.nowMs - x.atMs <= n.seedWithinMs && !used.has(x.itemId)).slice(0, n.seedMaxPosts);
     const accounts = new Set(recent.map((x) => x.authorKey ?? `post:${x.itemId}`)).size;
     if (recent.length < n.seedMinPosts || accounts < n.seedMinAccounts) continue;
     for (const x of recent) used.add(x.itemId);
     const [a, b] = key.split('|') as [string, string];
-    seeds.push({ countries: [a, b], members: [...recent].sort((x, y) => x.atMs - y.atMs || x.itemId.localeCompare(y.itemId)).map((x) => x.itemId) });
+    seeds.push({ countries: [a, b], members: [...recent].sort((x, y) => x.atMs - y.atMs || x.itemId.localeCompare(y.itemId)).map((x) => x.itemId), named: named.has(key) });
   }
   return { joins, early, seeds, merges, moves };
 }

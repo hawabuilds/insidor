@@ -17,7 +17,14 @@
  * Nothing here raises any of them.
  *
  * ★ ONLY A WAR THE TITLER OR THE OWNER NAMED. A seed still waiting for the titler (`FIGHT_SEED_MODEL`)
- * is not searched: a count of posts naming a country is not yet a war (the riots of 18 Oct).
+ * is not searched: a count of posts naming a country is not yet a war (the riots of 18 Oct). The
+ * wars of `narrative.fight.native.named` (policy.v175) are the owner's naming ahead of any narrative:
+ * asked by their words whether a narrative holds them or not, so their posts are stored and can seed
+ * one. A named war is asked once, as its narrative when one is live.
+ *
+ * ★ PHRASES (policy.v175 `narrative.fight.native.phrases`): a live war's phrases are asked too, a
+ * phrase of several words as ONE ask holding them all (`allWords`: ベジータ アルジェリア lang:ja), the
+ * first `phrasesPerSide` of each language. Only a war a narrative holds: a phrase joins nothing else.
  *
  * What breaks if changed carelessly: the window. Each ask reads the last `lookbackMs` again, so a post
  * is billed on every ask while inside it; a window much longer than `everyMs` multiplies the bill.
@@ -27,7 +34,7 @@ import type { Author, Item, Millis } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { canonicalCountry, searchDayMayAsk } from '@insidor/core';
+import { canonicalCountry, homesOf, searchDayMayAsk } from '@insidor/core';
 import { FIGHT_SEED_MODEL, type StoredNarrative } from '@insidor/store';
 
 import { type Logger } from '../log.ts';
@@ -38,33 +45,72 @@ import { laneSearch, type LaneAskEnd } from './lane-search.ts';
 /** This search's own day in internal.lane_spend. */
 export const FIGHT_WORDS_LANE = 'search:fight_words' as const;
 
-/** One ask: a language, the word for the other country in it, and the like floor it is asked at. */
+/** One ask: a language, the word for the other country in it (or a war phrase), and the like floor it is asked at. */
 export interface FightWord {
   readonly war: string;
   readonly lang: string;
+  /** The word as asked; a phrase's words joined by a space. */
   readonly word: string;
+  /** A phrase of several words: all of them, which a post must all hold. Absent: `word` alone. */
+  readonly allWords?: readonly string[];
   readonly minApproval: number;
 }
 
 /**
- * The words a war is searched by: for each of its countries that is a language's home, the first
+ * The words a war is searched by: for each language one of whose homes is in the war, the first
  * `wordsPerSide` words that language names each other country of the war with, `*` dropped, at
- * `minApproval` likes — each the language's own in `byLang` when it has one. Pure.
+ * `minApproval` likes — each the language's own in `byLang` when it has one; then, with `phrases`,
+ * the first `phrasesPerSide` of the war's phrases in each language. Each ask once. Pure.
  */
-export function fightWords(war: { readonly id: string; readonly countries: readonly string[] }, p: Policy): readonly FightWord[] {
+export function fightWords(war: { readonly id: string; readonly countries: readonly string[] }, p: Policy, opts: { readonly phrases?: boolean } = {}): readonly FightWord[] {
   const n = p.narrative.fight.native;
+  const fw = p.feed.fightWords;
   const countries = new Set(war.countries.map((c) => canonicalCountry(c, p)));
   const out: FightWord[] = [];
-  for (const [lang, home] of Object.entries(n.home)) {
-    if (!countries.has(home)) continue;
-    const bar = p.feed.fightWords.byLang[lang] ?? p.feed.fightWords;
+  const asked = new Set<string>();
+  const ask = (lang: string, words: readonly string[], minApproval: number) => {
+    const key = `${lang}:${words.join(' ')}`;
+    if (words.length === 0 || asked.has(key)) return;
+    asked.add(key);
+    out.push({ war: war.id, lang, word: words.join(' '), ...(words.length > 1 ? { allWords: words } : {}), minApproval });
+  };
+  for (const lang of Object.keys(n.home)) {
+    const homes = homesOf(lang, p).filter((h) => countries.has(h));
+    if (homes.length === 0) continue;
+    const bar = fw.byLang[lang] ?? fw;
     for (const [other, words] of Object.entries(n.names[lang] ?? {})) {
-      if (other === home || !countries.has(other)) continue;
+      if (!countries.has(other) || !homes.some((h) => h !== other)) continue;
       const picked = [...new Set(words.map((w) => w.replace(/\*$/, '').trim()).filter((w) => w !== ''))].slice(0, bar.wordsPerSide);
-      for (const word of picked) out.push({ war: war.id, lang, word, minApproval: bar.minApproval });
+      for (const word of picked) ask(lang, [word], bar.minApproval);
+    }
+  }
+  if (opts.phrases !== false) {
+    for (const [key, byLang] of Object.entries(n.phrases)) {
+      if (!key.split('|').every((c) => countries.has(canonicalCountry(c, p)))) continue;
+      for (const [lang, list] of Object.entries(byLang)) {
+        const bar = fw.byLang[lang];
+        for (const phrase of list.slice(0, bar?.phrasesPerSide ?? fw.phrasesPerSide)) ask(lang, phrase.split(/\s+/u).filter((w) => w !== ''), bar?.minApproval ?? fw.minApproval);
+      }
     }
   }
   return out;
+}
+
+/**
+ * The wars this pass asks: the live ones the titler or the owner named, newest post first, then the
+ * owner's `named` wars no live one holds (no narrative yet, so no phrases), at most `maxWars` in all.
+ */
+export function fightWarsToAsk(stored: readonly StoredNarrative[], p: Policy): readonly { readonly id: string; readonly countries: readonly string[]; readonly phrases: boolean }[] {
+  const live = stored
+    .filter((x) => x.shown && x.fightModel !== FIGHT_SEED_MODEL && (x.fight ?? []).length >= 2)
+    .sort((a, b) => (b.newestPostAtMs ?? 0) - (a.newestPostAtMs ?? 0) || a.id.localeCompare(b.id))
+    .map((x) => ({ id: x.id, countries: x.fight ?? [], phrases: true }));
+  const holds = live.map((w) => new Set(w.countries.map((c) => canonicalCountry(c, p))));
+  const named = p.narrative.fight.native.named
+    .map((pair) => pair.map((c) => canonicalCountry(c, p)).sort())
+    .filter((pair) => !holds.some((h) => pair.every((c) => h.has(c))))
+    .map((pair) => ({ id: `named:${pair.join('|')}`, countries: pair, phrases: false }));
+  return [...live, ...named].slice(0, p.feed.fightWords.maxWars);
 }
 
 export interface FightWordsDeps {
@@ -102,11 +148,8 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
   if (source === undefined) return NONE;
   const started = deps.now();
   const deadline = (started + fw.passDeadlineMs) as Millis;
-  const wars = (await deps.narratives.fights(started - p.narrative.fight.activeMs))
-    .filter((x) => x.shown && x.fightModel !== FIGHT_SEED_MODEL && (x.fight ?? []).length >= 2)
-    .sort((a, b) => (b.newestPostAtMs ?? 0) - (a.newestPostAtMs ?? 0) || a.id.localeCompare(b.id))
-    .slice(0, fw.maxWars);
-  const words = wars.flatMap((x) => fightWords({ id: x.id, countries: x.fight ?? [] }, p));
+  const wars = fightWarsToAsk(await deps.narratives.fights(started - p.narrative.fight.activeMs), p);
+  const words = wars.flatMap((x) => fightWords(x, p, { phrases: x.phrases }));
   let asked = 0;
   let returned = 0;
   let fresh = 0;
@@ -117,6 +160,7 @@ export async function fightWordsPass(deps: FightWordsDeps): Promise<FightWordsRe
     const query: DiscoveryQuery = {
       mode: 'keyword',
       term: w.word,
+      ...(w.allWords === undefined ? {} : { allWords: w.allWords }),
       sinceMs: (now - fw.lookbackMs) as Millis,
       untilMs: null,
       limit: p.feed.pageLimit,
