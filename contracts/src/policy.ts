@@ -5417,8 +5417,15 @@ const POLICY_V1: Policy = {
      model is a later version that changes `space`, `postSpace` and the bars together.
 
      v171 adds `group.image.backfill`, on: the runner re-embeds what is stored into our own
-     model's space at each boot, ahead of the switch. No value read by a decision changes. */
-  version: 'policy.v171',
+     model's space at each boot, ahead of the switch. No value read by a decision changes.
+
+     v172 switches pictures and posts to our own model (`group.image.space` siglip2-b16-224.768,
+     `postSpace` its .post) and moves every similarity bar to the new scale, each keeping the share
+     of same-story pairs above it that the old bar kept (the copy test, 2026-10-24: 25 narratives,
+     215 posts, 180 pictures); `narrative.origin.nameAverage` moves with `nameMeaning`, which it is
+     always read beside. The vectors read under the old space stay stored; v171 back is a
+     rollback. */
+  version: 'policy.v172',
 
   admit: {
     maxAgeMin: 240,
@@ -5601,7 +5608,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'multimodal-3.1024', postSpace: 'multimodal-3.1024.post', backfill: true, nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
+    image: { space: 'siglip2-b16-224.768', postSpace: 'siglip2-b16-224.768.post', backfill: true, nearIdentical: 0.945, likely: 0.86, borderline: 0.76, pairChecksPerDay: 200, reuseContentAddressed: true },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,
@@ -5680,7 +5687,7 @@ const POLICY_V1: Policy = {
          the closest coined post 0.602), so 0.67 holds no gold, coined or meme post and 69 of the 280
          "not" labels. 0.80 would hold 20, 0.92 five. A first cut on the owner's labels alone: a live
          post is not one of them, so expect some meme posts near a "not" — measure the holds. */
-      holdNotSimilarity: 0.67,
+      holdNotSimilarity: 0.83,
       labelsPerPass: 40,
       /* Off until the owner switches it on. On 2026-10-16 the labels held 34 short-video taps (33
          "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short
@@ -6502,7 +6509,7 @@ const POLICY_V1: Policy = {
        closer than 16; a same picture is held to 10, where the right coins sat at 0 to 2. */
     sameHashDistance: 10,
     widenHashDistance: 14,
-    pictureFloor: 0.72,
+    pictureFloor: 0.76,
     timingHalfLifeMin: 360,
     descriptionMinWord: 4,
     /* The lowest share at which the tuning half's likely coins were right three times in four. */
@@ -6548,7 +6555,7 @@ const POLICY_V1: Policy = {
     /* 2026-10-14 evening: never on a post of fewer than 3 words once hashtags, mentions and links go
        ($ROAD had spread to three hashtag-only short videos), and every tier needs a shared detail —
        the same name, picture, or a topic word of 4+ letters. */
-    storyCoin: { alone: 0.7, together: 0.6, togetherPosts: 2, near: 0.45, minNameChars: 4, minWords: 3, minTopicChars: 4 },
+    storyCoin: { alone: 0.84, together: 0.82, togetherPosts: 2, near: 0.77, minNameChars: 4, minWords: 3, minTopicChars: 4 },
     /* Measured 2026-10-14 on the owner's coin labels (18 with a coin, 16 "No coin"): the list keeps
        the owner's coin as often as before (10 of 18; the other 8 were never in the name search's
        list) and shows 6.4 other coins a post instead of 12.8, 4.7 on a "No coin" post instead of
@@ -6946,7 +6953,7 @@ const POLICY_V1: Policy = {
     minLiquidityUsd: 100,
     tradeFeedFreshMs: 120_000,
     /* 10 bits is postCoin's same picture; 0.82 is the replay's "likely" picture. */
-    picture: { maxHashDistance: 10, minSimilarity: 0.82 },
+    picture: { maxHashDistance: 10, minSimilarity: 0.86 },
     /* The lookback: two days, the owner's word (19 Oct: "Rip Kim Jong-Un" was 17 h old when the
        posts he marked it right for came, its last reading 16 h stale and under the cap bar). Five
        coins a post at most: each is watched by the trade feed for an hour from the post; replayed
@@ -7078,7 +7085,7 @@ const POLICY_V1: Policy = {
     /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
        the For You views bar), is a narrative most of the timeline has seen. */
     narrativeStages: { formingMinPosts: 3, bigMinPosts: 8, bigMinReach: 5_000_000 },
-    boostMinSimilarity: 0.44,
+    boostMinSimilarity: 0.6,
     /* A "yes" up to a tenth under its bar: 0.60 on text or a picture, 0.65 with a video frame. */
     boostBarMargin: 0.1,
     /* 15 a pass, with a pass every minute or two: about 600 an hour. The ~2,100 posts judged in a
@@ -7104,7 +7111,7 @@ const POLICY_V1: Policy = {
     varietyOn: true,
     varietyPerWindow: 3,
     varietyWindow: 20,
-    varietySameMeaning: 0.6,
+    varietySameMeaning: 0.82,
     authorShare: { on: true, perWindow: 2, window: 60 },
     /* Two batched reads of 50 a pass; 1,000 posts a day is at most $0.15 at $0.00015 a post. */
     refillPerPass: 100,
@@ -7377,8 +7384,8 @@ const POLICY_V1: Policy = {
        or closer join (242 before: the blobs' drift step pushed some out). `nameMeaning` 0.65 is a
        little purer (0 of 43, 248 of 251) but loses the text post and short video of one story at
        0.64 (GTA 6), so it stays 0.6. */
-    sameMeaning: 0.7,
-    nameMeaning: 0.6,
+    sameMeaning: 0.84,
+    nameMeaning: 0.82,
     maxGapMs: 86_400_000, // a day: an old story and a new one with the same word stay apart
     maxSpanMs: 172_800_000, // two days
     minLinkShare: 0.5,
@@ -7387,7 +7394,7 @@ const POLICY_V1: Policy = {
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49
        (GTA 6's posts from the Roadster's average). Averages against averages do not separate them: a
        big group's average drifts toward the feed's, and GTA 6 and the Roadster read 0.56 that way. */
-    mergeMeaning: 0.7,
+    mergeMeaning: 0.84,
     minPosts: 2,
     minAccounts: 2,
     /* Measured 2026-10-18 on the 436 open narratives' stored posts: every pair 0.8 or closer with the
@@ -7397,7 +7404,7 @@ const POLICY_V1: Policy = {
        alike whatever they are about). So the name decides and the meaning only confirms. */
     same: {
       on: true,
-      meaning: 0.8,
+      meaning: 0.86,
       nameShare: 0.34,
       lookbackMs: 604_800_000,
       minNameChars: 3,
@@ -7496,12 +7503,12 @@ const POLICY_V1: Policy = {
       on: true,
       lookbackMs: 604_800_000, // seven days before the narrative's first post, as the early posts
       maxHops: 2,
-      linkMeaning: 0.45,
-      nameAverage: 0.6,
+      linkMeaning: 0.77,
+      nameAverage: 0.82,
       maxPerNarrative: 5,
       mergeOn: true,
       formedWithinMs: 43_200_000, // twelve hours
-      mergeMeaning: 0.6,
+      mergeMeaning: 0.82,
       minLinkPosts: 3,
       liveMs: 172_800_000, // two days, the board's window
       perPass: 400,
@@ -7509,14 +7516,14 @@ const POLICY_V1: Policy = {
       /* ── policy.v145: the quote root, the loose posts' join and the pasted posts (the Vegeta war) ── */
       rootOn: true,
       rootMinQuoters: 2, // two of its posts quote it: one quote of a big post is a comparison, not a start
-      rootMeaning: 0.3, // @liistrk's words-only post is 0.36 from the picture posts answering it
+      rootMeaning: 0.68, // @liistrk's words-only post is 0.36 from the picture posts answering it
       joinOn: true,
       joinViral: true, // only a post that clears For You's views bar joins by a quote or the same words
       joinPerNarrative: 20,
       phraseMinChars: 4,
       phraseMinCjkChars: 2,
       phraseMaxShare: 0.005, // said by at most 1 post in 200 of those read
-      phraseMeaning: 0.6, // the regroup's own shared-name bar (`nameMeaning`); @rayaneAlg00 is 0.66
+      phraseMeaning: 0.82, // the regroup's own shared-name bar (`nameMeaning`); @rayaneAlg00 is 0.66
       missedJudge: true, // one live judge call a pasted post, about $0.0015
       missedLookbackMs: 604_800_000, // seven days, as the early posts
       /* ── policy.v149: the merge on the story's own words (the Yotsuya goats) ──
@@ -7530,7 +7537,7 @@ const POLICY_V1: Policy = {
       wordsMinShared: 2, // two rare words between them (the goats share five)
       wordsMaxNarratives: 3, // a word four live stories say marks none of them
       wordsMinCoverage: 0.25, // said by a quarter of each side's posts: its own word, not one post in a blob
-      wordsMeaning: 0.6, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
+      wordsMeaning: 0.82, // the merge's own bar (`mergeMeaning`); the goats are 0.78, every replayed merge 0.69 or more
       wordsFormedWithinMs: 345_600_000, // four days
       /* policy.v166: the loose post's single rare words (the Nara fawns). Copy-tested read-only on the
          stored posts of 22-24 Oct: see the commit. Only a short list of the same thing said another way. */
@@ -7539,7 +7546,7 @@ const POLICY_V1: Policy = {
          0.41 from the fawns' average). The name the two must share keeps it safe — copy test of 22-24 Oct,
          93 loose viral posts sharing two rare words: with a shared name 21, and at 0.41 or closer 13, the
          nearest wrong ones at 0.403 ("Florida" + "hospital") and 0.402 (a streaming site + "streamer") left out. */
-      looseWordsMeaning: 0.41,
+      looseWordsMeaning: 0.75,
       wordStems: { fawn: 'deer', deers: 'deer' },
     },
     /* ── narrative.fight: online meme wars between countries (policy.v154) ──

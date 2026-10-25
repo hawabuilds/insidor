@@ -7,11 +7,13 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY as P, type Policy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
+import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import { foldNarrativeCalls, type NarrativePost } from './narrative.ts';
 import { linkReach, standsOnViralPost, traceStories, type OriginInput } from './narrative-origin.ts';
 
+const P: Policy = withMeasuredBars(DEFAULT_POLICY);
 const H = 3_600_000;
 const DAY = 24 * H;
 const T0 = 100 * DAY;

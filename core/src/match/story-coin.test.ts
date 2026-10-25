@@ -9,10 +9,11 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import { storyCoins, type StoryAnchor, type StoryPost } from './story-coin.ts';
 
-const BARS = DEFAULT_POLICY.postCoin.storyCoin;
+const BARS = withMeasuredBars(DEFAULT_POLICY).postCoin.storyCoin;
 const GTA = 'BsbsB3WL';
 const gta = (itemId: string, atMs: number, stories: readonly string[] = [`seed-${itemId}`]): StoryAnchor => ({ itemId, coin: GTA, atMs, kind: 'right', names: ['GTA6', 'GTA', 'GTA memes'], stories });
 const ANCHORS: StoryAnchor[] = [gta('x:4681', 1), gta('x:8387', 2), gta('x:0304', 3), gta('x:8291', 4)];
