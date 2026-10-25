@@ -53,9 +53,10 @@
  *            `named`: from a language of several homes the post's own side is a guess, and seeding
  *            on a guess would invent wars (an Egyptian post about Saudi news would seed Saudi
  *            Arabia–Egypt). A language of one home seeds as before, any pair
- *   bar      a language's own views bar (`minReachByLang`, Japanese at 5k) for joins by words,
- *            phrases and quotes; a seed still counts only posts at `minReach`, or every Japanese
- *            news story naming a neighbour at 5k views would be put to the titler
+ *   bar      a language's own views bar (`minReachByLang`, Japanese at 5k) for joins by phrases
+ *            and quotes only; a post that only NAMES the other country joins at `minReach`, and a
+ *            seed counts only posts at `minReach` — at 5k every Japanese news story naming France
+ *            (the GP de France skating results, 25 Oct) would be the war's
  *   phrase   a post in a war's language holding one of that war's `phrases` (every word of it, each
  *            matched as a name is) is the war's post though it names no country — only into a live
  *            war the titler or the owner named (`confirmed`), never a waiting seed, and it never
@@ -311,7 +312,11 @@ function warOf(post: FightPost, live: readonly LiveWar[], nowMs: number, p: Poli
   };
   const as = (w: LiveWar) => ({ war: w, early: w.startAtMs !== null && w.startAtMs !== undefined && post.atMs < w.startAtMs });
   const pairs = fightPairsOf(post, p);
-  const native = live.find((w) => within(w) && pairs.some(([a, b]) => w.holds.has(a) && w.holds.has(b)));
+  /* ★ Naming the other country joins only at `minReach`, whatever the language's own bar (the owner,
+     2026-10-25: figure skating in France vs Japan). At Japanese's 5k, フランス alone joined the GP de
+     France results, the riots' news and a Nice photo book; the 5k bar is for the phrases and quotes
+     below, which are the war's own words and answers. */
+  const native = post.reach !== null && post.reach >= n.minReach ? live.find((w) => within(w) && pairs.some(([a, b]) => w.holds.has(a) && w.holds.has(b))) : undefined;
   if (native !== undefined) return as(native);
   /* ★ The phrase rule (policy.v175): only a war the titler or the owner named. */
   const phrased = phrasePairsOf(post, p);
