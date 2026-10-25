@@ -5495,8 +5495,15 @@ const POLICY_V1: Policy = {
      translated like feed posts, so a narrative's page lists them in English as For You does.
 
      v177 is v175 and v176 together: the meme-war languages were built beside the translations
-     and joined after v176 went live. No value differs from the two. */
-  version: 'policy.v177',
+     and joined after v176 went live. No value differs from the two.
+
+     v178 learns from the owner's pasted war posts of 25 Oct: France vs Japan's Japanese side also says
+     悪口合戦 ("insult battle") and レスバ (an online slanging match) without naming France (113k
+     views, 日本人とニガーの間の悪口合戦), so both are its phrases (`phrasesPerSide` ja 4 → 6, two more
+     asks a pass); Turkish is asked at 150 likes, not 300 (`feed.fightWords.byLang.tr`: his China vs
+     Turkey examples were 55k-180k views at 207-2,259 likes). About 2 more asks and ~10 more posts a
+     pass at the day's own numbers, ~$0.02 a day, inside the search's $0.25 cap. */
+  version: 'policy.v178',
 
   admit: {
     maxAgeMin: 240,
@@ -6459,7 +6466,10 @@ const POLICY_V1: Policy = {
          (Arabic 2 + 1, Spanish 2, Portuguese 1, Vietnamese 1, Korean 1), and France vs Japan's four
          Japanese phrases. */
       byLang: {
-        ja: { minApproval: 100, wordsPerSide: 3, phrasesPerSide: 4 },
+        ja: { minApproval: 100, wordsPerSide: 3, phrasesPerSide: 6 },
+        /* policy.v178: the owner's China vs Turkey examples of 25 Oct were Turkish posts of 55k-180k views
+           at 207-2,259 likes, two under 300: at 150. */
+        tr: { minApproval: 150, wordsPerSide: 2 },
         ar: { minApproval: 200, wordsPerSide: 2 },
         es: { minApproval: 200, wordsPerSide: 2 },
         pt: { minApproval: 200, wordsPerSide: 1 },
@@ -7709,7 +7719,7 @@ const POLICY_V1: Policy = {
            アルジェリア returned 20 in 20 — the war began with the French "Vegeta is Algerian" joke and
            the Japanese side answers about Algeria. ベジータ alone is half Dragon Ball merchandise, so
            only beside アルジェリア. */
-        phrases: { 'France|Japan': { ja: ['アルジェリア人', 'ベジータ アルジェリア', '日仏', 'フランス人 日本人'] } },
+        phrases: { 'France|Japan': { ja: ['アルジェリア人', 'ベジータ アルジェリア', '日仏', 'フランス人 日本人', '悪口合戦', 'レスバ'] } },
         /* policy.v175: the wars the owner named on 2026-10-25, searched before a narrative holds them. */
         named: [['Saudi Arabia', 'Argentina'], ['Brazil', 'Egypt'], ['Vietnam', 'South Korea']],
         aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China', KSA: 'Saudi Arabia', Saudi: 'Saudi Arabia', Brasil: 'Brazil', 'Viet Nam': 'Vietnam' },
