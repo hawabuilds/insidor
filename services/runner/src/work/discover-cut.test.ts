@@ -3,8 +3,8 @@
  * catch these?" of 2026-10-25). The claims: when a search's day has room for one page, the language
  * that has waited longest is asked, not the first in `feed.langs` every pass; a language cut short by
  * a day raises its floor rather than reading its truncated count, and one stopped by its window or a
- * page limit moves as before; and the slow slices tile posting time by a clock, so a pass that comes
- * late leaves no gap at a slice's age.
+ * page limit moves as before; the slow slices tile posting time by a clock, so a pass that comes
+ * late leaves no gap at a slice's age; and both newest-post bands spread their day over the day.
  *
  * Why these exist: from the 6-minute band's pacing (2026-10-24 12:12 UTC) its day closed inside the
  * first round of every ask, English's page was always first, and Japanese, French, Spanish, Korean,
@@ -147,4 +147,11 @@ test('★ the slow slices tile posting time: a pass 17 minutes after the last as
   const six = two.find((q) => q.untilMs === later - 345 * MIN);
   assert.ok(six !== undefined);
   assert.equal(six.sinceMs, NOW - 345 * MIN, 'from where the last six-hour ask ended: the two minutes a fixed slice would skip are asked');
+});
+
+test('as shipped (policy.v181): both newest-post bands spread their day, so neither goes dark for the evening', () => {
+  const searches = DEFAULT_POLICY.feed.paging.searches;
+  assert.equal(searches['band_6']?.paced, true);
+  assert.equal(searches['band_50']?.paced, true, 'unpaced it spent its day by 19:22 UTC on 24 Oct and asked nothing after');
+  assert.equal(searches['band_50']?.dailyUsd, 1.2, 'the same day, spread');
 });
