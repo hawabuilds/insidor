@@ -141,7 +141,9 @@ export class PgFinderRepo {
 
   /**
    * Coins first seen since `sinceMs` whose metadata has never been read, newest first: the ones a
-   * launch just made. A coin with any metadata row is the universe loop's (its retries included).
+   * launch just made. A coin with any metadata row is the universe loop's (its retries included),
+   * which hands each document it reads back to the coin-link step for its links (runner
+   * work/coin-link-hand-off.ts): before that, a coin read there first was never linked.
    *
    * ★ BOTH OBSERVED WAYS A COIN ARRIVES, NOT ONLY THE STREAM. This read once took 'live_stream'
    * alone; the stream service went down at 2026-10-15 07:14 UTC, every new coin since came in by

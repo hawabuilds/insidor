@@ -7,6 +7,8 @@
  * with a coin logs one line even when the coin names no post. A named post that quotes or links
  * another account's post at least as widely seen is recorded and credited as that post, through it,
  * one hop and no further; a promotion on its own, or one whose original cannot be read, as before.
+ * A coin whose document the universe loop read first is handed here and linked the same way from
+ * the fields as read — never fetched again, taken once, after the launches this step reads itself.
  */
 
 import assert from 'node:assert/strict';
@@ -19,7 +21,9 @@ import { inMemoryMeter } from '@insidor/meter';
 import type { CoinPostLink, FreshCoin } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
+import { coinLinkHandOff, type CoinLinkHandOff } from './coin-link-hand-off.ts';
 import { coinLinksPass, creditable, postsNamed, urlsIn, type CoinLinkDeps } from './coin-links.ts';
+import { universePass, type UniverseDeps } from './universe.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const HOUR = 3_600_000;
@@ -81,16 +85,17 @@ test('★ a text post under the approvals bar is credited when it is already pas
   assert.equal(creditable(seen(c.textMinReach - 1), t, NOW, ON), false);
 });
 
-function harness(o: { policy?: Policy; mode?: 'dry' | 'live'; held?: Item[]; made?: Item[]; refs?: Record<string, string[]>; keepsVia?: boolean } = {}) {
+function harness(o: { policy?: Policy; mode?: 'dry' | 'live'; held?: Item[]; made?: Item[]; refs?: Record<string, string[]>; keepsVia?: boolean; fresh?: FreshCoin[]; handOff?: CoinLinkHandOff } = {}) {
   const recorded: CoinPostLink[] = [];
   const credited: ItemId[] = [];
   const stored: Item[] = [];
   const looked: string[][] = [];
   let asked = 0;
+  let docs = 0;
   const made = new Map((o.made ?? []).map((i) => [String(i.itemId), i]));
   const v = adapter('vid', 'video.example', false, looked, made);
   const t = adapter('txt', 'text.example', true, looked, made);
-  const coins: FreshCoin[] = [{ assetKey: 'a1', address: 'COIN1', metadataUri: 'ipfs://doc1', mintedAt: (NOW - 4_000) as Millis }];
+  const coins: FreshCoin[] = o.fresh ?? [{ assetKey: 'a1', address: 'COIN1', metadataUri: 'ipfs://doc1', mintedAt: (NOW - 4_000) as Millis }];
   const held = new Map((o.held ?? []).map((i) => [i.itemId, i]));
   const deps: CoinLinkDeps = {
     finders: {
@@ -107,8 +112,9 @@ function harness(o: { policy?: Policy; mode?: 'dry' | 'live'; held?: Item[]; mad
     },
     coins: { recordMetadata: async () => {} },
     metadata: {
-      read: async () => ({ kind: 'read', cid: 'c', metadata: { name: 'Cat', ticker: 'CAT', description: 'https://video.example/@cat/video/11', imageUri: null, links: { social: 'https://text.example/dog/status/22', website: null, chat: null } } }),
+      read: async () => (docs += 1, { kind: 'read', cid: 'c', metadata: { name: 'Cat', ticker: 'CAT', description: 'https://video.example/@cat/video/11', imageUri: null, links: { social: 'https://text.example/dog/status/22', website: null, chat: null } } }),
     },
+    ...(o.handOff === undefined ? {} : { handOff: o.handOff }),
     sources: () => [v, t],
     follow: async (url) => url,
     items: {
@@ -125,7 +131,7 @@ function harness(o: { policy?: Policy; mode?: 'dry' | 'live'; held?: Item[]; mad
     log: quiet,
     now: () => NOW,
   };
-  return { deps, recorded, credited, stored, looked, asked: () => asked };
+  return { deps, recorded, credited, stored, looked, asked: () => asked, docs: () => docs };
 }
 
 test('★ off (the default until the owner switches it on), a pass does nothing and reads no table', async () => {
@@ -243,4 +249,99 @@ test('before 0132 nothing is followed', async () => {
   await coinLinksPass(h.deps);
   assert.deepEqual(h.looked, [['11']]);
   assert.equal(h.recorded.some((l) => l.sourceItemId === '500'), false);
+});
+
+/* ── a coin read elsewhere first (Nuggets, 2026-10-25) ───────────────── */
+
+const NUGGETS: FreshCoin = { assetKey: 'nug', address: 'DW4u', metadataUri: 'ipfs://nug', mintedAt: (NOW - 190_000) as Millis };
+const PROMO_DOC = { description: null, links: { social: 'https://text.example/i/status/2114430255314427995', website: null, chat: null } };
+
+test('★ a coin the universe loop read first is linked, its promotion followed to the original and credited, without its document read again', async () => {
+  const handOff = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  handOff.give(NUGGETS, PROMO_DOC, (NOW - 1_000) as Millis);
+  const promo = item('txt:2114430255314427995', NOW - HOUR, 3, { by: 'launcher', views: 15, quotes: 'txt:2114285715894759498' });
+  const original = item('txt:2114285715894759498', NOW - 2 * HOUR, 9_000, { by: 'viral', views: 39 * VIEWS });
+  const h = harness({ fresh: [], held: [promo], made: [original], handOff });
+  const r = await coinLinksPass(h.deps);
+  assert.equal(h.docs(), 0, 'the stored fields, not a second fetch');
+  assert.deepEqual([r.coins, r.handed, r.read], [1, 1, 0]);
+  assert.deepEqual(h.recorded.map((l) => [l.address, `${l.source}:${l.sourceItemId}`, l.via ?? null, l.mintedAt]), [['DW4u', 'txt:2114285715894759498', 'txt:2114430255314427995', NOW - 190_000]]);
+  assert.deepEqual(h.looked, [['2114285715894759498']]);
+  assert.deepEqual(h.credited, ['txt:2114285715894759498']);
+});
+
+test('★ a handed coin is taken once: the next pass looks at nothing and reads nothing', async () => {
+  const handOff = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  handOff.give(NUGGETS, PROMO_DOC, NOW);
+  const h = harness({ fresh: [], handOff });
+  await coinLinksPass(h.deps);
+  const firstReads = h.looked.length;
+  const again = await coinLinksPass(h.deps);
+  assert.equal(again.coins, 0);
+  assert.equal(h.looked.length, firstReads, 'no post read again');
+  /* A coin naming no post is taken once too, and never comes back. */
+  handOff.give({ ...NUGGETS, assetKey: 'plain' }, { description: 'gm', links: { social: null, website: 'https://plain.example', chat: null } }, NOW);
+  assert.equal((await coinLinksPass(h.deps)).handed, 1);
+  assert.equal((await coinLinksPass(h.deps)).handed, 0);
+});
+
+test('the launches this step reads itself go first; the handed coins take the room left, oldest first', () => {
+  const handOff = coinLinkHandOff(60_000);
+  for (const [k, at] of [['b', 2], ['a', 1], ['c', 3]] as const) handOff.give({ ...NUGGETS, assetKey: k }, PROMO_DOC, (NOW + at) as Millis);
+  assert.deepEqual(handOff.take(2, NOW).coins.map((h) => h.coin.assetKey), ['a', 'b']);
+  assert.deepEqual(handOff.take(0, NOW).coins, []);
+  assert.deepEqual(handOff.take(5, NOW).coins.map((h) => h.coin.assetKey), ['c']);
+});
+
+test('a pass with a full page of launches leaves the handed coins waiting', async () => {
+  const one = { ...ON, finders: { ...ON.finders, coinLinks: { ...ON.finders.coinLinks, perPass: 1 } } };
+  const handOff = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  handOff.give(NUGGETS, PROMO_DOC, NOW);
+  const h = harness({ policy: one, handOff });
+  assert.equal((await coinLinksPass(h.deps)).handed, 0);
+  assert.equal((await coinLinksPass({ ...h.deps, finders: { ...h.deps.finders, freshUnread: async () => [] } })).handed, 1);
+});
+
+test('one waiting longer than the lookback is dropped and counted; a failed pass puts its coins back', async () => {
+  const handOff = coinLinkHandOff(60_000);
+  handOff.give(NUGGETS, PROMO_DOC, (NOW - 61_000) as Millis);
+  const late = handOff.take(10, NOW);
+  assert.deepEqual([late.coins.length, late.expired], [0, 1]);
+  assert.equal(handOff.take(10, NOW).expired, 0, 'counted once');
+
+  const back = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  back.give(NUGGETS, PROMO_DOC, NOW);
+  const h = harness({ fresh: [], handOff: back });
+  const failing = { ...h.deps, finders: { ...h.deps.finders, recordLinks: async () => Promise.reject(new Error('db down')) } };
+  await assert.rejects(coinLinksPass(failing));
+  assert.equal((await coinLinksPass(h.deps)).handed, 1, 'tried again next pass');
+});
+
+test('★ the universe loop hands every document it reads, and only those, to the coin-link step', async () => {
+  const handOff = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  const unread = [
+    { assetKey: 'nug', metadataUri: 'ipfs://nug', address: 'DW4u', mintedAt: (NOW - 190_000) as Millis },
+    { assetKey: 'gone', metadataUri: 'ipfs://gone', address: 'GONE', mintedAt: NOW },
+  ];
+  const deps = {
+    coins: { unread: async () => unread, recordMetadata: async () => {}, unchecked: async () => [], recordOrigin: async () => {}, postsNaming: async () => [] },
+    metadata: {
+      read: async (uri: string | null) => {
+        if (uri === 'ipfs://gone') throw new Error('timeout');
+        return { kind: 'read' as const, cid: 'c', metadata: { name: 'Nuggets', ticker: 'NUG', description: null, imageUri: null, links: PROMO_DOC.links } };
+      },
+    },
+    mode: 'live',
+    policy: ON,
+    log: quiet,
+    now: () => NOW,
+    handOff,
+  } as unknown as UniverseDeps;
+  await universePass(deps);
+  const taken = handOff.take(10, NOW).coins;
+  assert.deepEqual(taken.map((t) => [t.coin.assetKey, t.coin.address, t.coin.mintedAt, t.metadata.links.social]), [['nug', 'DW4u', NOW - 190_000, PROMO_DOC.links.social]]);
+
+  const off = coinLinkHandOff(ON.finders.coinLinks.lookbackMs);
+  await universePass({ ...deps, handOff: off, policy: { ...ON, finders: { ...ON.finders, coinLinks: { ...ON.finders.coinLinks, on: false } } } });
+  assert.deepEqual(off.take(10, NOW).coins, [], 'the coin-link step off: nothing waits for it');
 });

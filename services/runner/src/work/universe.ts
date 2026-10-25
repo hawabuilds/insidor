@@ -7,7 +7,10 @@
  *             the link names no content id — from the creator's host behind the adapter's
  *             address fence (`cid` null then). Free; runs on a dry run too. A link recorded
  *             not content-addressed before that reader existed is read again, up to
- *             `metadataAttempts` times (store `unread`).
+ *             `metadataAttempts` times (store `unread`). Every document read here is handed to
+ *             the coin-link step (work/coin-link-hand-off.ts), which takes only
+ *             coins with no metadata row and so never saw these: a coin read here first had no
+ *             link recorded, its named post was never read, priced or credited.
  *   origin    the creator's link (contracts/src/origin.ts, core's `checkCreatorLink`), then
  *             the posts we already hold that name the coin (core's `matchCandidates`): picture
  *             plus name plus timing, never a name alone — and from the post that matched, back
@@ -41,6 +44,7 @@ import type { CoinToCheck, PgAuthorRepo, PgCoinUniverseRepo, PgImageEmbeddingRep
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
+import type { CoinLinkHandOff } from './coin-link-hand-off.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 import { reuseCoinPicture } from './picture-reuse.ts';
 import type { Shadow } from '../judge-shadow.ts';
@@ -60,6 +64,8 @@ export interface UniverseDeps {
   readonly metadata: MetadataReader;
   /** A link that names no content id, read from its own host. Absent: recorded not content-addressed, as before. */
   readonly declared?: DeclaredReader;
+  /** Where each document read here goes for its links (work/coin-links.ts). Absent: nowhere, as before 2026-10-25. */
+  readonly handOff?: Pick<CoinLinkHandOff, 'give'>;
   readonly platforms: Pick<PlatformRegistry, 'all'>;
   readonly items: Pick<PgItemRepo, 'byIds'>;
   readonly authors: Pick<PgAuthorRepo, 'byKeys'>;
@@ -160,7 +166,10 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
   for (let i = 0; i < unread.length; i += u.metadataConcurrency) {
     await Promise.all(
       unread.slice(i, i + u.metadataConcurrency).map(async (coin) => {
-        if ((await readCoinMetadata(deps, coin, now)) !== null) metadataRead += 1;
+        const m = await readCoinMetadata(deps, coin, now);
+        if (m === null) return;
+        metadataRead += 1;
+        if (deps.policy.finders.coinLinks.on) deps.handOff?.give({ assetKey: coin.assetKey, address: coin.address, metadataUri: coin.metadataUri, mintedAt: coin.mintedAt }, m, now);
       }),
     );
   }
