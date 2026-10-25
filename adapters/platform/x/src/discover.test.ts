@@ -73,6 +73,15 @@ test('a keyword ask with a filter carries the catch-all floor and languages afte
   assert.throws(() => toSearchQuery(query({ term: 'roadster', filter: { ...filter, minApproval: 0 } })), NotImplemented);
 });
 
+test('★ several words a post must all hold go bare, ANDed by the space: not the exact phrase', () => {
+  const filter = { minApproval: 100, mediaOnly: false, langs: ['ja'], excludeRebroadcasts: true };
+  assert.equal(
+    toSearchQuery(query({ term: 'ベジータ アルジェリア', allWords: ['ベジータ', 'アルジェリア'], filter, sinceMs: 1_800_000_000_000 })),
+    'ベジータ アルジェリア min_faves:100 lang:ja -filter:retweets since_time:1800000000',
+  );
+  assert.throws(() => toSearchQuery(query({ mode: 'account', term: 'a b', allWords: ['a', 'b'] })), NotImplemented);
+});
+
 test("a post's quotes render as quoted_tweet_id: with the floor, and nothing else is accepted", () => {
   const filter = { minApproval: 300, mediaOnly: false, langs: [], excludeRebroadcasts: true };
   assert.equal(toSearchQuery(query({ term: '', reproductionsOf: '2110222071229989249', filter })), 'quoted_tweet_id:2110222071229989249 min_faves:300 -filter:retweets');

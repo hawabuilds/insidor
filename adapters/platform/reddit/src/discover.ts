@@ -99,6 +99,9 @@ export function toListingRequest(query: DiscoveryQuery): ListingRequest {
   if (!CAPABILITIES.discovery.includes(query.mode)) {
     throw new NotImplemented(`reddit:discover:${query.mode}`, 'this source has no such entry point');
   }
+  if ((query.allWords?.length ?? 0) > 0) {
+    throw new NotImplemented('reddit:discover:all-words', 'this source cannot ask for several words at once; dropping one would ask for something else');
+  }
 
   const term = query.term.trim();
   if (term.length === 0) {

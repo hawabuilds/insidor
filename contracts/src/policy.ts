@@ -1967,6 +1967,11 @@ export interface FeedPolicy {
    * words are asked, in place of `minApproval` and `wordsPerSide` for that language's asks only. A
    * side whose posts draw fewer likes is asked lower (Japanese answering the French, 2026-10-24).
    *
+   * ★ PHRASES AND NAMED WARS (policy.v175): a live war's `narrative.fight.native.phrases` are asked
+   * too, all their words in one ask (`ベジータ アルジェリア lang:ja`), the first `phrasesPerSide` of
+   * each language (a language's own in `byLang`). The wars of `narrative.fight.native.named` are
+   * asked by their words even before a narrative holds them, inside `maxWars` with the live ones.
+   *
    * What breaks if changed carelessly: `lookbackMs` against `everyMs`. A post is returned (and billed)
    * on every ask while it is inside the window; three asks a post at 90 minutes and 30.
    */
@@ -1976,7 +1981,8 @@ export interface FeedPolicy {
     readonly lookbackMs: number;
     readonly minApproval: number;
     readonly wordsPerSide: number;
-    readonly byLang: Readonly<Record<string, { readonly minApproval: number; readonly wordsPerSide: number }>>;
+    readonly phrasesPerSide: number;
+    readonly byLang: Readonly<Record<string, { readonly minApproval: number; readonly wordsPerSide: number; readonly phrasesPerSide?: number }>>;
     readonly maxWars: number;
     readonly maxPagesPerAsk: number;
     readonly passDeadlineMs: number;
@@ -4536,6 +4542,25 @@ export interface NarrativePolicy {
      *               (one of its own included) is merged into the war; one of at most this many posts
      *               with other posts too gives up only that post. Never a narrative the owner made a
      *               call on, renamed or answered, nor another war
+     *
+     * ★ THIS WEEK'S WARS (policy.v175, the owner 2026-10-25: Saudi Arabia vs Argentina, Brazil vs
+     * Egypt, Vietnam vs South Korea, and France vs Japan's Japanese side):
+     *
+     *   home           a language's country, or SEVERAL (Arabic: Saudi Arabia and Egypt). A post in a
+     *                  language of several homes pairs each home with each other country it names,
+     *                  and joins only a live war holding both countries of one of those pairs; it
+     *                  seeds only a pair of `named`. A plain string is one home, as before
+     *   minReachByLang a language's own views bar, in place of `minReach` for its posts' joins (the
+     *                  word, phrase and quote rules alike). Seeds keep `minReach`: a lower bar would
+     *                  seed every Japanese news story naming a neighbour
+     *   phrases        per war (its two countries sorted, 'France|Japan'), per language, phrases
+     *                  whose words must ALL be in a post (each matched as a `names` word is). A post
+     *                  in that language holding one is that war's post though it names no country,
+     *                  only while the war is live and named (never a waiting seed), at the same bar
+     *                  and window. It never seeds
+     *   named          the wars the owner named (two countries each). Searched by `feed.fightWords`
+     *                  before any narrative holds them, so their posts are stored and can seed; a
+     *                  seed of one is shown at once as the owner's answer, not asked of the titler
      */
     readonly native: {
       readonly on: boolean;
@@ -4552,8 +4577,11 @@ export interface NarrativePolicy {
       readonly seedWithinMs: number;
       readonly seedMaxPosts: number;
       readonly pendingPerPass: number;
-      readonly home: Readonly<Record<string, string>>;
+      readonly home: Readonly<Record<string, string | readonly string[]>>;
+      readonly minReachByLang: Readonly<Record<string, number>>;
       readonly names: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
+      readonly phrases: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
+      readonly named: readonly (readonly [string, string])[];
       readonly aliases: Readonly<Record<string, string>>;
     };
   };
@@ -5451,10 +5479,24 @@ const POLICY_V1: Policy = {
      non-meme (0.95 holds 6% of the meme labels and 7% of the not labels), so it holds no more than
      the old bar did.
 
-     v176 adds \`translate.narrativesWindowMs\` (seven days): the posts of shown narratives are
-     translated like feed posts, so a narrative's page lists them in English as For You does. (v175
-     is the meme-war languages, on its own branch.) */
-  version: 'policy.v176',
+     v175 adds this week's meme wars (the owner, 2026-10-25): a language may be home to several
+     countries (`narrative.fight.native.home`, Arabic to Saudi Arabia and Egypt; Spanish, Portuguese
+     and Vietnamese added), a language's own views bar for joins (`minReachByLang`, Japanese at 5k),
+     war phrases (`phrases`, France vs Japan's Japanese アルジェリア人, ベジータ アルジェリア, 日仏,
+     フランス人 日本人) and the wars he named (`named`: Saudi Arabia vs Argentina, Brazil vs Egypt,
+     Vietnam vs South Korea), shown as his answer once seeded. The word search asks the phrases and
+     the named wars (`feed.fightWords` phrasesPerSide, byLang ar/es/pt/vi) and its day's cap moves
+     $0.10 → $0.25. Estimated with the search's own numbers: 12 more asks a pass (8 words, 4
+     phrases), 576 a day at the one-post minimum ($0.00015), ~$0.086; 50 to 100 more posts a day
+     returned ~3 times, ~$0.02-0.045, and judged once ($0.00046, 90% judged), ~$0.02-0.04 — about
+     $0.13-0.18 a day, $4-5.50 a month. The joins and seeds read stored posts: free.
+
+     v176 adds `translate.narrativesWindowMs` (seven days): the posts of shown narratives are
+     translated like feed posts, so a narrative's page lists them in English as For You does.
+
+     v177 is v175 and v176 together: the meme-war languages were built beside the translations
+     and joined after v176 went live. No value differs from the two. */
+  version: 'policy.v177',
 
   admit: {
     maxAgeMin: 240,
@@ -6408,11 +6450,27 @@ const POLICY_V1: Policy = {
          more asks a pass at the one-post minimum, 96 a day, ~$0.015; about 3 times the Japanese posts
          at a third of the likes, ~25 a day returned ~3 times, ~$0.011, and judged, ~$0.010 — about
          $0.035 a day more, inside the $0.10 cap (the day of 24 Oct had spent $0.021 by 17:30 UTC). */
-      byLang: { ja: { minApproval: 100, wordsPerSide: 3 } },
+      phrasesPerSide: 2,
+      /* policy.v175, the owner's yes (2026-10-25, told about $3-6 a month more). The named wars' sides
+         at 200 likes (Arabic, Spanish, Portuguese) and Vietnamese at 100: the Arabic war posts found
+         that day had 77k-479k views and the Spanish 90k-99k, which at an assumed 1% of views in likes
+         is 770 likes and up, so 200 finds one inside its first 90 minutes; Vietnamese posts draw
+         fewer likes on X, so 100. One or two words a side: 8 asks a pass for the three named wars
+         (Arabic 2 + 1, Spanish 2, Portuguese 1, Vietnamese 1, Korean 1), and France vs Japan's four
+         Japanese phrases. */
+      byLang: {
+        ja: { minApproval: 100, wordsPerSide: 3, phrasesPerSide: 4 },
+        ar: { minApproval: 200, wordsPerSide: 2 },
+        es: { minApproval: 200, wordsPerSide: 2 },
+        pt: { minApproval: 200, wordsPerSide: 1 },
+        vi: { minApproval: 100, wordsPerSide: 1 },
+      },
       maxWars: 6,
       maxPagesPerAsk: 2,
       passDeadlineMs: 120_000,
-      cap: { dailyUsd: 0.1, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
+      /* policy.v175: $0.10 → $0.25. At $0.10 the day's ~$0.065 (v169's) plus v175's ~$0.13-0.18
+         would stop the search by mid-afternoon; $0.25 caps the whole search at ~$7.50 a month. */
+      cap: { dailyUsd: 0.25, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
     },
     /* The owner, 2026-10-18: "build ... the quote search on 10M+ accounts ... $1.00". Over the three
        days to 2026-10-18, 325 held text posts by 10M+ accounts reached 5,000 likes within 3 hours by our
@@ -7618,7 +7676,13 @@ const POLICY_V1: Policy = {
         seedWithinMs: 86_400_000, // a day
         seedMaxPosts: 30,
         pendingPerPass: 5,
-        home: { fr: 'France', ja: 'Japan', zh: 'China', tr: 'Turkey', ko: 'South Korea' },
+        /* policy.v175: es, pt and ar are this week's wars' sides (Argentina, Brazil, Saudi Arabia and
+           Egypt), though each is spoken in many countries; a post in one still joins only a live war
+           holding both countries of its pair, and Arabic (two homes) seeds only a pair of `named`. */
+        home: { fr: 'France', ja: 'Japan', zh: 'China', tr: 'Turkey', ko: 'South Korea', ar: ['Saudi Arabia', 'Egypt'], es: 'Argentina', pt: 'Brazil', vi: 'Vietnam' },
+        /* policy.v175, measured 2026-10-25 on X: the Japanese side of France vs Japan is mostly 5k-40k
+           views, the French side 40k-2.9M. Joins only; a seed still needs `minReach`. */
+        minReachByLang: { ja: 5_000 },
         names: {
           fr: { Japan: ['japon', 'japonais*', 'japonnais*'], China: ['chine', 'chinois*'], Turkey: ['turquie', 'turc', 'turcs', 'turque', 'turques'], 'South Korea': ['corée', 'coréen*'] },
           /* policy.v169 (the owner, 2026-10-24): "French people" as Japanese writes it, in katakana
@@ -7629,11 +7693,26 @@ const POLICY_V1: Policy = {
           ja: { France: ['フランス', 'フランス人', '仏人', '仏蘭西'], China: ['中国'], Turkey: ['トルコ'], 'South Korea': ['韓国'] },
           zh: { Turkey: ['土耳其'], Japan: ['日本'], France: ['法国', '法國'], 'South Korea': ['韩国', '韓國'] },
           tr: { China: ['çin', 'çinli*', 'çince'], France: ['fransa*', 'fransız*'], Japan: ['japonya*', 'japon', 'japonlar*'], 'South Korea': ['kore*'] },
-          ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'] },
+          ko: { Japan: ['일본'], China: ['중국'], France: ['프랑스'], Turkey: ['튀르키예', '터키'], Vietnam: ['베트남'] },
+          /* policy.v175, this week's wars. An Arabic post naming Egypt pairs it with Saudi Arabia (one
+             of Arabic's homes); no Saudi Arabia–Egypt war is live, so it joins nothing, and the pair is
+             not in `named`, so it seeds nothing. */
+          ar: { Argentina: ['الأرجنتين*', 'الارجنتين*'], Brazil: ['البرازيل*'], Egypt: ['مصر*', 'المصري*', 'المصريين'], 'Saudi Arabia': ['السعودية', 'السعودي*', 'سعودي*'] },
+          es: { 'Saudi Arabia': ['saudí*', 'saudi*', 'arabia saudita', 'árabe*', 'arabe*'] },
+          pt: { Egypt: ['egito', 'egípcio*', 'egipcio*'] },
+          vi: { 'South Korea': ['hàn quốc', 'người hàn', 'hàn xẻng'] },
           /* No home: a post here must name two of a war's countries and be alike to the war (policy.v166). */
-          en: { France: ['france', 'french', 'frenchies'], Japan: ['japan', 'japanese'], China: ['china', 'chinese'], Turkey: ['turkey', 'turkish', 'türkiye', 'turkiye', 'turks'], 'South Korea': ['korea', 'korean*'] },
+          en: { France: ['france', 'french', 'frenchies'], Japan: ['japan', 'japanese'], China: ['china', 'chinese'], Turkey: ['turkey', 'turkish', 'türkiye', 'turkiye', 'turks'], 'South Korea': ['korea', 'korean*'], 'Saudi Arabia': ['saudi*', 'ksa'], Argentina: ['argentin*'], Brazil: ['brazil*', 'brasil*'], Egypt: ['egypt*'], Vietnam: ['vietnam*', 'viet'] },
         },
-        aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China' },
+        /* policy.v175 (the owner, 2026-10-25), measured on X that day (lang:ja, 3 days, 50+ likes):
+           フランス alone returned 2 war posts in 20 (the rest figure skating, badminton, riot news);
+           アルジェリア returned 20 in 20 — the war began with the French "Vegeta is Algerian" joke and
+           the Japanese side answers about Algeria. ベジータ alone is half Dragon Ball merchandise, so
+           only beside アルジェリア. */
+        phrases: { 'France|Japan': { ja: ['アルジェリア人', 'ベジータ アルジェリア', '日仏', 'フランス人 日本人'] } },
+        /* policy.v175: the wars the owner named on 2026-10-25, searched before a narrative holds them. */
+        named: [['Saudi Arabia', 'Argentina'], ['Brazil', 'Egypt'], ['Vietnam', 'South Korea']],
+        aliases: { 'Türkiye': 'Turkey', Turkiye: 'Turkey', Korea: 'South Korea', 'Republic of Korea': 'South Korea', PRC: 'China', "People's Republic of China": 'China', KSA: 'Saudi Arabia', Saudi: 'Saudi Arabia', Brasil: 'Brazil', 'Viet Nam': 'Vietnam' },
       },
     },
   },

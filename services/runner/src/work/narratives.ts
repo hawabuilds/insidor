@@ -48,7 +48,11 @@
  *      start, in or out of a small narrative: an older post joins as an early one, an English post
  *      naming both sides joins when alike to the war, and a small narrative wholly the war's is folded
  *      into it — never one the owner touched. With it (policy.v169 `answersOn`), the stored posts
- *      quoting or linking a named war's post: one in the other side's language joins it
+ *      quoting or linking a named war's post: one in the other side's language joins it. From
+ *      policy.v175 a language may be home to several countries, Japanese joins at its own views bar,
+ *      a post holding a named war's phrase joins it, and a seed of a war the owner named (`named`)
+ *      is shown at once, its pair written as his answer (`OWNER_TITLE_MODEL`, so the titler's later
+ *      answer never overwrites it)
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass. Never a narrative the
@@ -89,6 +93,8 @@ import {
   answerHoldsPair,
   climbPerMinute,
   fightPairsOf,
+  homeLangsByReach,
+  mayBeFightPost,
   planFights,
   warWords,
   earlyMatches,
@@ -463,7 +469,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     readonly ownerCalled: ReadonlySet<string>;
     readonly space: string;
     readonly nowMs: number;
-  }): Promise<{ readonly fights: readonly { readonly id: string; readonly countries: readonly string[] }[]; readonly joined: number; readonly rows: ReadonlyMap<string, NarrativePostRow>; readonly folds: readonly { readonly from: string; readonly into: string }[]; readonly moved: readonly { readonly itemId: string; readonly from: string; readonly into: string }[] }> {
+  }): Promise<{ readonly fights: readonly { readonly id: string; readonly countries: readonly string[]; readonly named: boolean }[]; readonly joined: number; readonly rows: ReadonlyMap<string, NarrativePostRow>; readonly folds: readonly { readonly from: string; readonly into: string }[]; readonly moved: readonly { readonly itemId: string; readonly from: string; readonly into: string }[] }> {
     const p = deps.policy;
     const f = p.narrative.fight;
     const n = f.native;
@@ -471,7 +477,13 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const repo = deps.repo;
     if (!f.on || !n.on || repo.fightPosts === undefined || repo.fights === undefined || repo.standingRows === undefined) return none;
     const wars = (await repo.fights(input.nowMs - f.activeMs)).filter((x) => !input.mergedAway.has(x.id) && !input.hideOf(x.id, x.members));
-    const light = (await repo.fightPosts(input.nowMs - n.lookbackMs, Object.keys(n.home), n.minReach, n.maxRead)).filter((r) => !input.placed.has(r.itemId) && fightPairsOf({ lang: r.lang, text: r.body }, p).length > 0);
+    /* ★ One read per views bar (policy.v175 `minReachByLang`): Japanese at 5k must not crowd the
+       other languages' 40k posts out of one `maxRead`. Kept: a post naming a country or holding a war phrase. */
+    const bars = homeLangsByReach(p);
+    const lowest = bars[0]?.minReach ?? n.minReach;
+    const read = (await Promise.all(bars.map((b) => repo.fightPosts?.(input.nowMs - n.lookbackMs, b.langs, b.minReach, n.maxRead) ?? []))).flat();
+    const light = [...new Map(read.map((r) => [r.itemId, r] as const)).values()]
+      .filter((r) => !input.placed.has(r.itemId) && mayBeFightPost({ lang: r.lang, text: r.body }, p));
 
     /* The catch-up's read: due, with a live war and the repo able to search. */
     const due = wars.length > 0 && repo.fightWarPosts !== undefined && repo.ownStarts !== undefined && repo.fightRowsOf !== undefined && input.nowMs - lastCatchUp >= n.catchUpEveryMs;
@@ -487,11 +499,12 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       lastCatchUp = input.nowMs;
       const earliest = Math.min(input.nowMs - n.lookbackMs, ...wars.map((w) => (starts.get(w.id) ?? input.nowMs) - n.warLeadMs));
       const since = Math.max(input.nowMs - f.activeMs, earliest);
-      caught = await repo.fightWarPosts(since, warWords(wars.map((w) => ({ countries: w.fight ?? [] })), p), n.minReach, n.maxRead, n.moveMaxPosts);
+      /* At the lowest bar: core holds each post to its own language's (`joinReachOf`). */
+      caught = await repo.fightWarPosts(since, warWords(wars.map((w) => ({ countries: w.fight ?? [] })), p), lowest, n.maxRead, n.moveMaxPosts);
       if (n.answersOn && repo.fightQuotes !== undefined && repo.fightRowsOf !== undefined && quoteWars.length > 0) {
         const targets = [...new Set(quoteWars.flatMap((w) => w.members))];
         warPostLangs = new Map((await repo.fightRowsOf(targets)).map((r) => [r.itemId, r.lang] as const));
-        const quotes = await repo.fightQuotes(since, targets, Object.keys(n.home), n.minReach, n.maxRead, n.moveMaxPosts);
+        const quotes = await repo.fightQuotes(since, targets, Object.keys(n.home), lowest, n.maxRead, n.moveMaxPosts);
         for (const q of quotes) refsOf.set(q.itemId, q.refersTo);
         const had = new Set(caught.map((r) => r.itemId));
         caught = [...caught, ...quotes.filter((q) => !had.has(q.itemId))];
@@ -533,7 +546,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     };
     const plan = planFights({
       posts: [...light, ...looseCaught].filter((r) => isFit(r.itemId)).map(asPost),
-      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null, startAtMs: starts.get(x.id) ?? null, vectors: x.members.flatMap((m) => postVectors.get(m) ?? []), ...postsOf(x) })),
+      narratives: wars.map((x) => ({ id: x.id, countries: x.fight ?? [], newestPostAtMs: x.newestPostAtMs ?? null, startAtMs: starts.get(x.id) ?? null, vectors: x.members.flatMap((m) => postVectors.get(m) ?? []), ...postsOf(x), confirmed: x.shown && x.fightModel !== FIGHT_SEED_MODEL })),
       placed: candidates.map((x) => ({ id: x.id, members: x.members.map(asMember) })),
       nowMs: input.nowMs,
     }, p);
@@ -572,7 +585,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     /* A seed's id as a new narrative's: its first post's, or the next free one — never one given out. */
     const wanted = plan.seeds.flatMap((sd) => [`n-${sd.members[0] ?? ''}`, `n-${sd.members[0] ?? ''}-1`, `n-${sd.members[0] ?? ''}-2`]);
     const taken = new Set([...(wanted.length === 0 ? [] : await repo.states(wanted)).map((x) => x.id), ...input.entries.map((x) => x.id)]);
-    const fights: { id: string; countries: readonly string[] }[] = [];
+    const fights: { id: string; countries: readonly string[]; named: boolean }[] = [];
     for (const sd of plan.seeds) {
       const first = sd.members[0];
       if (first === undefined) continue;
@@ -580,10 +593,12 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       if (id === undefined) continue;
       taken.add(id);
       const newest = Math.max(0, ...sd.members.map((m) => atOf.get(m) ?? 0));
-      input.entries.push({ id, members: sd.members, added: sd.members, anchor: first, newestPostAtMs: newest > 0 ? newest : null, shown: false, changed: true });
-      fights.push({ id, countries: sd.countries });
+      /* ★ A war the owner named (policy.v175 `named`) is shown at once, its pair written as his answer;
+         any other seed waits for the titler. */
+      input.entries.push({ id, members: sd.members, added: sd.members, anchor: first, newestPostAtMs: newest > 0 ? newest : null, shown: sd.named, changed: true });
+      fights.push({ id, countries: sd.countries, named: sd.named });
     }
-    if (joined > 0 || fights.length > 0) deps.log.info('meme-war posts placed by the country they name', { joined, early: [...plan.early.values()].reduce((s, l) => s + l.length, 0), folded: folds.map((m) => `${m.from} → ${m.into}`), moved: moved.length, caught: caught.length, seeds: fights.map((x) => `${x.countries.join(' vs ')} (${x.id})`) });
+    if (joined > 0 || fights.length > 0) deps.log.info('meme-war posts placed by the country they name', { joined, early: [...plan.early.values()].reduce((s, l) => s + l.length, 0), folded: folds.map((m) => `${m.from} → ${m.into}`), moved: moved.length, caught: caught.length, seeds: fights.map((x) => `${x.countries.join(' vs ')} (${x.id}${x.named ? ', named by the owner' : ''})`) });
     return { fights, joined, rows, folds, moved };
   }
 
