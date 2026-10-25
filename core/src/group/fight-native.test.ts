@@ -203,15 +203,22 @@ test('★ Arabic seeds only a war the owner named, and that seed says so; a sing
   assert.deepEqual(planFights({ posts: pt, narratives: [], nowMs: NOW }, P).seeds.map((x) => [x.countries, x.named]), [[['Brazil', 'Egypt'], true]]);
 });
 
-test('★ Japanese joins a war at its own bar of 5k views; French still needs 40k; a seed needs 40k whatever the language', () => {
+test('★ Japanese joins a war at its own bar of 5k views by a phrase, never by naming the country alone; French still needs 40k; a seed needs 40k whatever the language', () => {
   assert.equal(joinReachOf('ja', P), 5_000);
   assert.equal(joinReachOf('fr', P), P.narrative.fight.native.minReach);
   const plan = planFights({
-    posts: [post('ja-8k', 'ja', 'フランス人がまた', 8_000), post('ja-4k', 'ja', 'フランス人がまた', 4_000), post('fr-20k', 'fr', 'Les japonais', 20_000)],
-    narratives: [war(20)],
+    posts: [
+      post('ja-8k-phrase', 'ja', 'フランス人がまた日本人を', 8_000),
+      post('ja-4k-phrase', 'ja', 'フランス人がまた日本人を', 4_000),
+      /* The GP de France results at 22k (2026-10-25): naming France alone is not the war under 40k. */
+      post('ja-skating', 'ja', 'フィギュアスケートGPシリーズフランス 女子 中井亜美 219.74点', 22_000),
+      post('ja-50k-name', 'ja', 'フランスの暴動', 50_000),
+      post('fr-20k', 'fr', 'Les japonais', 20_000),
+    ],
+    narratives: [{ ...war(20), confirmed: true }],
     nowMs: NOW,
   }, P);
-  assert.deepEqual(plan.joins.get('n-fj'), ['ja-8k']);
+  assert.deepEqual([...(plan.joins.get('n-fj') ?? [])].sort(), ['ja-50k-name', 'ja-8k-phrase']);
   const seed = planFights({ posts: ['j1', 'j2', 'j3'].map((id, i) => post(id, 'ja', '中国の観光客', 8_000, `a${i}`)), narratives: [], nowMs: NOW }, P);
   assert.equal(seed.seeds.length, 0, 'Japanese news at 8k does not seed');
 });
