@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceWindow, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceFloor, sliceWindow, slowLaneDue, startFloors } from './feed-floor.ts';
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
    The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
@@ -144,7 +144,23 @@ test('the slow slice holding a late band\'s age is covered, its neighbours are n
   assert.equal(sliceCoveredByLateBand(285, 15, FRESH), false, 'late off: nothing covered');
 });
 
-/* ── the slow slices: a window by clock ── */
+test('★ with the slice\'s own floor given, a late band covers it only when the band asks no more', () => {
+  /* The five-hour slice at 5/6 of the lane's floor: 9,000 → 7,500, over the band's 6,500 — covered. */
+  assert.equal(sliceCoveredByLateBand(285, 15, LATE, at(1_120, 9_000), 7_500), true);
+  /* 7,200 → 6,000, under the band's 6,500: the band would lose the posts between, so the slice is asked. */
+  assert.equal(sliceCoveredByLateBand(285, 15, LATE, at(1_120, 7_200), 6_000), false);
+});
+
+/* ── the slow slices: a floor by age and a window by clock (policy.v181) ── */
+
+test('★ a slice\'s floor is the slow lane\'s scaled to its age over the six hours; off, the lane\'s own', () => {
+  assert.equal(sliceFloor(9_000, 120, P), 3_000, 'two hours: a third');
+  assert.equal(sliceFloor(9_000, 360, P), 9_000, 'six hours: whole');
+  assert.equal(sliceFloor(9_000, 720, P), 9_000, 'never more than whole');
+  assert.equal(sliceFloor(40, 60, P), P.feed.effectiveFloorMin, 'never under the effective minimum');
+  const flat = { ...P, feed: { ...P.feed, slow: { ...P.feed.slow, ageScaledFloor: false } } };
+  assert.equal(sliceFloor(9_000, 120, flat), 9_000);
+});
 
 test('★ a slice\'s window starts where its last ask ended, so passes further apart than its width leave no gap', () => {
   const now = 1_800_000_000_000;
