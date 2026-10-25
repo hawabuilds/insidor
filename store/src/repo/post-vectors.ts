@@ -20,7 +20,7 @@
 
 import type { Db } from '../client.ts';
 
-/** At most this many vectors are held; the oldest read goes first. ~4 KB each in 1024 dimensions. */
+/** At most this many vectors are held; the oldest read goes first. ~4 KB each at 1,024 wide, ~6 KB at 1,536 (0137). */
 const HELD_POST_VECTORS_MAX = 8_000;
 
 const held = new Map<string, { readonly at: string; readonly values: Float32Array }>();
