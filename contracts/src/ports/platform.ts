@@ -89,6 +89,13 @@ export interface DiscoveryQuery {
    * one (the short-video source's watch list, `feed.watchWordsPerAsk`). Absent means `term` alone.
    */
   readonly terms?: readonly string[];
+  /**
+   * A keyword ask whose words must ALL be in a post, in any order and not side by side (the meme-war
+   * phrases, policy.v175 `narrative.fight.native.phrases`): the source renders its AND of words, not
+   * the exact phrase a `term` with a space is. `term` carries them joined by a space, for the logs.
+   * Absent: `term` alone. A source that cannot AND words must refuse the ask, never drop words.
+   */
+  readonly allWords?: readonly string[];
   readonly sinceMs: Millis | null;
   /**
    * ★ THE ANTI-CONTAMINATION CUTOFF. Nothing published at or after this instant may
