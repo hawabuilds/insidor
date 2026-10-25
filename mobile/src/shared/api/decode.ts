@@ -721,7 +721,7 @@ export function decodeQuote(raw: unknown, path = '$.quote'): { quote?: QuotedPos
  * card shows its own words. One with no words or no readable language code is dropped, never shown
  * and never a reason to refuse the whole feed: the original words are always there to fall back on.
  */
-function decodeTranslation(raw: unknown, path: string): { translation?: PostTranslation } {
+export function decodeTranslation(raw: unknown, path: string): { translation?: PostTranslation } {
   if (raw === undefined || raw === null) return {};
   const o = obj(raw, path);
   const text = o['text'];

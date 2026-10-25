@@ -27,7 +27,7 @@
 import type { Db, Row } from './queries.ts';
 import { withPictureFiles } from './post-pics.ts';
 import { quoteFaces, withQuoteFace } from './quote-faces.ts';
-import { withTranslations } from './translations.ts';
+import { translationsOf, withTranslations } from './translations.ts';
 
 /** The most posts one narrative's sheet carries. */
 export const MEMBERS_MAX = 60;
@@ -141,7 +141,8 @@ async function membersOut(db: Db, rows: readonly Row[]) {
   /* The English of each post written in another language, as the feed shows it (translations.ts),
      and our copy of its picture (post-pics.ts): the two reads sent at once, then put together. */
   const posts = rows.map((r) => r['post'] ?? null).filter((p) => p !== null);
-  const [translated, pictured, faces] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts), quoteFaces(db, posts)]);
+  const ids = rows.flatMap((r) => str(r['item_id']) ?? []);
+  const [translated, pictured, faces, english] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts), quoteFaces(db, posts), translationsOf(db, ids)]);
   const cards = translated.map((p, i) => {
     const file = rec(pictured[i])['thumbFile'];
     const quote = rec(pictured[i])['quote'];
@@ -165,6 +166,9 @@ async function membersOut(db: Db, rows: readonly Row[]) {
       postedAt: at === null ? { at: null, why: 'not_reported' } : { at },
       authorPictureUrl: url !== null && url.startsWith('https://') ? url : null,
       authorPictureFile: copy !== null && /^[0-9a-f]{32}$/.test(copy) ? copy : null,
+      /* Its English when it was written in another language, card or not (the owner, 2026-10-25):
+         the page lists it in English as For You does. Absent when there is none, as on a card. */
+      ...(english.has(itemId) ? { translation: english.get(itemId) } : {}),
       post,
       /* Only what a feed projected; a post never on a feed has none, never a zero. */
       views: readingsOf(post),

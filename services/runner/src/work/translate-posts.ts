@@ -71,7 +71,7 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
   if (translator === null) return none('no translator: the judge is not configured');
   if (deps.mode !== 'live') return none('dry run');
 
-  const due = await deps.translations.candidates(p.windowMs, p.perPass);
+  const due = await deps.translations.candidates(p.windowMs, p.perPass, p.narrativesWindowMs > 0 ? { windowMs: p.narrativesWindowMs, skip: [...p.englishCodes, ...p.noWordsCodes] } : undefined);
   if (due.length === 0) return { skipped: null, due: 0, translated: 0, kept: 0, absent: 0, usd: 0 };
 
   const rows: TranslationRow[] = [];
