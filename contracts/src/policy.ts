@@ -616,6 +616,22 @@ export interface GroupPolicy {
      */
     readonly postSpace: string;
     /**
+     * ★ THE NEXT POST SPACE, FILLED BEFORE ANYTHING READS IT (policy.v180). Null: none. Named, the
+     * runner's boot fill (services/runner reembed-on-boot.ts) embeds the stored posts, labels and name
+     * examples into it, while every reader still reads `postSpace` and every decision still uses the
+     * bars below — nothing decides on it. The switch is a later version that sets `postSpace` to it,
+     * writes `postSpaceNextBars` over the bars they name, and sets both of these back to null; the
+     * fill then tops up the posts judged since in the new `postSpace`.
+     */
+    readonly postSpaceNext: string | null;
+    /**
+     * The post-space bars measured for `postSpaceNext`, keyed by each bar's path in this policy
+     * ('narrative.sameMeaning'). Read by no decision: carried here rather than in a comment so the
+     * switch copies values a test has checked — every key names a post-space bar that exists, and
+     * every post-space bar has a key — instead of numbers retyped from prose.
+     */
+    readonly postSpaceNextBars: Readonly<Record<string, number>> | null;
+    /**
      * ★ THE FILL INTO OUR OWN MODEL'S SPACE (policy.v171; the owner, 2026-10-24): with this on and the
      * embed service configured, the runner re-embeds what is stored once at each boot, in its own
      * process (services/runner reembed-on-boot.ts over work/reembed.ts). Resumable and idempotent;
@@ -5508,8 +5524,40 @@ const POLICY_V1: Policy = {
      wordsPerSide 2 → 5): the owner's Saudi Arabia vs Argentina examples from the Argentine side say
      árabe, which was never asked. Replies were never left out of these searches (the X adapter has
      not sent -filter:replies since 2026-10-13), so the replies among them come back once the word
-     is asked. Three more asks a pass, ~$0.02 a day, inside the cap. */
-  version: 'policy.v179',
+     is asked. Three more asks a pass, ~$0.02 a day, inside the cap.
+
+     v180 names the next post space and fills it, deciding nothing on it yet (the owner approved our
+     own model on 25 Oct; the benchmark of that day found its words half weak: on model-free ground
+     truth it kept 26% of same-story pairs at 0.5% hard negatives, the hosted model 64%, and
+     multilingual-e5-base beside our picture vector 62%). `group.image.postSpaceNext` is
+     'me5-base+siglip2-b16-224.1536.post' — e5's words and our picture side by side, 1,536 wide, so two
+     pictured posts read 0.7 × words + 0.3 × picture — and the runner's boot fill embeds the stored
+     posts, labels and name examples into it (posts are kept three days, so that is the window filled).
+     `postSpaceNextBars` are its bars, by v173's rule on the same 2,000 judged posts (2.0 million
+     unrelated pairs) and 3,367 same-story members (934 stories, 11,278 pairs): strict bars let twice
+     the hosted model's share of unrelated pairs through, the loose join bars exactly its share; the
+     hold by v174's rule, how many of the 1,875 posts judged yes from 24 Oct 09:00 to 25 Oct 03:20 it
+     holds (the hosted 0.67 held 35, today's 0.945 holds 36; the new 0.891 holds 34). Unrelated pairs
+     read 0.70 alike in the new space (0.75 now, 0.27 hosted). Kept = same-story pairs over the bar:
+
+       bar                               hosted   now (kept)      next   unrelated over  kept
+       narrative.same.meaning             0.8     0.926 (11.1%)   0.877   0.027%         19.3%
+       sameMeaning, mergeMeaning,         0.7     0.919 (12.6%)   0.866   0.047%         22.3%
+         storyCoin.alone
+       nameMeaning, origin.mergeMeaning,  0.6     0.899 (18.2%)   0.844   0.205%         29.6%
+         nameAverage, phraseMeaning, wordsMeaning, varietySameMeaning, storyCoin.together
+       storyCoin.near, linkMeaning        0.45    0.84  (51.5%)   0.787   3.24%          53.9%
+       looseWordsMeaning                  0.41    0.82  (65.6%)   0.76    7.28%          65.6%
+       rootMeaning                        0.3     0.767 (91.1%)   0.709   36.8%          88.7%
+       holdNotSimilarity                  0.67    0.945 (36 held) 0.891   34 held of 1,875
+
+     The strict tiers keep more same-story pairs than today's at the same unrelated share (the hosted
+     model kept 11.6%, 19.2% and 30.7%). In the new space the nearest "not" label still hardly tells a
+     meme from a non-meme (0.891 holds 8.8% of the meme labels and 12.9% of the not labels), as in
+     today's. Pictures' bars do not change: the picture space does not. The switch is a later
+     version: `postSpace` to the next space, these bars over the ones they name, both fields back to
+     null. */
+  version: 'policy.v180',
 
   admit: {
     maxAgeMin: 240,
@@ -5692,7 +5740,36 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'siglip2-b16-224.768', postSpace: 'siglip2-b16-224.768.post', backfill: true, nearIdentical: 0.945, likely: 0.86, borderline: 0.85, pairChecksPerDay: 200, reuseContentAddressed: true },
+    image: {
+      space: 'siglip2-b16-224.768',
+      postSpace: 'siglip2-b16-224.768.post',
+      postSpaceNext: 'me5-base+siglip2-b16-224.1536.post',
+      /* Measured 25 Oct (the v180 entry): not read by any decision until the switch copies them. */
+      postSpaceNextBars: {
+        'narrative.same.meaning': 0.877,
+        'narrative.sameMeaning': 0.866,
+        'narrative.mergeMeaning': 0.866,
+        'postCoin.storyCoin.alone': 0.866,
+        'narrative.nameMeaning': 0.844,
+        'narrative.origin.mergeMeaning': 0.844,
+        'narrative.origin.nameAverage': 0.844,
+        'narrative.origin.phraseMeaning': 0.844,
+        'narrative.origin.wordsMeaning': 0.844,
+        'rising.varietySameMeaning': 0.844,
+        'postCoin.storyCoin.together': 0.844,
+        'postCoin.storyCoin.near': 0.787,
+        'narrative.origin.linkMeaning': 0.787,
+        'narrative.origin.looseWordsMeaning': 0.76,
+        'narrative.origin.rootMeaning': 0.709,
+        'judge.precedents.holdNotSimilarity': 0.891,
+      },
+      backfill: true,
+      nearIdentical: 0.945,
+      likely: 0.86,
+      borderline: 0.85,
+      pairChecksPerDay: 200,
+      reuseContentAddressed: true,
+    },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,

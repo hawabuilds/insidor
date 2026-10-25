@@ -26,7 +26,8 @@
  * `--coin-days` (default: that keep, 30 days) are re-embedded, newest first.
  *
  * THE WORK ITSELF IS services/runner/src/work/reembed.ts (the runner also runs it at boot, in its own
- * process, when Policy.group.image.backfill is on); this file is only its command line: the flags,
+ * process, when Policy.group.image.backfill is on or `postSpaceNext` is named, and so does this: posts,
+ * labels and names go into the next post space when the policy names one); this file is only its command line: the flags,
  * the dry run's estimate, the pool, and the lines it prints.
  *
  * What breaks if changed carelessly: the inputs must be built as the runner builds them — core
@@ -41,7 +42,7 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { httpClient, POST_SPACE, selfEmbed, SPACE } from '../adapters/embed/selfhost/src/index.ts';
 import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
-import { REEMBED_KINDS as KINDS, reembedKinds, reembedSources, type ReembedKind as Kind } from '../services/runner/src/work/reembed.ts';
+import { REEMBED_KINDS as KINDS, reembedKinds, reembedPostSpace, reembedSources, type ReembedKind as Kind } from '../services/runner/src/work/reembed.ts';
 
 const P = DEFAULT_POLICY;
 const arg = (name: string): string | null => {
@@ -62,12 +63,14 @@ async function run(): Promise<void> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-reembed' });
   if (!live) pool.on('connect', (c) => void c.query('set default_transaction_read_only = on'));
   const db = asDb(pool);
-  const all = reembedSources({ policy: P, coinSinceMs });
+  /* The post kinds go where the runner's boot fill sends them: the policy's next post space, else its own. */
+  const postSpace = reembedPostSpace(P) ?? POST_SPACE;
+  const all = reembedSources({ policy: P, coinSinceMs, postSpace });
   const kinds = KINDS.filter((k) => only.has(k));
   try {
     if (!live) {
       let totalMs = 0;
-      console.log(`DRY RUN, read only: rows still to embed into ${SPACE} / ${POST_SPACE} (coins: embedded since ${new Date(coinSinceMs).toISOString().slice(0, 10)}).`);
+      console.log(`DRY RUN, read only: rows still to embed into ${SPACE} / ${postSpace} (coins: embedded since ${new Date(coinSinceMs).toISOString().slice(0, 10)}).`);
       for (const k of kinds) {
         const c = await all[k].count(db);
         const ms = c.pictures * MS_PER_PICTURE + c.rows * MS_PER_TEXT;
@@ -86,7 +89,7 @@ async function run(): Promise<void> {
     const secret = (process.env['EMBED_SECRET'] ?? '').trim();
     if (baseUrl === '' || secret === '') throw new Error('EMBED_SERVICE_URL and EMBED_SECRET must be set');
     const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => Date.now() });
-    const port = selfEmbed({ client: httpClient({ baseUrl, secret, fetch: globalThis.fetch }), meter, now: () => Date.now() as Millis });
+    const port = selfEmbed({ client: httpClient({ baseUrl, secret, fetch: globalThis.fetch }), meter, now: () => Date.now() as Millis, postSpace });
     await reembedKinds(db, port, {
       kinds,
       concurrency,

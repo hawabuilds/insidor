@@ -18,6 +18,11 @@
  * Metered on its own in-memory meter: the service is $0 a call, and the runner's durable meter would
  * write a ledger row per request for nothing.
  *
+ * ★ TOWARD THE NEXT POST SPACE WHEN ONE IS NAMED (Policy.group.image.postSpaceNext, policy.v180). Posts,
+ * labels and name examples go into the next space while the readers still read the current one, so
+ * the switch finds them filled; with none named they go into the current post space as before. Either
+ * a named next space or `backfill` starts the fill. Pictures always go into the one picture space.
+ *
  * What breaks if changed carelessly: logging the port's configuration. `cfg.selfEmbed` holds the
  * secret; only the kinds and counts are ever logged. And awaiting the returned promise at boot,
  * which would hold every loop until the fill is done — hours, the first time.
@@ -31,12 +36,20 @@ import type { Db } from '@insidor/store';
 
 import type { RunnerConfig } from './config.ts';
 import { errorText, type Logger } from './log.ts';
-import { reembedKinds, reembedSources, type ReembedKind } from './work/reembed.ts';
+import { reembedKinds, reembedPostSpace, reembedSources, type ReembedKind } from './work/reembed.ts';
 
 /* Coin pictures only as far back as a coin can still be matched to a new post (`universe.matchWindowMs`,
    two days; the owner, 2026-10-25): an older coin's picture is never compared again before it is
    archived, and a fresh coin is embedded in the new space as it launches. */
 const KINDS: readonly ReembedKind[] = ['posts', 'labels', 'names', 'pictures', 'coins', 'coined'];
+const POST_KINDS: ReadonlySet<ReembedKind> = new Set(['posts', 'labels', 'names']);
+
+/** What a boot fills, and into which post space; null when the policy asks for no fill. Exported for the tests. */
+export function reembedPlan(policy: Policy): { readonly kinds: readonly ReembedKind[]; readonly postSpace: string | null } | null {
+  if (policy.group.image.backfill !== true && policy.group.image.postSpaceNext === null) return null;
+  const postSpace = reembedPostSpace(policy);
+  return { kinds: postSpace === null ? KINDS.filter((k) => !POST_KINDS.has(k)) : KINDS, postSpace };
+}
 /** The service runs one inference at a time; two keeps it fed while the next pictures download. */
 const CONCURRENCY = 2;
 
@@ -58,16 +71,22 @@ export interface ReembedOnBootDeps {
 export function startReembed(deps: ReembedOnBootDeps): Promise<void> {
   const policy = deps.policy ?? DEFAULT_POLICY;
   const self = deps.cfg.selfEmbed;
-  if (policy.group.image.backfill !== true || self.state !== 'configured') return Promise.resolve();
+  const plan = reembedPlan(policy);
+  if (plan === null || self.state !== 'configured') return Promise.resolve();
   const log = deps.log;
   const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => Date.now() });
-  const port = selfEmbed({ client: httpClient({ baseUrl: self.baseUrl, secret: self.secret, fetch: deps.fetchFn ?? globalThis.fetch }), meter, now: () => Date.now() as Millis });
-  log.info('reembed started', { kinds: KINDS.join(','), concurrency: CONCURRENCY });
+  const port = selfEmbed({
+    client: httpClient({ baseUrl: self.baseUrl, secret: self.secret, fetch: deps.fetchFn ?? globalThis.fetch }),
+    meter,
+    now: () => Date.now() as Millis,
+    ...(plan.postSpace === null ? {} : { postSpace: plan.postSpace }),
+  });
+  log.info('reembed started', { kinds: plan.kinds.join(','), postSpace: plan.postSpace, concurrency: CONCURRENCY });
   return reembedKinds(deps.db, port, {
-    kinds: KINDS,
+    kinds: plan.kinds,
     concurrency: CONCURRENCY,
     limit: Infinity,
-    sources: reembedSources({ policy, coinSinceMs: Date.now() - policy.universe.matchWindowMs }),
+    sources: reembedSources({ policy, coinSinceMs: Date.now() - policy.universe.matchWindowMs, ...(plan.postSpace === null ? {} : { postSpace: plan.postSpace }) }),
     signal: deps.signal,
     log: (e) => {
       if (e.event === 'page') log.info('reembed', { kind: e.kind, done: e.done, unread: e.unread, ratePerSec: Number(e.ratePerSec.toFixed(1)) });
