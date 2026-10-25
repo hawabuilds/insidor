@@ -401,9 +401,30 @@ test('★ a pair no war holds seeds a narrative off the board; the titler naming
   const made = s.saved[0]?.narratives.find((x) => x.id === 'n-fr1');
   assert.deepEqual(made?.members, ['fr1', 'fr2', 'fr3']);
   assert.equal(made?.shown, false, 'off the board until the titler says it is the war');
-  assert.deepEqual(s.saved[0]?.fights, [{ id: 'n-fr1', countries: ['France', 'Japan'] }]);
+  assert.deepEqual(s.saved[0]?.fights, [{ id: 'n-fr1', countries: ['France', 'Japan'], named: false }]);
   assert.deepEqual(shownNow, ['n-war'], 'the waiting seed the titler named China and Turkey for is shown');
   assert.ok(s.titles.some(([id]) => id === 'n-war'), 'and titled');
+});
+
+test('★ a seed of a war the owner named is shown at once, written as his answer; the stored-post read asks each views bar apart', async () => {
+  const reads: [readonly string[], number][] = [];
+  const more = {
+    fightPosts: async (_since: number, langs: readonly string[], minReach: number) => {
+      reads.push([langs, minReach]);
+      return langs.includes('ar') ? ['s1', 's2', 's3'].map((id) => warPost(id, 'ar', 'جمهور الأرجنتين', 200_000)) : [];
+    },
+    standingRows: async (ids: readonly string[]) => ids.map((id) => row(id, { coinable: false, confidence: 0.9, body: 'a post' })),
+    fights: async () => [],
+    setFight: async () => undefined,
+  };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [], [], () => [], DEFAULT_POLICY, more);
+  const r = await s.grouper.pass();
+  assert.equal(r.seededFight, 1);
+  const made = s.saved[0]?.narratives.find((x) => x.id === 'n-s1');
+  assert.equal(made?.shown, true, 'the owner named Saudi Arabia vs Argentina: no wait for the titler');
+  assert.deepEqual(s.saved[0]?.fights, [{ id: 'n-s1', countries: ['Argentina', 'Saudi Arabia'], named: true }]);
+  assert.deepEqual(reads.map(([, bar]) => bar), [5_000, 40_000], 'Japanese at its own bar, the rest at minReach');
+  assert.deepEqual(reads[0]?.[0], ['ja']);
 });
 
 test('★ a seed the titler declined is asked again once grown, shown when it now names two countries; a seed declined now is marked declined', async () => {
