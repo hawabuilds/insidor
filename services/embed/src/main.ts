@@ -24,7 +24,7 @@ import process from 'node:process';
 import { loadEmbedConfig } from './config.ts';
 import { loadEncoder, type Encoder } from './model.ts';
 import { handler } from './server.ts';
-import { MODEL_ID, probeDistance, SPACE, TEXT_PROBE_HEAD, WORDS_MODEL_ID, WORDS_PROBE } from './space.ts';
+import { MODEL_ID, probeDistance, SPACE, WORDS_MODEL_ID, WORDS_PROBE } from './space.ts';
 
 const log = (line: Record<string, unknown>): void => console.log(JSON.stringify({ at: new Date().toISOString(), service: 'embed', ...line }));
 
@@ -52,10 +52,9 @@ const started = Date.now();
 try {
   const loaded = await loadEncoder({ cacheDir: cfg.modelDir, allowDownload: cfg.allowDownload });
   const [words] = await loaded.embedWords([WORDS_PROBE.text]);
-  const [text] = await loaded.embedTexts([WORDS_PROBE.text]);
   const wordsOff = words == null ? Infinity : probeDistance(WORDS_PROBE.head, words);
   wordsAgree = wordsOff <= WORDS_PROBE.tolerance;
-  log({ msg: wordsAgree ? 'words probe agrees' : 'words probe DISAGREES: the second post space stays off', wordsModel: WORDS_MODEL_ID, maxDiff: wordsOff, textMaxDiff: text == null ? null : probeDistance(TEXT_PROBE_HEAD, text) });
+  log({ msg: wordsAgree ? 'words probe agrees' : 'words probe DISAGREES: the second post space stays off', wordsModel: WORDS_MODEL_ID, maxDiff: wordsOff });
   encoder = loaded;
   /* The words model's 256k-token vocabulary is parsed from JSON at load: about 450 MB of heap that
      is garbage the moment the tokenizer is built. Collected now (the start command passes

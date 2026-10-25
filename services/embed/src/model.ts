@@ -83,7 +83,13 @@ export async function loadEncoder(options: LoadOptions): Promise<Encoder> {
   rt.env.allowRemoteModels = options.allowDownload;
   const tokenizer = await rt.AutoTokenizer.from_pretrained(MODEL_ID);
   const processor = await rt.AutoImageProcessor.from_pretrained(MODEL_ID);
-  const textModel = await rt.SiglipTextModel.from_pretrained(MODEL_ID, { dtype: TEXT_DTYPE });
+  /* ★ SigLIP's own words tower loads on its first use, not at boot (the owner, 2026-10-25: "remove
+     SigLIP's words model … to save about $5 a month"). Since policy.v182 every post, label and name
+     example is embedded with e5 words beside the SigLIP picture, so nothing live asks for the old post
+     space and the tower never loads; a rollback to v181 asks for it, and it loads then, once, a few
+     seconds late on that first request. */
+  let textModel: Promise<(inputs: object) => Promise<{ pooler_output: Tensor }>> | null = null;
+  const textTower = () => (textModel ??= rt.SiglipTextModel.from_pretrained(MODEL_ID, { dtype: TEXT_DTYPE }));
   const visionModel = await rt.SiglipVisionModel.from_pretrained(MODEL_ID, { dtype: VISION_DTYPE });
   const wordsTokenizer = await rt.AutoTokenizer.from_pretrained(WORDS_MODEL_ID);
   const wordsModel = await rt.AutoModel.from_pretrained(WORDS_MODEL_ID, { dtype: WORDS_DTYPE });
@@ -100,7 +106,7 @@ export async function loadEncoder(options: LoadOptions): Promise<Encoder> {
       one(async () => {
         if (texts.length === 0) return [];
         const inputs = tokenizer(texts.map((t) => t.toLowerCase()), { padding: 'max_length', truncation: true, max_length: TEXT_TOKENS });
-        const { pooler_output } = await textModel(inputs);
+        const { pooler_output } = await (await textTower())(inputs);
         return rows(pooler_output).map(unit);
       }),
     embedWords: (texts) =>
