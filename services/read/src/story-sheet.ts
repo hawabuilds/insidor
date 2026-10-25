@@ -43,6 +43,9 @@ select e.value ->> 'evidenceId' as item_id,
          (select r.payload from public.rising_row r where r.item_id = e.value ->> 'evidenceId' order by (r.feed_id = 'fyp') desc limit 1),
          (select f.payload from public.feed_post f where f.item_id = e.value ->> 'evidenceId' and f.payload is not null order by (f.feed_id = 'fyp') desc limit 1)
        ) as post,
+       (select jsonb_build_object('url', to_jsonb(a) ->> 'picture_url', 'copy', to_jsonb(a) ->> 'picture_copy')
+          from public.item i join public.author a on a.author_key = i.author_key
+         where i.item_id = e.value ->> 'evidenceId') as face,
        jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as listed,
        v.payload -> 'coins' as coins,
        v.payload -> 'foundAt' as found_at
@@ -152,9 +155,16 @@ async function membersOut(db: Db, rows: readonly Row[]) {
     if (itemId === null) return [];
     const post = r['post'] === null || r['post'] === undefined ? null : (byId.get(itemId) ?? r['post']);
     const at = num(r['posted_at']);
+    /* The account's picture for every listed post, card or not (the owner, 2026-10-25: X faces on the
+       narrative page). A post no feed holds has no card, and without this its handle drew a letter. */
+    const face = rec(r['face']);
+    const url = str(face['url']);
+    const copy = str(face['copy']);
     return [{
       itemId,
       postedAt: at === null ? { at: null, why: 'not_reported' } : { at },
+      authorPictureUrl: url !== null && url.startsWith('https://') ? url : null,
+      authorPictureFile: copy !== null && /^[0-9a-f]{32}$/.test(copy) ? copy : null,
       post,
       /* Only what a feed projected; a post never on a feed has none, never a zero. */
       views: readingsOf(post),
