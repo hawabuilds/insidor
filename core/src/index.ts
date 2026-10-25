@@ -162,7 +162,7 @@ export type { HourGain, NarrativePostReadings, NarrativeSpeeds, SteadyNarrative,
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass
  * moves it. Not a stage; a budget lever with policy thresholds, so it lives here.
  */
-export { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleLaneDue, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceWindow, slowLaneDue, slowLangs, startFloors } from './sources/feed-floor.ts';
+export { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleLaneDue, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceFloor, sliceWindow, slowLaneDue, slowLangs, startFloors } from './sources/feed-floor.ts';
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 /** A search lane's own daily cap (Policy LaneCapPolicy): whether an ask fits, and its judging. */
 export { laneJudgeUsd, laneMayAsk, pacedDailyUsd, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './sources/lane-cap.ts';

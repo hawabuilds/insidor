@@ -1663,6 +1663,14 @@ export interface FeedPolicy {
      * so this is what keeps the older searches from multiplying with the languages.
      */
     readonly langs: readonly string[] | null;
+    /**
+     * ★ EACH SLICE AT A FLOOR SCALED TO ITS AGE (policy.v181; core `sliceFloor`): the slice at k
+     * hours asks k / (windowMin / 60) of the lane's floor, so the two-hour slice asks a third of the
+     * six-hour one's. False: every slice asks the lane's floor, as before. The lane's floor adapts to
+     * the same target either way, so the money is the same; it moves from posts found at six hours,
+     * For You's own age limit, to the same kind of post found at two to four.
+     */
+    readonly ageScaledFloor: boolean;
   };
   /**
    * ★ FRESH DISCOVERY (the owner's "find text posts sooner at the same cost", 2026-10-14). OFF by
@@ -5557,7 +5565,7 @@ const POLICY_V1: Policy = {
      today's. Pictures' bars do not change: the picture space does not. The switch is a later
      version: `postSpace` to the next space, these bars over the ones they name, both fields back to
      null. */
-  version: 'policy.v180',
+  version: 'policy.v181',
 
   admit: {
     maxAgeMin: 240,
@@ -6240,6 +6248,17 @@ const POLICY_V1: Policy = {
          over the slow floor; `langSplit.bandsDailyUsd` gives up $0.40, so the X day does not grow. */
       dailyUsd: 0.65,
       langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt'],
+      /* On from policy.v181 (2026-10-25, "did we catch these?"): one floor for every age put 53% of the
+         lane's posts in its six-hour slice — 3.4, 5.8, 9.2 and 21.0 a pass at two, three, four and six
+         hours (31 passes, 25 Oct 03:50–12:00 UTC, floor 7,000 to 15,000 likes) — while half of the
+         100k-view posts of the last three days were first found over two hours in, most at five hours
+         by the late band. Scaled, and with the lane's floor rising to hold its 45 posts a pass (about
+         ×1.5, at the slope `langSplit` uses, N(>x) ~ x^−1.5), the slices are expected near 9.7, 9.0,
+         9.2 and 11.5 a pass at about 0.5, 0.75, 1.0 and 1.5 times today's floor: the two-hour slice
+         from ~7,000 likes to ~3,500. Same money (`dailyUsd`, the `paging` day); what is given up is
+         the slowest English and Portuguese posts between today's floor and 1.5 times it at six
+         hours, past For You's age limit already. */
+      ageScaledFloor: true,
     },
     /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
        6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones

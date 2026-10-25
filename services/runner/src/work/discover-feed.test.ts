@@ -16,6 +16,7 @@ import { authorKey, itemId, sourceId } from '@insidor/contracts/ids.ts';
 import type { Budget, CostEstimate, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
 import type { Capabilities, Discovered, DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter, PlannedCall } from '@insidor/contracts/ports/platform.ts';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
+import { sliceFloor } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
@@ -193,10 +194,12 @@ test('★ when the slow lane is due it looks back six hours in hourly slices, at
   // A band as wide as the lane's spacing, ending a quarter-hour after each hour of age.
   assert.deepEqual(slow.map((q) => [NOW - (q.sinceMs ?? 0), NOW - (q.untilMs ?? 0)]), Array.from({ length: slices }, (_, i) => [(i + 1) * hour, (i + 1) * hour - width]));
   assert.equal(slow.at(-1)?.sinceMs, NOW - 6 * hour, 'the oldest slice reaches the whole six hours');
-  for (const q of slow) {
+  slow.forEach((q, i) => {
     assert.equal(q.filter?.mediaOnly, false);
-    assert.equal(q.filter?.minApproval, 333 * 5, 'its own floor adapted low; held at 5x what the main lane sends');
-  }
+    /* Each slice at the lane's floor scaled to its age (`slow.ageScaledFloor`): the six-hour one asks it whole. */
+    assert.equal(q.filter?.minApproval, sliceFloor(333 * 5, (i + 1) * 60, DEFAULT_POLICY), 'its own floor adapted low; held at 5x what the main lane sends');
+  });
+  assert.equal(slow.at(-1)?.filter?.minApproval, 333 * 5);
 });
 
 test('the slow lane\'s floor moves on what all its slices returned together', async () => {

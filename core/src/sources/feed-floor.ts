@@ -163,8 +163,32 @@ export function lateBandFloor(minApproval: number, floors: LaneFloors, p: Policy
  * What breaks if changed carelessly: dropping a slice the band does not cover leaves an hour of age
  * the slow lane never looks at.
  */
-export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number, p: Policy): boolean {
-  return lateBands(p).some((b) => b.ageMin > youngestAgeMin && b.ageMin <= youngestAgeMin + widthMin);
+export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number, p: Policy, floors?: LaneFloors, sliceFloorSent?: number): boolean {
+  /* With the slice's own floor given (`slow.ageScaledFloor` sends each slice less than the lane's
+     floor), the band covers it only when the band's floor is no higher than the slice's. */
+  const noHigher = (minApproval: number): boolean => floors === undefined || sliceFloorSent === undefined || lateBandFloor(minApproval, floors, p) <= sliceFloorSent;
+  return lateBands(p).some((b) => b.ageMin > youngestAgeMin && b.ageMin <= youngestAgeMin + widthMin && noHigher(b.minApproval));
+}
+
+/**
+ * ★ ONE SLOW SLICE'S FLOOR (`slow.ageScaledFloor`): the slow lane's sent floor scaled to the slice's
+ * age over the lane's window, as a fresh band's is scaled to its age over the full window
+ * (`bandFloor`), so the two-hour slice asks a third of what the six-hour one does. Off, every slice
+ * asks the lane's floor, as before.
+ *
+ * Why: at one floor for every age the oldest slice took the lane's money — on 25 Oct 03:50–12:00
+ * UTC the slices at two, three, four and six hours returned 3.4, 5.8, 9.2 and 21.0 posts a pass —
+ * and a post found at six hours is at For You's own age limit (`rising.fypMaxAgeMs`). The lane's
+ * floor adapts to the same target either way, so the money does not move; it is spent on the same
+ * kind of post found hours sooner.
+ *
+ * What breaks if changed carelessly: scaling the floor without letting the lane's floor adapt to
+ * the scaled slices' total would multiply the lane's posts several times over at the young slices.
+ */
+export function sliceFloor(sentFloor: number, oldestAgeMin: number, p: Policy): number {
+  if (!p.feed.slow.ageScaledFloor) return sentFloor;
+  const share = Math.min(Math.max(oldestAgeMin, 0) / Math.max(p.feed.slow.windowMin, 1), 1);
+  return Math.max(p.feed.effectiveFloorMin, Math.round(sentFloor * share));
 }
 
 /**

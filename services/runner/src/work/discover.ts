@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceWindow, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceFloor, sliceWindow, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -458,9 +458,10 @@ export const sliceKey = (source: string, oldestAgeMin: number): string => `${sou
 /**
  * The slow lane's slices this pass, each with the key its window is kept under.
  *
- * ★ TILED BY A CLOCK (core `sliceWindow`): each slice asks from where its last
+ * ★ TILED BY A CLOCK (core `sliceWindow`, from policy.v181): each slice asks from where its last
  * answered ask ended, so slow passes 15 to 17 minutes apart, or one held back, leave no posting time
  * unasked at that age. Without a clock (a start, or no clock given) a slice is its nominal width.
+ * ★ EACH AT ITS OWN FLOOR (`slow.ageScaledFloor`, core `sliceFloor`).
  */
 export function slowSlices(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock?: FreshClock): readonly { readonly query: DiscoveryQuery; readonly clockKey: string }[] {
   const base = feedQueryFor('slow', floors, now, policy);
@@ -472,17 +473,18 @@ export function slowSlices(source: string, floors: LaneFloors, now: Millis, poli
     const oldestAgeMin = (i + 1) * stepMin;
     const youngestAgeMin = oldestAgeMin - widthMin;
     const clockKey = sliceKey(source, oldestAgeMin);
-    return { oldestAgeMin, youngestAgeMin, clockKey, window: sliceWindow(youngestAgeMin, widthMin, clock?.lastUntil(clockKey) ?? null, now, policy) };
+    const minApproval = sliceFloor(sent, oldestAgeMin, policy);
+    return { oldestAgeMin, youngestAgeMin, clockKey, minApproval, window: sliceWindow(youngestAgeMin, widthMin, clock?.lastUntil(clockKey) ?? null, now, policy) };
   }).filter((s) =>
     /* A late band (`feed.fresh.late`) at an age inside this slice asks the same posts at a floor no higher;
        so does the middle lane (`feed.middle`) over a slice wholly inside its window. */
     s.window !== null &&
     !sliceCoveredByBands(s.youngestAgeMin, policy) &&
-    !sliceCoveredByLateBand(s.youngestAgeMin, widthMin, policy) &&
-    !sliceCoveredByMiddle(s.youngestAgeMin, widthMin, sent, policy),
+    !sliceCoveredByLateBand(s.youngestAgeMin, widthMin, policy, floors, s.minApproval) &&
+    !sliceCoveredByMiddle(s.youngestAgeMin, widthMin, s.minApproval, policy),
   ).map((s) => ({
     clockKey: s.clockKey,
-    query: { ...base, sinceMs: Math.round(s.window!.since) as Millis, untilMs: Math.round(s.window!.until) as Millis },
+    query: { ...base, filter: { ...base.filter!, minApproval: s.minApproval }, sinceMs: Math.round(s.window!.since) as Millis, untilMs: Math.round(s.window!.until) as Millis },
   }));
 }
 
