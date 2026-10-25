@@ -5436,8 +5436,16 @@ const POLICY_V1: Policy = {
      exact share would; the held-as-not-a-meme bar (0.924) and the loose join bars (0.84 link, 0.82
      loose words, 0.767 root) let exactly the old share through. Pictures read close to the old
      model's; only the borderline band (and postCoin's floor with it) was 12 times looser, back to the
-     old share at 0.85. */
-  version: 'policy.v173',
+     old share at 0.85.
+
+     v174 moves `judge.precedents.holdNotSimilarity` 0.924 → 0.945, set by how many posts it HOLDS,
+     the thing it does. Of the 1,871 posts judged yes from 24 Oct 09:00 to 25 Oct 03:20 (vectors in
+     both spaces), the old model's 0.67 held 35; ours holds 1,262 at v172's 0.83, about 100 at 0.924
+     (0.92: 135, 0.93: 82) and about as many as before at 0.945 (0.94: 51, 0.95: 19). For You took 4
+     posts after 06:44 on 25 Oct. In our space the nearest "not" label hardly tells a meme from a
+     non-meme (0.95 holds 6% of the meme labels and 7% of the not labels), so it holds no more than
+     the old bar did. */
+  version: 'policy.v174',
 
   admit: {
     maxAgeMin: 240,
@@ -5699,7 +5707,7 @@ const POLICY_V1: Policy = {
          the closest coined post 0.602), so 0.67 holds no gold, coined or meme post and 69 of the 280
          "not" labels. 0.80 would hold 20, 0.92 five. A first cut on the owner's labels alone: a live
          post is not one of them, so expect some meme posts near a "not" — measure the holds. */
-      holdNotSimilarity: 0.924,
+      holdNotSimilarity: 0.945,
       labelsPerPass: 40,
       /* Off until the owner switches it on. On 2026-10-16 the labels held 34 short-video taps (33
          "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short
