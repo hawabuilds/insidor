@@ -462,3 +462,15 @@ test('★ a spend row records WHEN THE CALL HAPPENED, never when the row landed'
     '`at` must have no default: the caller has to say when the call happened',
   );
 });
+
+test('★ the post-vector tables hold any width, the picture tables keep theirs, and nothing is rewritten', () => {
+  /* 0137: the second post space is 1,536 wide. Dropping the width is a catalog edit; a `using`
+     clause or a new width (vector(1536)) would read and rewrite every row under an exclusive lock. */
+  const sql = stripComments(read('0137_post_vector_any_width.sql'));
+  for (const table of ['post_embedding', 'label_embedding', 'name_example_embedding']) {
+    assert.match(sql, new RegExp(`alter table internal\\.${table} alter column embedding type vector;`));
+  }
+  assert.equal(/\busing\b|vector\(\d+\)/.test(sql), false, 'no cast and no new width');
+  assert.equal(/image_embedding|coined_picture/.test(sql), false, 'the picture space does not change');
+  assert.match(sql, /set local lock_timeout/);
+});
