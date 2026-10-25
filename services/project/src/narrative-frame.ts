@@ -138,7 +138,15 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
   const callRows = await repo.calls();
   const calls = foldNarrativeCalls(callRows);
   /* Room for the hidden ones among the newest, so the board still fills to its limit. */
-  const newest = await repo.newest(BOARD_LIMIT + calls.hidden.length);
+  const newestFirst = await repo.newest(BOARD_LIMIT + calls.hidden.length);
+  /* ★ A LIVE MEME WAR STAYS ON THE BOARD (the owner, 2026-10-25: "i cant see the multiple countries
+     under twitter world war"): the newest 200 by their last post drop a war that went quiet for a
+     day while its countries still count it live for `fight.activeMs`, and the tab's World War card
+     is gathered only from the narratives the board lists. China vs Turkey's last post was a day old. */
+  const quietWars = policy.narrative.fight.on
+    ? (await repo.liveWars(Date.now() - policy.narrative.fight.activeMs)).filter((w) => !newestFirst.some((n) => n.id === w.id))
+    : [];
+  const newest = [...newestFirst, ...quietWars];
   const onBoard = new Set(newest.map((n) => n.id));
   const due = (await repo.pagesDue(policy.narrative.dead.pagesPerFrame, [...onBoard, ...skip])).filter((n) => !onBoard.has(n.id));
   /* ★ Every narrative an owner's hide could reach, wherever it is, so its page goes the frame he says so. */
