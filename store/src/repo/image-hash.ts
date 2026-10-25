@@ -20,9 +20,6 @@ import type { Millis } from '@insidor/contracts';
 import type { Db } from '../client.ts';
 
 /** A picture to hash: a feed post's (already embedded, so it passed the judge) or a recent coin's logo. */
-/** Posts per picture-neighbour statement: see `neighbours`. */
-const NEIGHBOUR_POSTS_PER_STATEMENT = 10;
-
 export interface DuePicture {
   readonly uri: string;
   readonly kind: 'post' | 'coin';
@@ -132,41 +129,74 @@ export class PgImageHashRepo {
    * within `maxDistance` bits of it: the picture search over the whole universe.
    */
   async neighbours(posts: readonly { readonly itemId: string; readonly uri: string; readonly postedAt: Millis }[], allowanceMs: number, windowMs: number, maxDistance: number, perPost: number, version: string): Promise<readonly PictureNeighbour[]> {
-    /* ★ A FEW POSTS A STATEMENT. Each post's search compares its hash with every logo minted in its
-       window, so one statement over the whole feed grew with the feed: on 2026-10-16 it took 33 s
-       over the evening's posts and the service role's 30 s timeout failed every frame, freezing For
-       You from 20:13 UTC. Split, each statement is a slice of that and none nears the timeout. */
-    const out: PictureNeighbour[] = [];
-    for (let i = 0; i < posts.length; i += NEIGHBOUR_POSTS_PER_STATEMENT) {
-      out.push(...(await this.#neighbours(posts.slice(i, i + NEIGHBOUR_POSTS_PER_STATEMENT), allowanceMs, windowMs, maxDistance, perPost, version)));
-    }
-    return out;
-  }
-
-  async #neighbours(posts: readonly { readonly itemId: string; readonly uri: string; readonly postedAt: Millis }[], allowanceMs: number, windowMs: number, maxDistance: number, perPost: number, version: string): Promise<readonly PictureNeighbour[]> {
+    /* ★ THE LOGOS ARE READ ONCE AND COMPARED HERE, NOT IN SQL. Comparing in the database joined every
+       post with every logo minted in its window, a lookup per logo per post: on 2026-10-16 one
+       statement over the evening's posts took 33 s, and split ten posts a statement it crept back as
+       launches grew — by 2026-10-25, 86,000 coins in two days, ten posts spread over the feed's three
+       days took 39 s, the service role's 30 s timeout failed nearly every frame and For You froze from
+       07:00 UTC. The window's logos are one indexed read (109,000 in 3.4 s); the XOR and bit count of
+       a few hundred posts against them is a fraction of a second here. */
     if (posts.length === 0) return [];
     try {
-      const rows = await this.#db.query<{ item_id: string; address: string; distance: number }>(
-        `select p.item_id, n.address, n.distance
-           from unnest($1::text[], $2::text[], $3::timestamptz[]) as p(item_id, uri, posted_at)
-           join internal.image_hash ph on ph.uri = p.uri and ph.bits is not null and ph.version = $7
-           cross join lateral (
-                  select a.address, bit_count((ph.bits # ch.bits)::bit(64))::int as distance
-                    from public.asset a
-                    left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-                    join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $7
-                   where a.minted_at between p.posted_at - make_interval(secs => $4::double precision / 1000)
-                                         and p.posted_at + make_interval(secs => $5::double precision / 1000)
-                     and bit_count((ph.bits # ch.bits)::bit(64)) <= $6
-                   order by 2, a.minted_at
-                   limit $8
-                ) n`,
-        [posts.map((p) => p.itemId), posts.map((p) => p.uri), posts.map((p) => new Date(p.postedAt).toISOString()), allowanceMs, windowMs, maxDistance, version, perPost],
+      const own = await this.hashesOf([...new Set(posts.map((p) => p.uri))], version);
+      const asked = posts.flatMap((p) => {
+        const hex = own.get(p.uri);
+        return hex === undefined ? [] : [{ ...p, ...halves(hex) }];
+      });
+      if (asked.length === 0) return [];
+      const from = Math.min(...asked.map((p) => p.postedAt)) - allowanceMs;
+      const to = Math.max(...asked.map((p) => p.postedAt)) + windowMs;
+      const rows = await this.#db.query<{ address: string; minted_at: string | Date; bits: string }>(
+        `select a.address, a.minted_at, ch.bits::text as bits
+           from public.asset a
+           left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
+           join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
+          where a.minted_at between $1 and $2`,
+        [new Date(from).toISOString(), new Date(to).toISOString(), version],
       );
-      return rows.map((r) => ({ itemId: r.item_id, address: r.address, distance: Number(r.distance) }));
+      const logos = rows
+        .map((r) => ({ address: r.address, at: new Date(r.minted_at).getTime(), ...halves(fromBits(r.bits)) }))
+        .sort((a, b) => a.at - b.at || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0));
+      const out: PictureNeighbour[] = [];
+      for (const p of asked) {
+        const lo = p.postedAt - allowanceMs;
+        const hi = p.postedAt + windowMs;
+        const near: { address: string; at: number; distance: number }[] = [];
+        for (let i = firstAtOrAfter(logos, lo); i < logos.length && logos[i]!.at <= hi; i += 1) {
+          const l = logos[i]!;
+          const distance = popcount32((p.hi ^ l.hi) >>> 0) + popcount32((p.lo ^ l.lo) >>> 0);
+          if (distance <= maxDistance) near.push({ address: l.address, at: l.at, distance });
+        }
+        near.sort((a, b) => a.distance - b.distance || a.at - b.at);
+        for (const n of near.slice(0, perPost)) out.push({ itemId: p.itemId, address: n.address, distance: n.distance });
+      }
+      return out;
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
     }
   }
+}
+
+/** A stored hash's 16 hex digits as two unsigned 32-bit halves, for a bit count without BigInt in the loop. */
+function halves(hex: string): { readonly hi: number; readonly lo: number } {
+  return { hi: parseInt(hex.slice(0, 8), 16), lo: parseInt(hex.slice(8, 16), 16) };
+}
+
+function popcount32(x: number): number {
+  let v = x - ((x >>> 1) & 0x55555555);
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+/** The first logo minted at or after `at`, in a list sorted by mint time. */
+function firstAtOrAfter(logos: readonly { readonly at: number }[], at: number): number {
+  let lo = 0;
+  let hi = logos.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (logos[mid]!.at < at) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
