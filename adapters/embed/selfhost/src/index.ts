@@ -14,7 +14,12 @@
  * (0027, 0052, 0069, 0074, 0076). The 768 values are followed by 256 zeros. A zero tail changes no
  * length and no dot product, so a cosine between two padded vectors is exactly the cosine between
  * the model's own, and no migration rewrites five tables of the vendor's vectors to make room.
- * A model wider than 1,024 would need that migration; this one does not.
+ *
+ * ★ THE SECOND POST SPACE IS 1,536 WIDE AND STORED AS IT IS (E5_POST_SPACE: another words model's
+ * 768 values beside this model's picture's 768; services/embed/src/space.ts). It fits no 1,024
+ * column, so the three post-vector tables' columns hold any width from 0137 on, and a row's width is
+ * its space's: never padded, never cut. A port is built for ONE post space (`postSpace`), so the
+ * fill can embed into the next space while the policy still reads the old one.
  *
  * ★ $0 A CALL, STILL METERED. The service is a fixed monthly cost, not a per-call one, so each call
  * is recorded at $0 — the meter still counts the calls, which is how a stalled or runaway caller
@@ -43,6 +48,12 @@ export type { SelfEmbedClient, SelfEmbedClientConfig } from './client.ts';
 /** The representation's identity, as the service names it and policy reads it. */
 export const SPACE = 'siglip2-b16-224.768';
 export const POST_SPACE = `${SPACE}.post`;
+/** Another words model's vector beside this model's picture vector (services/embed space.ts). */
+export const E5_POST_SPACE = 'me5-base+siglip2-b16-224.1536.post';
+/** Its width, stored as is. */
+export const E5_POST_DIMENSIONS = 1536;
+/** The post spaces a port can be built for. */
+export const POST_SPACES: readonly string[] = [POST_SPACE, E5_POST_SPACE];
 /** The model's own width. */
 export const MODEL_DIMENSIONS = 768;
 /** The stored width: the model's values, then zeros (see the header). */
@@ -69,6 +80,8 @@ export interface SelfEmbedDeps {
   readonly meter: Meter;
   readonly now: () => Millis;
   readonly prices?: PriceBook;
+  /** The post space `embedPosts` writes in (one of POST_SPACES); POST_SPACE when absent. */
+  readonly postSpace?: string;
 }
 
 /** The model's unit vector, zero-padded to the stored width. Null if it is not the model's width. */
@@ -81,8 +94,14 @@ export function padded(values: Float32Array): Float32Array | null {
 
 export function selfEmbed(deps: SelfEmbedDeps): EmbedPort {
   const prices = deps.prices ?? PRICES;
+  const postSpace = deps.postSpace ?? POST_SPACE;
+  if (!POST_SPACES.includes(postSpace)) throw new Error(`no post space ${postSpace} in this adapter (${POST_SPACES.join(', ')})`);
 
+  /** `space`: what the vectors are tagged with; a call for E5_POST_SPACE asks the service for it by name. */
   async function run(inputs: readonly (EmbedInput | null)[], space: string): Promise<Metered<readonly (Embedding | null)[]>> {
+    const named = space === E5_POST_SPACE ? E5_POST_SPACE : undefined;
+    const expectPost = named ?? POST_SPACE;
+    const expectWidth = named === undefined ? MODEL_DIMENSIONS : E5_POST_DIMENSIONS;
     const at = deps.now();
     const out: (Embedding | null)[] = inputs.map(() => null);
     const spends = [];
@@ -94,12 +113,13 @@ export function selfEmbed(deps: SelfEmbedDeps): EmbedPort {
         prices,
         { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-item-returned', estUnits: batch.length, at },
         async () => {
-          const reply = await deps.client.embed(batch.map((b) => b.input));
+          const reply = await deps.client.embed(batch.map((b) => b.input), named);
           /* The guard the header describes: a vector from any other space is never believed. */
-          if (reply.space !== SPACE || reply.postSpace !== POST_SPACE || reply.dimensions !== MODEL_DIMENSIONS) {
-            throw new VendorUnavailable(VENDOR, ENDPOINT_LABEL, `answered in space ${reply.space}/${reply.dimensions}, expected ${SPACE}/${MODEL_DIMENSIONS}`);
+          if (reply.space !== SPACE || reply.postSpace !== expectPost || reply.dimensions !== expectWidth) {
+            throw new VendorUnavailable(VENDOR, ENDPOINT_LABEL, `answered in space ${reply.space}/${reply.postSpace}/${reply.dimensions}, expected ${SPACE}/${expectPost}/${expectWidth}`);
           }
           const embeddings = reply.vectors.map((values): Embedding | null => {
+            if (named !== undefined) return values === null || values.length !== E5_POST_DIMENSIONS ? null : { space, dimensions: E5_POST_DIMENSIONS, values };
             const v = values === null ? null : padded(values);
             return v === null ? null : { space, dimensions: DIMENSIONS, values: v };
           });
@@ -119,7 +139,7 @@ export function selfEmbed(deps: SelfEmbedDeps): EmbedPort {
   }
 
   return {
-    id: `embed:${VENDOR}/${SPACE}`,
+    id: postSpace === POST_SPACE ? `embed:${VENDOR}/${SPACE}` : `embed:${VENDOR}/${SPACE}+${postSpace}`,
     space: SPACE,
     dimensions: DIMENSIONS,
     maxBatch: MAX_BATCH,
@@ -128,7 +148,7 @@ export function selfEmbed(deps: SelfEmbedDeps): EmbedPort {
       return run(texts.map((text) => (text.trim() === '' ? null : { text })), SPACE);
     },
 
-    postSpace: POST_SPACE,
+    postSpace,
 
     /**
      * A post's words and picture as one vector. A picture the service cannot fetch costs the post
@@ -143,7 +163,7 @@ export function selfEmbed(deps: SelfEmbedDeps): EmbedPort {
           if (picture === null) return text === '' ? null : { text };
           return text === '' ? { imageUrl: picture } : { text, imageUrl: picture };
         }),
-        POST_SPACE,
+        postSpace,
       );
     },
 

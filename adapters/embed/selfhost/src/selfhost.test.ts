@@ -11,7 +11,7 @@ import type { Meter, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
 import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DIMENSIONS, httpClient, MODEL_DIMENSIONS, padded, POST_SPACE, readReply, selfEmbed, SPACE, type SelfEmbedClient } from './index.ts';
+import { DIMENSIONS, E5_POST_DIMENSIONS, E5_POST_SPACE, httpClient, MODEL_DIMENSIONS, padded, POST_SPACE, readReply, selfEmbed, SPACE, type SelfEmbedClient } from './index.ts';
 
 const budget = { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1_800_000_060_000 };
 const image = (uri: string): MediaRef => ({ kind: 'image', uri, width: null, height: null, durationMs: null });
@@ -35,9 +35,17 @@ const vec = (first: number): number[] => {
 };
 const reply = (vectors: (number[] | null)[], space = SPACE) => ({ model: 'm', space, postSpace: `${space}.post`, dimensions: MODEL_DIMENSIONS, vectors, pictures: vectors.map(() => 'read') });
 
-const client = (raw: unknown, sent: unknown[] = []): SelfEmbedClient => ({
-  embed: async (inputs) => (sent.push(inputs), readReply(raw, inputs.length)),
+const client = (raw: unknown, sent: unknown[] = [], asked: (string | undefined)[] = []): SelfEmbedClient => ({
+  embed: async (inputs, postSpace) => (sent.push(inputs), asked.push(postSpace), readReply(raw, inputs.length)),
 });
+
+const wideVec = (first: number): number[] => {
+  const v = new Array<number>(E5_POST_DIMENSIONS).fill(0);
+  v[0] = first;
+  v[E5_POST_DIMENSIONS - 1] = Math.sqrt(1 - first * first);
+  return v;
+};
+const wideReply = (vectors: (number[] | null)[], postSpace = E5_POST_SPACE, dimensions = E5_POST_DIMENSIONS) => ({ model: 'm', space: SPACE, postSpace, dimensions, vectors, pictures: vectors.map(() => 'read') });
 
 test('★ padded to 1,024 with zeros: same length, same cosine', () => {
   const a = Float32Array.from(vec(0.6));
@@ -101,4 +109,47 @@ test('★ the key travels in its header only; a restart is retried, a bad reques
   assert.ok(calls.every((call) => call.url === 'http://embed.example/embed' && call.key === 'k'.repeat(30)));
   await assert.rejects(c.embed([{ text: 'hi' }]), (e: unknown) => e instanceof VendorUnavailable && e.status === 400 && !e.message.includes('kkkk'));
   assert.equal(calls.length, 3, 'a 4xx is not retried');
+});
+
+test('★ a port built for the second post space asks for it by name and keeps its 1,536 values as they are', async () => {
+  const asked: (string | undefined)[] = [];
+  const port = selfEmbed({ client: client(wideReply([wideVec(0.6), null]), [], asked), meter: meter(), now: () => 1_800_000_000_000, postSpace: E5_POST_SPACE });
+  assert.equal(port.postSpace, E5_POST_SPACE);
+  assert.equal(port.space, SPACE, 'pictures stay in the picture space');
+  const got = await port.embedPosts!([{ text: 'deer', picture: 'https://img.example/a.jpg' }, { text: 'goats', picture: null }], budget);
+  assert.deepEqual(asked, [E5_POST_SPACE]);
+  assert.equal(got.value[0]?.space, E5_POST_SPACE);
+  assert.equal(got.value[0]?.dimensions, E5_POST_DIMENSIONS);
+  assert.equal(got.value[0]?.values.length, E5_POST_DIMENSIONS);
+  assert.ok(Math.abs((got.value[0]?.values[E5_POST_DIMENSIONS - 1] ?? 0) - 0.8) < 1e-6, 'not padded, not cut');
+  assert.equal(got.value[1], null);
+});
+
+test('★ the second space\'s port still embeds pictures in the picture space, asking for no post space', async () => {
+  const asked: (string | undefined)[] = [];
+  const port = selfEmbed({ client: client(reply([vec(0.6)]), [], asked), meter: meter(), now: () => 1_800_000_000_000, postSpace: E5_POST_SPACE });
+  const got = await port.embedMedia!([image('https://img.example/a.jpg')], budget);
+  assert.deepEqual(asked, [undefined]);
+  assert.equal(got.value[0]?.space, SPACE);
+  assert.equal(got.value[0]?.dimensions, DIMENSIONS);
+});
+
+test('★ a reply in the old post space, or the old width, is refused when the second was asked for', async () => {
+  const old = selfEmbed({ client: client(wideReply([wideVec(1)], POST_SPACE)), meter: meter(), now: () => 1_800_000_000_000, postSpace: E5_POST_SPACE });
+  await assert.rejects(old.embedPosts!([{ text: 'deer', picture: null }], budget), VendorUnavailable);
+  const narrow = selfEmbed({ client: client(reply([vec(1)])), meter: meter(), now: () => 1_800_000_000_000, postSpace: E5_POST_SPACE });
+  await assert.rejects(narrow.embedPosts!([{ text: 'deer', picture: null }], budget), VendorUnavailable);
+  assert.throws(() => selfEmbed({ client: client(reply([])), meter: meter(), now: () => 1_800_000_000_000, postSpace: 'made-up.post' }));
+});
+
+test('the client names the post space in the body only when one is asked for', async () => {
+  const bodies: unknown[] = [];
+  const fetchFn = (async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return Response.json(wideReply([wideVec(1)]));
+  }) as unknown as typeof globalThis.fetch;
+  const c = httpClient({ baseUrl: 'http://embed.example', secret: 'k'.repeat(30), fetch: fetchFn });
+  await c.embed([{ text: 'hi' }], E5_POST_SPACE);
+  await c.embed([{ text: 'hi' }]);
+  assert.deepEqual(bodies, [{ inputs: [{ text: 'hi' }], postSpace: E5_POST_SPACE }, { inputs: [{ text: 'hi' }] }]);
 });
