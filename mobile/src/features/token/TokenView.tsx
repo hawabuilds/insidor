@@ -50,7 +50,8 @@ import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
-import { BackIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
+import { BackIcon, CheckIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
+import { useCopied } from '../../shared/useCopied.ts';
 import { Comments } from '../comments/Comments.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultTimeframe } from './chart-data.ts';
@@ -164,13 +165,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const named = shownName(listed, facts.ticker, facts.name);
   const ticker = named.ticker ?? '—';
 
+  const { copied, copy: copyText } = useCopied();
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(facts.address);
-      toast('Address copied');
-    } catch {
-      toast('Could not copy', 'Select the address under Info instead.');
-    }
+    if (!(await copyText(facts.address))) toast('Could not copy', 'Select the address under Info instead.');
   };
 
   return (
@@ -201,9 +198,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       </div>
 
       <div className={styles['mintRow']}>
-        <span className={styles['mint']}>
+        <span className={`${styles['mint']} ${copied ? styles['copied'] : ''}`}>
           <span className={styles['mono']}>{shortAddress(facts.address, 5)}</span>
-          <button type="button" onClick={() => void copy()} aria-label="Copy mint address"><CopyIcon size={12} /></button>
+          <button type="button" onClick={() => void copy()} aria-label={copied ? 'Address copied' : 'Copy mint address'}>{copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}</button>
           <a href={`https://solscan.io/token/${facts.address}`} target="_blank" rel="noopener noreferrer" aria-label="View mint on the explorer"><ExternalIcon size={12} /></a>
         </span>
       </div>

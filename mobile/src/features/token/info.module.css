@@ -229,3 +229,14 @@
   font-size: 13px;
   font-weight: 700;
 }
+
+/* Copied (shared/useCopied.ts): the chip goes green and its icon a tick for a moment, where it was tapped. */
+.copied {
+  background: var(--up-wash);
+  color: var(--up);
+  transition: background 0.2s, color 0.2s;
+}
+
+.copied button {
+  color: var(--up);
+}
