@@ -1,6 +1,7 @@
 /**
  * The service's two routes: POST /embed (words, a picture, or both, as one unit vector each) and
- * GET /health.
+ * GET /health. A request names the post space it wants (`postSpace`, POST_SPACE when absent): the
+ * words-and-picture sum of POST_SPACE, or E5_POST_SPACE's second words model beside the picture.
  *
  * Separate from main.ts so the routes are tested with a stand-in encoder and a stand-in fetch:
  * the request shape, the secret, the caps and the per-input nulls are all decided here.
@@ -13,6 +14,9 @@
  * ★ THE SECRET IS COMPARED IN CONSTANT TIME AND NEVER LOGGED, nor are picture addresses (they are
  * signed and not ours to keep); the log carries counts by reason.
  *
+ * ★ AN UNKNOWN POST SPACE IS A 400, NEVER THE DEFAULT. A caller that asks for a space this build
+ * does not compute and gets POST_SPACE's vectors back would store them under the name it asked for.
+ *
  * What breaks if changed carelessly: the reply's `space` and `postSpace` are what the adapter
  * checks before it believes a vector. Sending vectors without them, or with a space this code did
  * not compute, removes the one guard against comparing two models' vectors.
@@ -23,8 +27,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { Encoder } from './model.ts';
 import { fetchPicture, type Lookup, type PictureLimits, type Unread } from './picture.ts';
-import { MODEL_DIMENSIONS, MODEL_ID, POST_SPACE, POST_TEXT_WEIGHT, SPACE } from './space.ts';
-import { combine } from './vectors.ts';
+import { E5_POST_DIMENSIONS, E5_POST_SPACE, E5_POST_TEXT_WEIGHT, MODEL_DIMENSIONS, MODEL_ID, POST_SPACE, POST_TEXT_WEIGHT, SPACE, WORDS_DIMENSIONS, WORDS_MODEL_ID } from './space.ts';
+import { beside, combine } from './vectors.ts';
+
+/** The post spaces a request may name. */
+export const POST_SPACES = [POST_SPACE, E5_POST_SPACE] as const;
+export type PostSpace = (typeof POST_SPACES)[number];
 
 export interface EmbedInput {
   readonly text?: string;
@@ -47,6 +55,8 @@ export interface EmbedReply {
 export interface ServiceDeps {
   /** Null while the model is still loading: /embed answers 503, /health says so. */
   readonly encoder: () => Encoder | null;
+  /** False until the second words model has reproduced its probe (space.ts WORDS_PROBE): E5_POST_SPACE answers 503. */
+  readonly wordsAgree: () => boolean;
   readonly secret: string;
   readonly pictures: PictureLimits;
   readonly maxInputs: number;
@@ -78,6 +88,15 @@ export function readInputs(raw: unknown, maxInputs: number, maxTextChars: number
   });
 }
 
+/** The post space the body asks for: POST_SPACE when it names none; an unknown one is refused. Exported for the tests. */
+export function readPostSpace(raw: unknown): PostSpace {
+  const asked = typeof raw === 'object' && raw !== null ? (raw as { postSpace?: unknown }).postSpace : undefined;
+  if (asked === undefined) return POST_SPACE;
+  const known = POST_SPACES.find((s) => s === asked);
+  if (known === undefined) throw new BadRequest(`postSpace must be one of ${POST_SPACES.join(', ')}`);
+  return known;
+}
+
 /** Run `work` over `items` with at most `limit` running at once, results in input order. */
 async function bounded<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -95,7 +114,8 @@ async function bounded<T, R>(items: readonly T[], limit: number, work: (item: T)
 
 const round = (v: Float32Array): number[] => Array.from(v, (x) => Math.round(x * 1e7) / 1e7);
 
-export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, deps: ServiceDeps): Promise<EmbedReply> {
+export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, deps: ServiceDeps, postSpace: PostSpace = POST_SPACE): Promise<EmbedReply> {
+  const e5 = postSpace === E5_POST_SPACE;
   const unread: Partial<Record<Unread | 'decode', number>> = {};
   const pictureVectors = await bounded(inputs, deps.fetchConcurrency, async (input) => {
     if (input.imageUrl === undefined) return null;
@@ -110,22 +130,24 @@ export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, dep
   });
   const texted = inputs.flatMap((input, i) => (input.text === undefined ? [] : [{ i, text: input.text }]));
   const textVectors: (Float32Array | null)[] = inputs.map(() => null);
-  const read = await encoder.embedTexts(texted.map((t) => t.text));
+  const asked = texted.map((t) => t.text);
+  const read = await (e5 ? encoder.embedWords(asked) : encoder.embedTexts(asked));
   texted.forEach((t, j) => (textVectors[t.i] = read[j] ?? null));
 
   const vectors = inputs.map((input, i) => {
     const text = textVectors[i] ?? null;
     const picture = pictureVectors[i] ?? null;
+    if (e5) return beside(text, picture, WORDS_DIMENSIONS, MODEL_DIMENSIONS, E5_POST_TEXT_WEIGHT);
     if (text !== null && picture !== null) return combine(text, picture, POST_TEXT_WEIGHT);
     return text ?? picture;
   });
   const pictures = inputs.map((input, i): PictureState => (input.imageUrl === undefined ? 'none' : pictureVectors[i] === null ? 'unread' : 'read'));
-  deps.log({ msg: 'embedded', inputs: inputs.length, texts: texted.length, pictures: pictures.filter((p) => p !== 'none').length, unread });
+  deps.log({ msg: 'embedded', postSpace, inputs: inputs.length, texts: texted.length, pictures: pictures.filter((p) => p !== 'none').length, unread });
   return {
-    model: MODEL_ID,
+    model: e5 ? `${WORDS_MODEL_ID}+${MODEL_ID}` : MODEL_ID,
     space: SPACE,
-    postSpace: POST_SPACE,
-    dimensions: MODEL_DIMENSIONS,
+    postSpace,
+    dimensions: e5 ? E5_POST_DIMENSIONS : MODEL_DIMENSIONS,
     vectors: vectors.map((v) => (v === null ? null : round(v))),
     pictures,
   };
@@ -164,7 +186,7 @@ export function handler(deps: ServiceDeps): (req: IncomingMessage, res: ServerRe
       const path = (req.url ?? '/').split('?')[0];
       if (req.method === 'GET' && path === '/health') {
         const loaded = deps.encoder() !== null;
-        send(res, loaded ? 200 : 503, { ok: loaded, model: MODEL_ID, space: SPACE, postSpace: POST_SPACE, rssMB: Math.round(deps.rssBytes() / 1e6) });
+        send(res, loaded ? 200 : 503, { ok: loaded, model: MODEL_ID, space: SPACE, postSpace: POST_SPACE, postSpaces: loaded && deps.wordsAgree() ? POST_SPACES : [POST_SPACE], wordsModel: WORDS_MODEL_ID, rssMB: Math.round(deps.rssBytes() / 1e6) });
         return;
       }
       if (path !== '/embed') return send(res, 404, { error: 'not found' });
@@ -174,13 +196,17 @@ export function handler(deps: ServiceDeps): (req: IncomingMessage, res: ServerRe
       const encoder = deps.encoder();
       if (encoder === null) return send(res, 503, { error: 'model loading' });
       let inputs: EmbedInput[];
+      let postSpace: PostSpace;
       try {
-        inputs = readInputs(JSON.parse(await readBody(req, deps.maxBodyBytes)), deps.maxInputs, deps.maxTextChars);
+        const body: unknown = JSON.parse(await readBody(req, deps.maxBodyBytes));
+        inputs = readInputs(body, deps.maxInputs, deps.maxTextChars);
+        postSpace = readPostSpace(body);
       } catch (error) {
         return send(res, 400, { error: error instanceof BadRequest ? error.message : 'body is not JSON' });
       }
+      if (postSpace === E5_POST_SPACE && !deps.wordsAgree()) return send(res, 503, { error: 'words model has not reproduced its probe' });
       const started = Date.now();
-      const reply = await embed(inputs, encoder, deps);
+      const reply = await embed(inputs, encoder, deps, postSpace);
       deps.log({ msg: 'request', inputs: inputs.length, ms: Date.now() - started });
       send(res, 200, reply);
     })().catch((error: unknown) => {

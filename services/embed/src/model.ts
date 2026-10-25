@@ -1,6 +1,6 @@
 /**
- * The model, loaded once: the words encoder and the picture encoder of space.ts's model, run on
- * the CPU through ONNX Runtime, one call at a time.
+ * The models, loaded once: the words encoder and the picture encoder of space.ts's model, and the
+ * second words model of E5_POST_SPACE, run on the CPU through ONNX Runtime, one call at a time.
  *
  * Its own file so that everything else in this service is tested against a stand-in `Encoder`
  * with no model, no download and no native code, and so that the repository's `pnpm check` can
@@ -12,12 +12,19 @@
  * at once only fight over them and double the working memory. Requests queue on `serial` instead,
  * and the picture fetches — the slow part — run concurrently outside it (server.ts).
  *
+ * ★ BOTH WORDS MODELS AT BOOT, NOT ON FIRST USE. Railway sizes the box on the resident memory once
+ * loaded; a model loaded on the first request of the other space would show its memory only when
+ * that request arrives — under load, in the middle of a fill — instead of in the boot log.
+ *
  * What breaks if changed carelessly: the text is lower-cased and padded to TEXT_TOKENS because
  * that is how the model was trained; vectors made without it are a different space in all but
- * name. The pooled output is the model's own projection head — not the token states.
+ * name. The pooled output is the model's own projection head — not the token states. The second
+ * words model is the opposite on both counts, also as it was trained: "query: " before the text, no
+ * lower-casing, padding only to the batch's longest, and the mean of the token states under the
+ * attention mask (it has no projection head).
  */
 
-import { MODEL_ID, TEXT_DTYPE, TEXT_TOKENS, VISION_DTYPE } from './space.ts';
+import { MODEL_ID, TEXT_DTYPE, TEXT_TOKENS, VISION_DTYPE, WORDS_DTYPE, WORDS_MODEL_ID, WORDS_PREFIX, WORDS_TOKENS } from './space.ts';
 import { unit } from './vectors.ts';
 
 export interface Encoder {
@@ -25,22 +32,41 @@ export interface Encoder {
   embedTexts(texts: readonly string[]): Promise<readonly (Float32Array | null)[]>;
   /** One unit vector for one encoded picture (JPEG, PNG, WebP, GIF's first frame), or null. */
   embedPicture(bytes: Uint8Array): Promise<Float32Array | null>;
+  /** One unit vector per text from the second words model (E5_POST_SPACE's words), in order. */
+  embedWords(texts: readonly string[]): Promise<readonly (Float32Array | null)[]>;
 }
 
 /* The slice of the runtime's surface used here. Typed locally on purpose (see the header). */
-interface Tensor { readonly data: ArrayLike<number>; readonly dims: readonly number[] }
+interface Tensor { readonly data: ArrayLike<number | bigint>; readonly dims: readonly number[] }
 interface Runtime {
   env: { cacheDir: string; allowRemoteModels: boolean };
   AutoTokenizer: { from_pretrained(id: string): Promise<(texts: string[], o: object) => object> };
   AutoImageProcessor: { from_pretrained(id: string): Promise<(image: unknown) => Promise<object>> };
   SiglipTextModel: { from_pretrained(id: string, o: object): Promise<(inputs: object) => Promise<{ pooler_output: Tensor }>> };
   SiglipVisionModel: { from_pretrained(id: string, o: object): Promise<(inputs: object) => Promise<{ pooler_output: Tensor }>> };
+  AutoModel: { from_pretrained(id: string, o: object): Promise<(inputs: object) => Promise<{ last_hidden_state: Tensor }>> };
   RawImage: { fromBlob(blob: Blob): Promise<unknown> };
 }
 
 function rows(t: Tensor): Float32Array[] {
   const [n = 0, width = 0] = t.dims;
   return Array.from({ length: n }, (_, i) => Float32Array.from(Array.prototype.slice.call(t.data, i * width, (i + 1) * width) as number[]));
+}
+
+/** The mean of each text's token states where the attention mask is 1. Exported for the tests. */
+export function meanPool(states: Tensor, mask: Tensor): Float32Array[] {
+  const [n = 0, length = 0, width = 0] = states.dims;
+  return Array.from({ length: n }, (_, i) => {
+    const v = new Float32Array(width);
+    let count = 0;
+    for (let j = 0; j < length; j += 1) {
+      if (Number(mask.data[i * length + j]) === 0) continue;
+      count += 1;
+      const at = (i * length + j) * width;
+      for (let k = 0; k < width; k += 1) v[k] = (v[k] ?? 0) + Number(states.data[at + k]);
+    }
+    return count === 0 ? v : v.map((x) => x / count);
+  });
 }
 
 export interface LoadOptions {
@@ -59,6 +85,8 @@ export async function loadEncoder(options: LoadOptions): Promise<Encoder> {
   const processor = await rt.AutoImageProcessor.from_pretrained(MODEL_ID);
   const textModel = await rt.SiglipTextModel.from_pretrained(MODEL_ID, { dtype: TEXT_DTYPE });
   const visionModel = await rt.SiglipVisionModel.from_pretrained(MODEL_ID, { dtype: VISION_DTYPE });
+  const wordsTokenizer = await rt.AutoTokenizer.from_pretrained(WORDS_MODEL_ID);
+  const wordsModel = await rt.AutoModel.from_pretrained(WORDS_MODEL_ID, { dtype: WORDS_DTYPE });
 
   let serial: Promise<unknown> = Promise.resolve();
   const one = <T>(work: () => Promise<T>): Promise<T> => {
@@ -74,6 +102,13 @@ export async function loadEncoder(options: LoadOptions): Promise<Encoder> {
         const inputs = tokenizer(texts.map((t) => t.toLowerCase()), { padding: 'max_length', truncation: true, max_length: TEXT_TOKENS });
         const { pooler_output } = await textModel(inputs);
         return rows(pooler_output).map(unit);
+      }),
+    embedWords: (texts) =>
+      one(async () => {
+        if (texts.length === 0) return [];
+        const inputs = wordsTokenizer(texts.map((t) => WORDS_PREFIX + t), { padding: true, truncation: true, max_length: WORDS_TOKENS }) as { attention_mask: Tensor };
+        const { last_hidden_state } = await wordsModel(inputs);
+        return meanPool(last_hidden_state, inputs.attention_mask).map(unit);
       }),
     embedPicture: async (bytes) => {
       let pixels: object;
