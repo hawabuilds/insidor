@@ -202,8 +202,9 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
   const rest = useMemo(() => newestFirst(story, pinned?.post.evidenceId ?? null), [story, pinned]);
   const [shownCount, setShownCount] = useState(PAGE);
   const visible = rest.slice(0, shownCount);
-  const cards = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
+  const { cards, faces } = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
   const pinnedCard = pinned === null ? undefined : cards.get(pinned.post.evidenceId);
+  const pinnedFace = pinned === null ? undefined : faces.get(pinned.post.evidenceId);
   const started = startedByHandle(story, pinned?.post ?? null);
   /* Create from the narrative's starting post, as For You's popup does from its post (the owner, 2026-10-24). */
   const create = () => onCreate(story, pinned === null ? undefined : { link: pinned.post.permalink, postId: pinned.post.evidenceId });
@@ -212,7 +213,7 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
   const owner = useIsOwner();
   const seen = useSeenOnScreen('narrative', owner);
   const row = (e: Evidence) => (
-    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} now={now} onOpen={setOpen} rowRef={owner ? seen(e.evidenceId) : undefined} />
+    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} face={faces.get(e.evidenceId)} now={now} onOpen={setOpen} rowRef={owner ? seen(e.evidenceId) : undefined} />
   );
 
   return (
@@ -262,7 +263,7 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
             <span className={styles['startedBy']}>
               Started by
               {/* Every @handle with its picture (the owner, 2026-10-21). */}
-              <Avatar name={started.replace(/^@/, '')} seed={started} src={pinnedCard?.authorPictureUrl ?? null} file={pinnedCard?.authorPictureFile ?? null} size={20} />
+              <Avatar name={started.replace(/^@/, '')} seed={started} src={pinnedCard?.authorPictureUrl ?? pinnedFace?.url ?? null} file={pinnedCard?.authorPictureFile ?? pinnedFace?.file ?? null} size={20} />
               <b>{started}</b>
             </span>
           ) : null}
@@ -298,7 +299,7 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
 }
 
 /** One post row: thumbnail with its site's badge, a line of text, handle and age, views and the last hour. */
-function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: Story; card: RisingPost | undefined; now: number; onOpen: (id: string) => void; rowRef?: ((el: Element | null) => void) | undefined }) {
+function PostRow({ e, story, card, face, now, onOpen, rowRef }: { e: Evidence; story: Story; card: RisingPost | undefined; face: Face | undefined; now: number; onOpen: (id: string) => void; rowRef?: ((el: Element | null) => void) | undefined }) {
   const platform = platformOf(e.sourceLabel);
   const pv = story.postViews?.get(e.evidenceId) ?? null;
   const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
@@ -314,7 +315,7 @@ function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: 
         <span className={styles['rowLine']}>{e.excerpt}</span>
         <span className={styles['rowBy']}>
           {/* Every @handle with its picture (the owner, 2026-10-21): the stored copy first, then the link, then the letter. */}
-          <Avatar name={e.authorLabel.replace(/^@/, '')} seed={e.authorLabel} src={card?.authorPictureUrl ?? null} file={card?.authorPictureFile ?? null} size={18} />
+          <Avatar name={e.authorLabel.replace(/^@/, '')} seed={e.authorLabel} src={card?.authorPictureUrl ?? face?.url ?? null} file={card?.authorPictureFile ?? face?.file ?? null} size={18} />
           <span className={styles['rowHandle']}>
             {e.authorLabel}
             {age.kind === 'value' ? ` ${age.text}` : ''}
@@ -333,10 +334,18 @@ function PostRow({ e, story, card, now, onOpen, rowRef }: { e: Evidence; story: 
  * The feed cards of the rows on screen: the sheet's, and for the rows past it, asked for by id a
  * screenful at a time (`fetchStoryPosts`). A row whose card never comes opens its post where it lives.
  */
-function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evidence[]): ReadonlyMap<string, RisingPost> {
+/** A listed post's account picture, from the sheet whether or not a feed holds the post. */
+export interface Face {
+  readonly url: string | null;
+  readonly file: string | null;
+}
+
+function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evidence[]): { readonly cards: ReadonlyMap<string, RisingPost>; readonly faces: ReadonlyMap<string, Face> } {
   const [more, setMore] = useState<ReadonlyMap<string, RisingPost>>(new Map());
+  const [moreFaces, setMoreFaces] = useState<ReadonlyMap<string, Face>>(new Map());
   const asked = useRef(new Set<string>());
   const fromSheet = useMemo(() => new Map((sheet?.members ?? []).flatMap((m) => (m.post === null ? [] : [[m.id, m.post] as const]))), [sheet]);
+  const facesFromSheet = useMemo(() => new Map((sheet?.members ?? []).map((m) => [m.id, { url: m.authorPictureUrl, file: m.authorPictureFile }] as const)), [sheet]);
   const carried = useMemo(() => new Set((sheet?.members ?? []).map((m) => m.id)), [sheet]);
   const want = sheet === null ? [] : rows.map((e) => e.evidenceId).filter((id) => !carried.has(id) && !asked.current.has(id));
   const key = want.join(',');
@@ -346,11 +355,16 @@ function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evid
     for (const id of ask) asked.current.add(id);
     /* Not aborted when the ids change: marking them asked changes them, and the answer is still wanted. */
     fetchStoryPosts(storyId, ask)
-      .then((ms) => setMore((m) => new Map([...m, ...ms.flatMap((x) => (x.post === null ? [] : [[x.id, x.post] as const]))])))
+      .then((ms) => {
+        setMore((m) => new Map([...m, ...ms.flatMap((x) => (x.post === null ? [] : [[x.id, x.post] as const]))]));
+        setMoreFaces((f) => new Map([...f, ...ms.map((x) => [x.id, { url: x.authorPictureUrl, file: x.authorPictureFile }] as const)]));
+      })
       .catch(() => undefined);
     /* Keyed on the ids asked for, not the array: a new array of the same ids asks nothing new. */
   }, [storyId, key]);
-  return useMemo(() => new Map([...fromSheet, ...more]), [fromSheet, more]);
+  const cards = useMemo(() => new Map([...fromSheet, ...more]), [fromSheet, more]);
+  const faces = useMemo(() => new Map([...facesFromSheet, ...moreFaces]), [facesFromSheet, moreFaces]);
+  return { cards, faces };
 }
 
 /** A ref for the list's end: `onEnd` each time it comes into view (the next screenful). */

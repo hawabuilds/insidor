@@ -15,6 +15,7 @@
 
 import { instant, pendingInstant, type Instant } from '../format/measure.ts';
 import { assertNoInternalVocabulary, decodeRisingPost, WireShapeError } from './decode.ts';
+import { posterPicFile } from '../poster-pic.ts';
 import { coinOf, type SheetCoin, type ViewReading } from './post-sheet.ts';
 import type { RisingPost } from './wire/rising.ts';
 
@@ -25,6 +26,9 @@ export interface StoryMember {
   /** The feed's card for the post; null when no feed holds it. */
   readonly post: RisingPost | null;
   readonly views: readonly ViewReading[];
+  /** The account's picture whether or not a feed holds the post: its handle's face on the page. */
+  readonly authorPictureUrl: string | null;
+  readonly authorPictureFile: string | null;
 }
 
 export interface StorySheet {
@@ -63,7 +67,8 @@ export function decodeStorySheet(raw: unknown, path = '$'): StorySheet {
       const atMs = num(q['atMs']);
       return atMs === null ? [] : [{ atMs, value: num(q['value']) }];
     });
-    return [{ id, postedAt: at === null ? pendingInstant('not_reported') : instant(at), post, views: views.sort((a, b) => a.atMs - b.atMs) }];
+    const pictureUrl = typeof r['authorPictureUrl'] === 'string' && r['authorPictureUrl'].startsWith('https://') ? r['authorPictureUrl'] : null;
+    return [{ id, postedAt: at === null ? pendingInstant('not_reported') : instant(at), post, views: views.sort((a, b) => a.atMs - b.atMs), authorPictureUrl: pictureUrl, authorPictureFile: posterPicFile(r['authorPictureFile']) }];
   });
   return {
     foundAt: (() => {

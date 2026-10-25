@@ -40,10 +40,26 @@ test('★ a listed post with no projected readings stays, with no readings and n
   const body = JSON.parse((await s.story('st_1')).body);
   assert.deepEqual(body.members.map((m: { itemId: string }) => m.itemId), ['x:1', 'x:2']);
   assert.deepEqual(body.members[0].views, [{ atMs: 200, value: 50 }, { atMs: 300, value: null }]);
-  assert.deepEqual(body.members[1], { itemId: 'x:2', postedAt: { at: null, why: 'not_reported' }, post: null, views: [] });
+  assert.deepEqual(body.members[1], { itemId: 'x:2', postedAt: { at: null, why: 'not_reported' }, authorPictureUrl: null, authorPictureFile: null, post: null, views: [] });
   assert.equal(body.more, false);
   assert.deepEqual(body.foundAt, { at: 150 }, 'found is when the narrative was first grouped');
   assert.equal(seen.find((q) => q[0] === STORY_MEMBERS_SQL)?.[1]?.toString(), `st_1,${MEMBERS_MAX}`, 'the bound travels as a parameter');
+});
+
+test('★ every listed post carries its account\'s picture, card or not; a link that is not https and a copy that is not ours are dropped', async () => {
+  const s = sheet({
+    [STORY_MEMBERS_SQL]: [
+      { item_id: 'x:1', posted_at: 100, post: null, face: { url: 'https://pbs.twimg.com/profile_images/1/a.jpg', copy: '0123456789abcdef0123456789abcdef' }, listed: 3, coins: ONE },
+      { item_id: 'x:2', posted_at: 100, post: null, face: { url: 'javascript:alert(1)', copy: '../etc' }, listed: 3, coins: ONE },
+      { item_id: 'x:3', posted_at: 100, post: null, face: null, listed: 3, coins: ONE },
+    ],
+  }, new Map(), []);
+  const body = JSON.parse((await s.story('st_1')).body);
+  assert.deepEqual(body.members.map((m: { authorPictureUrl: string | null; authorPictureFile: string | null }) => [m.authorPictureUrl, m.authorPictureFile]), [
+    ['https://pbs.twimg.com/profile_images/1/a.jpg', '0123456789abcdef0123456789abcdef'],
+    [null, null],
+    [null, null],
+  ]);
 });
 
 test('the narrative\'s own coin comes first, then the other coins by market cap', async () => {
