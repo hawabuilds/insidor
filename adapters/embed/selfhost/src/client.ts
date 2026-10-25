@@ -36,7 +36,8 @@ export interface EmbedReply {
 }
 
 export interface SelfEmbedClient {
-  embed(inputs: readonly EmbedInput[]): Promise<EmbedReply>;
+  /** `postSpace`: the post space to compute words-and-picture inputs in; absent, the service's default. */
+  embed(inputs: readonly EmbedInput[], postSpace?: string): Promise<EmbedReply>;
 }
 
 export interface SelfEmbedClientConfig {
@@ -81,13 +82,13 @@ export function httpClient(config: SelfEmbedClientConfig): SelfEmbedClient {
   const sleep = config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const url = `${config.baseUrl.replace(/\/+$/, '')}/embed`;
 
-  async function once(inputs: readonly EmbedInput[]): Promise<{ readonly reply: EmbedReply } | { readonly retry: VendorUnavailable }> {
+  async function once(inputs: readonly EmbedInput[], postSpace: string | undefined): Promise<{ readonly reply: EmbedReply } | { readonly retry: VendorUnavailable }> {
     let response: Response;
     try {
       response = await config.fetch(url, {
         method: 'POST',
         headers: { 'x-embed-key': config.secret, 'content-type': 'application/json' },
-        body: JSON.stringify({ inputs }),
+        body: JSON.stringify(postSpace === undefined ? { inputs } : { inputs, postSpace }),
         signal: AbortSignal.timeout(config.timeoutMs ?? 60_000),
       });
     } catch (error) {
@@ -111,9 +112,9 @@ export function httpClient(config: SelfEmbedClientConfig): SelfEmbedClient {
   }
 
   return {
-    async embed(inputs) {
+    async embed(inputs, postSpace) {
       for (let attempt = 0; ; attempt += 1) {
-        const got = await once(inputs);
+        const got = await once(inputs, postSpace);
         if ('reply' in got) return got.reply;
         const wait = delays[attempt];
         if (wait === undefined) throw got.retry;
