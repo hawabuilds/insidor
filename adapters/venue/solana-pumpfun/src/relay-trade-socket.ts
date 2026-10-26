@@ -48,6 +48,78 @@ export interface RelayTradeSocketOptions {
   readonly open: OpenSocket;
   readonly schedule: (fn: () => void, ms: number) => () => void;
   readonly note: (msg: string, fields: Readonly<Record<string, unknown>>) => void;
+  /** ★ THE LIVE FEED (live.ts in chainwatch): every trade of a coin someone has open, as it lands, and the SOL price. */
+  readonly live?: LiveHooks;
+}
+
+/** One trade as it lands, for the screens: facts of the trade, never anything of the rule. */
+export interface LiveTick {
+  readonly coin: string;
+  readonly signature: string;
+  readonly side: 'buy' | 'sell';
+  /** In the quote token (SOL for nearly every launchpad coin). */
+  readonly quoteAmount: number;
+  readonly tokens: number;
+  readonly trader: string;
+  /** The coin's market cap right after the trade, in the quote token; null when the relay gave none. */
+  readonly capQuote: number | null;
+  /** The coin's price in the quote token right after the trade; null when the relay gave none. */
+  readonly priceQuote: number | null;
+  readonly quoteMint: string;
+  /** The pool it traded in ("pump" on the curve, another after it graduated). */
+  readonly pool: string;
+  /** The chain's time of the trade, ms. */
+  readonly atMs: number;
+  /** When it reached us, ms. */
+  readonly seenAtMs: number;
+}
+
+export interface LiveHooks {
+  /** Whether anyone has this coin open now: only these frames are parsed for the live feed. */
+  readonly wants: (coin: string) => boolean;
+  readonly onTick: (t: LiveTick) => void;
+  /** SOL in dollars, from the relay's own SOL and USDC trades. */
+  readonly onSolUsd: (usd: number, atMs: number) => void;
+}
+
+/** The stablecoin and wrapped SOL, as the relay names them: their trades give SOL's dollar price. */
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+/** How often the SOL price is sampled from its trades: plenty for a price that moves in cents. */
+const SOL_PRICE_EVERY_MS = 2_000;
+
+/** Every leg of a trade frame as live ticks; empty for anything that is not a trade. Pure. */
+export function liveTicksOf(frame: Record<string, unknown>, seenAtMs: number): LiveTick[] {
+  const action = frame['action'];
+  if (action !== 'buy' && action !== 'sell' && action !== 'create') return [];
+  const coin = str(frame['mint']);
+  const signature = str(frame['signature']);
+  const quoteMint = str(frame['quoteMint']);
+  const ts = num(frame['timestamp']);
+  if (coin === null || signature === null || quoteMint === null || ts === null || !Array.isArray(frame['breakdown'])) return [];
+  const capQuote = num(frame['marketCapQuote']);
+  const priceQuote = num(frame['price']);
+  const pool = str(frame['pool']) ?? '';
+  const out: LiveTick[] = [];
+  for (const leg of frame['breakdown'] as unknown[]) {
+    if (leg === null || typeof leg !== 'object') continue;
+    const l = leg as Record<string, unknown>;
+    const side = l['action'];
+    const trader = str(l['trader']);
+    const quoteAmount = num(l['quoteAmount']);
+    const tokens = num(l['tokenAmount']);
+    if ((side !== 'buy' && side !== 'sell') || trader === null || quoteAmount === null || tokens === null) continue;
+    out.push({ coin, signature, side, quoteAmount, tokens, trader, capQuote: capQuote !== null && capQuote > 0 ? capQuote : null, priceQuote: priceQuote !== null && priceQuote > 0 ? priceQuote : null, quoteMint, pool, atMs: ts, seenAtMs });
+  }
+  return out;
+}
+
+/** SOL's dollar price from a SOL and USDC trade frame, or null. Pure. */
+export function solUsdOf(frame: Record<string, unknown>): number | null {
+  const price = num(frame['price']);
+  if (price === null || price <= 0) return null;
+  if (frame['mint'] === USDC && frame['quoteMint'] === WRAPPED_SOL) return 1 / price;
+  if (frame['mint'] === WRAPPED_SOL && frame['quoteMint'] === USDC) return price;
+  return null;
 }
 
 /** The SOL the venue's curves are priced in, as the relay names it. */
@@ -173,12 +245,37 @@ export function createRelayTradeSocket(opts: RelayTradeSocketOptions): TradeSock
     for (const coin of wanted) subscribed.push({ coin, atMs });
   };
 
+  let solSampledAt = 0;
   const handle = (data: string): void => {
     const seenAt = opts.now();
     lastFrameAt = seenAt;
     if (liveAt !== null && seenAt - liveAt >= opts.healthyAfterMs) attempt = 0;
     const coin = firstMint(data);
-    if (coin === null || !wanted.has(coin)) return;
+    if (coin === null) return;
+    const live = opts.live;
+    /* ★ The live feed and the SOL price: parsed only for a coin someone has open, and SOL's pairs every few seconds. */
+    if (live !== undefined) {
+      const priceFrame = (coin === USDC || coin === WRAPPED_SOL) && seenAt - solSampledAt >= SOL_PRICE_EVERY_MS;
+      if (priceFrame || live.wants(coin)) {
+        let f: Record<string, unknown> | null = null;
+        try {
+          f = JSON.parse(data) as Record<string, unknown>;
+        } catch {
+          f = null;
+        }
+        if (f !== null) {
+          if (priceFrame) {
+            const usd = solUsdOf(f);
+            if (usd !== null) {
+              solSampledAt = seenAt;
+              live.onSolUsd(usd, seenAt);
+            }
+          }
+          if (live.wants(coin)) for (const t of liveTicksOf(f, seenAt)) live.onTick(t);
+        }
+      }
+    }
+    if (!wanted.has(coin)) return;
     let frame: Record<string, unknown>;
     try {
       frame = JSON.parse(data) as Record<string, unknown>;

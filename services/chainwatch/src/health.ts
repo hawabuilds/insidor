@@ -11,7 +11,7 @@
  * about this process is not "is it up" but "did we miss anything".
  */
 
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Millis } from '@insidor/contracts';
 
 import type { Gap } from './coverage.ts';
@@ -47,8 +47,11 @@ export function startHealthServer(
   toleranceMs: number,
   now: () => Millis,
   log: Logger,
+  /** Another handler on the same private port (the live feed, live.ts); true when it answered. */
+  extra?: (req: IncomingMessage, res: ServerResponse) => boolean,
 ): Server {
   const server = createServer((req, res) => {
+    if (extra !== undefined && extra(req, res)) return;
     const path = (req.url ?? '/').split('?')[0];
     if (path !== '/health' && path !== '/') {
       res.writeHead(404, { 'content-type': 'application/json' });

@@ -88,6 +88,7 @@ import { NotImplemented } from './not-implemented.ts';
 import type { StageRunRecorder } from './run-record.ts';
 import { createStreamFeed } from './stream-feed.ts';
 import { createTradeWatch, type ChainPort, type TradeWatch } from './trade-watch.ts';
+import { createLiveHub, type LiveHub } from './live.ts';
 
 export interface Runtime {
   readonly feed: MintFeed;
@@ -98,6 +99,8 @@ export interface Runtime {
   readonly stageRuns: StageRunRecorder;
   /** The trade feed (trade-watch.ts) and how to stop its socket. Null when off or keyless. */
   readonly trades: { readonly watch: TradeWatch; readonly stop: () => void } | null;
+  /** The live feed (live.ts): every trade of a coin someone has open, on the relay only. */
+  readonly live: LiveHub;
 }
 
 /**
@@ -302,7 +305,7 @@ const TRADE_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=';
  * The trade feed, and the third place this service names a vendor. Off when the policy says so
  * or no key is set: every watched coin then stays unmeasured, and the rule judges on readings.
  */
-function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trades'] {
+function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub): Runtime['trades'] {
   const tf = DEFAULT_POLICY.oneCoin.tradeFeed;
   const tradeLog = log.child({ part: 'trade-feed' });
   if (!tf.on || cfg.tradeFeedKey === null) {
@@ -328,6 +331,7 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trade
           open: openWebSocket,
           schedule,
           note: (msg, fields) => tradeLog.warn(msg, fields),
+          live: live.hooks,
         })
       : createTradeSocket({
           url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
@@ -385,6 +389,7 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trade
 }
 
 function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
+  const live = createLiveHub();
   const assets = new PgAssetRepo(db);
 
   /*
@@ -407,7 +412,8 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   return {
     feed: createFeed(cfg, log),
     listing: buildListing(cfg, assets, log),
-    trades: buildTrades(cfg, db, log),
+    trades: buildTrades(cfg, db, log, live),
+    live,
 
     sink: {
       // A MintEvent already carries a whole Asset — the feed's job is to have
