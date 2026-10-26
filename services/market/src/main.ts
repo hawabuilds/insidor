@@ -69,6 +69,9 @@ const DEFAULT_BASE_URL = 'https://api.dexscreener.com';
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/** The tape's coins read every pass (db.ts `tapeCoins`): two strips' worth, the day's busiest first. */
+const TAPE_READS_PER_PASS = 24;
+
 /**
  * The aggregator's pace (trade-route.ts says why): sent back to back it answered five quotes and
  * refused the sixth on every pass. One every 1.2 s keeps a pass under 50 a minute, so the bound
@@ -207,6 +210,8 @@ async function main(): Promise<void> {
         : null,
       /* The tied candidates in their first hour, read every pass for the early pick (db.ts). */
       firstHour,
+      /* The tape's coins of viral posts, the day's busiest, read every pass so none drops off unread (db.ts). */
+      TAPE_READS_PER_PASS,
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,
