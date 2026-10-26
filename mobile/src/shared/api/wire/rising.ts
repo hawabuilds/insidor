@@ -90,14 +90,14 @@ export interface SharedBy {
   readonly authorPictureUrl: string | null;
   readonly authorPictureFile: string | null;
   /** 'quoted': a quote of the post; 'samePicture': the same picture or video under its own name. */
-  readonly how: 'quoted' | 'samePicture';
+  readonly how: 'quoted' | 'samePicture' | 'reposted';
   readonly at: Instant;
   readonly permalink: string | null;
 }
 
 /** The card's words for a share: "Quoted by @elonmusk", "Shared by @elonmusk". */
 export function sharedByLabel(s: Pick<SharedBy, 'how' | 'authorLabel'>): string {
-  return `${s.how === 'quoted' ? 'Quoted' : 'Shared'} by ${s.authorLabel}`;
+  return `${s.how === 'quoted' ? 'Quoted' : s.how === 'reposted' ? 'Reposted' : 'Shared'} by ${s.authorLabel}`;
 }
 
 /** A quoted post inside a card: who posted it (with their picture), a link, its words and its picture. */

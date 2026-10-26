@@ -73,7 +73,7 @@ import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import type { TranslatePort } from '@insidor/contracts/ports/translate.ts';
-import { followLink, resolvePlatforms, SECOND_VIDEO_VENDOR, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { followLink, KEY_ACCOUNTS, resolvePlatforms, SECOND_VIDEO_VENDOR, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -1227,6 +1227,7 @@ export async function withRuntime<T>(
         ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'resurface-lane' })),
         wordsSha: SHARED_PROMPT.sha,
         embedSpentUsd: () => earlyEmbedUsd.total,
+        keyAccounts: KEY_ACCOUNTS,
         meter,
         mode: cfg.spend.kind,
         policy,
