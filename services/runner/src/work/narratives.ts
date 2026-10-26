@@ -128,6 +128,7 @@ import {
   type StoryPlan,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
+import { videoKeyOf } from '@insidor/platform-registry';
 import { FIGHT_SEED_DECLINED, FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type FightPostRow, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -237,16 +238,24 @@ const budgetOf = (meter: Meter, at: Millis, timeoutMs: number) => {
 export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: ReadonlyMap<string, Float32Array>, pictureVectors: ReadonlyMap<string, Float32Array>, p: Policy): NarrativePair[] {
   const n = p.narrative;
   const pairs: NarrativePair[] = [];
+  /* ★ Each post's uploaded video, for the same-video link (adapters/platform/x video-key.ts). */
+  const videoOf = new Map(posts.flatMap((x) => { const k = videoKeyOf(x.media); return k === null ? [] : [[x.itemId, k] as const]; }));
   for (let i = 0; i < posts.length; i += 1) {
     const a = posts[i];
     const va = a === undefined ? undefined : postVectors.get(a.itemId);
     if (a === undefined || va === undefined) continue;
     for (let j = i + 1; j < posts.length; j += 1) {
       const b = posts[j];
-      if (b === undefined || Math.abs(a.atMs - b.atMs) > n.maxGapMs) continue;
+      if (b === undefined) continue;
+      const sameVideo = n.sameVideo.on && videoOf.get(a.itemId) !== undefined && videoOf.get(a.itemId) === videoOf.get(b.itemId);
+      if (Math.abs(a.atMs - b.atMs) > (sameVideo ? Math.max(n.maxGapMs, n.sameVideo.maxGapMs) : n.maxGapMs)) continue;
       const vb = postVectors.get(b.itemId);
       if (vb === undefined) continue;
       const meaning = dot(va, vb);
+      if (sameVideo) {
+        pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: false, sameVideo: true });
+        continue;
+      }
       if (meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
       const pa = pictureVectors.get(a.itemId);
       const pb = pictureVectors.get(b.itemId);

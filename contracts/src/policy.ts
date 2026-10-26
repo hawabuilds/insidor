@@ -4456,6 +4456,14 @@ export interface NarrativePolicy {
   readonly maxSpanMs: number;
   readonly minLinkShare: number;
   /**
+   * THE SAME VIDEO (the owner, 2026-10-26, the H2O monkey: six posts of one video in Portuguese,
+   * Turkish and Spanish, 3.4M views, never one narrative). Two good posts carrying the same uploaded
+   * video (the platform adapter's video key) link whatever their words, within `maxGapMs`: a video post
+   * has no picture vector, and captions in different languages read as different meanings. The owner's
+   * "keep apart" and the average linkage still hold. Off: as before.
+   */
+  readonly sameVideo: { readonly on: boolean; readonly maxGapMs: number };
+  /**
    * A group (or a post) whose posts are on average at least this alike to another group's average
    * vector, and that shares a detail with it — a link between their posts, or a name — is one story
    * told in parts, and joins it; a post under this from its own narrative's average leaves it.
@@ -7947,6 +7955,8 @@ const POLICY_V1: Policy = {
     maxGapMs: 86_400_000, // a day: an old story and a new one with the same word stay apart
     maxSpanMs: 172_800_000, // two days
     minLinkShare: 0.5,
+    /* Two days, the span a narrative may cover: further apart, the newer post joins through the live narrative's own path. */
+    sameVideo: { on: true, maxGapMs: 172_800_000 },
     /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
        average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49

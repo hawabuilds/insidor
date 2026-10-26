@@ -193,3 +193,15 @@ test('★ "Not a narrative" stays said: held on its posts, lifted only by posts 
   assert.equal(hiddenByOwner('n-x:2111150219731603874', ['x:a', 'x:b', 'x:c'], bare, P), true);
   assert.equal(hiddenByOwner('n-x:other', ['x:2111150219731603874', 'x:b'], bare, P), false);
 });
+
+test('★ the same uploaded video links whatever the words, within its gap (the owner, 2026-10-26, the H2O monkey)', () => {
+  /* One video in Portuguese, Turkish and Spanish: the words read far apart, the upload is one. */
+  const posts = [post('pt', 'se você rejeitar a água vai ter azar amanhã'), post('tr', 'Eğer suyu reddedersen yarın şanssız olursun', [], 3 * HOUR), post('es', 'Si rechazas el agua, mañana tendrás mala suerte', [], 30 * HOUR)];
+  const same = (a: string, b: string): NarrativePair => ({ a, b, meaning: 0.2, samePicture: false, sameVideo: true });
+  assert.deepEqual(membersOf(run(posts, [same('pt', 'tr'), same('pt', 'es'), same('tr', 'es')])), [['es', 'pt', 'tr']]);
+  /* Without the mark the same pairs are far apart in meaning: no narrative. */
+  assert.deepEqual(membersOf(run(posts, [pair('pt', 'tr', 0.2), pair('pt', 'es', 0.2), pair('tr', 'es', 0.2)])), []);
+  /* Past the gap, the same video does not link. */
+  const far = [post('a', 'x video'), post('b', 'y video', [], P.narrative.sameVideo.maxGapMs + HOUR)];
+  assert.deepEqual(membersOf(run(far, [same('a', 'b')])), []);
+});
