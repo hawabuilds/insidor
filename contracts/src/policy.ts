@@ -279,6 +279,24 @@ export interface TrackPolicy {
    */
   readonly judgedYesMaxAgeMs: number;
   /**
+   * ★ WHICH RE-READS GO FIRST WHEN THE RE-READ DAY IS SHORT (policy.v183, the owner, 2026-10-26: For
+   * You got worse at the same spend). TRACK pulls and spends in tiers (the runner's track-gate.ts
+   * `rereadTier`): a found yes not on For You; then posts on a feed and found posts still waiting on
+   * their answer; then posts by an account with at least `bigAccountFollowers` followers (public.author);
+   * then the rest — mostly narrative members read for their pages. The rest may spend only `restShare`
+   * of the paced re-read allowance (`feed.searchDay.rereadDailyUsd`); the tiers above it the whole.
+   *
+   * Measured over 24–26 Oct 2026: TRACK took 36,386 X re-reads (~$2.73 a day at $0.00015 a post), 46%
+   * of them the rest, and the re-read day was spent by mid-morning — 48 paused batches by 08:50 UTC on
+   * the 26th — so the yeses found after that waited. A post the judge said no to was already not
+   * re-read (none of the 36,386 came after a no), so the money is in the order, not in a new cut.
+   *
+   * What breaks if changed carelessly: a `restShare` of 1 is the old behaviour, the rest free to take
+   * the last of the day; near 0, narrative pages' member views go stale whenever the day is busy.
+   * `bigAccountFollowers` too low makes tier 2 everyone, the same as no tier.
+   */
+  readonly rereadOrder: { readonly bigAccountFollowers: number; readonly restShare: number };
+  /**
    * ★ A POST ON FOR YOU WAITS THIS MANY TIMES ITS INTERVAL between TRACK's re-reads (the owner,
    * 2026-10-20): its tier's minutes, or in its first hours its hot, warm or cold minutes. Its views
    * on screen are kept current by the readings loop (`feed.readings`, every 4 to 30 minutes while it
@@ -5577,7 +5595,13 @@ const POLICY_V1: Policy = {
      went from ~2,670 stored posts a day to ~6,900, mostly judged no, and their re-reads ate the X
      re-read day ($5) by mid-morning, so judged-yes posts went unread. The rest of v181 stays: gapless
      slice windows, the language that waited longest asked first and the floor raised when cut short,
-     band_50 paced over the day. Back to v182 is the rollback. */
+     band_50 paced over the day. Back to v182 is the rollback.
+
+     v183 also orders TRACK's re-reads (`track.rereadOrder`): found yeses not on For You first, then
+     posts on a feed and found posts waiting on an answer, then accounts of 100k followers or more,
+     then the rest, which may take only 0.8 of the paced re-read day. And TRACK's gate reads the post
+     question's own answer, the kind hold and the owner's call apart, as the projector does: a held
+     yes stays unread as before; an owner's "meme" is now read, an owner's "not" is not. */
   version: 'policy.v183',
 
   admit: {
@@ -5642,6 +5666,10 @@ const POLICY_V1: Policy = {
     offForYouPerPostMaxAgeMs: 10_800_000,
     /* Six hours: For You's own age limit (rising.fypMaxAgeMs). */
     judgedYesMaxAgeMs: 21_600_000,
+    /* From policy.v183. 100k followers: the top tenth of the accounts TRACK re-read on 24–26 Oct
+       (median 9k, 90th percentile 404k), whose posts took 18% of the re-reads. 0.8: the rest stop at
+       four-fifths of the paced day, leaving about $1 a day of the $5 for the tiers above. */
+    rereadOrder: { bigAccountFollowers: 100_000, restShare: 0.8 },
     /* Half as often on For You. */
     onForYouIntervalFactor: 2,
 

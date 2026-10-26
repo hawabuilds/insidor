@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { judgedYesUnshown, offFeedTooOld, rereadsThatFit, offForYouPerPostTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
+import { judgedYesUnshown, offFeedTooOld, rereadTier, rereadsThatFit, offForYouPerPostTooOld, staleUnpassed, worthRereading, type RereadTier } from './track-gate.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -26,7 +26,7 @@ const nearYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfi
 const unsureYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfidence.text - r.boostBarMargin - 0.1 };
 
 function facts(over: Partial<{ [K in keyof TrackingFacts]: TrackingFacts[K] }> = {}): TrackingFacts {
-  return { onFeed: new Set(), onForYou: new Set(), catchAll: new Set(), storiesOf: new Map(), membersOf: new Map(), judged: new Map(), ...over };
+  return { onFeed: new Set(), onForYou: new Set(), catchAll: new Set(), storiesOf: new Map(), membersOf: new Map(), judged: new Map(), kindOf: new Map(), ownerCall: new Map(), ...over };
 }
 
 test('a post on a feed is always re-read', () => {
@@ -130,11 +130,66 @@ test('★ a found yes not on For You is read until it joins, up to its own age l
   assert.equal(judgedYesUnshown('a', now - H, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]) }), P), false);
 });
 
-test('★ a short re-read day reads the yeses that fit and nothing else; a full one reads the batch; an unread bill reads none', () => {
-  assert.equal(rereadsThatFit(10, 3, 0.0015, 4, 5), 10, 'it all fits');
-  assert.equal(rereadsThatFit(10, 3, 0.0015, 4.9995, 5), 3, 'room for three reads: the three yeses');
-  assert.equal(rereadsThatFit(10, 3, 0.0015, 4.99975, 5), 1, 'room for one: one yes');
-  assert.equal(rereadsThatFit(10, 0, 0.0015, 4.9995, 5), 0, 'no yes: paused as before');
-  assert.equal(rereadsThatFit(10, 3, 0.0015, 5.1, 5), 0, 'over: none');
-  assert.equal(rereadsThatFit(10, 3, 0.0015, null, 5), 0, 'the bill unread: none');
+test('★ the re-read day: the tiers in order while the day has room, the rest only within its share; an unread bill reads none', () => {
+  const share = P.track.rereadOrder.restShare;
+  assert.equal(share, 0.8);
+  const batch: RereadTier[] = [0, 0, 1, 2, 3, 3, 3, 3, 3, 3];
+  const usd = 0.0015; // 10 reads at $0.00015
+  assert.equal(rereadsThatFit(batch, usd, 3, 5, P), 10, 'it all fits, the rest under its share too');
+  assert.equal(rereadsThatFit(batch, usd, 4.9995, 5, P), 3, 'room for three reads: the first three in tier order');
+  assert.equal(rereadsThatFit(batch, usd, 4.99975, 5, P), 1, 'room for one: one yes');
+  assert.equal(rereadsThatFit(batch, usd, 4, 5, P), 4, 'the day at its share: the four tiers above the rest, and no rest');
+  assert.equal(rereadsThatFit([3, 3, 3], 0.00045, 3.9997, 5, P), 2, 'the rest up to its share, no further');
+  assert.equal(rereadsThatFit([3, 3, 3], 0.00045, 4.1, 5, P), 0, 'the rest past its share: paused, with a fifth of the day still open to the yeses');
+  assert.equal(rereadsThatFit(batch, usd, 5.1, 5, P), 0, 'over: none');
+  assert.equal(rereadsThatFit(batch, usd, null, 5, P), 0, 'the bill unread: none');
+  assert.equal(rereadsThatFit([], 0, 0, 5, P), 0);
+  const old = { ...P, track: { ...P.track, rereadOrder: { ...P.track.rereadOrder, restShare: 1 } } };
+  assert.equal(rereadsThatFit(batch, usd, 4, 5, old), 10, 'a share of 1 is the old day: the rest as free as the yeses');
+});
+
+test('★ the tiers: a found yes, then a feed or a found post waiting on its answer, then a big account, then the rest', () => {
+  const big = P.track.rereadOrder.bigAccountFollowers;
+  assert.equal(big, 100_000);
+  assert.equal(rereadTier('a', true, null, facts(), P), 0);
+  assert.equal(rereadTier('a', false, null, facts({ onFeed: new Set(['a']) }), P), 1);
+  assert.equal(rereadTier('a', false, null, facts({ onForYou: new Set(['a']) }), P), 1);
+  assert.equal(rereadTier('a', false, null, facts({ catchAll: new Set(['a']) }), P), 1, 'found, no answer yet');
+  assert.equal(rereadTier('a', false, big, facts({ catchAll: new Set(['a']), judged: new Map([['a', nearYes]]) }), P), 2, 'answered: not waiting any more');
+  assert.equal(rereadTier('a', false, big, facts(), P), 2, 'a narrative member by a big account');
+  assert.equal(rereadTier('a', false, big - 1, facts(), P), 3);
+  assert.equal(rereadTier('a', false, null, facts({ storiesOf: new Map([['a', ['s']]]) }), P), 3, 'an unknown follower count is not a big account');
+});
+
+test('★ the gate reads the post question\'s answer, the held kind and the owner\'s call apart, as the projector does', () => {
+  const now = 1_800_000_000_000;
+  const H = 3_600_000;
+  /* A yes, then the close-match hold filed after it (the two @twaniimals posts, 25–26 Oct): held, not re-read. */
+  const held = facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), kindOf: new Map([['a', 'NOT_MEME_MATCH']]) });
+  assert.equal(worthRereading('a', held, P), false);
+  assert.equal(judgedYesUnshown('a', now - H, now, held, P), false);
+  /* A kind label policy does not hold holds nothing: the yes stands. */
+  const unheld = facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), kindOf: new Map([['a', 'TRAGEDY']]) });
+  assert.equal(P.judge.heldKinds.includes('TRAGEDY'), false);
+  assert.equal(worthRereading('a', unheld, P), true);
+  assert.equal(judgedYesUnshown('a', now - H, now, unheld, P), true);
+  /* The owner's "meme" outranks a no and a hold; his "not" outranks a yes. */
+  const meme = facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]), ownerCall: new Map([['a', 'meme' as const]]) });
+  assert.equal(worthRereading('a', meme, P), true);
+  assert.equal(judgedYesUnshown('a', now - H, now, meme, P), true);
+  assert.equal(worthRereading('a', facts({ judged: new Map([['a', yes]]), kindOf: new Map([['a', 'AD']]), ownerCall: new Map([['a', 'meme' as const]]) }), P), true);
+  const not = facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), ownerCall: new Map([['a', 'not' as const]]) });
+  assert.equal(worthRereading('a', not, P), false);
+  assert.equal(judgedYesUnshown('a', now - H, now, not, P), false);
+  /* An unjudged catch-all post called by nobody keeps its reads: not judged is never a no. */
+  assert.equal(worthRereading('a', facts({ catchAll: new Set(['a']) }), P), true);
+  /* On a feed, whatever was said. */
+  assert.equal(worthRereading('a', facts({ onFeed: new Set(['a']), ownerCall: new Map([['a', 'not' as const]]) }), P), true);
+});
+
+test('a held member does not count toward its narrative being on the board', () => {
+  const members = ['w', 'p1', 'p2'];
+  const f = facts({ storiesOf: new Map([['w', ['s']]]), membersOf: new Map([['s', members]]), judged: new Map([['p1', yes], ['p2', yes]]), kindOf: new Map([['p2', 'SPORT']]) });
+  assert.equal(r.narrativeMinPassingPosts, 2);
+  assert.equal(worthRereading('w', f, P), false);
 });

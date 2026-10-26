@@ -14,16 +14,24 @@
  *   - a post not judged yet, when a catch-all lane found it (its reach decides whether it is
  *     judged at all) or it sits in a narrative the board shows;
  *   - ★ first of all, a found post the judge said yes to that is not on For You yet, until it joins or
- *     reaches `track.judgedYesMaxAgeMs` (`judgedYesUnshown`), past the three-hour cut below — and when
- *     the re-read day is short, only those are read (`rereadsThatFit`).
+ *     reaches `track.judgedYesMaxAgeMs` (`judgedYesUnshown`), past the three-hour cut below;
+ *   - a post the owner called a meme, whatever the judge said: the projector passes it.
+ * ★ IN ORDER (`rereadTier`, policy.v183): those yeses; then what is on a feed and the found posts
+ * still waiting on their answer; then big accounts; then the rest — mostly narrative members read for
+ * their pages. The rest may spend only `track.rereadOrder.restShare` of the paced re-read day, so they
+ * can no longer use it up before a yes is read (`rereadsThatFit`).
  * Skipped:
  *   - a post past `track.offFeedMaxAgeMs` from a paid-read source that is on neither For You nor
  *     Popular's live frame (`offFeedTooOld`, below) — whatever else would keep it — and the same
  *     at `track.offForYouPerPostMaxAgeMs` for a source billed per post (`offForYouPerPostTooOld`);
- *   - a post whose newest judgement fails core's per-post rule even with the best picture match
- *     there could be — any "no", a broken name test, a "yes" too far under the bar. A
- *     post is judged once, so that answer is final until someone re-scores it, and then this
- *     follows the new answer on the next pass;
+ *   - a post whose newest answer to the post question fails core's per-post rule even with the best
+ *     picture match there could be — any "no", a broken name test, a "yes" too far under the bar —
+ *     or that a held kind holds (`judge.heldKinds`, NOT_MEME_MATCH among them), or that the owner
+ *     called not a meme: the projector shows none of these whatever their views. A post is judged
+ *     once and no view count asks again (a re-score follows a prompt change, not growth), so that
+ *     answer is final until someone re-scores it, and then this follows the new answer on the next
+ *     pass. Measured 24–26 Oct 2026: none of TRACK's 36,386 applied X re-reads came after a "no";
+ *     the 1,116 that went to posts now judged no were all taken while they waited for the answer;
  *   - a post not judged and not catch-all whose only narratives the board hides (fewer than
  *     `rising.narrativeMinPassingPosts` passing posts — the projector's own rule, narrative-
  *     rules.ts, applied the same way: no picture boost for a narrative).
@@ -38,7 +46,7 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { couldPassWithBoost, postScoreReason } from '@insidor/core';
+import { couldPassWithBoost, heldKind, postScoreReason } from '@insidor/core';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
 /** Whether this answer could still put the post on a feed, given the luckiest picture match. */
@@ -46,20 +54,35 @@ export function couldStillPass(j: TrackingJudgement, policy: Policy): boolean {
   return couldPassWithBoost(j, policy);
 }
 
+/**
+ * Whether what was said about this post could still let the projector show it: the owner's call
+ * first (it outranks the judge either way), then a held kind, then the judge's answer at the
+ * luckiest picture match. Null when nothing was said: not judged is never a "no".
+ */
+export function answerCanShow(itemId: string, facts: TrackingFacts, policy: Policy): boolean | null {
+  const call = facts.ownerCall.get(itemId);
+  if (call === 'meme') return true;
+  if (call === 'not') return false;
+  const j = facts.judged.get(itemId);
+  if (j === undefined) return null;
+  if (heldKind(facts.kindOf.get(itemId), policy.judge.heldKinds) !== null) return false;
+  return couldStillPass(j, policy);
+}
+
 /** Whether the board shows this narrative: the projector's rule, without the picture boost. */
 function narrativeShown(storyId: string, facts: TrackingFacts, policy: Policy): boolean {
   const members = facts.membersOf.get(storyId) ?? [];
   const passing = members.filter((m) => {
     const j = facts.judged.get(m);
-    return j !== undefined && postScoreReason(j, policy) === 'passes';
+    return j !== undefined && heldKind(facts.kindOf.get(m), policy.judge.heldKinds) === null && postScoreReason(j, policy) === 'passes';
   });
   return passing.length >= policy.rising.narrativeMinPassingPosts;
 }
 
 export function worthRereading(itemId: string, facts: TrackingFacts, policy: Policy): boolean {
   if (facts.onFeed.has(itemId)) return true;
-  const j = facts.judged.get(itemId);
-  if (j !== undefined) return couldStillPass(j, policy);
+  const can = answerCanShow(itemId, facts, policy);
+  if (can !== null) return can;
   if (facts.catchAll.has(itemId)) return true;
   return (facts.storiesOf.get(itemId) ?? []).some((s) => narrativeShown(s, facts, policy));
 }
@@ -108,8 +131,34 @@ export function offFeedTooOld(itemId: string, source: string, postedAt: number |
 export function judgedYesUnshown(itemId: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
   if (postedAt === null || now - postedAt > policy.track.judgedYesMaxAgeMs) return false;
   if (!facts.catchAll.has(itemId) || facts.onForYou.has(itemId)) return false;
+  const call = facts.ownerCall.get(itemId);
+  if (call !== undefined) return call === 'meme';
   const j = facts.judged.get(itemId);
-  return j !== undefined && postScoreReason(j, policy) === 'passes';
+  return j !== undefined && heldKind(facts.kindOf.get(itemId), policy.judge.heldKinds) === null && postScoreReason(j, policy) === 'passes';
+}
+
+/**
+ * ★ WHICH RE-READS GO FIRST (`track.rereadOrder`, policy.v183), lowest first:
+ *   0  a found yes not on For You yet (`judgedYesUnshown`): only a reading can let it join;
+ *   1  a post on a feed now, or one a lane found that has no answer yet — its reach decides
+ *      whether it is judged at all;
+ *   2  a post by an account with at least `bigAccountFollowers` followers;
+ *   3  the rest: mostly narrative members read for their pages' views, and answered posts that
+ *      could still pass.
+ * TRACK pulls and spends in this order, and tier 3 may take only `restShare` of the paced re-read
+ * day (`rereadsThatFit`). Measured 24–26 Oct 2026, tier 3 was 46% of TRACK's X re-reads, and with
+ * no share of its own it spent the day before the later yeses were read. An unknown follower count
+ * is not a big account.
+ */
+export type RereadTier = 0 | 1 | 2 | 3;
+export const REST_TIER: RereadTier = 3;
+
+export function rereadTier(itemId: string, yesUnshown: boolean, followers: number | null, facts: TrackingFacts, policy: Policy): RereadTier {
+  if (yesUnshown) return 0;
+  if (facts.onFeed.has(itemId) || facts.onForYou.has(itemId)) return 1;
+  if (facts.catchAll.has(itemId) && answerCanShow(itemId, facts, policy) === null) return 1;
+  if (followers !== null && followers >= policy.track.rereadOrder.bigAccountFollowers) return 2;
+  return REST_TIER;
 }
 
 /**
@@ -126,15 +175,27 @@ export function offForYouPerPostTooOld(itemId: string, billedPerPost: boolean, p
   return !facts.onForYou.has(itemId) && !facts.onFeed.has(itemId);
 }
 
+/** A read's cost is a float of a float: this much over the allowance still fits (a millionth of a cent). */
+const FIT_SLACK_USD = 1e-8;
+
 /**
  * ★ HOW MANY OF A RE-READ BATCH THE RE-READ DAY TAKES (`feed.searchDay.rereadDailyUsd`), the batch in
- * its order with the yeses not on For You first (`judgedYesUnshown`): all of it when it fits; when it
- * does not, as many of the yeses as fit, and nothing else; none when the bill cannot be read (null).
- * The allowance is the paced one the caller computed, so this never spends past it.
+ * tier order (`rereadTier`, lowest first): each read while the day's bill stays within the paced
+ * allowance — and a tier-3 read only while it stays within `restShare` of it — stopping at the first
+ * that does not fit; none when the bill cannot be read (null). The allowance is the paced one the
+ * caller computed, so this never spends past it, and the last `1 − restShare` of it is kept for the
+ * yeses, the posts on a feed, the found posts waiting on an answer and the big accounts.
  */
-export function rereadsThatFit(count: number, yesCount: number, usd: number, spentUsd: number | null, allowanceUsd: number): number {
-  if (spentUsd === null || count === 0) return 0;
-  if (spentUsd + usd <= allowanceUsd) return count;
-  const perRead = usd / count;
-  return Math.max(0, Math.min(yesCount, Math.floor((allowanceUsd - spentUsd) / perRead)));
+export function rereadsThatFit(tiers: readonly RereadTier[], usd: number, spentUsd: number | null, allowanceUsd: number, policy: Policy): number {
+  if (spentUsd === null || tiers.length === 0) return 0;
+  const perRead = usd / tiers.length;
+  const restCap = allowanceUsd * policy.track.rereadOrder.restShare;
+  let spend = spentUsd;
+  let n = 0;
+  for (const tier of tiers) {
+    if (spend + perRead > (tier === REST_TIER ? restCap : allowanceUsd) + FIT_SLACK_USD) break;
+    spend += perRead;
+    n += 1;
+  }
+  return n;
 }
