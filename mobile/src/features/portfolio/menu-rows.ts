@@ -5,7 +5,8 @@
  * ★ NOTHING REMOVED, ONLY GROUPED (the owner, 2026-10-21). Every place the long menu reached is
  * still reached: your profile and Edit profile (the header and its pencil), Export private key,
  * Import a wallet, Link a wallet to view and the linked wallets (Wallets), Show my trades and
- * Notifications (Settings), Leaderboard, How Insidor works, Add missed posts (Owner tools), Sign out.
+ * Notifications (Settings), Leaderboard, Add missed posts (Owner tools), Sign out. How Insidor works
+ * was taken off the menu by the owner on 2026-10-26; its page (#/learn) stays for a direct link.
  *
  * What breaks if changed carelessly: a row dropped from both lists is a feature nobody can reach.
  * menu.test.ts lists every one of them; add a new place to it when adding a row.
@@ -43,7 +44,6 @@ export function menuRows(m: MenuFor): readonly MenuRow[] {
     'wallets',
     ...(m.member ? (['invites', 'settings'] as const) : (['settings'] as const)),
     'leaderboard',
-    'learn',
     ...(m.owner ? (['owner'] as const) : []),
     'leave',
   ];
