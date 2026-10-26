@@ -57,6 +57,10 @@
  * every new runner"); rule 4 keeps a coin to one push, so a pick handed back to a coin already pushed
  * says nothing again.
  *
+ * ★ AND THE CRASH SWITCH (the owner, 2026-10-26, $Marvin): when the post's held coin crashed and a
+ * coin made for the post worth twice it took the pick (core one-coin.ts, the pick's evidence
+ * `crash_handover`), that coin is pushed exactly as a runner hand-over is, with the same words.
+ *
  * ★ EXCEPT AN ORIGINAL BROUGHT BACK BY ITS PROMOTION'S COIN (the owner, 2026-10-24; Policy.rising
  * .promotion, services/project promotions.ts). A caller's post quoting an older viral post is never
  * shown; its coin goes to the original, and an original older than the coin-link age at the launch
@@ -362,10 +366,32 @@ async function runnerPicks(db: Db, itemIds: readonly string[]): Promise<Readonly
   );
   if (r?.ok !== true) return new Map();
   const rows = await db.query<{ item_id: string; address: string }>(
-    `select item_id, address from internal.post_coin_pick where item_id = any($1::text[]) and outcome = 'picked' and evidence ->> 'runner_handover' = 'true'`,
+    `select item_id, address from internal.post_coin_pick where item_id = any($1::text[]) and outcome = 'picked' and (evidence ->> 'runner_handover' = 'true' or evidence ->> 'crash_handover' = 'true')`,
     [[...itemIds]],
   );
   return new Map(rows.map((x) => [x.item_id, x.address] as const));
+}
+
+/**
+ * ★ PVP (the owner, 2026-10-26, $Marvin): the other coins made for each post that are being bought
+ * with its pick right now (the pick's evidence `racing`, core coin-race.ts). The first push names
+ * them, so nobody buys one coin of a PvP without knowing there is another. Empty without the grant.
+ */
+async function pvpRivals(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
+  if (itemIds.length === 0) return new Map();
+  const [r] = await db.query<{ ok: boolean | null }>(
+    `select case when to_regclass('internal.post_coin_pick') is null then false else has_table_privilege('internal.post_coin_pick', 'select') end as ok`,
+  );
+  if (r?.ok !== true) return new Map();
+  const rows = await db.query<{ item_id: string; address: string; racing: unknown }>(
+    `select item_id, address, evidence -> 'racing' as racing from internal.post_coin_pick where item_id = any($1::text[]) and outcome = 'picked' and evidence ? 'racing'`,
+    [[...itemIds]],
+  );
+  return new Map(rows.flatMap((x) => {
+    const all = Array.isArray(x.racing) ? x.racing.filter((a): a is string => typeof a === 'string') : [];
+    const rivals = all.filter((a) => a !== x.address);
+    return all.includes(x.address) && rivals.length > 0 ? [[x.item_id, rivals] as const] : [];
+  }));
 }
 
 /** One pass. Returns how many alerts were queued (one per profile per coin). */
@@ -438,6 +464,9 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     const caps = await coinFacts(db, ports.quotes, due.filter((d) => d.capUsd === null).map((d) => d.address));
     /* ★ The post that started a narrative: its public title, said instead of the normal wording (starting-post.ts). */
     const starts = await startRows(db, due.map((d) => d.itemId));
+    /* ★ PvP: the rivals of each first pick, with their caps (pvpRivals). */
+    const rivals = await pvpRivals(db, due.filter((d) => d.runner !== true).map((d) => d.itemId));
+    const rivalFacts = await coinFacts(db, ports.quotes, [...new Set([...rivals.values()].flat())]);
     for (const d of due) {
       const c = caps.get(d.address);
       const f: Record<string, unknown> = {
@@ -451,12 +480,15 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
         item: d.itemId,
       };
       const started = startedTitle(starts.get(d.itemId), d.launchedMs);
+      const pvp = d.runner === true ? undefined : rivals.get(d.itemId);
       if (d.runner === true) f['runner'] = true;
+      else if (pvp !== undefined) f['pvp'] = pvp.map((a) => ({ symbol: rivalFacts.get(a)?.symbol ?? '', mcUsd: rivalFacts.get(a)?.mcUsd ?? null }));
       else if (started !== null) f['started'] = started;
       /* Strongest first: one statement per coin, so queue order is cap order. */
       const rows = await db.query<{ n: number }>(
         `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href) select user_id, 'coin_launched', $1, 0, $2, $3 from people.profile returning 1) select count(*)::int as n from q`,
-        [d.runner === true ? runnerSubject(d.itemId, d.address) : d.address, JSON.stringify(f), launchHref(d)],
+        /* A PvP push opens the post, where both coins are, never one coin's page. */
+        [d.runner === true ? runnerSubject(d.itemId, d.address) : d.address, JSON.stringify(f), pvp !== undefined ? `/#/post/${encodeURIComponent(d.itemId)}` : launchHref(d)],
       );
       queued += rows[0]?.n ?? 0;
     }

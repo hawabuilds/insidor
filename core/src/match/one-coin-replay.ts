@@ -78,6 +78,18 @@ function marketAt(c: ReplayCoin, t: number): MarketFacts | null {
   return last === null ? null : { capUsd: last, peakCapUsd: peak, liquidityUsd };
 }
 
+/** The candidates as the live rule sees them at `t`: only minutes closed and readings taken by then. */
+export function contendersAt(coins: readonly ReplayCoin[], t: number, useTrades: boolean): Contender[] {
+  return coins.map((c) => ({
+    address: c.address,
+    launchedAtMs: c.launchedAtMs,
+    existingSinceMs: c.existingSinceMs ?? null,
+    evidence: c.evidence,
+    trades: useTrades ? tradesAt(c, t) : null,
+    market: marketAt(c, t),
+  }));
+}
+
 /**
  * The rule run at every moment something new became known, up to `untilMs`. `useTrades`: judge on
  * the minutes (the coins were watched); false: on the readings, as the fallback does.
@@ -93,14 +105,7 @@ export function replayTimeline(coins: readonly ReplayCoin[], bars: OneCoinBars, 
   const out: [number, string | null][] = [];
   let holder: Holder | null = null;
   for (const t of [...times].filter((x) => x <= untilMs).sort((a, b) => a - b)) {
-    const contenders: Contender[] = coins.map((c) => ({
-      address: c.address,
-      launchedAtMs: c.launchedAtMs,
-      existingSinceMs: c.existingSinceMs ?? null,
-      evidence: c.evidence,
-      trades: useTrades ? tradesAt(c, t) : null,
-      market: marketAt(c, t),
-    }));
+    const contenders = contendersAt(coins, t, useTrades);
     const o = pickOneCoin(contenders, holder, t, useTrades, bars);
     const now = o.kind === 'picked' ? o.address : null;
     holder = o.kind === 'picked' ? { address: o.address, sinceMs: o.sinceMs, underShareSinceMs: o.underShareSinceMs } : null;

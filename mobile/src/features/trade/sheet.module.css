@@ -378,3 +378,7 @@ p.caution,
   font-size: 14px;
   line-height: 1.5;
 }
+
+/* PvP above a buy: another coin for the same post is being bought (OrderSheet `warning`). */
+.pvp { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--amber-wash); color: var(--amber); font-size: 13px; line-height: 1.35; }
+.pvp button { flex: none; background: none; border: 1px solid var(--amber); border-radius: 8px; color: inherit; font: inherit; font-weight: 600; padding: 5px 10px; cursor: pointer; }

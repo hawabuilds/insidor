@@ -22,6 +22,7 @@ import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 import { highestMilestone, type AlertKind } from '@insidor/core';
 
 import { prefsOf, queue, type Db } from './deliver.ts';
+import { pvpPassed, pvpSubject } from './pvp.ts';
 import type { Facts } from './text.ts';
 
 export interface Quote {
@@ -114,6 +115,22 @@ export async function checkMarket(db: Db, ports: MarketPorts, P: NotifyPolicy): 
         }
       }
     }
+  }
+
+  /* ★ PvP (pvp.ts): a held coin another coin made for the same post just passed, once per rival. */
+  try {
+    const passed = await pvpPassed(db, [...new Set([...held.values()].flatMap((m) => [...m.keys()]))]);
+    for (const x of passed) {
+      for (const [userId, m] of held) {
+        if (!m.has(x.held)) continue;
+        const subject = pvpSubject(x.held, x.rival);
+        if ((await spent(db, userId, 'holding_down', subject)).length > 0) continue;
+        await queue(db, { userId, kind: 'holding_down', subject, rung: 1, facts: { pvp: true, symbol: x.heldSymbol, heldCapUsd: x.heldCapUsd, rivalSymbol: x.rivalSymbol, rivalCapUsd: x.rivalCapUsd, item: x.itemId }, href: `/#/post/${encodeURIComponent(x.itemId)}` });
+        queued += 1;
+      }
+    }
+  } catch {
+    /* A PvP read that fails says nothing this pass; the holdings above are already queued. */
   }
 
   for (const w of watchedCoins) {

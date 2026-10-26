@@ -1022,6 +1022,8 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
     ...(o['posterBioNamesCoin'] === true ? { posterBio: true as const } : {}),
     /* The coin picked for the post (one post, one coin); only a literal true. */
     ...(o['picked'] === true ? { picked: true as const } : {}),
+    /* The race: a whole number of 2 or more, or nothing. */
+    ...(typeof o['racing'] === 'number' && Number.isInteger(o['racing']) && o['racing'] >= 2 ? { racing: o['racing'] } : {}),
   };
 }
 

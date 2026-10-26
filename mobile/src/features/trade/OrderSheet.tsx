@@ -90,7 +90,7 @@ function writeSlippage(bps: number): void {
 type Quoted = { readonly kind: 'none' } | { readonly kind: 'asking' } | { readonly kind: 'quote'; readonly quote: TradeQuote } | { readonly kind: 'refused'; readonly why: string };
 type Status = { readonly kind: 'idle' } | { readonly kind: 'working'; readonly line: string } | { readonly kind: 'done'; readonly outcome: ConfirmOutcome };
 
-export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = null, onClose }: {
+export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = null, warning = null, onClose }: {
   mint: string;
   ticker: string;
   /** The flex card's second line after a sell: "paired with TTWOx" or the coin's name; null when unknown. */
@@ -100,6 +100,8 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
   limits: TradeLimits | null;
   /** The coin's latest price, for the dollar value of a sell and the line under the field. */
   priceUsd: Measured;
+  /** ★ PvP (the owner, 2026-10-26): another coin made for the same post is being bought — said above a buy, with a way to see them all. */
+  warning?: { readonly line: string; readonly action: string; readonly onAction: () => void } | null;
   onClose: () => void;
 }) {
   const { wallet, state } = useWallet();
@@ -280,6 +282,13 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
             <GearIcon size={17} />
           </button>
         </div>
+
+        {buying && warning !== null ? (
+          <div className={styles['pvp']} role="note">
+            <span>{warning.line}</span>
+            <button type="button" onClick={warning.onAction}>{warning.action}</button>
+          </div>
+        ) : null}
 
         {configOpen ? (
           <div className={styles['config']}>

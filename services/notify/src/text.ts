@@ -210,6 +210,13 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     case 'watchlist_multiple':
       return { title: `${ticker(f)} is up ${n(f['multiple']) ?? '?'}x`, body: `Since you started watching ${s(f['title'], 'its narrative')}.` };
     case 'holding_down': {
+      /* ★ PvP (pvp.ts): "PvP: the other $MARVIN just passed yours" / "$MARVIN $75K, yours $58K." */
+      if (f['pvp'] === true) {
+        const rival = typeof f['rivalSymbol'] === 'string' && f['rivalSymbol'].trim() !== '' ? `$${f['rivalSymbol'].trim().replace(/^\$/, '')}` : 'another coin';
+        const rv = n(f['rivalCapUsd']);
+        const mv = n(f['heldCapUsd']);
+        return { title: `PvP: the other ${rival} for this post just passed yours`, body: `${rival}${rv === null ? '' : ` $${compact(rv)}`}, yours ${ticker(f)}${mv === null ? '' : ` $${compact(mv)}`}.` };
+      }
       /* "$GOLIATH is down 50% since you bought" / "Your position is worth $42". */
       const value = n(f['positionUsd']);
       const pct = n(f['downPercent']);
@@ -296,6 +303,17 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         const from = who === '' ? 'a post on For You' : `${possessive(who)} post`;
         const said = words !== null ? `"${words}".` : who === '' ? 'A post on For You.' : `A post by ${who}.`;
         return { title: `A new coin from ${from} is running: ${ticker(f)}${v === null || v <= 0 ? '' : `, $${compact(v)} cap`}`, body: said };
+      }
+      /* ★ PvP (launch.ts pvpRivals): "PvP on @cb_doge's post: 2 coins" / "$Marvin $132K vs $Marvin the Martian $35K. Tap to see both." */
+      if (Array.isArray(f['pvp']) && f['pvp'].length > 0) {
+        const from = who === '' ? 'a post on For You' : `${possessive(who)} post`;
+        const named = (sym: unknown, usd: unknown): string => {
+          const v = n(usd);
+          const t = typeof sym === 'string' && sym.trim() !== '' ? `$${sym.trim().replace(/^\$/, '')}` : 'another coin';
+          return v === null || v <= 0 ? t : `${t} $${compact(v)}`;
+        };
+        const others = (f['pvp'] as unknown[]).map((x) => (x !== null && typeof x === 'object' ? named((x as Record<string, unknown>)['symbol'], (x as Record<string, unknown>)['mcUsd']) : 'another coin'));
+        return { title: `PvP on ${from}: ${others.length + 1} coins`, body: `${named(f['symbol'], f['mcUsd'])} vs ${others.join(' vs ')}. Tap to see ${others.length === 1 ? 'both' : 'all'}.` };
       }
       /* The post that started a narrative (launch.ts, starting-post.ts): "$DOGZILLA launched from the post that started Dogzilla". */
       const started = cutWords(f['started'], STARTED_CHARS);

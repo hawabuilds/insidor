@@ -213,6 +213,10 @@ export interface WireCoinEvidence {
   /** One post, one coin (Policy.oneCoin.mode 'live'): this is the coin picked for the post by who is
       buying it — the card says "Coin for this post". The facts above still say only what holds. */
   readonly picked?: true;
+  /** THE RACE (core match/coin-race.ts): this many coins made for the post broke away together and
+      are all being bought — the card offers "See N coins" beside this one. Absent when there is no
+      race; never under 2. A fact about the market, not a judgement of which coin is right. */
+  readonly racing?: number;
 }
 
 export interface WireBoardRow {

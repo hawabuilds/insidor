@@ -129,3 +129,14 @@ test('★ one post, one coin: no pick is Create for everyone, and the same-name 
   /* Without the mark (shadow, as today) the list is everyone's. */
   assert.deepEqual(postCoinStatus(decodeCoinLink({ kind: 'unsure', claimCount: 5 })).actions.map((a) => a.kind), ['see', 'create']);
 });
+
+test('★ a race says so: "Leading", the race as a fact, Buy and See 2 coins (the owner, 2026-10-26, $Marvin)', () => {
+  const s = postCoinStatus({ kind: 'matched', coin: coin({ marketCapUsd: { v: 53_000 } }), evidence: { linksPost: true, samePicture: null, launchedAfterMs: 120_000, picked: true, racing: 2 } });
+  assert.match(s.line, /^Leading: /);
+  assert.equal(s.facts?.[0], 'PvP: 2 coins for this post');
+  assert.deepEqual(s.actions.map((a) => a.kind), ['buy', 'see']);
+  /* No race: the card is as before. */
+  const calm = postCoinStatus({ kind: 'matched', coin: coin(), evidence: { linksPost: true, samePicture: null, launchedAfterMs: 120_000, picked: true } });
+  assert.match(calm.line, /^Coin for this post: /);
+  assert.deepEqual(calm.actions.map((a) => a.kind), ['buy']);
+});

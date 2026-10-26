@@ -61,7 +61,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -185,7 +185,9 @@ export function pickWrite(subjectId: string, o: OneCoinOutcome, prev: StoredPick
   if (o.kind === 'waiting') {
     return { subjectId, address: null, outcome: 'waiting', decidedAtMs: prev?.outcome === 'waiting' ? prev.decidedAtMs : nowMs, evidence: { mode, basis: o.basis, reason: o.reason, droppedHolder: o.droppedHolder, note, standings }, basis: o.basis };
   }
-  return { subjectId, address: o.address, outcome: 'picked', decidedAtMs: o.sinceMs, evidence: { mode, basis: o.basis, confirmed: o.confirmed, handedOverFrom: o.handedOverFrom, underShareSinceMs: o.underShareSinceMs, note, standings }, basis: o.basis };
+  /* ★ The crash switch's coin is pushed like a runner hand-over (notify launch.ts): the mark stays while the pick does. */
+  const crash = o.crash === true || (prev?.address === o.address && prev.evidence['crash_handover'] === true);
+  return { subjectId, address: o.address, outcome: 'picked', decidedAtMs: o.sinceMs, evidence: { mode, basis: o.basis, confirmed: o.confirmed, handedOverFrom: o.handedOverFrom, underShareSinceMs: o.underShareSinceMs, note, standings, ...(crash ? { crash_handover: true } : {}) }, basis: o.basis };
 }
 
 /**
@@ -343,9 +345,19 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   }
   const earlyIds = new Set(early.map((d) => d.itemId));
   /* ★ An early pick is held against this rule's "waiting", and its record kept on every later write (early-pick.ts `holdEarly`). */
+  /* ★ The race (core match/coin-race.ts): the coins made for the post that broke away together, kept
+     on the pick's evidence so the card can offer them all ("See 2 coins"); off, nothing is written. */
+  const raceBars = { ...P.race, rugShareOfPeak: P.rugShareOfPeak };
+  const byId = new Map(open1);
+  const withRace = (w: PickWrite): PickWrite => {
+    const rs = byId.get(w.subjectId);
+    if (!P.race.on || rs === undefined) return w;
+    const racing = racingCoins(contendersOf(rs, running ? trades : null, watched, market), now, raceBars);
+    return racing.length === 0 ? w : { ...w, evidence: { ...w.evidence, racing } };
+  };
   const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
   const launchedOf = new Map(open.filter((r) => r.launchedAtMs !== null).map((r) => [r.address, r.launchedAtMs] as const));
-  const postPicks = [...holdEarly(judged, prevPosts, launchedOf, deps.policy.oneCoin.early.rivalWithinMs), ...early.map((d) => d.write)];
+  const postPicks = [...holdEarly(judged, prevPosts, launchedOf, deps.policy.oneCoin.early.rivalWithinMs), ...early.map((d) => d.write)].map(withRace);
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);
   if (early.length > 0 && deps.early !== undefined) {
     for (const d of early) deps.log.info('early pick', { itemId: d.itemId, address: d.pick.address, capUsd: d.pick.capUsd, ageMs: d.pick.ageMs, riseUsd: d.pick.riseUsd, rivalRiseUsd: d.pick.rivalRiseUsd, rivals: d.pick.rivals, rivalsUnread: d.pick.rivalsUnread, told: (d.write.evidence['earlyPick'] as EarlyRecord).told });

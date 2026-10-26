@@ -62,7 +62,7 @@ type Venue = Awaited<ReturnType<typeof fetchTradeVenue>>;
  * as it is; one that says the coin cannot be traded here closes the ticket with the reason in the
  * toast, as before.
  */
-export function BuyOpen({ mint, ticker, onClose, onNote }: { mint: string; ticker: string; onClose: () => void; onNote: (n: SheetNote) => void }) {
+export function BuyOpen({ mint, ticker, warning = null, onClose, onNote }: { mint: string; ticker: string; warning?: { readonly line: string; readonly action: string; readonly onAction: () => void } | null; onClose: () => void; onNote: (n: SheetNote) => void }) {
   const soon = useComingSoon();
   useDismiss(onClose);
   const known = kept<Venue>(`venue:${mint}`);
@@ -95,5 +95,5 @@ export function BuyOpen({ mint, ticker, onClose, onNote }: { mint: string; ticke
     // One read per tap: the props are fixed for this opener's life.
   }, []);
   if (!TRADING) return null;
-  return <OrderSheet mint={mint} ticker={ticker} side="buy" limits={limits} priceUsd={pending('not_read_yet')} onClose={onClose} />;
+  return <OrderSheet mint={mint} ticker={ticker} side="buy" limits={limits} priceUsd={pending('not_read_yet')} warning={warning} onClose={onClose} />;
 }

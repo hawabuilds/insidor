@@ -271,3 +271,34 @@ test('replay: a rug that led early is dropped and the real coin taken when it cl
   const s = scoreReplay([{ subject: 'x:1', coins: [rug, real], truth: 'real' }, { subject: 'x:2', coins: [{ ...rug, address: 'lone', minutes: [] }], truth: null }], BARS, 10 * MIN, 60 * MIN, true);
   assert.deepEqual(s, { withCoin: 1, right: 1, wrong: 0, noPick: 0, nothingRan: 1, falsePick: 0 });
 });
+
+test('★ a held coin still worth the keep bar is never dropped for time under the share alone (25 Oct, $Marvin)', () => {
+  /* The real Marvin: $657k at its peak, $151k half an hour later, dropped for a $22k coin. */
+  const holder = { address: 'A', sinceMs: 1_011 * MIN, underShareSinceMs: NOW - P.rugGraceMs - MIN };
+  const stillBig = trades({ cap: 50, peakCap: 500, capUsd: P.rugKeepAboveUsd });
+  const kept = pickOneCoin([c('A', 1_005, stillBig)], holder, NOW, true, BARS);
+  assert.equal(kept.kind === 'picked' && kept.address, 'A');
+  /* Under the keep bar, the half hour still ends it. */
+  const small = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: P.rugKeepAboveUsd - 1 }))], holder, NOW, true, BARS);
+  assert.equal(small.kind === 'waiting' && small.droppedHolder, 'A');
+});
+
+test('★ the crash switch: under the share, a coin made for the post worth twice the held one takes it, on trades too', () => {
+  /* 25 Oct 02:20: the wrong Marvin fell from $177k to $42k; the real one, linking the post, stood at $147k; net buying flat on both. */
+  const holder = { address: 'WRONG', sinceMs: 1_006 * MIN };
+  const wrong = c('WRONG', 1_002, trades({ cap: 42, peakCap: 177, capUsd: 42_000, netBuy: 10 }), { evidence: ['link'] });
+  const real = c('REAL', 1_003, trades({ cap: 147, peakCap: 147, capUsd: 147_000, netBuy: 12 }), { evidence: ['link'] });
+  const o = pickOneCoin([wrong, real], holder, NOW, true, BARS);
+  assert.equal(o.kind === 'picked' && o.address, 'REAL');
+  assert.equal(o.kind === 'picked' && o.handedOverFrom, 'WRONG');
+  assert.equal(o.kind === 'picked' && o.crash, true);
+  /* A rival that only shares the name does not take it by this rule. */
+  const lookAlike = c('REAL', 1_003, trades({ cap: 147, peakCap: 147, capUsd: 147_000, netBuy: 12 }), { evidence: ['name_judge'] });
+  const held = (o: ReturnType<typeof pickOneCoin>): string | null => (o.kind === 'picked' ? o.address : null);
+  assert.equal(held(pickOneCoin([wrong, lookAlike], holder, NOW, true, BARS)), 'WRONG');
+  /* Nor does one under twice the held coin's cap, nor any rival while the held coin has not crashed. */
+  const close = c('REAL', 1_003, trades({ cap: 80, peakCap: 80, capUsd: 80_000, netBuy: 12 }), { evidence: ['link'] });
+  assert.equal(held(pickOneCoin([wrong, close], holder, NOW, true, BARS)), 'WRONG');
+  const standing = c('WRONG', 1_002, trades({ cap: 100, peakCap: 177, capUsd: 100_000, netBuy: 10 }), { evidence: ['link'] });
+  assert.equal(held(pickOneCoin([standing, real], holder, NOW, true, BARS)), 'WRONG');
+});

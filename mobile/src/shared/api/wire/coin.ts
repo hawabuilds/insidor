@@ -156,4 +156,6 @@ export interface CoinEvidence {
   readonly posterBio?: true;
   /** The coin picked for this post by who is buying it: "Coin for this post". Only a literal true. */
   readonly picked?: true;
+  /** This many coins made for the post are being bought together: "See N coins". Absent, or 2 or more. */
+  readonly racing?: number;
 }

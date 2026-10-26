@@ -2606,6 +2606,28 @@ export interface OneCoinPolicy {
   readonly rugFloorUsd: number;
   /** …or it has stayed under the share this long, or a rival clears the bars and leads it. */
   readonly rugGraceMs: number;
+  /**
+   * A held coin still worth this many USD is never dropped for time spent under the share: only a
+   * rival can take it. 25 Oct: the real $Marvin, $657k at its peak, was dropped at $151k after half an
+   * hour under 30% of it, for a $22k coin.
+   */
+  readonly rugKeepAboveUsd: number;
+  /**
+   * While the held coin is under the share (it crashed), a rival made for the post — a link, the
+   * picture or the stated name — worth this many times the held coin's cap now takes the pick, on
+   * either basis. 25 Oct 02:20: the wrong $Marvin fell $115k to $42k in a minute while the real one
+   * stood at $147k; on trades both coins' net buying was flat, so the strength bar never moved.
+   */
+  readonly crashCapRatio: number;
+  /**
+   * THE RACE: two (or `size`) coins made for the post that broke away from the rest together are
+   * shown together ("See 2 coins") instead of trusting whichever leads. Judged on each coin's newest
+   * cap from its first reading, not after `judgeFromMs`, and only while the racers are younger than
+   * `windowMs`: each racer at least `minCapUsd`, and the last racer at least `gapRatio` times the
+   * next coin made for the post. 25 Oct: from 02:04 the two Marvins stood at $53k and $22k over a
+   * field of 30 under $15k; the real one, second, ran to $657k.
+   */
+  readonly race: { readonly on: boolean; readonly windowMs: number; readonly minCapUsd: number; readonly gapRatio: number; readonly size: number };
   /** Without trade data: the cap a coin opens at, so its climb is the cap over it (the replay's rule). */
   readonly openingCapUsd: number;
   /**
@@ -5224,6 +5246,13 @@ export interface RunningCoinsPolicy {
   /** A coin is on the strip only with at least this many dollars traded in its last hour. */
   readonly minVolume1hUsd: number;
   /**
+   * …and a market cap of at least this many dollars (the owner, 2026-10-26: "tape is now showing low
+   * mc coins"). The tape is the coins that are running; a $3k copy with a busy hour is not one.
+   */
+  readonly minCapUsd: number;
+  /** A coin of a viral post is on the strip only with at least this many dollars traded over the last day. */
+  readonly minVolume24hUsd: number;
+  /**
    * …and at least this many trades (buys plus sells) in that hour, so a few large fills from one
    * wallet cannot put a coin on the strip by volume alone. The market source counts transactions,
    * not wallets: a wallet that splits its money into many trades still passes this, and only the
@@ -5810,8 +5839,18 @@ const POLICY_V1: Policy = {
      reposted @CapinUK's video with Dandy the dog, and we never showed it): `judge.resurface.keyAccountsOn`
      makes the platform adapter's key accounts share whatever their followers, a plain repost is a
      share (0140), and a post such a share brought in joins For You without the views bar once its
-     answer passes. False is the rollback. */
-  version: 'policy.v189',
+     answer passes. False is the rollback.
+
+     v190 is PvP (the owner, 2026-10-26, after $Marvin: the wrong coin led for twenty minutes, then was
+     dumped; the real one ran $7k to $657k). `oneCoin.race` keeps, on each post's pick, the coins made
+     for it that broke away together ($10k each, 1.5x the next), and the card says "PvP: 2 coins" with
+     See 2 coins; the first push names them, the ticket says so above Buy, and a holder whose coin is
+     passed by another of them is told once. `oneCoin.crashCapRatio` 2: under 30% of its peak, the held
+     coin loses the pick at once to a coin made for the post worth twice it, and that coin is pushed
+     like a runner hand-over. `oneCoin.rugKeepAboveUsd` $50k: a held coin worth that is never dropped
+     for time under its peak alone. `race.on` false is the PvP rollback; the two bars at Infinity are
+     theirs. */
+  version: 'policy.v190',
 
   admit: {
     maxAgeMin: 240,
@@ -7450,6 +7489,13 @@ const POLICY_V1: Policy = {
        Laura's $12k; 20 minutes kept the same coins but two fewer were right at +30 min. */
     rugFloorUsd: 10_000,
     rugGraceMs: 1_800_000, // half an hour
+    rugKeepAboveUsd: 50_000,
+    crashCapRatio: 2,
+    /* The owner's "earliest entry" (2026-10-26). tools/race-replay.ts --readings, 19-26 Oct, 1,585 posts:
+       $10k / 1.5x showed the real coin earlier than the pick on 20 posts (median 9.8 min after launch,
+       $42k), with 40 PvPs of which 9 never held the real coin and 4 were on posts where nothing ran;
+       $20k / 3x: 10 posts earlier, 16 PvPs; top three from $5k: 15 earlier, 30 PvPs. */
+    race: { on: true, windowMs: 1_800_000, minCapUsd: 10_000, gapRatio: 1.5, size: 2 },
     /* pump's opening cap in 15-19 Oct's first readings, the median. */
     openingCapUsd: 2_900,
     /* 17-19 Oct, readings at $15k or more: 469 readings of 213 coins had a pool under $1 (the most
@@ -8386,8 +8432,12 @@ const POLICY_V1: Policy = {
      For You's frame moves about once a minute. */
   runningCoins: {
     maxCoins: 12,
-    freshMs: 600_000, // 10 minutes
+    /* An hour since 2026-10-26: the strip reads the coins of every viral post, and a picked coin off
+       For You is read every few passes (services/market pickedCoins), not every minute. */
+    freshMs: 3_600_000,
     keepMs: 30_000,
+    minCapUsd: 20_000,
+    minVolume24hUsd: 24_000,
     /* policy.v150 (the owner, 2026-10-23: "coins that have volume right now — I don't want to see
        few-day-old dead coins"): only coins trading in the last hour, most dollars traded first.
        Measured 23 Oct ~22:50 UTC on 590 launchpad coins we read: 91 had no trade in the hour; of

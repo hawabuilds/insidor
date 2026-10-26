@@ -126,10 +126,15 @@ export function postCoinStatus(shown: PostCoinLink, owner = false): PostCoinStat
   }
   const status = coinStatus(coins);
   const one = coins.kind === 'one' || coins.kind === 'matched';
+  /* ★ PVP (the owner, 2026-10-26, $Marvin; "PvP" is his word for it on screen): when several coins made for the post are being bought
+     together, the card says so and offers them all beside Buy, highest market cap first in the list. */
+  const racing = coins.kind === 'matched' ? coins.evidence.racing ?? null : null;
+  const actions: PostAction[] = status.action === null ? [] : [status.action];
+  if (racing !== null) actions.push({ kind: 'see', count: racing, more: false });
   return {
-    line: one ? `${coins.kind === 'matched' && coins.evidence.picked === true ? 'Coin for this post: ' : ''}${oneCoinLine(coins.coin)}` : status.line,
-    actions: status.action === null ? [] : [status.action],
-    ...(coins.kind === 'matched' ? { facts: evidenceFacts(coins.evidence) } : {}),
+    line: one ? `${coins.kind === 'matched' && coins.evidence.picked === true ? (racing !== null ? 'Leading: ' : 'Coin for this post: ') : ''}${oneCoinLine(coins.coin)}` : status.line,
+    actions,
+    ...(coins.kind === 'matched' ? { facts: [...(racing !== null ? [`PvP: ${racing} coins for this post`] : []), ...evidenceFacts(coins.evidence)] } : {}),
   };
 }
 
