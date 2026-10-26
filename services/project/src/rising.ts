@@ -150,6 +150,7 @@ import { liveCoinLine, loadPostPicks, type CardPick } from './one-coin-cards.ts'
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
+import { forYouTime, loadShares, projectShare, type WireSharedBy } from './resurfaced.ts';
 import { accountKey, loadTopicLinks, topicsOf, withVariety, type ShareRule } from './variety.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
@@ -204,6 +205,12 @@ export interface WireRisingPost {
    * answer) carries nothing, because "we cannot tell" is not "deleted". The card keeps what we stored.
    */
   readonly deletedAt?: number;
+  /**
+   * ★ A huge account just shared this post (resurfaced.ts, Policy.judge.resurface): who, how, when,
+   * and a link to the share. Absent for every other post. When present, For You counted the post's
+   * age from `sharedBy.at`; `postedAt` above is still the post's own time.
+   */
+  readonly sharedBy?: WireSharedBy;
 }
 
 /**
@@ -937,12 +944,18 @@ export async function buildRising(
   const promoted = promotionOn(policy) ? await loadPromotedPicks(db, nowMs, ownReachOf, policy) : NO_PROMOTED_PICKS;
   /* ★ THE RUNNING PICKS (running-picks.ts): loaded whatever their age, and whichever route stored them; a promotion's, as its original. */
   const running = await loadRunningPicks(db, nowMs, policy, only, promoted.byPromo);
-  const loaded = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys()])]);
+  /* ★ THE POSTS A HUGE ACCOUNT JUST SHARED (resurfaced.ts): loaded whatever their own age; For You counts them from the share. */
+  const shares = await loadShares(db, nowMs, policy, only);
+  const loaded = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys(), ...shares.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys(), ...shares.keys()])]);
   const crypto = await loadCryptoReads(db, loaded.map((row) => row.item_id));
   /* ★ THE VIRAL EXCEPTION's answers (0138), only while it is on. */
   const viralAnswers = policy.judge.viral.on ? await loadViral(db, loaded.map((row) => row.item_id)) : new Map<string, ViralAnswer>();
   const candidates = viralAnswers.size === 0 ? loaded : loaded.map((row) => (viralAnswers.has(row.item_id) ? { ...row, viral: viralAnswers.get(row.item_id) ?? null } : row));
-  const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
+  const ownAtOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
+  /* For You's time for a post: its own, or its newest huge-account share's when later (resurfaced.ts). */
+  const atOf = (row: RisingRow): number => forYouTime(ownAtOf(row), shares.get(row.item_id));
+  /* On For You by a share alone (its own time outside the window): For You's, never Popular's. */
+  const sharedOnly = new Set(candidates.filter((row) => shares.has(row.item_id) && ownAtOf(row) < sinceMs).map((row) => row.item_id));
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
      card (feed-members.ts), and is never in the frame. Only posts inside the window are given a
      reason: a member refreshed from outside it did not leave the frame for a reason. */
@@ -1014,6 +1027,15 @@ export async function buildRising(
       const at = launchOf.get(a);
       return at !== undefined && at >= posted - COIN_LEAD_MS;
     }).length;
+  };
+  /* ★ The huge account's share on the card (resurfaced.ts): a fact, and the reason an older post is here. */
+  const withShared = (row: RisingRow, post: WireRisingPost): WireRisingPost => {
+    const share = shares.get(row.item_id);
+    const sharedBy = share === undefined ? null : projectShare(share);
+    if (sharedBy === null) return post;
+    const out: WireRisingPost = { ...post, sharedBy };
+    assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);
+    return out;
   };
   const withPick = (row: RisingRow, post: WireRisingPost, lookup: PostLookup | null): WireRisingPost => {
     if (!live) return post;
@@ -1089,7 +1111,7 @@ export async function buildRising(
       lateOnly: late.has(row.item_id) && (row.credited === false || atOf(row) < sinceMs),
       score,
       underBar,
-      post: withPick(row, projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
+      post: withShared(row, withPick(row, projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
         views: views.map((v) => ({ atMs: v.atMs, value: v.reach })),
         counts: readings.map((x) => ({ atMs: x.atMs, value: x.rate.kind === 'measured' ? x.rate.level : firstCount(x) })),
         perMinute: (() => {
@@ -1097,14 +1119,14 @@ export async function buildRising(
           return g === null ? null : Math.round(g);
         })(),
         tickersInReplies: crypto.get(row.item_id)?.othersTickers ?? null,
-      }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup),
+      }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup)),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
-      at: postedAt ?? toMs(row.first_seen_at) ?? 0,
+      at: atOf(row),
       fyp: byViews || byCoin || byRunning,
       byViews,
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
-      fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
+      fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, atOf(row), nowMs, policy, scale),
       /* ★ The six hours only stop a post JOINING For You late (the owner, 2026-10-14): a post already
          on it (feed-members.ts) stays while it is inside the window and passes. */
       member,
@@ -1142,7 +1164,7 @@ export async function buildRising(
   /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = await varied(db, fypAll, rows, policy);
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !viralOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly && !p.runningOnly).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !viralOnly.has(p.post.id) && !sharedOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly && !p.runningOnly).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;

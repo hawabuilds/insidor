@@ -57,7 +57,7 @@
 
 import { VendorShapeError, VendorUnavailable, outOfCredit, vendorAnswered } from '@insidor/vendor-kit';
 import { headerValueProblem, httpUrlProblem, messageOf, snippet, trimTrailingSlash } from '@insidor/vendor-kit/http.ts';
-import { ANSWER_SCHEMA, decodeReply, precedentsOf, sizedPictureUri, type Frame, type JudgeClient, type JudgeRequest, type JudgeResponse, type PictureSize } from '@insidor/judge-anthropic';
+import { ANSWER_SCHEMA, decodeReply, precedentsOf, sharedField, sizedPictureUri, type Frame, type JudgeClient, type JudgeRequest, type JudgeResponse, type PictureSize } from '@insidor/judge-anthropic';
 
 export const DEFAULT_VENDOR = 'openrouter';
 export const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -130,6 +130,7 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     distinctSources: s.distinctSources,
     frame: frames.has(String(s.storyId)) ? 'shown below' : 'none',
     ...(shown === null ? {} : { labelledLike: (s.precedents ?? []).flatMap((p) => shown.refOf.get(p.ref) ?? []) }),
+    ...sharedField(s),
   }));
   const content: unknown[] = [{ type: 'text', text: request.instructions }];
   if (shown !== null) content.push({ type: 'text', text: `${request.precedentsIntro ?? ''}\n${JSON.stringify(shown.list)}` });

@@ -54,13 +54,17 @@
  * `deletedAt` only with proof (services/runner work/gone-posts.ts); a post we merely could not read
  * again carries nothing and shows as before.
  *
+ * ★ A POST A HUGE ACCOUNT JUST SHARED SAYS WHO ("Quoted by @elonmusk · 2h", the server's
+ * `sharedBy`), with that account's face, under the byline. It is why an older post is on For You,
+ * said as a fact; the byline keeps the post's own age.
+ *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
 import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
-import { quotePictureLeads, type PostInStory } from '../api/wire/rising.ts';
+import { quotePictureLeads, sharedByLabel, type PostInStory } from '../api/wire/rising.ts';
 import { storyWords } from '../story-words.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { useCoinCap } from '../useCoinCap.ts';
@@ -154,6 +158,15 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
               </span>
               <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
             </div>
+            {post.sharedBy !== undefined ? (
+              <div className={styles['shared']}>
+                <span>
+                  <PosterPic key={`${post.sharedBy.authorPictureFile ?? ''} ${post.sharedBy.authorPictureUrl ?? ''}`} file={post.sharedBy.authorPictureFile} url={post.sharedBy.authorPictureUrl} label={post.sharedBy.authorLabel} />
+                  {sharedByLabel(post.sharedBy)}
+                </span>
+                <Value r={formatAge(post.sharedBy.at, now)} className={styles['age']} />
+              </div>
+            ) : null}
             {post.deletedAt !== undefined ? <span className={styles['gone']}>{deletedLine(post.sourceLabel)}</span> : null}
             {sortLine !== null ? <span className={sortLine.up ? styles['gained'] : styles['speed']}>{sortLine.text}</span> : null}
           </div>

@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { WireLeakError, decodeCoinLink, decodeRisingFeed, decodeRisingPost } from './decode.ts';
 import { fixtureBoard, fixtureRising } from '../../test-fixtures/fixtures.ts';
-import { quotePictureLeads } from './wire/rising.ts';
+import { quotePictureLeads, sharedByLabel } from './wire/rising.ts';
 
 const COIN = {
   coinId: 'solana:abc', ticker: 'DOCK', name: 'dock', address: 'abc', venueLabel: 'Pump.fun', imageUrl: null,
@@ -144,4 +144,23 @@ test('★ a post deleted from its source decodes with when; anything else is not
   for (const bad of [null, 0, -5, 1.5, '1800000000000', true, {}]) {
     assert.equal('deletedAt' in decodeRisingPost({ ...POST, deletedAt: bad }), false, `${JSON.stringify(bad)} is not a time`);
   }
+});
+
+test('★ a post a huge account just shared decodes who, how and when; a share it cannot read is dropped, never the card', () => {
+  const share = {
+    id: 'x:2114612551787147343', authorLabel: '@elonmusk', authorName: 'Elon Musk', how: 'quoted', at: { at: 1_800_000_000_000 },
+    permalink: 'https://x.com/elonmusk/status/2114612551787147343', authorPictureUrl: 'https://pbs.example/e.jpg', authorPictureFile: null,
+  };
+  const post = decodeRisingPost({ ...POST, sharedBy: share });
+  assert.equal(post.sharedBy?.authorLabel, '@elonmusk');
+  assert.equal(post.sharedBy?.how, 'quoted');
+  assert.deepEqual(post.sharedBy?.at, decodeRisingPost({ ...POST, postedAt: { at: 1_800_000_000_000 } }).postedAt);
+  assert.equal(post.sharedBy?.authorPictureUrl, 'https://pbs.example/e.jpg');
+  assert.equal(sharedByLabel(post.sharedBy!), 'Quoted by @elonmusk');
+  assert.equal(sharedByLabel({ how: 'samePicture', authorLabel: '@a' }), 'Shared by @a');
+  assert.equal('sharedBy' in decodeRisingPost(POST), false, 'absent: no share');
+  for (const bad of [null, {}, { ...share, id: '' }, { ...share, authorLabel: 'Elon Musk' }, { ...share, how: 'retweeted' }]) {
+    assert.equal('sharedBy' in decodeRisingPost({ ...POST, sharedBy: bad }), false, `${JSON.stringify(bad)} is no share`);
+  }
+  assert.notEqual(decodeRisingPost({ ...POST, sharedBy: { ...share, at: 'soon' } }).sharedBy, undefined, 'an unreadable time keeps the share');
 });

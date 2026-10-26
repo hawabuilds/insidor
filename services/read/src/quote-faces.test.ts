@@ -16,6 +16,22 @@ test('★ the quoted account\'s picture and our copy of it are put on the quote'
   assert.deepEqual((card as typeof CARD & { quote: Record<string, unknown> }).quote, { ...CARD.quote, authorPictureUrl: 'https://p/me.jpg', authorPictureFile: FILE });
 });
 
+test('★ the huge account that just shared the post gets its face too, beside the quote\'s, from one read', async () => {
+  const shared = { ...CARD, sharedBy: { id: 'x:9', authorLabel: '@elonmusk', how: 'quoted' } };
+  let reads = 0;
+  const db = {
+    query: async (sql: string, params?: readonly unknown[]): Promise<readonly Row[]> => {
+      reads += 1;
+      assert.deepEqual(params?.[0], ['x:2', 'x:9']);
+      return sql === QUOTE_FACES_SQL ? [{ id: 'x:2', picture_url: 'https://p/me.jpg', picture_copy: null }, { id: 'x:9', picture_url: 'https://p/elon.jpg', picture_copy: FILE }] : [];
+    },
+  };
+  const [card] = (await withQuoteFaces(db, [shared])) as (typeof shared & { quote: Record<string, unknown>; sharedBy: Record<string, unknown> })[];
+  assert.equal(reads, 1);
+  assert.deepEqual(card?.sharedBy, { ...shared.sharedBy, authorPictureUrl: 'https://p/elon.jpg', authorPictureFile: FILE });
+  assert.equal(card?.quote['authorPictureUrl'], 'https://p/me.jpg');
+});
+
 test('a card with no quote, or no face held, is sent as projected; a bad file name is none', async () => {
   const none = { query: async (): Promise<readonly Row[]> => [] };
   const cards = [CARD, { id: 'x:3' }];

@@ -27,7 +27,7 @@ import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
+import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, SharedBy, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -40,6 +40,7 @@ import {
   OLDER_COIN_FIELDS,
   QUOTED_POST_FIELDS,
   RISING_POST_FIELDS,
+  SHARED_BY_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
 
@@ -666,6 +667,40 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     ...decodeInStory(o.inStory),
     ...decodeQuote(o.quote, `${path}.quote`),
     ...decodeDeleted(o.deletedAt),
+    ...decodeSharedBy(o.sharedBy, `${path}.sharedBy`),
+  };
+}
+
+/**
+ * A huge account's share of the card's post. Absent or null: none. One that is not readable (no id,
+ * no @handle, an unknown way of sharing) is dropped and the card shown without it — another
+ * account's post is never a reason to refuse the card. An unreadable time is "not reported".
+ */
+export function decodeSharedBy(raw: unknown, path = '$.sharedBy'): { sharedBy?: SharedBy } {
+  if (raw === undefined || raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const o = pick(raw as Record<string, unknown>, SHARED_BY_FIELDS);
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  const id = text(o.id);
+  const authorLabel = text(o.authorLabel);
+  const how = o.how === 'quoted' || o.how === 'samePicture' ? o.how : null;
+  if (id === null || authorLabel === null || !authorLabel.startsWith('@') || how === null) return {};
+  let at: Instant;
+  try {
+    at = instantAt(o.at, `${path}.at`, 'not_reported');
+  } catch {
+    at = instantFrom(null, 'not_reported');
+  }
+  return {
+    sharedBy: {
+      id,
+      authorLabel,
+      authorName: text(o.authorName),
+      authorPictureUrl: httpsOrNull(o.authorPictureUrl),
+      authorPictureFile: posterPicFile(o.authorPictureFile),
+      how,
+      at,
+      permalink: httpsOrNull(o.permalink),
+    },
   };
 }
 

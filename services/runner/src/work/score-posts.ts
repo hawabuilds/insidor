@@ -73,7 +73,7 @@
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import type { JudgePort, JudgePrecedent, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
+import type { JudgePort, JudgePrecedent, JudgeShare, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { JunkSkip, PgItemRepo, PgJunkFilterRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
 import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, hasWords, heldAsNotMeme, heldKind, junkVerdict, type JunkFit } from '@insidor/core';
@@ -177,6 +177,9 @@ export function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrec
     ...(precedents.length === 0 ? {} : { precedents }),
   };
 }
+
+/** The subject with a huge account's share beside it (Policy.judge.resurface); unchanged without one. */
+export const withShare = (subject: JudgeSubject, share: JudgeShare | undefined): JudgeSubject => (share === undefined ? subject : { ...subject, sharedBy: share });
 
 /** The source held to the short-video bars (Policy.rising.shortVideoReachScale): the projector applies the same. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
@@ -342,9 +345,21 @@ export async function kindCatchUp(
 export async function judgeQueue(
   deps: Omit<ScoringDeps, 'items'>,
   queue: readonly Item[],
-  opts: { readonly rescoring: readonly Item[]; readonly junkFit: JunkFit | null; readonly kindLabel: string; readonly now: Millis },
+  opts: {
+    readonly rescoring: readonly Item[];
+    readonly junkFit: JunkFit | null;
+    readonly kindLabel: string;
+    readonly now: Millis;
+    /**
+     * The huge account's share each post is judged beside (Policy.judge.resurface, work/resurface.ts),
+     * by post id. Such a post is never given another post's answer: that answer was given without
+     * the share in view, which is the one thing this ask is for.
+     */
+    readonly sharedBy?: ReadonlyMap<string, JudgeShare>;
+  },
 ): Promise<ScoringResult> {
   const { rescoring, junkFit, kindLabel, now } = opts;
+  const shareOf = (item: Item): JudgeShare | undefined => opts.sharedBy?.get(String(item.itemId));
   const empty = { queued: queue.length, scored: 0, copied: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;
   const judge = deps.judge;
@@ -359,7 +374,7 @@ export async function judgeQueue(
   const askKind: KindAsk[] = [];
   const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
   for (const item of queue) {
-    const answer = found === null ? null : reusableFor(item, found);
+    const answer = found === null || shareOf(item) !== undefined ? null : reusableFor(item, found);
     if (answer === null || String(answer.sourceId) === String(item.itemId)) {
       toJudge.push(item);
       continue;
@@ -416,7 +431,7 @@ export async function judgeQueue(
   let firstReason: string | null = null;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
     const batch = toJudge.slice(i, i + judge.maxBatch);
-    const subjects = batch.map((item) => subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents));
+    const subjects = batch.map((item) => withShare(subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents), shareOf(item)));
     const byKey = new Map<string, ItemId>(batch.map((item) => [String(subjectIdFor(item)), item.itemId]));
     const estimate = judge.estimate(subjects);
 

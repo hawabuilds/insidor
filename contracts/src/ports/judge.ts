@@ -47,6 +47,25 @@ export interface JudgeSubject {
    * judge is shown is a decision that must be visible outside the adapter. Absent or empty: none.
    */
   readonly precedents?: readonly JudgePrecedent[];
+  /**
+   * A huge account has just shared this post (Policy.judge.resurface): quoted it, or posted the same
+   * picture or video under its own name, with these words. Shown to the judge beside the post,
+   * because for a coin the share is the moment, whatever the post's age. Chosen by the CALLER, for
+   * the reason above. Absent: the post is judged on its own.
+   */
+  readonly sharedBy?: JudgeShare;
+}
+
+/** Who shared a post just now, how, and what they said. Facts only: the adapter words them. */
+export interface JudgeShare {
+  /** The account's handle, without the "@". */
+  readonly handle: string;
+  /** Followers as last read; null when never read. */
+  readonly followers: number | null;
+  /** 'quoted': a quote of the post; 'samePicture': the same picture or video posted under its own name. */
+  readonly how: 'quoted' | 'samePicture';
+  /** The sharing post's own words (links removed, trimmed); '' when it said nothing. */
+  readonly words: string;
 }
 
 /** One labelled post shown as precedent: its words (already trimmed), the owner's label, and why. */

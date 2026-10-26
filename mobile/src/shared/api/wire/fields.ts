@@ -119,6 +119,20 @@ export const RISING_POST_FIELDS = [
   'quote',
   /* When the post was found deleted from its source (services/project rising.ts `deletedAt`, 0131). */
   'deletedAt',
+  /* A huge account that just shared the post (services/project resurfaced.ts `sharedBy`). */
+  'sharedBy',
+] as const;
+
+/** A huge account's share of a card's post (`RisingPost.sharedBy`). */
+export const SHARED_BY_FIELDS = [
+  'id',
+  'authorLabel',
+  'authorName',
+  'authorPictureUrl',
+  'authorPictureFile',
+  'how',
+  'at',
+  'permalink',
 ] as const;
 
 /** A quoted post inside a card (`RisingPost.quote`). */

@@ -46,7 +46,7 @@ import { compact, formatCount } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { QuoteInset } from '../../shared/ui/QuoteInset.tsx';
-import { quotePictureLeads } from '../../shared/api/wire/rising.ts';
+import { quotePictureLeads, sharedByLabel, type SharedBy } from '../../shared/api/wire/rising.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { deletedLine, platformOf } from '../../shared/platform.ts';
@@ -328,6 +328,8 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
 
       <SheetBody>
         <div ref={middle} className={styles['scroll']}>
+          {/* ★ A huge account just shared this post (RisingPost.sharedBy): who, with their face, and when; a link to the share. */}
+          {post.sharedBy !== undefined ? <SharedLine share={post.sharedBy} now={now} /> : null}
           {post.excerpt !== '' || media !== null || quote !== null ? (
             <section className={styles['postCard']}>
               {post.excerpt !== '' ? (
@@ -468,6 +470,19 @@ function Tiles({ data }: { data: PostSheetData }) {
 function topLine(main: SheetCoin, shared: string | null): string {
   const same = (v: string | null) => v !== null && shared !== null && v.toLowerCase() === shared.toLowerCase();
   return shared !== null && (same(main.name) || same(main.ticker)) ? `Top ${shared} coin by MC` : 'Top coin by MC';
+}
+
+/** "Quoted by @elonmusk · 2h", with that account's face; the line opens the share when we hold its link. */
+function SharedLine({ share, now }: { share: SharedBy; now: number }) {
+  const { src, tryKey, onError } = usePosterPic(share.authorPictureFile, share.authorPictureUrl);
+  const age = formatAge(share.at, now);
+  const face = src !== null
+    ? <img key={tryKey} className={styles['sharedImg']} src={src} alt="" onError={onError} />
+    : <span className={styles['sharedLetter']} aria-hidden="true">{(share.authorLabel.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
+  const words = <><span className={styles['sharedWho']}>{sharedByLabel(share)}</span>{age.kind === 'value' ? <span className={styles['sharedAge']}>{age.text}</span> : null}</>;
+  return share.permalink !== null
+    ? <a className={styles['shared']} href={share.permalink} target="_blank" rel="noopener noreferrer">{face}{words}</a>
+    : <div className={styles['shared']}>{face}{words}</div>;
 }
 
 /** The poster's picture (our copy, else the source's link), or the first letter of their name when there is none or none will load. */

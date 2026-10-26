@@ -1168,6 +1168,47 @@ export interface JudgePolicy {
     readonly maxKindAsks: number;
     readonly dailyUsd: number;
   };
+  /**
+   * ★ A MEGA ACCOUNT BRINGS AN OLD POST BACK (the owner, 2026-10-26, after @elonmusk quoted
+   * @tetsuoai's 16-day-old "hello, world" video with "So beautiful" at 06:58 UTC). An account with at
+   * least `minFollowers` followers as last read quoting a stored post (public.item.reproduction_of),
+   * or posting the same picture or video under its own name (the same first media address, as the
+   * quote boost reads it), makes that post a moment NOW, whatever its age. The original is asked the
+   * post question again with the share beside it (JudgeSubject.sharedBy: who, their followers,
+   * quoted or posted the same media, and their words), filed like any answer and held to the usual
+   * bar; the owner's labels, the not-a-meme match and the kind question apply as on every ask. If
+   * that answer passes, For You counts the post's age from the share's time, not its own, for its
+   * usual six hours (`rising.fypMaxAgeMs`), and the card says who shared it. Every other gate — the
+   * owner's "Not a meme", held kinds, shills, the junk bar, variety, promotions — holds as for any
+   * post. The card's own post time stays the post's: that is a fact.
+   *
+   * Asked once per share (internal.resurfacing, 0139), in the early loop before the quote boost (so
+   * a young, never-judged original meets the share first), at most `maxPerPass` a pass, for shares
+   * first seen in the last `windowMs`; charged to lane 'resurface' in internal.lane_spend and stopped
+   * at `dailyUsd` a UTC day, failing closed.
+   *
+   * Measured 2026-10-26 over the 14 days before (read only): 23 quotes by 10M+ accounts of stored
+   * posts more than twelve hours old (1.6 a day; 21 of them @elonmusk's; no same-media repost at
+   * 10M+), and 348 of younger ones. A coin linked to the original or the share was made after the
+   * share for 20 of the 23 — the launchers that coin every big account's post — and none of those
+   * coins reached $50k (5M–10M accounts: 95 old originals, 17 coined after, 1 reached $50k). Being
+   * shared by a huge account all but guarantees a coin and, alone, is no sign of one that runs, so
+   * the bar is NOT lowered: the judge decides with the share in view, at its usual bar. Asked of
+   * those 23 with the share beside them (Nemotron, the applied block, no precedents; $0.007): one
+   * yes (@cz_binance's quote, "FOUR", 0.8); "hello, world" a no at 0.9 with and without the quote,
+   * three times each — the share is shown, never a lift. One post
+   * question with precedents is ~$0.0005: ~$0.03 a month at 1.6 a day, ~$0.40 at every 10M+ share
+   * of any age (~25 a day).
+   *
+   * Off: nothing is asked, and the projector counts every post from its own time.
+   */
+  readonly resurface: {
+    readonly on: boolean;
+    readonly minFollowers: number;
+    readonly windowMs: number;
+    readonly maxPerPass: number;
+    readonly dailyUsd: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -5702,8 +5743,14 @@ const POLICY_V1: Policy = {
      down, or held as politics or showbiz, that reached 500k views at 8k a minute within six hours is
      asked the viral-moment question and the kind question, and reaches For You when both say so —
      never a tragedy, an ad, sport, fandom or company news, never over the owner's "Not a meme" or a
-     shill. `judge.viral.on` false is the rollback: nothing else reads the new table. */
-  version: 'policy.v186',
+     shill. `judge.viral.on` false is the rollback: nothing else reads the new table.
+
+     v187 adds `judge.resurface` (the owner, 2026-10-26, after @elonmusk quoted a 16-day-old video): a
+     post an account of 10M+ followers quotes, or posts the same media of, is asked the post question
+     again with that share beside it; if it passes, For You counts its age from the share and its card
+     says who shared it. The usual bar; every hold still applies. `judge.resurface.on` false is the
+     rollback. */
+  version: 'policy.v187',
 
   admit: {
     maxAgeMin: 240,
@@ -6132,6 +6179,16 @@ const POLICY_V1: Policy = {
          confidence number twice in two asks and named no kind it could be read by. */
       maxKindAsks: 3,
       dailyUsd: 0.3,
+    },
+    /* See JudgePolicy.resurface. 10M, and the usual bar: the measurement there. Two hours of
+       shares, so a restart, or an original stored a little after its share (the "hello, world"
+       video was stored 19 minutes after the quote), is still seen. The cap is ten times a busy day's. */
+    resurface: {
+      on: true,
+      minFollowers: 10_000_000,
+      windowMs: 7_200_000, // two hours
+      maxPerPass: 5,
+      dailyUsd: 0.1,
     },
   },
 
