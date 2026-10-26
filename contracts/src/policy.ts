@@ -1744,6 +1744,27 @@ export interface FeedPolicy {
     readonly late: {
       readonly on: boolean;
       readonly bands: readonly { readonly ageMin: number; readonly minApproval: number }[];
+      /**
+       * ★ HOW OFTEN EACH LANGUAGE OF A LATE BAND IS ASKED (policy.v185), as `langSplit` spaces the
+       * newest bands (core `langBandWindow`): once its window holds `everyMs` of posting time, reaching
+       * back `fresh.maxWindowMin` beyond it, so a held-back pass is bought late rather than lost.
+       * Absent or 0: every pass, the window since the last ask (core `bandWindow`), as before.
+       *
+       * Why: a late ask is one search per language, and the supplier bills an empty or short page
+       * the price of a post. Asked every two-minute pass, 7 languages × ~9.4 pages, 63% of the late
+       * band's bill on 25 Oct 07:00–08:00 UTC was those minimums, and its $1.30 day ran out at
+       * 20:57 UTC on 25 Oct, after which nothing looked at a post at five hours until midnight.
+       * What breaks if changed carelessly: above `fresh.maxWindowMin` minutes nothing is lost but a
+       * post is seen that much later than its age; a share of the day is still the floor's lever.
+       */
+      readonly everyMs?: number;
+      /**
+       * The languages the late bands ask (policy.v185); `slow.langs` when absent. Their own list
+       * because a language here costs one spaced search an ask (about 150 a day at `everyMs` ten
+       * minutes, ~$0.02 at the one-post minimum) where `slow.langs` also asks it in four slices
+       * every quarter-hour (384 a day).
+       */
+      readonly langs?: readonly string[];
     };
   };
   /**
@@ -1819,6 +1840,23 @@ export interface FeedPolicy {
   readonly paging: {
     readonly maxEmptyRun: number;
     readonly searches: Readonly<Record<string, SearchPagingPolicy>>;
+    /**
+     * ★ A PACE IS CHECKED BEFORE AN ASK, NOT BETWEEN ITS PAGES (policy.v185). With it, a paced
+     * search's day (`SearchPagingPolicy.paced`) and the X search day's pace (`searchDay`) decide
+     * whether an ask starts; once started, its pages are held only to the hard totals (the search's
+     * whole `dailyUsd`, the X day's `dailyUsd`), its `maxPages` and its deadline. The next pass waits
+     * until the pace has caught up. Absent or false: every page is checked against the pace, as before.
+     *
+     * Why: a search's pages come newest first and each language's window is marked read when the
+     * ask ends, so a pace that closed after a language's first page dropped the older rest of that
+     * window unread, and raised that language's floor 20% as if its posts had cost too much
+     * (core `nextFloor`'s `cut`). On 25 Oct 17:00–23:59 UTC the 6-minute band ended 95 of its 165
+     * asks that way and 199 of the languages' 497 floor moves were such cuts; Portuguese, cut after
+     * 1 to 5 posts an ask, climbed 28,150 → 50,000 (the most) in about an hour. A pace still holds
+     * the day: an ask starts only inside it, so it is over by one ask at most (`maxPages` pages,
+     * about $0.03 at 9 to 15 pages of 20 posts), and a hard total is never crossed.
+     */
+    readonly paceBeforeAskOnly?: boolean;
   };
   /**
    * ★ THE X SEARCH DAY, ONE HARD TOTAL PACED OVER THE UTC DAY (the owner, 2026-10-19: "a HARD daily
@@ -5608,8 +5646,16 @@ const POLICY_V1: Policy = {
      v184 adds `judge.precedents.holdNotSimilarityNoWords` (0.945): a post with no words — a link, emoji
      or tags only — is held as NOT_MEME_MATCH only when its picture is near-identical to the labelled
      one, not at 0.891. Two @twaniimals animal posts (311k, 436k views, judged yes) were held on 26 Oct
-     at 0.891 and 0.924 for looking like another labelled animal photo. Posts with words are unchanged. */
-  version: 'policy.v184',
+     at 0.891 and 0.924 for looking like another labelled animal photo. Posts with words are unchanged.
+
+     v185 is the never-stored viral posts of 25-26 Oct: a pace is checked before a search's ask and
+     not between its pages (`feed.paging.paceBeforeAskOnly`), so a paced day no longer drops the
+     unread older part of a language's window nor raises its floor for it; the late band asks each
+     language every ten minutes (`fresh.late.everyMs`) instead of every pass, is paced over the UTC
+     day (`paging.searches.late_300.paced`) and adds Arabic and Korean (`fresh.late.langs`); and
+     Arabic joins the newest bands at Korean's share (`feed.langs`, `langSplit.shares`). No day, cap
+     or the X search day changes. v184 back is the rollback (v184 is the hold fix, made alongside). */
+  version: 'policy.v185',
 
   admit: {
     maxAgeMin: 240,
@@ -6184,7 +6230,13 @@ const POLICY_V1: Policy = {
        the bands' bill does not move; the new languages are paid by the other languages' floors. A
        new language starts at the shared floor and climbs 20% an ask to its own, so its first hour
        or two buys more than its share — inside the bands' own day caps (`paging`). */
-    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko', 'zh', 'tr'],
+    /* 'ar' from policy.v185 (the owner's missed @thevibesofme post of 25 Oct, 73k likes and 671k
+       views, in Arabic, which no catch-all search asked; the supplier returns it for `lang:ar`).
+       Value: 5 of the 1,066 coined X posts of 500k views in the 7 days to 26 Oct that we hold are
+       Arabic (0.5%, Korean 8, Indonesian 7), an undercount since only a coin's link brought them in.
+       Cost: none on the day; its share (`langSplit.shares`, Korean's) comes out of the same
+       `bandsDailyUsd`, and its first ask an hour per band is ~48 one-post minimums a day, $0.007. */
+    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko', 'zh', 'tr', 'ar'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
@@ -6330,7 +6382,22 @@ const POLICY_V1: Policy = {
       /* On 2026-10-15, the owner's approval: about +$0.07 a day of text search (2,000 posts a day over
          the band, less the five-hour slow slice it replaces) and about +$1.75 a day of judging (some
          200 more posts a day judged, an estimate from three windows). */
-      late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] },
+      /* Every ten minutes a language, and Arabic and Korean too, from policy.v185: the owner's four
+         never-stored viral posts of 25-26 Oct. Asked every pass, the band's one-post minimums were 63% of
+         its bill in a quiet hour (25 Oct 07:00-08:00 UTC: 3.9 posts and 9.4 pages an ask), and its $1.30
+         day ran out at 20:57 UTC on 25 Oct and is on course for ~14:00 on 26 Oct, so a post five hours
+         old in the evening (the Portuguese "gatinho acenando", 194k likes) was looked at by nothing.
+         Replayed on its own logs, the same posts at ten-minute asks: ~$0.58 a day in a quiet hour's mix
+         (was ~$1.15), ~$1.44 in 25 Oct 16:00-21:00's (was ~$1.80) and ~$1.87 in the election night of
+         26 Oct 00:00-09:00 (was ~$2.11). The two languages add ~150 asks a day each, ~$0.05 a day with
+         their few posts over 6,500 likes at five hours (Korean: the missed @snimtherock post, 7.8k
+         likes, never asked after 50 minutes; Arabic: `feed.langs`). Inside the same `late_300` day. */
+      late: {
+        on: true,
+        bands: [{ ageMin: 300, minApproval: 6_500 }],
+        everyMs: 600_000, // ten minutes
+        langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko'],
+      },
     },
     /* On from 2026-10-16, the owner's approval ("the middle X search for posts 15 min to 3 h old with
        1,500-2,500 likes, ~$5-6/day").
@@ -6398,6 +6465,8 @@ const POLICY_V1: Policy = {
        get, kept so turning one on is one switch. */
     paging: {
       maxEmptyRun: 3, // an empty page is still billed $0.00015; three in a row ends a pass
+      /* On from policy.v185 (FeedPolicy.paging): a pace ends no ask between its pages. */
+      paceBeforeAskOnly: true,
       searches: {
         /* ★ ALL FOUR READ TO THE END FROM 2026-10-19, the owner's re-split. Measured on the 557 viral
            posts of 18 Oct 09:22 to 19 Oct 05:00 UTC found more than an hour after posting: 94% were over
@@ -6426,7 +6495,10 @@ const POLICY_V1: Policy = {
            lane_spend); 25 Oct 05:00–12:00 it spent at $1.48 a day. The same $1.20, spread; the language
            floors rise to fit it (a language cut short by a day raises its floor, core `nextFloor`). */
         band_50: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.2, paced: true },
-        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3 },
+        /* `paced` from policy.v185: the same $1.30 spread over the UTC day instead of spent by the evening
+           (20:57 UTC on 25 Oct), now that a held-back ask is bought on the next one (`fresh.late.everyMs`)
+           and a pace no longer ends an ask between its pages (`paceBeforeAskOnly`). */
+        late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3, paced: true },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
       },
     },
@@ -6469,7 +6541,8 @@ const POLICY_V1: Policy = {
        not grow either. */
     langSplit: {
       on: true,
-      shares: { en: 0.7, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005 },
+      /* Arabic 0.005 from policy.v185 (`feed.langs`), Korean's share, taken from English (0.7 → 0.695). */
+      shares: { en: 0.695, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005, ar: 0.005 },
       bandsDailyUsd: 2.85, // 3.65 → 3.25 (Turkish, Chinese) → 2.85 (Spanish, Portuguese, 2026-10-24) in the older search (slow.langs)
       minPostsPerAsk: 2,
       maxEveryMs: 3_600_000, // an hour

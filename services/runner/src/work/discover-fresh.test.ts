@@ -158,6 +158,47 @@ test('★ late bands on: one more ask at five hours, at its fixed floor, tiled o
   assert.equal(seen.at(-1)!.sinceMs, late.untilMs, 'no gap and no overlap');
 });
 
+test('★ a late band on a spacing (policy.v185 `fresh.late.everyMs`): asked once its window holds ten minutes, and nothing in between is lost', async () => {
+  const SPACED: Policy = { ...LATE, feed: { ...LATE.feed, fresh: { ...LATE.feed.fresh, late: { ...LATE.feed.fresh.late, everyMs: 10 * MIN } } } };
+  const held = { all: 1_120, slow: 7_412 };
+  /* The fresh bands are at most an hour old, so a window ending hours before NOW is the late band's. */
+  const lateOf = (qs: readonly DiscoveryQuery[]) => qs.filter((q) => q.untilMs !== null && NOW - q.untilMs >= 200 * MIN);
+  const seen: DiscoveryQuery[] = [];
+  const clock = memoryFreshClock();
+  /* A first ask (a fresh process) goes at once, reaching back the bands' fifteen minutes. */
+  await run(source(seen), SPACED, clock, NOW, undefined, { ...held });
+  const first = lateOf(seen);
+  assert.equal(first.length, 1);
+  assert.equal(first[0]!.untilMs! - first[0]!.sinceMs!, SPACED.feed.fresh.maxWindowMin * MIN);
+  /* Two and eight minutes on: the window holds less than ten minutes of posting, so the band waits. */
+  for (const later of [2, 8]) {
+    seen.length = 0;
+    await run(source(seen), SPACED, clock, (NOW + later * MIN) as Millis, undefined, { ...held });
+    assert.equal(lateOf(seen).length, 0, `not asked ${later} minutes on`);
+  }
+  /* Eleven minutes on: one ask over the eleven minutes since the last one ended, no gap and no overlap. */
+  seen.length = 0;
+  await run(source(seen), SPACED, clock, (NOW + 11 * MIN) as Millis, undefined, { ...held });
+  const next = lateOf(seen);
+  assert.equal(next.length, 1);
+  assert.equal(next[0]!.sinceMs, first[0]!.untilMs);
+  assert.equal(next[0]!.untilMs, NOW + 11 * MIN - 300 * MIN);
+  /* Held back for half an hour (a paced day): the window reaches back the fifteen minutes plus its ten, no further. */
+  seen.length = 0;
+  await run(source(seen), SPACED, clock, (NOW + 41 * MIN) as Millis, undefined, { ...held });
+  const late = lateOf(seen)[0]!;
+  assert.equal(late.untilMs! - late.sinceMs!, (SPACED.feed.fresh.maxWindowMin + 10) * MIN);
+});
+
+test('as shipped (policy.v185): the late band asks every ten minutes, in Arabic and Korean too, paced over the day', () => {
+  assert.equal(LIVE_POLICY.feed.fresh.late.everyMs, 600_000);
+  assert.ok(LIVE_POLICY.feed.fresh.late.everyMs! <= (LIVE_POLICY.feed.fresh.maxWindowMin + 10) * MIN, 'a held-back pass is bought late, not lost');
+  for (const lang of LIVE_POLICY.feed.slow.langs ?? []) assert.ok(LIVE_POLICY.feed.fresh.late.langs?.includes(lang), `${lang}: the band asks every language the five-hour slice it replaces would`);
+  assert.ok(LIVE_POLICY.feed.fresh.late.langs?.includes('ar') && LIVE_POLICY.feed.fresh.late.langs.includes('ko'));
+  assert.equal(LIVE_POLICY.feed.paging.searches['late_300']?.paced, true);
+  assert.equal(LIVE_POLICY.feed.paging.searches['late_300']?.dailyUsd, 1.3, 'the same day');
+});
+
 test('★ a late band never moves a floor: its posts are not counted toward any lane\'s target', async () => {
   const held: Record<string, number> = { all: 1_120, slow: 7_412 };
   const seen: DiscoveryQuery[] = [];

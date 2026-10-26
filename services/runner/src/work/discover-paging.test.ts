@@ -20,6 +20,7 @@ import { authorKey, itemId, sourceId } from '@insidor/contracts/ids.ts';
 import type { Budget, CostEstimate, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
 import type { Capabilities, Discovered, DiscoveryQuery, PlatformAdapter, PlannedCall } from '@insidor/contracts/ports/platform.ts';
 import { DEFAULT_POLICY, type SearchPagingPolicy } from '@insidor/contracts/policy.ts';
+import { pacedDailyUsd } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
@@ -35,8 +36,17 @@ const PROBE = [6, 12, 3, 5, 1];
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
 /* One language: these tests are about lanes and paging. Asking each language as its own search is work/discover-languages.test.ts. */
-/* One language everywhere, the late band's (`slow.langs`) too, so a page count is one search's. */
-const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], slow: { ...DEFAULT_POLICY.feed.slow, langs: ['en'] }, ...feed } });
+/* One language everywhere, the late band's (`fresh.late.langs`, `slow.langs`) too, so a page count is one search's. */
+const withFeed = (feed: Partial<Policy['feed']>): Policy => ({
+  ...DEFAULT_POLICY,
+  feed: {
+    ...DEFAULT_POLICY.feed,
+    langs: ['en'],
+    slow: { ...DEFAULT_POLICY.feed.slow, langs: ['en'] },
+    fresh: { ...DEFAULT_POLICY.feed.fresh, late: { ...DEFAULT_POLICY.feed.fresh.late, langs: ['en'] } },
+    ...feed,
+  },
+});
 const ON = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true } });
 const OLD_MIDDLE = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true, fullPaging: false } });
 /* Every listed search on the old rule, as before the re-split of 2026-10-19, so one can be switched on alone. */
@@ -236,16 +246,42 @@ test('★ a search switched on stops at its day, and is paused once the day is s
   const pageUsd = DEFAULT_POLICY.feed.pageLimit * USD_PER_POST;
   const seen: DiscoveryQuery[] = [];
   const ledger = memoryLaneLedger({ [`search:${name}`]: day - 2.5 * pageUsd });
-  await pass(source(seen, Array.from({ length: 100 }, () => 5), { endless: true }), searchOn(name, { maxPages: 100 }), { ledger }).result;
+  /* Unpaced, so its whole day is open at NOW: this is the hard day, not the pace. */
+  await pass(source(seen, Array.from({ length: 100 }, () => 5), { endless: true }), searchOn(name, { maxPages: 100, paced: false }), { ledger }).result;
   const asked = lateAsks(seen).length;
   assert.ok(asked > 1 && asked < 100, `stopped by its day after ${asked} pages`);
   assert.ok(((await ledger.spent(`search:${name}`, NOW)) ?? 0) <= day);
 
   const seen2: DiscoveryQuery[] = [];
-  const { result } = pass(source(seen2, PROBE), searchOn(name), { ledger: memoryLaneLedger({ [`search:${name}`]: day }) });
+  const { result } = pass(source(seen2, PROBE), searchOn(name, { paced: false }), { ledger: memoryLaneLedger({ [`search:${name}`]: day }) });
   const r = await result;
   assert.equal(lateAsks(seen2).length, 0);
   assert.ok(r.outcomes.some((o) => o.kind === 'paused' && o.capUsd === day));
+});
+
+test('★ a paced search that starts inside its pace reads its window to the end (policy.v185 `paceBeforeAskOnly`), held only to its whole day', async () => {
+  const late = DEFAULT_POLICY.feed.fresh.late.bands[0]!;
+  const name = `late_${late.ageMin}`;
+  const pageUsd = DEFAULT_POLICY.feed.pageLimit * USD_PER_POST;
+  const paceNow = pacedDailyUsd(DEFAULT_POLICY.feed.paging.searches[name]!.dailyUsd, NOW, DEFAULT_POLICY);
+  /* Room under the pace for the first page and a little: twelve pages of five posts follow. */
+  const spent = { [`search:${name}`]: paceNow - 1.5 * pageUsd };
+  const pages = Array.from({ length: 12 }, () => 5);
+  const on = searchOn(name, { maxPages: 100, paced: true });
+  const seen: DiscoveryQuery[] = [];
+  await pass(source(seen, pages), on, { ledger: memoryLaneLedger(spent) }).result;
+  assert.equal(lateAsks(seen).length, 12, 'every page of the window, past the pace');
+
+  /* The rule before v185: the pace is checked before every page, and the window is left part-read. */
+  const off: Policy = { ...on, feed: { ...on.feed, paging: { ...on.feed.paging, paceBeforeAskOnly: false } } };
+  const seen2: DiscoveryQuery[] = [];
+  await pass(source(seen2, pages), off, { ledger: memoryLaneLedger(spent) }).result;
+  assert.ok(lateAsks(seen2).length < 12, `stopped by the pace after ${lateAsks(seen2).length} pages`);
+
+  /* Ahead of its pace, it is not asked at all: the next pass waits. */
+  const seen3: DiscoveryQuery[] = [];
+  await pass(source(seen3, pages), on, { ledger: memoryLaneLedger({ [`search:${name}`]: paceNow }) }).result;
+  assert.equal(lateAsks(seen3).length, 0);
 });
 
 test('★ a search switched on keeps its deadline and maxPages', async () => {
