@@ -123,13 +123,13 @@
 
 import type { Millis } from '@insidor/contracts';
 import { COIN_MODEL_TARGETS, DEFAULT_POLICY, type CoinModelTarget } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { clearsReachBar, coinVouches, heldKind, passesAsViral, viralEligible, type ViralAnswer, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { overJunkBar } from './junk-bar.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
-import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
+import { PgFeedRejectionRepo, PgFinderRepo, PgViralMomentRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
@@ -290,6 +290,8 @@ export interface RisingRow {
   credited?: boolean;
   /** When the post was found deleted from its source (0131, `loadDeleted`); absent or null when it is not known to be. */
   deleted_at?: Date | string | null;
+  /** The viral exception's stored answers (0138, `loadViral`), read only while Policy.judge.viral.on; absent or null: never asked. */
+  viral?: ViralAnswer | null;
 }
 
 /**
@@ -397,6 +399,22 @@ export async function loadCandidates(
   const gone = await loadDeleted(db, rows.map((r) => r.item_id));
   return gone.size === 0 ? rows : rows.map((r) => (gone.has(r.item_id) ? { ...r, deleted_at: gone.get(r.item_id) ?? null } : r));
 }
+
+/**
+ * The viral exception's stored answers for these posts (0138, PgViralMomentRepo). Its own query, so a
+ * database without 0138 projects every frame as before — no post passes this way — rather than failing.
+ */
+export async function loadViral(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, ViralAnswer>> {
+  try {
+    return await new PgViralMomentRepo(db).answers(itemIds);
+  } catch (e: unknown) {
+    /* Said once a process: the quick frame runs every few seconds. */
+    if (!viralUnreadSaid) console.warn(`the viral exception's answers could not be read; no post passes that way until they can: ${e instanceof Error ? e.message : String(e)}`);
+    viralUnreadSaid = true;
+    return new Map();
+  }
+}
+let viralUnreadSaid = false;
 
 /**
  * The posts among these known to be deleted from their source (0131 `public.item.deleted_at`, set by
@@ -751,7 +769,7 @@ export function barReadings(readings: readonly ReachReading[], policy = DEFAULT_
  * How a post passed: core's routes, or `net` — the judge said no and our own coin model's stored
  * score would let it through (Policy.judge.coinModel.on). A `net` post is For You's only.
  */
-export type RisingRoute = PassRoute | 'net';
+export type RisingRoute = PassRoute | 'net' | 'viral';
 
 export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): { readonly why: FeedRejectionReason | 'passes'; readonly route: RisingRoute | null } {
   const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
@@ -772,6 +790,13 @@ export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: Crypt
      score bar, the reach bar, the age bar, variety. */
   if (policy.judge.coinModel.on && row.net_add === true && answer !== null && !answer.coinable && heldKind(kind, policy.judge.heldKinds) === null && signal?.shill !== true) {
     return { why: 'passes', route: 'net' };
+  }
+  /* ★ THE VIRAL EXCEPTION (Policy.judge.viral, core viral.ts): a "no", or a politics or showbiz hold,
+     that was huge and fast and that the moment and kind questions both let through. Never a shill,
+     another held kind or the owner's Not a meme (returned above); For You's only, and every later
+     gate but the junk bar still applies. */
+  if (answer !== null && signal?.shill !== true && viralEligible(answer.coinable, kind, policy) && passesAsViral(row.viral ?? null, policy)) {
+    return { why: 'passes', route: 'viral' };
   }
   /* Not passed: the judge's own reason, or — when the judge passed it and a shill stopped it — not memeable. */
   return { why: judge === undefined ? 'not_scored' : judge === 'passes' ? 'not_memeable' : judge, route: null };
@@ -912,8 +937,11 @@ export async function buildRising(
   const promoted = promotionOn(policy) ? await loadPromotedPicks(db, nowMs, ownReachOf, policy) : NO_PROMOTED_PICKS;
   /* ★ THE RUNNING PICKS (running-picks.ts): loaded whatever their age, and whichever route stored them; a promotion's, as its original. */
   const running = await loadRunningPicks(db, nowMs, policy, only, promoted.byPromo);
-  const candidates = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys()])]);
-  const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
+  const loaded = await loadCandidates(db, sinceMs, [...(membership?.refresh ?? []), ...coinFirst.records.keys(), ...late.keys(), ...running.keys()], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null, [...new Set([...late.keys(), ...running.keys()])]);
+  const crypto = await loadCryptoReads(db, loaded.map((row) => row.item_id));
+  /* ★ THE VIRAL EXCEPTION's answers (0138), only while it is on. */
+  const viralAnswers = policy.judge.viral.on ? await loadViral(db, loaded.map((row) => row.item_id)) : new Map<string, ViralAnswer>();
+  const candidates = viralAnswers.size === 0 ? loaded : loaded.map((row) => (viralAnswers.has(row.item_id) ? { ...row, viral: viralAnswers.get(row.item_id) ?? null } : row));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
      card (feed-members.ts), and is never in the frame. Only posts inside the window are given a
@@ -921,6 +949,8 @@ export async function buildRising(
   const passing = new Set<string>();
   /* Passed only through the safety net: For You's, never Popular's. */
   const netOnly = new Set<string>();
+  /* Passed only through the viral exception: For You's, never Popular's, and not held to the junk bar. */
+  const viralOnly = new Set<string>();
   /* Passed only by the late route's near-the-bar yes (late-no-coin.ts `lateAnswerPolicy`): that route's alone. */
   const nearOnly = new Set<string>();
   const rows = candidates.filter((row) => {
@@ -928,7 +958,7 @@ export async function buildRising(
     const own = postRoute(row, policyForAnswer(row.judge_id, answers), signal);
     const inWindow = atOf(row) >= sinceMs || coinFirst.records.has(row.item_id) || late.has(row.item_id) || running.has(row.item_id);
     const near = own.route === null && late.has(row.item_id) ? postRoute(row, lateAnswerPolicy(policyForAnswer(row.judge_id, answers), policy), signal) : null;
-    const nearYes = near !== null && near.route !== null && near.route !== 'net';
+    const nearYes = near !== null && near.route !== null && near.route !== 'net' && near.route !== 'viral';
     if (nearYes && inWindow) nearOnly.add(row.item_id);
     const { why, route } = nearYes && near !== null ? near : own;
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
@@ -936,6 +966,7 @@ export async function buildRising(
     if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
     if (why === 'passes' && inWindow) passing.add(row.item_id);
     if (route === 'net' && inWindow) netOnly.add(row.item_id);
+    if (route === 'viral' && inWindow) viralOnly.add(row.item_id);
     return passing.has(row.item_id) || membership?.all.has(row.item_id) === true || running.has(row.item_id);
   });
   /* A refreshed member's readings start before the window: read from its own time. */
@@ -1030,7 +1061,7 @@ export async function buildRising(
     const byCoin = coinFirst.records.has(row.item_id) && coinFirstLets({
       itemId: row.item_id,
       postedAtMs: postedAt,
-      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id) && !nearOnly.has(row.item_id),
+      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id) && !viralOnly.has(row.item_id) && !nearOnly.has(row.item_id),
       pick: pick === undefined ? null : { outcome: pick.outcome, address: pick.address },
       member,
       ownerNone: check?.none === true,
@@ -1040,7 +1071,7 @@ export async function buildRising(
     /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
     const byLate = lateLets({
       itemId: row.item_id,
-      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id),
+      judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id) && !viralOnly.has(row.item_id),
       byViews,
       picked: pick?.outcome === 'picked',
       ownerCoin: calls.get(row.item_id)?.own !== null && calls.get(row.item_id)?.own !== undefined,
@@ -1100,7 +1131,8 @@ export async function buildRising(
   /* ★ FOR YOU'S JUNK BAR (junk-bar.ts, `rising.junkBar`): of the posts about to JOIN For You, the ones
      the junk fit puts over its own held-out bar stay off. A member is never re-asked. Ageing out and
      this bar only stop a post joining, so neither records a reason. */
-  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && (p.fresh || p.byLate) && !p.member && !p.byCoin && !p.byRunning).map((p) => p.post.id), policy);
+  /* A viral-exception post is not asked: the junk fit learned the judge's "no"s, and the viral answers are the evidence against it. */
+  const junk = await overJunkBar(db, posts.filter((p) => p.passes && p.fyp && (p.fresh || p.byLate) && !p.member && !p.byCoin && !p.byRunning && !viralOnly.has(p.post.id)).map((p) => p.post.id), policy);
   /* By the views and the other gates, or by the coin-first route, which none of the six hours and the junk bar hold;
      or by the late route, which the six hours do not hold and the junk bar does. */
   const byGates = (p: (typeof posts)[number]): boolean => !nearOnly.has(p.post.id) && p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
@@ -1110,7 +1142,7 @@ export async function buildRising(
   /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = await varied(db, fypAll, rows, policy);
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly && !p.runningOnly).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id) && !viralOnly.has(p.post.id) && !nearOnly.has(p.post.id) && !p.lateOnly && !p.runningOnly).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
