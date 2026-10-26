@@ -138,9 +138,10 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
   const { result, stored } = pass(source(seen, (lang) => ({ n: lang === 'en' ? 7 : 2, more: false })), P5, { fresh: memoryFreshClock() });
   const r = await result;
   assert.equal(r.failed, 0);
-  /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in the slow lane's (`slow.langs`: English, French, Japanese). */
-  const lateLangs = P5.feed.slow.langs ?? LANGS;
-  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt']);
+  /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in its own
+     (`fresh.late.langs`: the slow lane's, and Arabic and Korean from policy.v185). */
+  const lateLangs = P5.feed.fresh.late.langs ?? P5.feed.slow.langs ?? LANGS;
+  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko']);
   assert.equal(seen.length, 2 * LANGS.length + lateLangs.length);
   const windows = [...new Set(seen.map((s) => s.q.untilMs))];
   assert.equal(windows.length, 3);

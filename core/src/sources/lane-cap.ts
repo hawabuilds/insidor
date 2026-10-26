@@ -77,3 +77,24 @@ export function searchDayMayAsk(spentUsd: number, askUsd: number, now: number, p
   if (!Number.isFinite(spentUsd) || !Number.isFinite(askUsd)) return false;
   return spentUsd + Math.max(0, askUsd) <= searchDayAllowanceUsd(now, p);
 }
+
+/**
+ * ★ WHETHER A PACE IS CHECKED BETWEEN AN ASK'S PAGES (`feed.paging.paceBeforeAskOnly` off), or only
+ * before the ask starts (on). Pages come newest first and a language's window is marked read when its
+ * ask ends, so a pace closing between pages drops the older rest of the window unread.
+ */
+export function paceBetweenPages(p: Policy): boolean {
+  return p.feed.paging.paceBeforeAskOnly !== true;
+}
+
+/**
+ * True when a further page of an ask that started inside the X search day's pace keeps the day at or
+ * under its hard total (`searchDay.dailyUsd`). Used between pages under `paceBeforeAskOnly`; the pace
+ * itself (`searchDayMayAsk`) still decides whether an ask starts, so the day runs over its pace by
+ * one ask at most and never over its total.
+ */
+export function searchDayMayFinish(spentUsd: number, askUsd: number, p: Policy): boolean {
+  if (!p.feed.searchDay.on) return true;
+  if (!Number.isFinite(spentUsd) || !Number.isFinite(askUsd)) return false;
+  return spentUsd + Math.max(0, askUsd) <= p.feed.searchDay.dailyUsd;
+}

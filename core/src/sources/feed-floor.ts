@@ -167,6 +167,9 @@ export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number,
   /* With the slice's own floor given (`slow.ageScaledFloor` sends each slice less than the lane's
      floor), the band covers it only when the band's floor is no higher than the slice's. */
   const noHigher = (minApproval: number): boolean => floors === undefined || sliceFloorSent === undefined || lateBandFloor(minApproval, floors, p) <= sliceFloorSent;
+  /* And only when the band asks every language the slice would (`fresh.late.langs` ⊇ `slow.langs`). */
+  const late = new Set(lateLangs(p));
+  if (!slowLangs(p).every((l) => late.has(l))) return false;
   return lateBands(p).some((b) => b.ageMin > youngestAgeMin && b.ageMin <= youngestAgeMin + widthMin && noHigher(b.minApproval));
 }
 
@@ -277,9 +280,23 @@ export function laneTargets(dailyCapUsd: number, usdPerPost: number, passesPerDa
   return { all: perPass - media, media, slow };
 }
 
-/** The languages the slow lane and the late bands ask (`slow.langs`), each its own search; `feed.langs` when unset. */
+/** The languages the slow lane asks (`slow.langs`), each its own search; `feed.langs` when unset. */
 export function slowLangs(p: Policy): readonly string[] {
   return p.feed.slow.langs ?? p.feed.langs;
+}
+
+/** The languages the late bands ask (`fresh.late.langs`), each its own search; the slow lane's when unset. */
+export function lateLangs(p: Policy): readonly string[] {
+  return p.feed.fresh.late.langs ?? slowLangs(p);
+}
+
+/**
+ * How often each language of a late band is asked (`fresh.late.everyMs`), or 0 for every pass. With
+ * a spacing the band's window is core `langBandWindow`'s: asked once it holds that much posting time.
+ */
+export function lateBandEveryMs(p: Policy): number {
+  const every = p.feed.fresh.late.everyMs ?? 0;
+  return Number.isFinite(every) && every > 0 ? every : 0;
 }
 
 /**

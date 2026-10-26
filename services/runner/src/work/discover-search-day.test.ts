@@ -65,14 +65,16 @@ function source(asked: DiscoveryQuery[]): PlatformAdapter {
 const registry = (adapter: PlatformAdapter) => ({ get: () => adapter, all: () => [adapter], has: () => true, absent: () => [] }) as unknown as PlatformRegistry;
 const openMeter = { record: () => undefined, spentUsd: () => 0, mayspend: () => true, line: () => ({ capUsd: 100, spentUsd: 0, stopAtUsd: 100, remainingUsd: 100, unrecordedUsd: 0 }) } as unknown as Meter;
 
-/* One language, the middle lane alone, paged fully: only a limit of ours ends it. */
-const policy = (dailyUsd: number, on = true): Policy => ({
+/* One language, the middle lane alone, paged fully: only a limit of ours ends it. `paceBeforeAskOnly`
+   false is the rule before policy.v185 (every page held to the pace); true, the pace starts an ask only. */
+const policy = (dailyUsd: number, on = true, paceBeforeAskOnly = false, aheadMs = 0): Policy => ({
   ...DEFAULT_POLICY,
   feed: {
     ...DEFAULT_POLICY.feed,
     langs: ['en'],
     middle: { ...DEFAULT_POLICY.feed.middle, on: true, fullPaging: true, maxPages: 40, cap: { ...DEFAULT_POLICY.feed.middle.cap, dailyUsd: 100 } },
-    searchDay: { on, dailyUsd, aheadMs: 0, countFromMs: null, rereadDailyUsd: 2 },
+    searchDay: { on, dailyUsd, aheadMs, countFromMs: null, rereadDailyUsd: 2 },
+    paging: { ...DEFAULT_POLICY.feed.paging, paceBeforeAskOnly },
   },
 });
 
@@ -98,6 +100,20 @@ test('★ an ask pages only while the day\'s bill plus the next page fits the pa
   const { r, asked } = await middlePass(policy(2), 0.988);
   assert.equal(asked.length, 4);
   assert.equal(r.answered, 1);
+});
+
+test('★ the pace starts an ask and does not end it (`paceBeforeAskOnly`, policy.v185): the ask reads on past the pace', async () => {
+  assert.equal(DEFAULT_POLICY.feed.paging.paceBeforeAskOnly, true, 'on as shipped');
+  /* The same day and bill as above: the four pages the pace had room for, and on to the lane's 40. */
+  const { r, asked } = await middlePass(policy(2, true, true), 0.988);
+  assert.equal(asked.length, 40);
+  assert.equal(r.answered, 1);
+});
+
+test('★ past the pace an ask is still held to the day\'s hard total', async () => {
+  /* Twelve hours ahead: at noon the whole $2 is open, and $1.988 spent leaves four pages of it. */
+  const { asked } = await middlePass(policy(2, true, true, 43_200_000), 1.988);
+  assert.equal(asked.length, 4);
 });
 
 test('a day already at its pace asks nothing and says so as a pause with the numbers', async () => {

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { laneJudgeUsd, laneMayAsk, pacedDailyUsd, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayStart } from './lane-cap.ts';
+import { laneJudgeUsd, laneMayAsk, paceBetweenPages, pacedDailyUsd, rereadAllowanceUsd, searchDayAllowanceUsd, searchDayMayAsk, searchDayMayFinish, searchDayStart } from './lane-cap.ts';
 
 const CAP = { dailyUsd: 6, judgeUsdPerPost: 0.002, judgedShare: 0.5 };
 
@@ -70,4 +70,15 @@ test('★ a paced search may spend its day only as the UTC day goes, half an hou
   assert.ok(pacedDailyUsd(1.55, day, DEFAULT_POLICY) > 0);
   /* The last minute of the day: the whole day, never more. */
   assert.equal(pacedDailyUsd(1.55, day + 86_399_000, DEFAULT_POLICY), 1.55);
+});
+
+test('★ inside an ask the X day is held to its hard total, not its pace (policy.v185 `paceBeforeAskOnly`)', () => {
+  const day = DEFAULT_POLICY.feed.searchDay.dailyUsd;
+  assert.equal(paceBetweenPages(DEFAULT_POLICY), false, 'as shipped, the pace only starts an ask');
+  assert.equal(paceBetweenPages({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, paging: { ...DEFAULT_POLICY.feed.paging, paceBeforeAskOnly: false } } }), true);
+  assert.equal(searchDayMayFinish(day - 0.003, 0.003, DEFAULT_POLICY), true, 'landing on the total is allowed');
+  assert.equal(searchDayMayFinish(day - 0.002, 0.003, DEFAULT_POLICY), false, 'never over it');
+  assert.equal(searchDayMayFinish(Number.NaN, 0.003, DEFAULT_POLICY), false, 'an unreadable bill asks nothing');
+  const off = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, searchDay: { ...DEFAULT_POLICY.feed.searchDay, on: false } } };
+  assert.equal(searchDayMayFinish(1_000, 1, off), true);
 });
