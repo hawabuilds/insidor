@@ -88,3 +88,32 @@ test('trackingFacts: stories of the asked posts and every member, each once', as
   assert.deepEqual(Object.fromEntries(facts.membersOf), { st_a: ['x:1', 'x:2', 'x:3'], st_b: ['x:2', 'x:9'] });
   assert.deepEqual([...judgedFor].sort(), ['x:1', 'x:2', 'x:3', 'x:7', 'x:9']);
 });
+
+test('trackingFacts: the post question\'s answer, the kind that holds it and the owner\'s call, each kept apart', async () => {
+  let asked = '';
+  const db: Db = {
+    query: async <R>(sql: string): Promise<R[]> => {
+      if (sql.includes('from unnest($1::text[]) as i(id)')) return [];
+      if (sql.includes("'own' as kind")) return [];
+      if (sql.includes('from internal.post_judgement')) {
+        asked = sql;
+        return [
+          /* A yes, then the close-match hold filed after it (x:1); a plain no (x:2); never judged, called a meme (x:3); nothing (x:4). */
+          { item_id: 'x:1', coinable: true, confidence: '0.85', looked_at: 'picture', proposed_name: 'CAT', kind_label: 'NOT_MEME_MATCH', owner_call: null },
+          { item_id: 'x:2', coinable: false, confidence: '0.9', looked_at: 'text', proposed_name: null, kind_label: null, owner_call: null },
+          { item_id: 'x:3', coinable: null, confidence: null, looked_at: null, proposed_name: null, kind_label: null, owner_call: 'meme' },
+          { item_id: 'x:4', coinable: null, confidence: null, looked_at: null, proposed_name: null, kind_label: null, owner_call: null },
+        ] as R[];
+      }
+      throw new Error(`unexpected statement: ${sql}`);
+    },
+  } as Db;
+  const facts = await new PgItemRepo(db).trackingFacts(['x:1', 'x:2', 'x:3', 'x:4'] as ItemId[]);
+  assert.match(asked, /prompt_id not like 'post-kind%'/, 'the answer is never a kind answer');
+  assert.deepEqual(facts.judged.get('x:1'), { coinable: true, confidence: 0.85, lookedAt: 'picture', proposedName: 'CAT' }, 'the yes stands beside its hold');
+  assert.equal(facts.kindOf.get('x:1'), 'NOT_MEME_MATCH');
+  assert.equal(facts.judged.get('x:2')?.coinable, false);
+  assert.equal(facts.judged.has('x:3'), false, 'never judged is absent, not a no');
+  assert.equal(facts.ownerCall.get('x:3'), 'meme');
+  assert.equal(facts.judged.has('x:4') || facts.kindOf.has('x:4') || facts.ownerCall.has('x:4'), false);
+});

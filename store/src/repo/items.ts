@@ -69,8 +69,20 @@ export interface TrackingFacts {
   readonly storiesOf: ReadonlyMap<string, readonly string[]>;
   /** Every member of those stories. */
   readonly membersOf: ReadonlyMap<string, readonly string[]>;
-  /** The newest judgement per post and per member. A post never judged is absent, never a "no". */
+  /**
+   * The newest answer to the post question per post and per member — never a kind answer, whose
+   * yes/no is not the judge's verdict on the post (the projector reads it the same way). A post
+   * never judged is absent, never a "no".
+   */
   readonly judged: ReadonlyMap<string, TrackingJudgement>;
+  /**
+   * The kind label, only when a post's newest answer of all is a kind answer (`post-kind…`: a held
+   * kind, the shill rule's AD, the close-match NOT_MEME_MATCH). Whether it holds is policy's
+   * (`judge.heldKinds`, core `heldKind`). Absent when the newest answer is the post question's.
+   */
+  readonly kindOf: ReadonlyMap<string, string>;
+  /** The owner's newest call on a post (0054), which outranks the judge either way. Absent: none. */
+  readonly ownerCall: ReadonlyMap<string, 'meme' | 'not'>;
 }
 
 const SELECT_ITEM_COLUMNS = `
@@ -646,7 +658,9 @@ export class PgItemRepo implements ItemRepo {
     const storiesOf = new Map<string, string[]>();
     const membersOf = new Map<string, string[]>();
     const judged = new Map<string, TrackingJudgement>();
-    if (itemIds.length === 0) return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged };
+    const kindOf = new Map<string, string>();
+    const ownerCall = new Map<string, 'meme' | 'not'>();
+    if (itemIds.length === 0) return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged, kindOf, ownerCall };
     const ids = [...itemIds];
 
     const where = await this.#db.query<{ item_id: string; on_feed: boolean; on_for_you: boolean; catch_all: boolean }>(
@@ -693,17 +707,49 @@ export class PgItemRepo implements ItemRepo {
     }
 
     const everyone = [...new Set([...ids, ...members.filter((m) => m.kind === 'member').map((m) => m.item_id)])];
-    const answers = await this.#db.query<{ item_id: string; coinable: boolean; confidence: number; looked_at: TrackingJudgement['lookedAt']; proposed_name: string | null }>(
-      `select distinct on (item_id) item_id, coinable, confidence, looked_at, proposed_name
-         from internal.post_judgement
-        where item_id = any($1::text[])
-        order by item_id, judged_at desc, id desc`,
+    /* ★ THE POST QUESTION'S ANSWER, THE KIND AND THE OWNER'S CALL APART, as the projector reads them
+       (services/project rising.ts). This was the newest row of all: a kind answer filed after a yes
+       (coinable false by construction) read as a "no", and a yes held by a kind could never be told
+       from a judge's no — nor a no the owner called a meme from one he did not. */
+    const answers = await this.#db.query<{
+      item_id: string;
+      coinable: boolean | null;
+      confidence: number | null;
+      looked_at: TrackingJudgement['lookedAt'] | null;
+      proposed_name: string | null;
+      kind_label: string | null;
+      owner_call: string | null;
+    }>(
+      `select u.id as item_id, j.coinable, j.confidence, j.looked_at, j.proposed_name, k.kind_label, oc.verdict as owner_call
+         from unnest($1::text[]) as u(id)
+         left join lateral (
+                select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
+                  from internal.post_judgement pj
+                 where pj.item_id = u.id and pj.prompt_id not like 'post-kind%'
+                 order by pj.judged_at desc, pj.id desc
+                 limit 1) j on true
+         left join lateral (
+                select case when pj.prompt_id like 'post-kind%' then pj.proposed_name end as kind_label
+                  from internal.post_judgement pj
+                 where pj.item_id = u.id
+                 order by pj.judged_at desc, pj.id desc
+                 limit 1) k on true
+         left join lateral (
+                select ofb.verdict
+                  from internal.owner_feedback ofb
+                 where ofb.subject_kind = 'post' and ofb.item_id = u.id
+                 order by ofb.created_at desc, ofb.id desc
+                 limit 1) oc on true`,
       [everyone],
     );
     for (const a of answers) {
-      judged.set(a.item_id, { coinable: a.coinable, confidence: Number(a.confidence), lookedAt: a.looked_at, proposedName: a.proposed_name });
+      if (a.coinable !== null && a.confidence !== null && a.looked_at !== null) {
+        judged.set(a.item_id, { coinable: a.coinable, confidence: Number(a.confidence), lookedAt: a.looked_at, proposedName: a.proposed_name });
+      }
+      if (a.kind_label !== null) kindOf.set(a.item_id, a.kind_label);
+      if (a.owner_call === 'meme' || a.owner_call === 'not') ownerCall.set(a.item_id, a.owner_call);
     }
-    return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged };
+    return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged, kindOf, ownerCall };
   }
 
   /**
