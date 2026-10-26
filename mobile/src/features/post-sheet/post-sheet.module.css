@@ -162,6 +162,46 @@
   cursor: pointer;
 }
 
+/* ── a huge account's share (RisingPost.sharedBy) ───────────────────── */
+
+/* One line above the post: the sharing account's face, "Quoted by @handle", and how long ago. */
+.shared {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sheet-label);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.sharedImg,
+.sharedLetter {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-grid;
+  place-items: center;
+  background: var(--sheet-card);
+  font-size: 12px;
+}
+
+.sharedWho {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sharedAge {
+  flex: none;
+  font-weight: 500;
+}
+
 /* ── media ─────────────────────────────────────────────────────────── */
 
 .media {

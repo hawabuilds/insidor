@@ -36,11 +36,36 @@
  *    then abstains. Nothing here salvages a half-parsed answer.
  */
 
-import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
+import type { JudgeShare, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { VendorShapeError, VendorUnavailable, outOfCredit, vendorAnswered } from '@insidor/vendor-kit';
 import { headerValueProblem, httpUrlProblem, messageOf, snippet, trimTrailingSlash } from '@insidor/vendor-kit/http.ts';
 
 import { sizedPictureUri, type PictureSize } from './pictures.ts';
+import { SHARED_PROMPT } from './prompts.ts';
+
+/** Followers in words a reader takes in at once: "229M", "12.4M", "850k". */
+function followersText(n: number): string {
+  if (n >= 1_000_000) return `${Number((n / 1_000_000).toFixed(n >= 100_000_000 ? 0 : 1))}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
+}
+
+/**
+ * The words sent inside a shared post's story (`sharedJustNow`, prompts/post-shared.txt): who shared
+ * it, with their followers, how, and what they said. Both judges' request bodies use this one
+ * function, so the live judge and the open model read the same sentence.
+ */
+export function sharedLine(share: JudgeShare): string {
+  const words = share.words.trim();
+  return SHARED_PROMPT.text
+    .replace('{handle}', share.handle)
+    .replace('{followers}', share.followers === null ? '' : ` (${followersText(share.followers)} followers)`)
+    .replace('{how}', share.how === 'quoted' ? 'quoted this post' : 'posted this same picture or video under their own name')
+    .replace('{words}', words === '' ? ', saying nothing of their own' : `, saying: ${JSON.stringify(words)}`);
+}
+
+/** The story's share field, when it has one: spread into a story of the stories JSON. */
+export const sharedField = (s: Pick<JudgeSubject, 'sharedBy'>): { readonly sharedJustNow?: string } => (s.sharedBy === undefined ? {} : { sharedJustNow: sharedLine(s.sharedBy) });
 
 export const VENDOR = 'anthropic';
 export const MESSAGES_ENDPOINT = 'POST /v1/messages';
@@ -273,6 +298,7 @@ export function buildRequestBody(
     distinctSources: s.distinctSources,
     frame: request.frames.has(String(s.storyId)) ? 'shown below' : 'none',
     ...(shown === null ? {} : { labelledLike: (s.precedents ?? []).flatMap((p) => shown.refOf.get(p.ref) ?? []) }),
+    ...sharedField(s),
   }));
 
   const content: unknown[] = [{ type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } }];

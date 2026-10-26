@@ -73,6 +73,31 @@ export interface RisingPost {
    * and views as last read, says it was deleted, and offers no link out to a page that is gone.
    */
   readonly deletedAt?: number;
+  /**
+   * A huge account just shared this post: quoted it, or posted the same picture or video under its
+   * own name. Absent for every other post. The card says so in one small line with the account's
+   * face; `postedAt` above stays the post's own time, and `sharedBy.at` is when it was shared.
+   */
+  readonly sharedBy?: SharedBy;
+}
+
+/** Who shared a post just now (with their picture), how, when, and a link to the share. */
+export interface SharedBy {
+  readonly id: string;
+  /** "@handle". */
+  readonly authorLabel: string;
+  readonly authorName: string | null;
+  readonly authorPictureUrl: string | null;
+  readonly authorPictureFile: string | null;
+  /** 'quoted': a quote of the post; 'samePicture': the same picture or video under its own name. */
+  readonly how: 'quoted' | 'samePicture';
+  readonly at: Instant;
+  readonly permalink: string | null;
+}
+
+/** The card's words for a share: "Quoted by @elonmusk", "Shared by @elonmusk". */
+export function sharedByLabel(s: Pick<SharedBy, 'how' | 'authorLabel'>): string {
+  return `${s.how === 'quoted' ? 'Quoted' : 'Shared'} by ${s.authorLabel}`;
 }
 
 /** A quoted post inside a card: who posted it (with their picture), a link, its words and its picture. */

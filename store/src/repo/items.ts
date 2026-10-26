@@ -47,6 +47,20 @@ interface FingerprintRow {
   key: string;
 }
 
+/** A stored post a huge account has just shared (`sharedOriginals`), with the share's facts. */
+export interface SharedOriginal {
+  readonly item: Item;
+  readonly byItemId: string;
+  readonly byAuthorKey: string;
+  /** The sharing account's handle; null when we hold none. */
+  readonly handle: string | null;
+  readonly followers: number | null;
+  /** The sharing post's own text, as stored. */
+  readonly words: string;
+  readonly how: 'quoted' | 'samePicture';
+  readonly sharedAtMs: number;
+}
+
 /** The judge's newest answer about one post, as much of it as the per-post rule reads. */
 export interface TrackingJudgement {
   readonly coinable: boolean;
@@ -397,6 +411,72 @@ export class PgItemRepo implements ItemRepo {
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => ({ item: this.#toItem(row, fingerprints), by: row.by_item }));
+  }
+
+  /**
+   * Stored posts a huge account has just shared (Policy.judge.resurface), whatever their age and
+   * whatever answer they have: the posts that the posts first seen since `sharedSince`, by an account
+   * with at least `minFollowers` followers as last read, quote (`reproduction_of`) or carry the same
+   * first picture or video address of (an earlier post, as `reproducedOriginals` reads it). Only
+   * observed originals by another account, and only shares not yet asked about (internal.resurfacing,
+   * 0139). One share a post — its newest — newest share first, at most `limit`; each with the
+   * sharing post's id, account, followers, words, how it shared, and its time (its post time, else
+   * its first sight).
+   */
+  async sharedOriginals(args: { readonly sharedSince: Millis; readonly minFollowers: number; readonly limit: number }): Promise<readonly SharedOriginal[]> {
+    if (args.limit <= 0) return [];
+    const rows = await this.#db.query<ItemRow & { by_item: string; by_author: string; by_handle: string | null; by_followers: string | number | null; by_words: string; how: 'quoted' | 'samePicture'; shared_at: Date | string }>(
+      `with q as (
+         select i.item_id, i.author_key, i.posted_at, i.first_seen_at, i.reproduction_of, i.media->0->>'uri' as m, i.body,
+                a.handle, a.follower_count
+           from public.item i
+           join public.author a on a.author_key = i.author_key
+          where i.first_seen_at >= $1
+            and i.origin = 'observed'
+            and i.rebroadcast_of is null
+            and a.follower_count >= $2
+       ), pairs as (
+         select q.reproduction_of as oid, q.item_id as by_item, q.author_key as by_author, q.handle as by_handle,
+                q.follower_count as by_followers, q.body as by_words, 'quoted' as how,
+                coalesce(q.posted_at, q.first_seen_at) as shared_at
+           from q where q.reproduction_of is not null
+         union all
+         select o.item_id, q.item_id, q.author_key, q.handle, q.follower_count, q.body, 'samePicture',
+                coalesce(q.posted_at, q.first_seen_at)
+           from q
+           join public.item o on o.media->0->>'uri' = q.m
+                             and o.posted_at < q.posted_at
+          where q.m is not null
+       ), picked as (
+         select distinct on (p.oid) p.*
+           from pairs p
+           join public.item o on o.item_id = p.oid
+          where o.origin = 'observed'
+            and o.author_key <> p.by_author
+            and not exists (select 1 from internal.resurfacing r where r.item_id = p.oid and r.by_item_id = p.by_item)
+          order by p.oid, p.shared_at desc, (p.how = 'quoted') desc
+       )
+       select i.item_id, i.source, i.source_item_id, i.origin, i.author_key, i.posted_at, i.first_seen_at,
+              i.lang, i.body, i.media, i.counters, i.rebroadcast_of, i.reproduction_of,
+              i.format_ids, i.raw_ref,
+              picked.by_item, picked.by_author, picked.by_handle, picked.by_followers, picked.by_words, picked.how, picked.shared_at
+         from picked
+         join public.item i on i.item_id = picked.oid
+        order by picked.shared_at desc
+        limit $3`,
+      [toTimestamp(args.sharedSince), args.minFollowers, args.limit],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    return rows.map((row) => ({
+      item: this.#toItem(row, fingerprints),
+      byItemId: row.by_item,
+      byAuthorKey: row.by_author,
+      handle: row.by_handle,
+      followers: row.by_followers === null ? null : Number(row.by_followers),
+      words: row.by_words,
+      how: row.how,
+      sharedAtMs: new Date(row.shared_at).getTime(),
+    }));
   }
 
   /**

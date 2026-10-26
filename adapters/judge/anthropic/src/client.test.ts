@@ -21,11 +21,13 @@ import { billingReason } from './client.ts';
 import {
   JudgeNotConfigured,
   PROMPTS,
+  SHARED_PROMPT,
   anthropicJudge,
   buildRequestBody,
   decodeReply,
   httpClient,
   readJudgeSetup,
+  sharedLine,
   type JudgeClientConfig,
 } from './index.ts';
 
@@ -135,6 +137,19 @@ test('★ temperature 0 for the live model, so the same post gets the same answe
   const req = { system: 's', instructions: 'i', subjects: [subject('a')], frames: new Map() };
   assert.equal(buildRequestBody({ model: 'claude-haiku-4-5', maxOutputTokens: P.maxOutputTokens, effort: null }, req)['temperature'], 0);
   assert.equal('temperature' in buildRequestBody({ model: 'claude-sonnet-5-5', maxOutputTokens: P.maxOutputTokens, effort: 'low' }, req), false);
+});
+
+test('★ a huge account\'s share rides inside its own story only, in the shared words; the cached prefix is unchanged', () => {
+  const shared: JudgeSubject = { ...subject('a'), sharedBy: { handle: 'elonmusk', followers: 229_000_000, how: 'quoted', words: 'So beautiful' } };
+  const req = { system: 's', instructions: 'i', subjects: [shared, subject('b')], frames: new Map() };
+  const content = (buildRequestBody({ model: 'claude-haiku-4-5', maxOutputTokens: P.maxOutputTokens, effort: null }, req)['messages'] as { content: { text?: string }[] }[])[0]?.content ?? [];
+  assert.equal(content[0]?.text, 'i');
+  const stories = JSON.parse((content[1]?.text ?? '').split('\n').slice(1).join('\n')) as { storyId: string; sharedJustNow?: string }[];
+  assert.equal(stories[0]?.sharedJustNow, sharedLine(shared.sharedBy!));
+  assert.equal('sharedJustNow' in (stories[1] ?? {}), false);
+  assert.match(sharedLine(shared.sharedBy!), /^Just now @elonmusk \(229M followers\) quoted this post, saying: "So beautiful"\. /);
+  assert.match(sharedLine({ handle: 'a', followers: null, how: 'samePicture', words: '' }), /^Just now @a posted this same picture or video under their own name, saying nothing of their own\. /);
+  assert.equal(SHARED_PROMPT.sha.length, 8);
 });
 
 /* ── replies ──────────────────────────────────────────────────────────── */

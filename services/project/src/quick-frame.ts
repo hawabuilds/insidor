@@ -191,7 +191,8 @@ export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, po
   /* Uncredited too: a late post (late-no-coin.ts) has no lane's credit and must still be found here. */
   const rows = await loadCandidates(db, sinceMs, mergedIds, mergedIds, null, mergedIds);
   const rowAt = new Map(rows.map((r) => [r.item_id, new Date(r.posted_at ?? r.first_seen_at).getTime()] as const));
-  const at = (p: WireRisingPost): number => rowAt.get(p.id) ?? p.postedAt.at ?? 0;
+  /* A post a huge account just shared is counted from the share, as the full frame counts it (resurfaced.ts). */
+  const at = (p: WireRisingPost): number => Math.max(rowAt.get(p.id) ?? p.postedAt.at ?? 0, p.sharedBy?.at.at ?? 0);
   const merged = mergeForYou(showing, changed, frame.fyp, at);
   const cards = merged.map((post) => ({ at: at(post), post }));
   const variedAll = await varied(db, cards, rows, policy);

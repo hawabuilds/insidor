@@ -2,7 +2,8 @@
  * THE QUOTED POST'S ACCOUNT FACE, PUT ON THE CARD AT READ TIME: a card whose post quotes another
  * carries `quote` (services/project rising.ts), and this adds the quoted account's profile picture
  * to it — `authorPictureUrl` and `authorPictureFile`, the same two fields the card's own poster has
- * (the owner's rule: every @handle shown has its picture beside it).
+ * (the owner's rule: every @handle shown has its picture beside it). The same for `sharedBy`, the huge
+ * account that just shared the card's post (services/project resurfaced.ts): found through its post.
  *
  * ★ ADDED HERE, NOT IN THE PROJECTED PAYLOAD, for the poster picture's reason (queries.ts): the
  * copier writes a face copy within minutes, and a scroll member's card may not be projected again
@@ -44,12 +45,19 @@ export interface Face {
   readonly file: string | null;
 }
 
-/** The quoted post's id a payload carries, or null. */
-function quoteId(p: unknown): string | null {
-  if (!isObj(p) || !isObj(p['quote'])) return null;
-  const id = p['quote']['id'];
+/** The id of the post a payload's `field` names (its quoted post, or the huge account's share), or null. */
+function postIdIn(p: unknown, field: FaceField): string | null {
+  if (!isObj(p) || !isObj(p[field])) return null;
+  const id = p[field]['id'];
   return typeof id === 'string' && id !== '' ? id : null;
 }
+
+/**
+ * The card fields that name another account's post and get that account's face: the quoted post,
+ * and the huge account that just shared the post (`sharedBy`, services/project resurfaced.ts).
+ */
+const FACE_FIELDS = ['quote', 'sharedBy'] as const;
+type FaceField = (typeof FACE_FIELDS)[number];
 
 async function faces(db: Db, ids: readonly string[]): Promise<ReadonlyMap<string, Face>> {
   if (ids.length === 0) return new Map();
@@ -70,17 +78,21 @@ async function faces(db: Db, ids: readonly string[]): Promise<ReadonlyMap<string
   return out;
 }
 
-/** The faces of the accounts these cards quote, by quoted post id. One read for all; none when no card quotes. */
+/** The faces of the accounts these cards quote or were shared by, by post id. One read for all; none when no card names one. */
 export async function quoteFaces(db: Db, payloads: readonly unknown[]): Promise<ReadonlyMap<string, Face>> {
-  return faces(db, [...new Set(payloads.flatMap((p) => quoteId(p) ?? []))]);
+  return faces(db, [...new Set(payloads.flatMap((p) => FACE_FIELDS.flatMap((f) => postIdIn(p, f) ?? [])))]);
 }
 
-/** One card with its quoted account's face added; a card with no quote, or no face held, is the same object. */
+/** One card with its quoted and sharing accounts' faces added; a card with neither, or no face held, is the same object. */
 export function withQuoteFace<T>(p: T, found: ReadonlyMap<string, Face>): T {
-  const id = quoteId(p);
-  const face = id === null ? undefined : found.get(id);
-  if (face === undefined || !isObj(p)) return p;
-  return { ...p, quote: { ...(p['quote'] as Json), authorPictureUrl: face.url, authorPictureFile: face.file } } as T;
+  let out: unknown = p;
+  for (const field of FACE_FIELDS) {
+    const id = postIdIn(out, field);
+    const face = id === null ? undefined : found.get(id);
+    if (face === undefined || !isObj(out)) continue;
+    out = { ...out, [field]: { ...(out[field] as Json), authorPictureUrl: face.url, authorPictureFile: face.file } };
+  }
+  return out as T;
 }
 
 /** Cards with their quoted accounts' faces added. */

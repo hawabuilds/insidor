@@ -113,3 +113,17 @@ export const PRECEDENTS_PROMPT = Object.freeze({
   text: precedentsText,
   sha: createHash('sha256').update(precedentsText).digest('hex').slice(0, 8),
 });
+
+/**
+ * The words for a post a huge account has just shared (JudgeSubject.sharedBy, Policy.judge.resurface),
+ * filled in per post by client.ts `sharedLine` and sent inside that post's story only. Kept out of
+ * the post prompt set, like the precedents' words, so that every other post's answer keeps its id;
+ * the answers given with it are filed under the post question's own ids, and this hash is recorded
+ * with each ask (internal.resurfacing, 0139) — editing these words is visible there, not in the
+ * prompt id.
+ */
+const sharedText = readFileSync(join(PROMPT_DIR, 'post-shared.txt'), 'utf8').trim();
+export const SHARED_PROMPT = Object.freeze({
+  text: sharedText,
+  sha: createHash('sha256').update(sharedText).digest('hex').slice(0, 8),
+});

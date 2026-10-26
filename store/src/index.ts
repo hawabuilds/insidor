@@ -16,7 +16,7 @@ export type { MigrationFile, MigrateResult } from './migrate.ts';
 export { NotImplemented } from './not-implemented.ts';
 
 export { PgItemRepo } from './repo/items.ts';
-export type { TrackingFacts, TrackingJudgement } from './repo/items.ts';
+export type { SharedOriginal, TrackingFacts, TrackingJudgement } from './repo/items.ts';
 export { PgAuthorRepo } from './repo/authors.ts';
 export { PgObservationRepo } from './repo/observations.ts';
 export { PgStoryRepo } from './repo/stories.ts';
@@ -62,6 +62,7 @@ export { PgQuoteTargetRepo, type QuoteTarget } from './repo/quote-targets.ts';
 export { PgWatchAccountRepo, type WatchAccount } from './repo/watch-accounts.ts';
 export { PgJudgeShadowRepo } from './repo/judge-shadow.ts';
 export { PgViralMomentRepo, type StoredViral, type ViralDue, type ViralRecord } from './repo/viral-moment.ts';
+export { PgResurfacingRepo, type ResurfaceAsk, type StoredShare } from './repo/resurfacing.ts';
 export type { ShadowPair } from './repo/judge-shadow.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
 export type { OwnerAlert } from './repo/owner-alerts.ts';

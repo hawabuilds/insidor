@@ -62,7 +62,7 @@ import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
-import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
+import { JudgeNotConfigured, SHARED_PROMPT, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { KNOWN_MODELS, OPEN_JUDGE_ENDPOINT, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, postJudgeOrder, postsPerCall, rolesFor, sideName, type JudgeRole, type OpenSide } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
@@ -93,6 +93,7 @@ import {
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
   PgViralMomentRepo,
+  PgResurfacingRepo,
   PgImageEmbeddingRepo,
   PgCoinFirstRepo,
   PgOneCoinRepo,
@@ -136,6 +137,7 @@ import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { earlyJudge, type EarlyResult } from './work/early-judge.ts';
 import { viralMoments } from './work/viral-moments.ts';
+import { resurface } from './work/resurface.ts';
 import { precedentsWanted, searchDayStart } from '@insidor/core';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
@@ -1213,8 +1215,31 @@ export async function withRuntime<T>(
         log: log.child({ step: 'early-judge' }),
         now: () => Date.now() as Millis,
       });
-      /* The early loop runs the viral pass after its own; a failure there never costs the early pass its counts. */
+      /* ★ A HUGE ACCOUNT'S SHARE OF AN OLDER POST (work/resurface.ts, Policy.judge.resurface): asked
+         first on the same loop, so a young original meets the share before the quote boost asks it blind. */
+      const shared = resurface({
+        judge: postJudge,
+        kindJudge,
+        precedents: earlyPrecedents,
+        items: repos.items,
+        scores: new PgPostJudgementRepo(db),
+        shares: new PgResurfacingRepo(db),
+        ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'resurface-lane' })),
+        wordsSha: SHARED_PROMPT.sha,
+        embedSpentUsd: () => earlyEmbedUsd.total,
+        meter,
+        mode: cfg.spend.kind,
+        policy,
+        log: log.child({ step: 'resurface' }),
+        now: () => Date.now() as Millis,
+      });
+      /* The early loop runs the share pass before its own and the viral pass after; a failure in either never costs the early pass its counts. */
       const early = async (): Promise<EarlyResult> => {
+        try {
+          await shared();
+        } catch (e) {
+          log.error('resurfacing pass failed', { err: errorText(e) });
+        }
         const r = await earlyAlone();
         try {
           await viral();

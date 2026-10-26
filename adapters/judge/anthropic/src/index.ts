@@ -35,7 +35,7 @@ import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { PriceBook } from '@insidor/meter';
 
 import type { BatchAnswer, Frame, JudgeClient, JudgeRequest, JudgeResponse, Usage } from './client.ts';
-import { VENDOR, precedentsOf } from './client.ts';
+import { VENDOR, precedentsOf, sharedLine } from './client.ts';
 import { createHash } from 'node:crypto';
 
 import { POST_PROMPT_SET_SHA, PRECEDENTS_PROMPT, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT, VETO_PROMPT_SET_SHA, VIRAL_PROMPT_SET_SHA } from './prompts.ts';
@@ -167,7 +167,8 @@ export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubj
   /* The precedents as sent (each once a call, with their intro), when they are on. */
   const shown = set.precedents ? precedentsOf({ subjects, precedentsIntro: PRECEDENTS_PROMPT.text }) : null;
   const precedentChars = shown === null ? 0 : PRECEDENTS_PROMPT.text.length + JSON.stringify(shown.list).length + subjects.reduce((n, s) => n + JSON.stringify(s.precedents ?? []).length, 0);
-  const chars = JSON.stringify(subjects.map((s) => s.texts)).length + precedentChars;
+  const sharedChars = subjects.reduce((n, s) => n + (s.sharedBy === undefined ? 0 : sharedLine(s.sharedBy).length), 0);
+  const chars = JSON.stringify(subjects.map((s) => s.texts)).length + precedentChars + sharedChars;
   const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
     inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
@@ -420,9 +421,9 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
 
 export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toJudgement, toOutcomes } from './to-judgement.ts';
 export type { JudgementContext } from './to-judgement.ts';
-export { PRECEDENTS_PROMPT, PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
+export { PRECEDENTS_PROMPT, PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA, SHARED_PROMPT } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
-export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, precedentsOf, usageOf } from './client.ts';
+export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, precedentsOf, sharedField, sharedLine, usageOf } from './client.ts';
 export type { BatchAnswer, Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 export { sizedPictureUri } from './pictures.ts';
 export type { PictureSize } from './pictures.ts';
