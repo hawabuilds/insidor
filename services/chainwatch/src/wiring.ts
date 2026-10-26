@@ -364,7 +364,13 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trade
     socket,
     chain,
     store: new PgTradeFeedRepo(db, cfg.chain),
-    policy: DEFAULT_POLICY.oneCoin,
+    /* On the relay nothing is billed by the byte, so the day's credit cap would only replay the
+       billed socket's spend from earlier in the same UTC day (the switch day opened capped at
+       20,006). The chain calls left are bounded by their own per-day lookup counts. */
+    policy:
+      cfg.tradeRelayUrl === null
+        ? DEFAULT_POLICY.oneCoin
+        : { ...DEFAULT_POLICY.oneCoin, tradeFeed: { ...tf, dayCapCredits: Number.POSITIVE_INFINITY } },
     now: () => Date.now(),
     note: (level, msg, fields) => tradeLog[level](msg, fields),
   });
