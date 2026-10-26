@@ -1249,6 +1249,14 @@ export interface JudgePolicy {
     readonly windowMs: number;
     readonly maxPerPass: number;
     readonly dailyUsd: number;
+    /**
+     * THE KEY ACCOUNTS (the owner, 2026-10-26, Dandy): the platform adapter's list of crypto accounts
+     * whose share counts whatever their follower count (adapters/platform/x key-accounts.ts). A post
+     * one of them shares (a repost included, 0140) is asked again with the share in view, and when the
+     * answer passes it joins For You without the views bar: a post minutes old cannot clear it, and
+     * the share is the evidence its views would be. False is the rollback.
+     */
+    readonly keyAccountsOn: boolean;
   };
 }
 
@@ -5796,8 +5804,14 @@ const POLICY_V1: Policy = {
      post the two questions as soon as a reading in its first 30 minutes averages 10k views a minute, not
      only at 500k; and `track.fastClimb` keeps re-reading such a post, from 5k a minute, for its first two
      hours (15 at once, inside the re-read day), so the bars have readings to fire on. Both `on: false`
-     are the rollback, together or apart. */
-  version: 'policy.v188',
+     are the rollback, together or apart.
+
+     v189 counts the key crypto accounts' shares (the owner, 2026-10-26: a 4.2M-follower chain account
+     reposted @CapinUK's video with Dandy the dog, and we never showed it): `judge.resurface.keyAccountsOn`
+     makes the platform adapter's key accounts share whatever their followers, a plain repost is a
+     share (0140), and a post such a share brought in joins For You without the views bar once its
+     answer passes. False is the rollback. */
+  version: 'policy.v189',
 
   admit: {
     maxAgeMin: 240,
@@ -6240,6 +6254,7 @@ const POLICY_V1: Policy = {
       windowMs: 7_200_000, // two hours
       maxPerPass: 5,
       dailyUsd: 0.1,
+      keyAccountsOn: true,
     },
   },
 

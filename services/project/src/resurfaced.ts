@@ -39,7 +39,7 @@ export interface WireSharedBy {
   /** The account's display name; null when the source gave none. */
   readonly authorName: string | null;
   /** 'quoted': a quote of this post; 'samePicture': the same picture or video under its own name. */
-  readonly how: 'quoted' | 'samePicture';
+  readonly how: 'quoted' | 'samePicture' | 'reposted';
   readonly at: WireInstant;
   readonly permalink: string | null;
 }

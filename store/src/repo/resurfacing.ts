@@ -27,7 +27,7 @@ export interface ResurfaceAsk {
   readonly itemId: string;
   readonly byItemId: string;
   readonly byAuthorKey: string;
-  readonly how: 'quoted' | 'samePicture';
+  readonly how: 'quoted' | 'samePicture' | 'reposted';
   readonly sharedAt: Date;
   readonly wordsSha: string;
 }
@@ -36,7 +36,7 @@ export interface ResurfaceAsk {
 export interface StoredShare {
   readonly itemId: string;
   readonly byItemId: string;
-  readonly how: 'quoted' | 'samePicture';
+  readonly how: 'quoted' | 'samePicture' | 'reposted';
   readonly sharedAtMs: number;
   /** The sharing account's handle; null when we hold none. */
   readonly handle: string | null;
@@ -91,7 +91,7 @@ export class PgResurfacingRepo {
    * only `only`'s posts when given. Throws before 0139 (see the header).
    */
   async recent(since: Millis, only: readonly string[] | null = null): Promise<ReadonlyMap<string, StoredShare>> {
-    const rows = await this.#db.query<{ item_id: string; by_item_id: string; how: 'quoted' | 'samePicture'; shared_at: Date | string; handle: string | null; display_name: string | null; source: string; source_item_id: string }>(
+    const rows = await this.#db.query<{ item_id: string; by_item_id: string; how: 'quoted' | 'samePicture' | 'reposted'; shared_at: Date | string; handle: string | null; display_name: string | null; source: string; source_item_id: string }>(
       `select distinct on (r.item_id) r.item_id, r.by_item_id, r.how, r.shared_at, a.handle, a.display_name, b.source, b.source_item_id
          from internal.resurfacing r
          join public.item b on b.item_id = r.by_item_id

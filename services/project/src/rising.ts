@@ -131,6 +131,7 @@ import { loadMembership, writeMembership, type Membership } from './feed-members
 import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
 import { PgFeedRejectionRepo, PgFinderRepo, PgViralMomentRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
+import { KEY_ACCOUNTS } from '@insidor/platform-x/key-accounts.ts';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
 import { loadQuotedPosts, mainPicture, type QuotedRow } from './quoted.ts';
@@ -1098,11 +1099,18 @@ export async function buildRising(
       picked: pick?.outcome === 'picked',
       ownerCoin: calls.get(row.item_id)?.own !== null && calls.get(row.item_id)?.own !== undefined,
     }, late);
+    /* ★ A KEY ACCOUNT'S SHARE (Policy.judge.resurface.keyAccounts, the owner 2026-10-26, Dandy): the
+       judge's own yes with the share in view stands in for the views — a repost by @solana of a post
+       minutes old is the moment, long before its own views can clear the bar. */
+    const share = shares.get(row.item_id);
+    const byKeyShare = share !== undefined && share.handle !== null && policy.judge.resurface.keyAccountsOn && KEY_ACCOUNTS.includes(share.handle.toLowerCase())
+      && passing.has(row.item_id) && !netOnly.has(row.item_id) && !viralOnly.has(row.item_id) && !nearOnly.has(row.item_id);
     /* ★ THE RUNNING PICK: the post's coin is trading now, the judge said yes once, the owner did not say no. */
     const byRunning = runningLets(running.get(row.item_id), { ownerNotMeme: row.owner_call === 'not', ownerNone: check?.none === true, wrong: check?.wrong ?? new Set() }, nowMs, policy);
     return {
       passes: passing.has(row.item_id),
       byCoin,
+      byKeyShare,
       byLate,
       byRunning,
       /* Loaded by the running route alone, no lane credited it: For You's, never Popular's. */
@@ -1122,7 +1130,7 @@ export async function buildRising(
       }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup)),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: atOf(row),
-      fyp: byViews || byCoin || byRunning,
+      fyp: byViews || byCoin || byRunning || byKeyShare,
       byViews,
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
@@ -1159,7 +1167,9 @@ export async function buildRising(
      or by the late route, which the six hours do not hold and the junk bar does. */
   const byGates = (p: (typeof posts)[number]): boolean => !nearOnly.has(p.post.id) && p.byViews && (p.member || (p.fresh && !junk.has(p.post.id)));
   const byLateRoute = (p: (typeof posts)[number]): boolean => p.byLate && (p.member || !junk.has(p.post.id));
-  const fypAll = posts.filter((p) => (p.passes && (byGates(p) || p.byCoin || byLateRoute(p))) || p.byRunning).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  /* By a key account's share: the six hours count from the share, and the junk bar holds. */
+  const byKeyShareRoute = (p: (typeof posts)[number]): boolean => p.byKeyShare && (p.member || (p.fresh && !junk.has(p.post.id)));
+  const fypAll = posts.filter((p) => (p.passes && (byGates(p) || p.byCoin || byLateRoute(p) || byKeyShareRoute(p))) || p.byRunning).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const coinFirstAlone = new Set(posts.filter((p) => p.passes && p.byCoin && !p.member && !byGates(p)).map((p) => p.post.id));
   /* ★ No one topic and no one account fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = await varied(db, fypAll, rows, policy);

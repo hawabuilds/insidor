@@ -60,7 +60,7 @@ export function sharedLine(share: JudgeShare): string {
   return SHARED_PROMPT.text
     .replace('{handle}', share.handle)
     .replace('{followers}', share.followers === null ? '' : ` (${followersText(share.followers)} followers)`)
-    .replace('{how}', share.how === 'quoted' ? 'quoted this post' : 'posted this same picture or video under their own name')
+    .replace('{how}', share.how === 'quoted' ? 'quoted this post' : share.how === 'reposted' ? 'reposted this post to all their followers' : 'posted this same picture or video under their own name')
     .replace('{words}', words === '' ? ', saying nothing of their own' : `, saying: ${JSON.stringify(words)}`);
 }
 

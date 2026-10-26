@@ -682,7 +682,7 @@ export function decodeSharedBy(raw: unknown, path = '$.sharedBy'): { sharedBy?: 
   const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
   const id = text(o.id);
   const authorLabel = text(o.authorLabel);
-  const how = o.how === 'quoted' || o.how === 'samePicture' ? o.how : null;
+  const how = o.how === 'quoted' || o.how === 'samePicture' || o.how === 'reposted' ? o.how : null;
   if (id === null || authorLabel === null || !authorLabel.startsWith('@') || how === null) return {};
   let at: Instant;
   try {

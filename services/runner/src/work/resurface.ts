@@ -1,6 +1,6 @@
 /**
  * A HUGE ACCOUNT BROUGHT AN OLDER POST BACK (Policy.judge.resurface): the stored posts an account of
- * 10M+ followers has just quoted, or posted the same picture or video of, are asked the post question
+ * 10M+ followers, or a key crypto account (`keyAccounts`), has just quoted, reposted (0140), or posted the same picture or video of, are asked the post question
  * again with that share beside them (JudgeSubject.sharedBy), and each share is noted (0139) so the
  * projector can count For You's six hours from it.
  *
@@ -50,6 +50,8 @@ export interface ResurfaceDeps extends Omit<ScoringDeps, 'items' | 'shadow'> {
   readonly wordsSha: string;
   /** Running total of embedding spend, as early-judge.ts reads it. Absent: only the judge's is charged. */
   readonly embedSpentUsd?: () => number;
+  /** The platform's key accounts (adapters/platform/x key-accounts.ts), shared whatever their followers. */
+  readonly keyAccounts?: readonly string[];
 }
 
 export interface ResurfaceResult extends ScoringResult {
@@ -94,7 +96,7 @@ export function resurface(deps: ResurfaceDeps): () => Promise<ResurfaceResult> {
       }
       return nothing('cap');
     }
-    const found = (await deps.items.sharedOriginals({ sharedSince: (now - r.windowMs) as Millis, minFollowers: r.minFollowers, limit: r.maxPerPass }))
+    const found = (await deps.items.sharedOriginals({ sharedSince: (now - r.windowMs) as Millis, minFollowers: r.minFollowers, limit: r.maxPerPass, keyHandles: r.keyAccountsOn ? deps.keyAccounts ?? [] : [] }))
       .flatMap((s) => {
         const share = judgeShareOf(s, deps.policy.judge.maxCharsPerText);
         return share === null ? [] : [{ s, share }];

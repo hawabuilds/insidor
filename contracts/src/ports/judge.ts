@@ -63,7 +63,7 @@ export interface JudgeShare {
   /** Followers as last read; null when never read. */
   readonly followers: number | null;
   /** 'quoted': a quote of the post; 'samePicture': the same picture or video posted under its own name. */
-  readonly how: 'quoted' | 'samePicture';
+  readonly how: 'quoted' | 'samePicture' | 'reposted';
   /** The sharing post's own words (links removed, trimmed); '' when it said nothing. */
   readonly words: string;
 }
