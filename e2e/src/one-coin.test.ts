@@ -136,14 +136,14 @@ test('★ on trade minutes: the coin people are buying takes over at three times
   assert.equal((await loadNarrativePicks(db, ['n-x:1001'])).get('n-x:1001'), LINK);
 });
 
-test('★ the live card shows the pick with its facts, or Create; the list is the owner\'s', async () => {
+test('★ the live card shows the pick with its facts, or Create and the top coins made after the post, to everyone', async () => {
   const picks = await loadPostPicks(db, ['x:1001', 'x:1002']);
   const coin = { address: LINK, ticker: 'FKITTY' } as never;
   const line = liveCoinLine({ kind: 'unsure', claimCount: 3 }, picks.get('x:1001'), coin, { count: 3, more: false }, new Set());
   assert.equal(line.kind, 'matched');
   assert.deepEqual(line.kind === 'matched' ? line.evidence : null, { linksPost: true, samePicture: null, launchedAfterMs: 10 * MIN, picked: true });
-  /* x:1002 had no candidate: no pick row, its search found coins of the name → Create, the count for the owner. */
-  assert.deepEqual(liveCoinLine({ kind: 'unsure', claimCount: 2 }, picks.get('x:1002'), null, { count: 2, more: false }, new Set()), { kind: 'unsure', claimCount: 2, ownerList: true });
+  /* x:1002 had no candidate: no pick row, its search found coins made after it → Create and "See 2 coins", for everyone (2026-10-26). */
+  assert.deepEqual(liveCoinLine({ kind: 'unsure', claimCount: 2 }, picks.get('x:1002'), null, { count: 2, more: false }, new Set()), { kind: 'unsure', claimCount: 2 });
 });
 
 test('★ the one push: the post\'s first pick, launched after For You showed it, to everyone — never its hand-over; the saver hears of that coin once, and of the hand-over once', async () => {

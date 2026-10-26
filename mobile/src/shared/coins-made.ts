@@ -18,3 +18,18 @@ export function coinsMadeAfter(coins: readonly SheetCoin[], postedMs: number | n
   if (postedMs === null) return coins.filter((c) => c.proven);
   return coins.filter((c) => c.proven || (c.launchedAt.known && c.launchedAt.at >= postedMs - COIN_LEAD_MS));
 }
+
+/**
+ * ★ A POST'S "SEE N COINS" IS ITS TOP THREE (the owner, 2026-10-26, Dandy: 43 coins of the name, 17
+ * made after the post, most of them $3k copies): the post's own coin when it has one, then the
+ * coins made after it, highest market cap first, at most `POST_COINS_SHOWN` in all, whatever their
+ * cap. A coin whose cap we have not read sorts after every read one, never as zero. The card's
+ * count is the same three (services/project rising.ts `POST_COINS_SHOWN`).
+ */
+export const POST_COINS_SHOWN = 3;
+
+export function topCoinsMade(coins: readonly SheetCoin[], postedMs: number | null): readonly SheetCoin[] {
+  const made = coinsMadeAfter(coins, postedMs);
+  const cap = (c: SheetCoin): number => (c.marketCapUsd.known ? c.marketCapUsd.amount : -1);
+  return [...made.filter((c) => c.proven), ...made.filter((c) => !c.proven).sort((a, b) => cap(b) - cap(a))].slice(0, POST_COINS_SHOWN);
+}
