@@ -22,11 +22,11 @@
  * stream (no frame for `staleAfterMs`; with hundreds a second, silence is never a quiet market)
  * and a handshake that never completes are each an outage window handed to the caller as a fact.
  *
- * What a frame becomes: each leg of `breakdown` on the venue's curve (`pool` "pump") is one trade,
- * its trader the user and `creatorFeeAddress` the creator. A watched coin seen on any other pool,
- * or a `migrate`, is a completed curve (graduated); a curve priced in another token than SOL is
- * `otherQuote`, whose SOL figures are unknown, never 0. Nothing is billed, so `bytes` stays empty
- * and no coin can reach a byte cap.
+ * What a frame becomes: each leg of `breakdown`, on the venue's curve or on any pool the coin
+ * trades in after it graduates, is one trade, its trader the user and `creatorFeeAddress` the
+ * creator. Graduating ends nothing here (a `migrate` is ignored): the pool's trades keep coming. A
+ * trade priced in another token than SOL is `otherQuote`, whose SOL figures are unknown, never 0.
+ * Nothing is billed, so `bytes` stays empty and no coin can reach a byte cap.
  *
  * What breaks if changed carelessly: the prefilter. Parsing every frame is a few megabytes of JSON a
  * second; matching on anything but the frame's first mint lets a router's transfer frame, whose
@@ -52,8 +52,6 @@ export interface RelayTradeSocketOptions {
 
 /** The SOL the venue's curves are priced in, as the relay names it. */
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
-/** The venue's own curve, as the relay names its pool. */
-const CURVE_POOL = 'pump';
 const MINT_KEY = '"mint":"';
 
 /** The first `"mint":"…"` in a frame, without parsing it; null when there is none. */
@@ -79,9 +77,11 @@ export type RelayFrameReading =
 export function readRelayFrame(frame: Record<string, unknown>, coin: string): RelayFrameReading {
   if (frame['mint'] !== coin) return { kind: 'ignored' };
   const action = frame['action'];
-  if (action === 'migrate') return { kind: 'completed' };
   if (action !== 'buy' && action !== 'sell' && action !== 'create') return { kind: 'ignored' };
-  if (frame['pool'] !== CURVE_POOL) return { kind: 'completed' };
+  /* ★ A GRADUATED COIN IS STILL MEASURED (the owner, 2026-10-26: "whatever it takes to catch the
+     right coin early"). The relay carries its pool's trades as it carried its curve's, so leaving
+     the curve no longer ends the coin: 25 Oct's $Marvin graduated three minutes after launch, and
+     every post with one such candidate fell back to readings. */
   const quoteMint = str(frame['quoteMint']);
   if (quoteMint !== WRAPPED_SOL) return { kind: 'other_quote' };
   const signature = str(frame['signature']);
