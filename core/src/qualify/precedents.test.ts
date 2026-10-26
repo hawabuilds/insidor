@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, ownSourceFirst, postPicture, precedentsFor, sourceOfItemId, type LabelledVector } from './precedents.ts';
+import { closestNot, embedInput, hasWords, heldAsNotMeme, nearestLabelled, ownSourceFirst, postPicture, precedentsFor, sourceOfItemId, type LabelledVector } from './precedents.ts';
 
 const unit = (x: number, y: number): number[] => {
   const n = Math.hypot(x, y);
@@ -55,4 +55,15 @@ test('precedents are trimmed as the judge is sent them; a post is embedded from 
   assert.equal(postPicture([media('video', 'https://p.example/still.jpg')]), 'https://p.example/still.jpg');
   assert.equal(postPicture([media('video', 'https://v.example/clip.mp4')]), null);
   assert.equal(postPicture('not media'), null);
+});
+
+test('★ a post with no words is held only when its picture is near-identical: two @twaniimals animal posts at 0.891 and 0.924 are not', () => {
+  const P = DEFAULT_POLICY;
+  assert.equal(hasWords(['https://t.co/UPWrreVRvB']), false);
+  assert.equal(hasWords(['🐶🐶 #dogs @someone https://t.co/x']), false);
+  assert.equal(hasWords(['So beautiful']), true);
+  assert.equal(heldAsNotMeme(0.891, P, false), false);
+  assert.equal(heldAsNotMeme(0.924, P, false), false);
+  assert.equal(heldAsNotMeme(P.judge.precedents.holdNotSimilarityNoWords, P, false), true, 'a near-copy of the labelled picture is still held');
+  assert.equal(heldAsNotMeme(0.891, P, true), heldAsNotMeme(0.891, P), 'posts with words keep the ordinary bar');
 });
