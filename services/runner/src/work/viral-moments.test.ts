@@ -1,5 +1,6 @@
 /**
- * The viral exception's pass: only huge, fast, turned-down posts are asked; a moment "yes" meets the
+ * The viral exception's pass: only huge, fast, turned-down posts — or ones fast in their first half
+ * hour (v188) — are asked; a moment "yes" meets the
  * kind question and both answers are written; a near match to the owner's "not a meme" is a no by
  * rule; an outage writes nothing; and the day's cap and an unreadable ledger ask nothing.
  */
@@ -167,6 +168,38 @@ test("the day's cap and an unreadable ledger ask nothing; off asks nothing", asy
     policy: { ...P, judge: { ...P.judge, viral: { ...P.judge.viral, on: false } } }, log: quiet, now: () => NOW,
   });
   assert.equal((await off()).held, 'off');
+});
+
+test('★ asked while fresh (v188): a turned-down post fast in its first half hour is asked from the early queue, first', async () => {
+  const fresh = { ...post(5, 'Senator calls the governor a little potato'), postedAt: NOW - 8 * MIN };
+  const slow = { ...post(6, 'a quiet minutes-old post'), postedAt: NOW - 8 * MIN };
+  const items = [...POSTS, fresh, slow];
+  const reads: Record<string, { atMs: number; reach: number }[]> = {
+    ...READS,
+    'x:5': [{ atMs: NOW - 2 * MIN, reach: 90_000 }], // 15k a minute at six minutes
+    'x:6': [{ atMs: NOW - 2 * MIN, reach: 30_000 }], // 5k a minute: under the early bar
+  };
+  const early: ViralDue[] = [
+    { itemId: 'x:5', postedAtMs: NOW - 8 * MIN, firstCoinable: false, kindLabel: null },
+    { itemId: 'x:6', postedAtMs: NOW - 8 * MIN, firstCoinable: false, kindLabel: null },
+  ];
+  const viral = fakeJudge('viral', () => judgement({ coinable: false, confidence: 0.9 }));
+  const make = (policy: typeof P) =>
+    viralMoments({
+      viralJudge: viral.judge,
+      kindJudge: null,
+      repo: { due: async () => DUE, dueEarly: async () => early, record: async () => undefined },
+      items: {
+        reachReadings: async (ids: readonly ItemId[]) => new Map(ids.map((id) => [String(id), reads[String(id)] ?? []])),
+        byIds: async (ids: readonly ItemId[]) => new Map(items.filter((p) => ids.includes(p.itemId)).map((p) => [p.itemId, p] as const)),
+      },
+      ledger: memoryLaneLedger(), meter, mode: 'live', policy, log: quiet, now: () => NOW,
+    });
+  await make(P)();
+  assert.deepEqual(viral.sent, [['Senator calls the governor a little potato', 'Trump says Nicki Minaj has a beautiful a**', 'influencer found dead in Monterrey']], 'the fresh one first; not the slow one');
+  viral.sent.length = 0;
+  await make({ ...P, judge: { ...P.judge, viral: { ...P.judge.viral, early: { ...P.judge.viral.early, on: false } } } })();
+  assert.deepEqual(viral.sent, [['Trump says Nicki Minaj has a beautiful a**', 'influencer found dead in Monterrey']], 'off: only the huge ones, as in v186');
 });
 
 test('★ a quote with no picture of its own is shown with the post it quotes', () => {

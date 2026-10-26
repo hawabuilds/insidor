@@ -8,10 +8,11 @@
  * ever being taken for the post question's verdict.
  *
  * ★ THE QUEUE IS A DATABASE NARROWING, CORE DECIDES. `due` returns the posts with any reading at
- * `minReach` since `since`, never asked, with their first answer and the kind that holds them read
- * exactly as the projector reads them (the newest post-question answer; the kind label only while a
- * kind answer is the newest of all); the runner then holds each to core `viralEligible` and
- * `clearsViralBar`. Only posts a catch-all lane credited: no other post can reach For You's frame.
+ * `minReach` since `since` — and `dueEarly` (policy.v188) those fast in their first minutes — never
+ * asked, with their first answer and the kind that holds them read exactly as the projector reads
+ * them (the newest post-question answer; the kind label only while a kind answer is the newest of
+ * all); the runner then holds each to core `viralEligible` and `clearsViralBar` or
+ * `clearsEarlyViralBar`. Only posts a catch-all lane credited: no other post can reach For You's frame.
  *
  * What breaks if changed carelessly: `answers` THROWS when the table is missing (before 0138). The
  * projector catches that and passes no post this way; returning an empty map silently here would
@@ -66,13 +67,44 @@ export class PgViralMomentRepo {
   /** See the header. Biggest reading first, at most `limit`. */
   async due(args: { readonly since: Millis; readonly minReach: number; readonly liftsKinds: readonly string[]; readonly heldKinds: readonly string[]; readonly limit: number }): Promise<readonly ViralDue[]> {
     if (args.limit <= 0) return [];
+    return this.#eligible(
+      `select o.item_id, max(o.value) as top
+         from public.observation o
+        where o.kind = 'reach' and o.captured_at >= $1 and o.value >= $2
+        group by o.item_id`,
+      [toTimestamp(args.since), args.minReach],
+      args,
+    );
+  }
+
+  /**
+   * ★ THE EARLY QUEUE (Policy.judge.viral.early, policy.v188): posts with a reading within `withinMs`
+   * of their post time averaging `minPerMinute` views a minute or more since it, fastest first, held
+   * to the same eligibility as `due`. Core `clearsEarlyViralBar` decides again on the readings.
+   */
+  async dueEarly(args: { readonly since: Millis; readonly minPerMinute: number; readonly withinMs: number; readonly liftsKinds: readonly string[]; readonly heldKinds: readonly string[]; readonly limit: number }): Promise<readonly ViralDue[]> {
+    if (args.limit <= 0) return [];
+    return this.#eligible(
+      `select o.item_id, max(o.value / (extract(epoch from (o.captured_at - i.posted_at)) / 60.0)) as top
+         from public.item i
+         join public.observation o on o.item_id = i.item_id
+        where i.posted_at >= $1 and o.kind = 'reach' and o.value is not null
+          and o.captured_at > i.posted_at and o.captured_at <= i.posted_at + make_interval(secs => $3::float8 / 1000)
+        group by o.item_id
+       having max(o.value / (extract(epoch from (o.captured_at - i.posted_at)) / 60.0)) >= $2`,
+      [toTimestamp(args.since), args.minPerMinute, args.withinMs],
+      args,
+    );
+  }
+
+  /**
+   * The queue's shared tail: of the posts `found` names (item_id, top), the ones still to ask — see
+   * the header — biggest `top` first. `found`'s own parameters come first; this appends its own.
+   */
+  async #eligible(found: string, params: readonly unknown[], args: { readonly since: Millis; readonly liftsKinds: readonly string[]; readonly heldKinds: readonly string[]; readonly limit: number }): Promise<readonly ViralDue[]> {
+    const n = params.length;
     const rows = await this.#db.query<{ item_id: string; posted_at: Date | string | null; coinable: boolean; kind_label: string | null }>(
-      `with big as (
-         select o.item_id, max(o.value) as top
-           from public.observation o
-          where o.kind = 'reach' and o.captured_at >= $1 and o.value >= $2
-          group by o.item_id
-       )
+      `with big as (${found})
        select b.item_id, i.posted_at, j.coinable, k.kind_label
          from big b
          join public.item i on i.item_id = b.item_id
@@ -88,18 +120,18 @@ export class PgViralMomentRepo {
                  order by pj.judged_at desc, pj.id desc limit 1
               ) k on true
         where i.origin = 'observed'
-          and i.posted_at >= $1
+          and i.posted_at >= $${n + 1}
           and j.coinable is not null
-          and (not j.coinable or k.kind_label = any($3::text[]))
-          and (k.kind_label is null or k.kind_label = any($3::text[]) or not (k.kind_label = any($4::text[])))
+          and (not j.coinable or k.kind_label = any($${n + 2}::text[]))
+          and (k.kind_label is null or k.kind_label = any($${n + 2}::text[]) or not (k.kind_label = any($${n + 3}::text[])))
           and exists (select 1 from internal.item_found_by f where f.item_id = b.item_id)
           and not exists (select 1 from internal.viral_moment v where v.item_id = b.item_id)
           and coalesce((select ofb.verdict from internal.owner_feedback ofb
                          where ofb.subject_kind = 'post' and ofb.item_id = b.item_id
                          order by ofb.created_at desc, ofb.id desc limit 1), '') <> 'not'
         order by b.top desc
-        limit $5`,
-      [toTimestamp(args.since), args.minReach, [...args.liftsKinds], [...args.heldKinds], args.limit],
+        limit $${n + 4}`,
+      [...params, toTimestamp(args.since), [...args.liftsKinds], [...args.heldKinds], args.limit],
     );
     return rows.map((r) => ({
       itemId: r.item_id,

@@ -297,6 +297,23 @@ export interface TrackPolicy {
    */
   readonly rereadOrder: { readonly bigAccountFollowers: number; readonly restShare: number };
   /**
+   * ★ A "NO" THAT IS CLIMBING FAST IS STILL READ (policy.v188, the owner, 2026-10-26). A post the
+   * judge said no to (or held as politics or showbiz) is otherwise never re-read (above), so the
+   * viral exception's bars (`judge.viral`, early and late) see only the one or two readings taken
+   * before its answer: @PopBase's Nicki Minaj post was read at 3 and 6 minutes and next at 5 hours.
+   * A post the viral exception is for, younger than `maxAgeMs`, with a reading inside `withinMs` of
+   * its post time averaging `minReachPerMinute` or more, keeps its re-reads at TRACK's young cadence
+   * (6, 15 or 30 minutes by its view rate, `velocityMinutes`) and is pulled with the big accounts
+   * (`rereadOrder` tier 2). At most `maxPosts` at once, the fastest first.
+   *
+   * The bound, inside the paced re-read day (`feed.searchDay.rereadDailyUsd`, nothing added to it):
+   * `maxPosts` posts read at most every 6 minutes is 3,600 reads a day, $0.54 at $0.00015 a read — the
+   * ceiling; ~400 posts a day clear 5k a minute (7 days to 2026-10-26), so the cap is usually full.
+   * 5k is half the early ask's bar: a post first read at 5–10k a minute is read again to see whether it
+   * gets there. Off: TRACK is as in v183.
+   */
+  readonly fastClimb: { readonly on: boolean; readonly minReachPerMinute: number; readonly withinMs: number; readonly maxAgeMs: number; readonly maxPosts: number };
+  /**
    * ★ A POST ON FOR YOU WAITS THIS MANY TIMES ITS INTERVAL between TRACK's re-reads (the owner,
    * 2026-10-20): its tier's minutes, or in its first hours its hot, warm or cold minutes. Its views
    * on screen are kept current by the readings loop (`feed.readings`, every 4 to 30 minutes while it
@@ -1167,6 +1184,30 @@ export interface JudgePolicy {
     /** Times the kind question is asked about one "yes" moment before it is left unanswered (0138 kind_asks). */
     readonly maxKindAsks: number;
     readonly dailyUsd: number;
+    /**
+     * ★ ASKED WHILE THE POST IS FRESH (policy.v188, the owner, 2026-10-26: "i dont want to catch that
+     * post 6 hrs later i want to catch it when it was fresh"). A post this exception is for is asked
+     * the same two questions as soon as a reading within `withinMs` of its post time shows it averaging
+     * `minReachPerMinute` views a minute or more since it was posted — not only once it is huge.
+     * Everything else is as above: one ask a post, the same caps, the same pass rule. The moment
+     * question is the filter; this bar only says when to ask it.
+     *
+     * Chosen 2026-10-26 on the seven days before (read only; coin-link finds left out; @elonmusk left
+     * out, his every post is coined by a bot): of the judge's "no"s and politics/showbiz holds, the
+     * share with a coin launched AFTER the moment they would have been asked, against judged-yes posts
+     * over For You's 40k bar with a coin launched after their answer (6.0%):
+     *     10k a minute within 30 min   128 posts a day   6.9%
+     *      5k                          400               3.4%
+     *     an account of 1M+ followers  2,683             1.1%   (3M+: 1.4%, 10M+: 1.3%)
+     * With the accounts whose posts are coined half the time or more left out on both sides: 2.6%
+     * against 3.8%. No follower count alone comes near, so there is no follower trigger: a big account
+     * still has to show the climb. 10k a minute is the lowest bar whose posts are coined as often as
+     * judged yeses are; ~128 asks a day at ~$0.00023 an ask (0138's measured cost), ~$0.03 a day.
+     * Asked of 100 of that week's posts over it on Nemotron ($0.011): one moment yes (0.7, a name too
+     * long to pass), so none passes; the 28 of them coined were bot-coined accounts' posts (@elonmusk,
+     * @Polymarket, @SpaceX…), every one a no. The question, not the bar, keeps For You clean.
+     */
+    readonly early: { readonly on: boolean; readonly minReachPerMinute: number; readonly withinMs: number };
   };
   /**
    * ★ A MEGA ACCOUNT BRINGS AN OLD POST BACK (the owner, 2026-10-26, after @elonmusk quoted
@@ -5749,8 +5790,14 @@ const POLICY_V1: Policy = {
      post an account of 10M+ followers quotes, or posts the same media of, is asked the post question
      again with that share beside it; if it passes, For You counts its age from the share and its card
      says who shared it. The usual bar; every hold still applies. `judge.resurface.on` false is the
-     rollback. */
-  version: 'policy.v187',
+     rollback.
+
+     v188 asks it while the post is fresh (the owner, 2026-10-26): `judge.viral.early` asks a turned-down
+     post the two questions as soon as a reading in its first 30 minutes averages 10k views a minute, not
+     only at 500k; and `track.fastClimb` keeps re-reading such a post, from 5k a minute, for its first two
+     hours (15 at once, inside the re-read day), so the bars have readings to fire on. Both `on: false`
+     are the rollback, together or apart. */
+  version: 'policy.v188',
 
   admit: {
     maxAgeMin: 240,
@@ -5818,6 +5865,8 @@ const POLICY_V1: Policy = {
        (median 9k, 90th percentile 404k), whose posts took 18% of the re-reads. 0.8: the rest stop at
        four-fifths of the paced day, leaving about $1 a day of the $5 for the tiers above. */
     rereadOrder: { bigAccountFollowers: 100_000, restShare: 0.8 },
+    /* From policy.v188 (see TrackPolicy.fastClimb): 5k a minute in the first 30 minutes, read to two hours, 15 at once. */
+    fastClimb: { on: true, minReachPerMinute: 5_000, withinMs: 1_800_000, maxAgeMs: 7_200_000, maxPosts: 15 },
     /* Half as often on For You. */
     onForYouIntervalFactor: 2,
 
@@ -6179,6 +6228,8 @@ const POLICY_V1: Policy = {
          confidence number twice in two asks and named no kind it could be read by. */
       maxKindAsks: 3,
       dailyUsd: 0.3,
+      /* From policy.v188 (see JudgePolicy.viral.early): 10k a minute, on a reading inside the first 30 minutes. */
+      early: { on: true, minReachPerMinute: 10_000, withinMs: 1_800_000 },
     },
     /* See JudgePolicy.resurface. 10M, and the usual bar: the measurement there. Two hours of
        shares, so a restart, or an original stored a little after its share (the "hello, world"
