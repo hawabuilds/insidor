@@ -151,3 +151,10 @@ test('a viral-post coin that halved over the day is left off the tape, however b
   const r = { ...dumped, coin: { ...(dumped['coin'] as Record<string, unknown>), volume24hUsd: { v: 5_000_000 } } };
   assert.deepEqual(runningCoins([r], NOW).coins, []);
 });
+
+test('a coin over the cap ceiling is not on the tape (the owner, 2026-10-26: $50M)', () => {
+  const ceiling = DEFAULT_POLICY.runningCoins.maxCapUsd;
+  const big = row('big', ceiling + 1, 10);
+  const ok = row('ok', ceiling, 10);
+  assert.deepEqual(runningCoins([big, ok], NOW).coins.map((c) => c.address), ['ok']);
+});
