@@ -99,7 +99,7 @@ import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
-import { judgedYesUnshown, offFeedTooOld, offForYouPerPostTooOld, REST_TIER, rereadTier, rereadsThatFit, staleUnpassed, worthRereading, type RereadTier } from './track-gate.ts';
+import { climbingNoPace, fastestClimbers, judgedYesUnshown, mayClimb, offFeedTooOld, offForYouPerPostTooOld, REST_TIER, rereadTier, rereadsThatFit, staleUnpassed, worthRereading, type RereadTier } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
 import { heldDecisionReads } from './decision-log-cache.ts';
 
@@ -533,15 +533,25 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
       const yes = new Set(onScreen.filter((i) => judgedYesUnshown(i.itemId, i.postedAt, now, facts, policy)).map((i) => i.itemId));
       /* ★ IN TIER ORDER (track-gate.ts `rereadTier`, `track.rereadOrder`): the yeses, then posts on a
          feed and found posts waiting on an answer, then big accounts, then the rest. */
+      /* ★ A "NO" CLIMBING FAST (track-gate.ts `climbingNoPace`, `track.fastClimb`): read on, the fastest
+         few, so the viral exception's bars see the climb. Readings are fetched only for the posts that
+         may be one. */
+      const mayBe = onScreen.filter((i) => mayClimb(i.itemId, i.postedAt, now, facts, policy));
+      const early = mayBe.length === 0 ? new Map<string, readonly { atMs: number; reach: number | null }[]>() : await repos.items.reachReadings(mayBe.map((i) => i.itemId), (now - policy.track.fastClimb.maxAgeMs) as Millis);
+      const paces = new Map(mayBe.flatMap((i) => {
+        const pace = climbingNoPace(i.itemId, i.postedAt, early.get(String(i.itemId)) ?? [], now, facts, policy);
+        return pace === null ? [] : [[String(i.itemId), pace] as const];
+      }));
+      const climbing = fastestClimbers(paces, policy);
       const authors = await repos.authors.byKeys([...new Set(onScreen.map((i) => i.authorKey))]);
       const tiers = new Map(
-        onScreen.map((i) => [String(i.itemId), rereadTier(i.itemId, yes.has(i.itemId), authors.get(i.authorKey)?.audience?.value ?? null, facts, policy)] as const),
+        onScreen.map((i) => [String(i.itemId), rereadTier(i.itemId, yes.has(i.itemId), authors.get(i.authorKey)?.audience?.value ?? null, facts, policy, climbing.has(String(i.itemId)))] as const),
       );
       tierOf = tiers;
       const worth = onScreen
         .filter(
           (i) =>
-            worthRereading(i.itemId, facts, policy) &&
+            (worthRereading(i.itemId, facts, policy) || climbing.has(String(i.itemId))) &&
             !staleUnpassed(i.itemId, i.postedAt, now, facts, policy) &&
             !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy) &&
             (yes.has(i.itemId) || !offForYouPerPostTooOld(i.itemId, billedPerPost(String(i.source)), i.postedAt, now, facts, policy)),

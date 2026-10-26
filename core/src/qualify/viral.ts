@@ -19,6 +19,12 @@
  * from when it was posted, never from when we first saw it (reach-bar.ts says why). A post with no
  * post time, or no such reading, does not clear it: an unread count is not a big one.
  *
+ * ★ OR FAST WHILE IT IS FRESH (`early`, policy.v188): a reading within `early.withinMs` of the post
+ * averaging `early.minReachPerMinute` or more since the post is enough to ask, however few its
+ * views. The answers decide the rest exactly as above; the bar only says when the question is asked.
+ * `earlyPace` is the same arithmetic for TRACK's fast-climb re-reads (`track.fastClimb`), so a post
+ * kept for re-reads and a post asked are measured one way.
+ *
  * ★ TWO ANSWERS MUST AGREE. The moment answer says whether people coin this moment and what they
  * would call it; the kind answer (the feed's own kind question) says what it is. A TRAGEDY or any
  * kind outside `passKinds` never passes, whatever the moment answer said — the owner's rule is
@@ -72,6 +78,30 @@ export function clearsViralBar(readings: readonly ReachLevel[], postedAtMs: numb
     if (ageMs <= 0 || ageMs > v.maxAgeMs) return false;
     return x.reach / (ageMs / MS_PER_MINUTE) >= v.minReachPerMinute;
   });
+}
+
+/**
+ * The fastest average views a minute since the post among readings within `withinMs` of it; null
+ * when there is no such reading or no post time (not shown to be fast is not slow: it is unknown).
+ */
+export function earlyPace(readings: readonly ReachLevel[], postedAtMs: number | null, withinMs: number): number | null {
+  if (postedAtMs === null) return null;
+  let best: number | null = null;
+  for (const x of readings) {
+    const ageMs = x.atMs - postedAtMs;
+    if (x.reach === null || ageMs <= 0 || ageMs > withinMs) continue;
+    const pace = x.reach / (ageMs / MS_PER_MINUTE);
+    if (best === null || pace > best) best = pace;
+  }
+  return best;
+}
+
+/** Whether a reading shows the post fast while fresh (`early`, see the header). Off: never. */
+export function clearsEarlyViralBar(readings: readonly ReachLevel[], postedAtMs: number | null, p: Policy): boolean {
+  const e = p.judge.viral.early;
+  if (!e.on) return false;
+  const pace = earlyPace(readings, postedAtMs, e.withinMs);
+  return pace !== null && pace >= e.minReachPerMinute;
 }
 
 /** Whether the stored answers let the post onto For You: see the header. Null answers: no. */
