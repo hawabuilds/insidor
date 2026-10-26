@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -177,6 +177,53 @@ export function contendersOf(rows: readonly CandidateRow[], trades: ReadonlyMap<
   });
 }
 
+/** How far back the rug sweep looks for held picks, and how many it reads a pass. */
+const RUG_SWEEP_MS = 2 * 86_400_000;
+const RUG_SWEEP_LIMIT = 200;
+
+/**
+ * ★ THE RUG SWEEP (the owner, 2026-10-26, $DOUPI: "now showing the one that rugged at 2k"). A post is
+ * judged only while its candidates are inside `oneCoin.watchMs` of being found, so a pick made at
+ * minute 18 stood frozen on its coin once the hour passed, whatever the coin did next: $DOUPI (BEc9…)
+ * fell from 941 SOL to 20 in a minute and the card kept it. Every pass, the held picks of the last
+ * two days that the open posts above did not judge are looked at, and the ones whose coin has
+ * crashed on the live trades (under `rugShareOfPeak` of its peak) are judged again by the same rule
+ * on all their candidates: the floor drops a rug, the crash switch hands a coin made for the post
+ * worth twice it the pick. A held coin that has not crashed is left as it is. Returns how many changed.
+ */
+export async function rugSweep(
+  repo: OneCoinDeps['repo'],
+  judgedNow: ReadonlySet<string>,
+  judge: (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }) => OneCoinOutcome,
+  now: number,
+  P: OneCoinDeps['policy']['oneCoin'],
+  /** The pass's SOL price over every open coin (solPriceOf): a sweep's few coins are too few to set one. */
+  solUsd: number | null = null,
+): Promise<number> {
+  if (repo.heldPostPicks === undefined) return 0;
+  const held = (await repo.heldPostPicks(now - RUG_SWEEP_MS, RUG_SWEEP_LIMIT)).filter((p) => !judgedNow.has(p.subjectId) && p.address !== null);
+  if (held.length === 0) return 0;
+  const heldTrades = await repo.tradeFacts(held.map((p) => p.address as string));
+  if (heldTrades === null) return 0;
+  const crashed = held.filter((p) => {
+    const t = heldTrades.get(p.address as string);
+    return t !== undefined && t.cap !== null && t.peakCap !== null && t.peakCap > 0 && t.cap < P.rugShareOfPeak * t.peakCap;
+  });
+  if (crashed.length === 0) return 0;
+  const rows = await repo.candidatesOf(crashed.map((p) => p.subjectId));
+  const addresses = [...new Set(rows.map((r) => r.address))];
+  const [trades, watched, market] = await Promise.all([repo.tradeFacts(addresses), repo.watched(addresses, now), repo.marketFacts(addresses, now - RUG_SWEEP_MS)]);
+  const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
+  const byItem = new Map<string, CandidateRow[]>();
+  for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
+  const prev = new Map(crashed.map((p) => [p.subjectId, p] as const));
+  const writes = crashed.flatMap((p) => {
+    const rs = byItem.get(p.subjectId);
+    return rs === undefined || rs.length === 0 ? [] : [pickWrite(p.subjectId, judge(rs, p, facts), p, now, P.mode)];
+  });
+  return writes.length === 0 ? 0 : repo.writePicks('post', writes, prev, P.mode, now);
+}
+
 /** Pairs needed before the trades' caps are given a dollar value: fewer, and one odd reading would set it. */
 const MIN_PRICE_PAIRS = 5;
 
@@ -190,14 +237,18 @@ const MIN_PRICE_PAIRS = 5;
  * reading's dollars over the trades' SOL — a median, so a frozen reading is outvoted — and every
  * trade rollup without a dollar cap gets its SOL cap times that. Too few pairs: unchanged.
  */
-export function withDollarCaps(trades: ReadonlyMap<string, TradeRollup>, market: ReadonlyMap<string, MarketFacts>): ReadonlyMap<string, TradeRollup> {
+export function withDollarCaps(trades: ReadonlyMap<string, TradeRollup>, market: ReadonlyMap<string, MarketFacts>, solUsd: number | null = solPriceOf(trades, market)): ReadonlyMap<string, TradeRollup> {
+  if (solUsd === null) return trades;
+  return new Map([...trades].map(([a, t]) => [a, t.capUsd === null && t.cap !== null ? { ...t, capUsd: t.cap * solUsd } : t] as const));
+}
+
+/** The SOL price the coins read both ways agree on (the median); null with too few of them. */
+export function solPriceOf(trades: ReadonlyMap<string, TradeRollup>, market: ReadonlyMap<string, MarketFacts>): number | null {
   const ratios = [...trades].flatMap(([a, t]) => {
     const m = market.get(a);
     return t.cap !== null && t.cap > 0 && m !== undefined && m.capUsd > 0 ? [m.capUsd / t.cap] : [];
   }).sort((x, y) => x - y);
-  if (ratios.length < MIN_PRICE_PAIRS) return trades;
-  const solUsd = ratios[Math.floor(ratios.length / 2)]!;
-  return new Map([...trades].map(([a, t]) => [a, t.capUsd === null && t.cap !== null ? { ...t, capUsd: t.cap * solUsd } : t] as const));
+  return ratios.length < MIN_PRICE_PAIRS ? null : ratios[Math.floor(ratios.length / 2)]!;
 }
 
 /** The pick row for an outcome: the coin and since when, or no coin; the standings as the evidence. */
@@ -348,10 +399,13 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   ]);
   const running = trades !== null && feedAt !== null && now - feedAt <= P.tradeFeedFreshMs;
   /* ★ The trades' caps in dollars (withDollarCaps): never a stale reading's when the trades are live. */
-  const tradesUsd = trades === null ? null : withDollarCaps(trades, market);
+  const solUsd = trades === null ? null : solPriceOf(trades, market);
+  const tradesUsd = trades === null ? null : withDollarCaps(trades, market, solUsd);
   const ruleBars = oneCoinBars(P, fit);
-  const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined): OneCoinOutcome =>
-    pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, market), holderOf(prev), now, running, ruleBars);
+  const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }): OneCoinOutcome =>
+    facts === undefined
+      ? pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, market), holderOf(prev), now, running, ruleBars)
+      : pickOneCoin(contendersOf(rs, running ? facts.trades : null, facts.watched, facts.market), holderOf(prev), now, running, ruleBars);
   /* ★ The owner's coin call stands: his posts are judged without the stated-name tie. */
   const called = deps.ownerCalled === undefined || byPost.size === 0 ? new Set<string>() : await deps.ownerCalled([...byPost.keys()]);
   const withoutStated = (rs: readonly CandidateRow[]): CandidateRow[] => rs.map((r) => (Array.isArray(r.evidence['ties']) && r.evidence['ties'].includes('name_stated') ? { ...r, evidence: { ...r.evidence, ties: r.evidence['ties'].filter((t: unknown) => t !== 'name_stated') } } : r));
@@ -397,6 +451,10 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     return pickWrite(id, judge(rs, prevNarratives.get(id)), prevNarratives.get(id), now, P.mode);
   });
   const changedNarratives = await repo.writePicks('narrative', narrativePicks, prevNarratives, P.mode, now);
+
+  /* ── the rug sweep: a held pick past its hour whose coin crashed ── */
+  const swept = await rugSweep(repo, new Set(byPost.keys()), judge, now, P, solUsd);
+  if (swept > 0) deps.log.info('one coin: the rug sweep moved held picks whose coin crashed', { changed: swept });
 
   /* ── hand over: a later coin made for a held post, running now ──── */
   let handovers: readonly Handover[] = [];

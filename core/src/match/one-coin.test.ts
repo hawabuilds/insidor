@@ -283,6 +283,15 @@ test('★ a held coin still worth the keep bar is never dropped for time under t
   assert.equal(small.kind === 'waiting' && small.droppedHolder, 'A');
 });
 
+test('★ a held coin the trades put out is not re-held on the readings fallback (2026-10-26, $DOUPI)', () => {
+  /* The trades: 20 SOL of a 1,108 peak, about $2k. Its reading stands still at $41,293. A rival is unmeasured. */
+  const holder = { address: 'RUG', sinceMs: 1_006 * MIN, underShareSinceMs: NOW - 10 * MIN };
+  const rug = c('RUG', 1_002, trades({ cap: 20, peakCap: 1_108, capUsd: 2_000, netBuy: -27 }), { evidence: ['link'], market: { capUsd: 41_293, peakCapUsd: 41_293 } });
+  const unread = c('OTHER', 1_003, null, { evidence: ['link'], market: { capUsd: 18_000, peakCapUsd: 21_000 } });
+  const o = pickOneCoin([rug, unread], holder, NOW, true, BARS);
+  assert.notEqual(o.kind === 'picked' ? o.address : null, 'RUG');
+});
+
 test('★ the crash switch: under the share, a coin made for the post worth twice the held one takes it, on trades too', () => {
   /* 25 Oct 02:20: the wrong Marvin fell from $177k to $42k; the real one, linking the post, stood at $147k; net buying flat on both. */
   const holder = { address: 'WRONG', sinceMs: 1_006 * MIN };
