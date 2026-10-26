@@ -2,8 +2,9 @@
  * ONE POST, ONE COIN ON THE CARDS (Policy.oneCoin.mode 'live'): each For You card and each
  * narrative page shows the single coin the runner picked for it by who is buying it
  * (internal.post_coin_pick, narrative_coin_pick, 0113), with Buy — or, when no coin is picked,
- * Create. Never a list of coins that merely share the name: that list stays for the owner's
- * screens only (`ownerList` on the wire), so he can still check what the rule passed over.
+ * Create beside "See N coins": the coins made after the post, its top three by market cap, shown to
+ * every reader since 2026-10-26 (the owner, after Dandy). Never the coins that merely share the name
+ * from before the post.
  *
  * Its own file because it is a switch over what rising.ts and narrative-frame.ts already decide:
  * in 'shadow' none of this is read and every card is exactly what it was; in 'live' the pick
@@ -15,8 +16,8 @@
  *   picked                   `matched`, the coin, `picked: true` ("Coin for this post"), and the
  *                            facts that hold of it as evidence (links this post, same picture,
  *                            launched N minutes after) — a link is evidence, the pick is the coin.
- *   waiting / none           Create: `none` when no coin uses the name, else `unsure` with
- *                            `ownerList` — the count is the owner's, everyone else sees Create.
+ *   waiting / none           Create: `none` when no coin was made after the post, else `unsure`
+ *                            with up to three, "See N coins", for everyone.
  *   no pick row yet          the card as the name search left it while the search is still
  *                            pending or failed (a dash, "Couldn't check"); otherwise Create.
  *
@@ -108,5 +109,8 @@ export function liveCoinLine(
   /* Not judged yet: a search still pending or failed says so, as before; never a guessed Create. */
   if (pick === undefined && (before.kind === 'pending' || before.kind === 'unchecked')) return before;
   if (listed.count === 0) return { kind: 'none' };
-  return listed.more ? { kind: 'unsure', claimCount: listed.count, more: true, ownerList: true } : { kind: 'unsure', claimCount: listed.count, ownerList: true };
+  /* ★ EVERYONE SEES THE TOP THREE (the owner, 2026-10-26, Dandy): `listed` is the coins made after
+     the post, at most three (rising.ts POST_COINS_SHOWN), so "See 3 coins" is shown to every reader,
+     not the owner alone; the sheet lists the same three, highest market cap first. */
+  return listed.more ? { kind: 'unsure', claimCount: listed.count, more: true } : { kind: 'unsure', claimCount: listed.count };
 }

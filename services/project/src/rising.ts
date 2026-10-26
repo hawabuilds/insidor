@@ -484,6 +484,8 @@ export async function loadPostLookups(
  */
 /** How long before a post a coin may launch and still be counted as made from it (mobile shared/coins-made.ts COIN_LEAD_MS). */
 export const COIN_LEAD_MS = 10 * 60_000;
+/** A post's "See N coins" is its top three made after it, by market cap (mobile shared/coins-made.ts POST_COINS_SHOWN). */
+export const POST_COINS_SHOWN = 3;
 
 /** Each address's launch time in ms, where the asset row has one. */
 async function loadLaunches(db: Db, addresses: readonly string[]): Promise<ReadonlyMap<string, number>> {
@@ -1045,7 +1047,7 @@ export async function buildRising(
     if (check?.none === true || owners) return post;
     const pick = picks.get(row.item_id);
     const f = pick?.address === null || pick?.address === undefined ? undefined : pickedFacts.get(pick.address);
-    const listed = lookup !== null && 'coins' in lookup ? { count: madeAfter(row, lookup.coins), more: false } : { count: 0, more: false };
+    const listed = lookup !== null && 'coins' in lookup ? { count: Math.min(madeAfter(row, lookup.coins), POST_COINS_SHOWN), more: false } : { count: 0, more: false };
     const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set());
     const out: WireRisingPost = { ...post, coins, storyId: coins === post.coins ? post.storyId : null };
     assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);

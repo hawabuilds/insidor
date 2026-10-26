@@ -19,7 +19,7 @@ test('★ a picked coin is the card\'s one coin, with the facts that hold and "p
 });
 
 test('★ no pick is Create: the count only for the owner, none when nothing uses the name', () => {
-  assert.deepEqual(liveCoinLine(unsure, picked({ outcome: 'waiting', address: null }), null, { count: 4, more: true }, new Set()), { kind: 'unsure', claimCount: 4, more: true, ownerList: true });
+  assert.deepEqual(liveCoinLine(unsure, picked({ outcome: 'waiting', address: null }), null, { count: 4, more: true }, new Set()), { kind: 'unsure', claimCount: 4, more: true });
   assert.deepEqual(liveCoinLine({ kind: 'none' }, picked({ outcome: 'none', address: null }), null, { count: 0, more: false }, new Set()), { kind: 'none' });
   /* A proven coin by today's evidence that the rule did not pick is not shown: the pick is the coin. */
   const proven: WirePostCoinLink = { kind: 'matched', coin, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 1 } };
