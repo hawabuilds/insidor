@@ -69,34 +69,34 @@ test('★ an hour the card did not carry is not a quiet hour, and not a busy one
 });
 
 test('the fresher frame\'s hour decides, even when an older frame\'s was busier', () => {
-  const { coins } = runningCoins([row('a', 9_000, 10, { at: NOW - 3 * MIN, volume: 80_000 }), row('a', 9_000, 10, { at: NOW - MIN, volume: 0, trades: 0 })], NOW);
+  const { coins } = runningCoins([row('a', 29_000, 10, { at: NOW - 3 * MIN, volume: 80_000 }), row('a', 29_000, 10, { at: NOW - MIN, volume: 0, trades: 0 })], NOW);
   assert.deepEqual(coins, []);
 });
 
 test('a coin with no price, no move, or not tradable is left out, never shown as 0', () => {
-  const { coins } = runningCoins([row('nocap', null, 10), row('nomove', 5_000, null), row('zero', 0, 10), row('locked', 9_000, 10, { tradable: false }), row('ok', 9_000, 10)], NOW);
+  const { coins } = runningCoins([row('nocap', null, 10), row('nomove', 25_000, null), row('zero', 0, 10), row('locked', 29_000, 10, { tradable: false }), row('ok', 29_000, 10)], NOW);
   assert.deepEqual(coins.map((c) => c.address), ['ok']);
 });
 
 test('only launchpad coins seen launching', () => {
-  const { coins } = runningCoins([row('pool', 9_000, 10, { venue: 'solana:raydium' }), row('guess', 9_000, 10, { origin: 'seed' }), row('none', 9_000, 10, { origin: null }), row('ok', 9_000, 10, { origin: 'backfill' })], NOW);
+  const { coins } = runningCoins([row('pool', 29_000, 10, { venue: 'solana:raydium' }), row('guess', 29_000, 10, { origin: 'seed' }), row('none', 29_000, 10, { origin: null }), row('ok', 29_000, 10, { origin: 'backfill' })], NOW);
   assert.deepEqual(coins.map((c) => c.address), ['ok']);
 });
 
 test('a price from a stalled frame is left out', () => {
   const fresh = DEFAULT_POLICY.runningCoins.freshMs;
-  const { coins } = runningCoins([row('old', 9_000, 10, { at: NOW - fresh - 1 }), row('edge', 9_000, 10, { at: NOW - fresh })], NOW);
+  const { coins } = runningCoins([row('old', 29_000, 10, { at: NOW - fresh - 1 }), row('edge', 29_000, 10, { at: NOW - fresh })], NOW);
   assert.deepEqual(coins.map((c) => c.address), ['edge']);
 });
 
 test('one coin once, with the fresher frame\'s numbers', () => {
-  const { coins } = runningCoins([row('a', 9_000, 10, { at: NOW - 3 * MIN }), row('a', 12_000, 20, { at: NOW - MIN }), row('a', 1_000, 1, { at: NOW - 2 * MIN })], NOW);
+  const { coins } = runningCoins([row('a', 29_000, 10, { at: NOW - 3 * MIN }), row('a', 32_000, 20, { at: NOW - MIN }), row('a', 21_000, 1, { at: NOW - 2 * MIN })], NOW);
   assert.equal(coins.length, 1);
-  assert.equal(coins[0]?.marketCapUsd, 12_000);
+  assert.equal(coins[0]?.marketCapUsd, 32_000);
 });
 
 test('at most maxCoins', () => {
-  const rows = Array.from({ length: 30 }, (_, i) => row(`c${String(i).padStart(2, '0')}`, 10_000, 10, { volume: BUSY.volume + i }));
+  const rows = Array.from({ length: 30 }, (_, i) => row(`c${String(i).padStart(2, '0')}`, 30_000, 10, { volume: BUSY.volume + i }));
   const { coins } = runningCoins(rows, NOW);
   assert.equal(coins.length, DEFAULT_POLICY.runningCoins.maxCoins);
   assert.equal(coins[0]?.address, 'c29');
@@ -109,7 +109,7 @@ test('the route answers the list, read once per keepMs', async () => {
     async query(sql: string): Promise<readonly Row[]> {
       if (sql !== RUNNING_COINS_SQL) throw new Error('unexpected statement');
       reads += 1;
-      return [row('a', 9_000, 10)];
+      return [row('a', 29_000, 10)];
     },
   };
   const runningCoins = createRunningCoins(() => t);
@@ -128,4 +128,20 @@ test('an empty strip is an empty list', async () => {
   const db = { async query(): Promise<readonly Row[]> { return []; } };
   const reply = await handle('GET', '/running/coins', { db, log: SILENT });
   assert.deepEqual(JSON.parse(reply.body), { coins: [] });
+});
+
+test('★ a coin under the cap floor is not on the tape, however busy its hour (the owner, 2026-10-26)', () => {
+  const floor = DEFAULT_POLICY.runningCoins.minCapUsd;
+  const { coins } = runningCoins([row('copy', floor - 1, 10, { volume: BUSY.volume * 10 }), row('runner', floor, 10)], NOW);
+  assert.deepEqual(coins.map((c) => c.address), ['runner']);
+});
+
+test('★ viral-post coins trending over the day: ordered by the day\'s dollars, a quiet day left out (the owner, 2026-10-26)', () => {
+  const dayRow = (address: string, cap: number, day: number | null): Row => {
+    const r = row(address, cap, 10);
+    return { ...r, coin: { ...(r['coin'] as Record<string, unknown>), volume24hUsd: day === null ? { v: null } : { v: day } } };
+  };
+  const floor = DEFAULT_POLICY.runningCoins.minVolume24hUsd;
+  const { coins } = runningCoins([dayRow('small-day', 50_000, floor * 2), dayRow('big-day', 40_000, floor * 50), dayRow('quiet', 900_000, floor - 1)], NOW);
+  assert.deepEqual(coins.map((c) => c.address), ['big-day', 'small-day']);
 });
