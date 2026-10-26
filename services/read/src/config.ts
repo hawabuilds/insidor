@@ -77,6 +77,13 @@ export interface ReadConfig {
    */
   readonly allowedOrigins: readonly string[];
   /**
+   * The coin watcher's live feed on Railway's private network (LIVE_UPSTREAM_URL, e.g.
+   * `http://chainwatch.railway.internal:8080/live`): every trade of the coins phones have open
+   * (live-coins.ts). OPTIONAL: unset, GET /live/coins answers and stays quiet, and the screens show
+   * the age of the numbers they read. Only an `http(s)://` address is taken.
+   */
+  readonly liveUpstreamUrl: string | null;
+  /**
    * Where a coin's price history and trades are read from (market.ts). With
    * `COINGECKO_API_KEY`, CoinGecko's on-chain API — the pro host, or the public one when
    * `COINGECKO_API_PLAN=demo` — under that plan's request cap; without it, GeckoTerminal's
@@ -194,6 +201,7 @@ export function loadReadConfig(env: Env): ReadConfig {
     listenUrl: listenUrl ?? '',
     port,
     allowedOrigins,
+    liveUpstreamUrl: ((u) => (u !== null && /^https?:\/\//.test(u) ? u : null))(trimmed(env, 'LIVE_UPSTREAM_URL')),
     marketData: marketDataFrom(env),
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
