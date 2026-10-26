@@ -97,6 +97,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
     cfg.coverageToleranceMs,
     () => Date.now(),
     log,
+    (req, res) => runtime.live.serve(req, res),
   );
   const heartbeat = createHeartbeat(cfg.heartbeat, log);
   const backoff: BackoffOptions = { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs };
