@@ -5571,8 +5571,14 @@ const POLICY_V1: Policy = {
      written every kept post, label and name example into it, and copies v180's `postSpaceNextBars`
      over the bars they name (each by v173's rule: the strict tiers at twice Voyage's unrelated share,
      the held-as-not-a-meme and loose bars at its share), clearing both next-space fields. Pictures,
-     their space and their bars are unchanged. v181 back is the rollback: its vectors stay stored. */
-  version: 'policy.v182',
+     their space and their bars are unchanged. v181 back is the rollback: its vectors stay stored.
+
+     v183 turns v181's age-scaled slow-lane floors off (`feed.slow.ageScaledFloor` false): the lane
+     went from ~2,670 stored posts a day to ~6,900, mostly judged no, and their re-reads ate the X
+     re-read day ($5) by mid-morning, so judged-yes posts went unread. The rest of v181 stays: gapless
+     slice windows, the language that waited longest asked first and the floor raised when cut short,
+     band_50 paced over the day. Back to v182 is the rollback. */
+  version: 'policy.v183',
 
   admit: {
     maxAgeMin: 240,
@@ -6248,7 +6254,11 @@ const POLICY_V1: Policy = {
          from ~7,000 likes to ~3,500. Same money (`dailyUsd`, the `paging` day); what is given up is
          the slowest English and Portuguese posts between today's floor and 1.5 times it at six
          hours, past For You's age limit already. */
-      ageScaledFloor: true,
+      /* Off again from policy.v183 (2026-10-26, the owner): scaled, the slow lane stored ~6,900 posts a day from v181's start (25 Oct 17:20 UTC) to 26 Oct 09:20, against
+         ~2,670 a day over the two days before; mostly judged no, and each one re-read on the cadence,
+         which spent the re-read day before the yeses were read. One floor for every slice, as before
+         v181; the rest of v181 (gapless slices, the waited-longest language, band_50 paced) stays. */
+      ageScaledFloor: false,
     },
     /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
        6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones
