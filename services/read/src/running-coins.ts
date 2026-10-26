@@ -3,11 +3,12 @@
  * owner, 2026-10-23, design A of reports/ticker): up to `Policy.runningCoins.maxCoins` coins, each
  * with its ticker, market cap and 24-hour move, the coins trading hardest in the last hour first.
  *
- * ★ ONLY COINS OF POSTS WE FOUND. A coin is on the strip only as the ONE coin a card names: a For
- * You card's matched coin (public.rising_row, `fyp`, the same `coins.kind` catches.ts reads) or a
- * board narrative's one coin (public.board_row → story_view). No search, no same-name list, no
- * coin the market source lists on its own: "one post, one coin; never a list of random coins".
- *
+ * ★ ONLY COINS OF VIRAL POSTS WE FOUND, WHATEVER THE POST'S AGE (the owner, 2026-10-26): a coin is
+ * on the strip only as a coin a post's or a narrative's pick held, or one the owner called right for
+ * a post — never a search hit, a same-name list or a coin the market lists on its own. Ordered by the
+ * dollars it traded over the last day (`RUNNING_COINS_SQL`, each hour once), at least
+ * `runningCoins.minVolume24hUsd`; the hour rule below is the fallback for a row without its day.
+
  * ★ LAUNCHPAD COINS ONLY, BY THE STORED ROW. public.asset.venue_id must be the launchpad's and its
  * origin a seen launch, exactly notify's coin gate (services/notify coin-gate.ts): the address
  * suffix is only a habit, and a coin with no asset row is a coin we cannot place, so it is left out.
@@ -30,6 +31,9 @@
  * drops out within one reading of its hour going quiet. A tie goes to the address, so two replies
  * of one moment agree.
  *
+ * ★ AND A MARKET CAP OF `runningCoins.minCapUsd` (the owner, 2026-10-26: "tape is now showing low mc
+ * coins"): a busy hour on a $3k copy is not a coin running.
+ *
  * What breaks if changed carelessly: reading any coin list but the card's one coin (the strip turns
  * into the random coins the owner forbade), dropping the freshness check (a stalled projector's
  * last prices and last hour run on the strip as if live), or ordering by the 24-hour move again
@@ -43,24 +47,52 @@ import { VENUE_ID } from '@insidor/venue-solana-pumpfun';
 import type { Db, Row } from './queries.ts';
 
 /**
- * Each card's one coin, with when its frame was written and the coin's asset row. For You's live
- * frame and the board's narratives; `one` and `matched` are the card's settled coin (catches.ts).
+ * ★ THE COINS OF VIRAL POSTS, TRENDING OVER THE DAY (the owner, 2026-10-26: "the coins that are
+ * trending last 24 hrs that have viral post origin, regardless how old the post is"). Every coin a
+ * post's or a narrative's pick ever held, and every coin the owner called right for a post, whatever
+ * the post's age — never a coin the market lists on its own — with its newest reading (as the card's
+ * coin, so `runningCoins` reads it the same way) and the dollars it traded over the last day: each
+ * hour counted once, at the busiest reading of that hour, so an hour read twenty times is not counted
+ * twenty times.
  */
 export const RUNNING_COINS_SQL = `
-with found as (
-  select r.payload -> 'coins' -> 'coin' as coin, v.projected_at as at
-    from public.rising_row r
-    join public.rising_view v on v.feed_id = r.feed_id
-   where r.feed_id = 'fyp' and r.payload #>> '{coins,kind}' in ('one', 'matched')
-  union all
-  select s.payload -> 'coins' -> 'coin', s.projected_at
-    from public.board_row b
-    join public.story_view s on s.story_id = b.story_id
-   where b.view_id = 'default' and s.payload #>> '{coins,kind}' in ('one', 'matched')
+with origin as (
+  select address from internal.post_coin_pick where outcome = 'picked' and address is not null
+  union
+  select address from internal.narrative_coin_pick where outcome = 'picked' and address is not null
+  union
+  select coin_address from internal.owner_feedback where subject_kind = 'coin_match' and verdict in ('right', 'wrong') and coin_address is not null
+),
+coin as (
+  select a.address, a.symbol, a.image_uri, a.venue_id, a.origin, a.asset_key
+    from public.asset a join origin o on o.address = a.address
+   where a.chain = 'solana'
+),
+hours as (
+  select m.asset_key, date_trunc('hour', m.taken_at) as h, max(m.volume_1h_usd) as v
+    from public.market_reading m join coin c on c.asset_key = m.asset_key
+   where m.taken_at >= now() - interval '24 hours' and m.volume_1h_usd is not null
+   group by 1, 2
+),
+day as (select asset_key, sum(v) as volume_24h from hours group by 1),
+latest as (
+  select distinct on (m.asset_key) m.asset_key, m.taken_at, m.market_cap_usd, m.price_change_24h_pct, m.volume_1h_usd,
+         coalesce(m.buys_1h, 0) + coalesce(m.sells_1h, 0) as trades, m.tradable
+    from public.market_reading m join coin c on c.asset_key = m.asset_key
+   where m.taken_at >= now() - interval '2 hours'
+   order by m.asset_key, m.taken_at desc
 )
-select f.coin, (extract(epoch from f.at) * 1000)::bigint as at_ms, a.venue_id, a.origin
-  from found f
-  join public.asset a on a.chain = 'solana' and a.address = f.coin ->> 'address'`;
+select jsonb_build_object(
+         'coinId', 'solana:' || c.address, 'address', c.address, 'ticker', c.symbol, 'imageUrl', c.image_uri,
+         'tradable', coalesce(l.tradable, false),
+         'marketCapUsd', jsonb_build_object('v', l.market_cap_usd),
+         'priceChange24h', jsonb_build_object('v', l.price_change_24h_pct),
+         'volume1hUsd', jsonb_build_object('v', l.volume_1h_usd),
+         'trades1h', jsonb_build_object('v', l.trades),
+         'volume24hUsd', jsonb_build_object('v', d.volume_24h)
+       ) as coin,
+       (extract(epoch from l.taken_at) * 1000)::bigint as at_ms, c.venue_id, c.origin
+  from coin c join latest l on l.asset_key = c.asset_key join day d on d.asset_key = c.asset_key`;
 
 /** One coin on the strip. Every number is known: a coin without one is not on it. */
 export interface RunningCoin {
@@ -91,7 +123,7 @@ const known = (m: unknown): number | null => {
 export function runningCoins(rows: readonly Row[], nowMs: number, policy: Policy = DEFAULT_POLICY): RunningCoins {
   const rule = policy.runningCoins;
   /* The coin before its hour is known to be busy: `hour` null is an hour the card did not carry. */
-  type Seen = { readonly coin: Omit<RunningCoin, 'volume1hUsd' | 'trades1h'>; readonly hour: { readonly volume1hUsd: number; readonly trades1h: number } | null; readonly at: number };
+  type Seen = { readonly coin: Omit<RunningCoin, 'volume1hUsd' | 'trades1h'>; readonly hour: { readonly volume1hUsd: number; readonly trades1h: number } | null; readonly day: number | null; readonly at: number };
   const best = new Map<string, Seen>();
   for (const r of rows) {
     const at = Number(r['at_ms']);
@@ -118,13 +150,19 @@ export function runningCoins(rows: readonly Row[], nowMs: number, policy: Policy
     best.set(address, {
       coin: { coinId, address, ticker: ticker.trim(), imageUrl, marketCapUsd: cap, change24hPct: pct },
       hour: volume1hUsd === null || trades1h === null ? null : { volume1hUsd, trades1h },
+      day: known(coin['volume24hUsd']),
       at,
     });
   }
+  /* ★ Trending over the day: a row that carries its day is gated and ordered by the day's dollars;
+     one that does not (an older reader) keeps the hour's rule. */
+  const passes = (e: Seen): boolean =>
+    e.hour !== null && e.coin.marketCapUsd >= rule.minCapUsd && (e.day !== null ? e.day >= rule.minVolume24hUsd : e.hour.volume1hUsd >= rule.minVolume1hUsd && e.hour.trades1h >= rule.minTrades1h);
   const coins = [...best.values()]
-    .flatMap((e): RunningCoin[] => (e.hour !== null && e.hour.volume1hUsd >= rule.minVolume1hUsd && e.hour.trades1h >= rule.minTrades1h ? [{ ...e.coin, ...e.hour }] : []))
-    .sort((a, b) => b.volume1hUsd - a.volume1hUsd || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0))
-    .slice(0, rule.maxCoins);
+    .filter(passes)
+    .sort((a, b) => (b.day ?? b.hour?.volume1hUsd ?? 0) - (a.day ?? a.hour?.volume1hUsd ?? 0) || (a.coin.address < b.coin.address ? -1 : a.coin.address > b.coin.address ? 1 : 0))
+    .slice(0, rule.maxCoins)
+    .map((e): RunningCoin => ({ ...e.coin, volume1hUsd: e.hour?.volume1hUsd ?? 0, trades1h: e.hour?.trades1h ?? 0 }));
   return { coins };
 }
 
