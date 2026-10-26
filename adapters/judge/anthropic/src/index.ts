@@ -38,7 +38,7 @@ import type { BatchAnswer, Frame, JudgeClient, JudgeRequest, JudgeResponse, Usag
 import { VENDOR, precedentsOf } from './client.ts';
 import { createHash } from 'node:crypto';
 
-import { POST_PROMPT_SET_SHA, PRECEDENTS_PROMPT, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT, VETO_PROMPT_SET_SHA } from './prompts.ts';
+import { POST_PROMPT_SET_SHA, PRECEDENTS_PROMPT, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT, VETO_PROMPT_SET_SHA, VIRAL_PROMPT_SET_SHA } from './prompts.ts';
 import { BATCH_PRICE_FRACTION, priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
 
@@ -56,7 +56,7 @@ const INSTRUCTIONS = `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-
  * QUALIFY's question about a narrative. `post`: could people make a coin about this ONE post — the
  * feed's question, with its own prompt set and ids (POST_PROMPT_SET_SHA), so the two never mix.
  */
-export type JudgeQuestion = 'story' | 'post' | 'kind';
+export type JudgeQuestion = 'story' | 'post' | 'kind' | 'viral';
 const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: string; sha: () => string; label: string }>> = {
   story: { system: SYSTEM, instructions: INSTRUCTIONS, sha: () => PROMPT_SET_SHA, label: 'coinability' },
   post: { system: PROMPTS['post-system'].text, instructions: PROMPTS['post-coinability'].text, sha: () => POST_PROMPT_SET_SHA, label: 'post-coinability' },
@@ -65,6 +65,11 @@ const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: s
      the same fields — coinable is "kind is OTHER", proposedName is the kind. Its prompt id carries
      the prompt files' hash, so a wording change files every answer after it under a new id. */
   kind: { system: PROMPTS['post-veto-system'].text, instructions: PROMPTS['post-veto'].text, sha: () => VETO_PROMPT_SET_SHA, label: 'post-kind' },
+  /* The viral-moment question (Policy.judge.viral): is a huge, fast post the first answer turned down
+     itself a moment people coin? The same fields — coinable is "a moment", proposedName its name. Its
+     answers live in their own table (0138), never in post_judgement, so no reader of a post's
+     newest answer can mistake one for the post question's. */
+  viral: { system: PROMPTS['post-viral-system'].text, instructions: PROMPTS['post-viral'].text, sha: () => VIRAL_PROMPT_SET_SHA, label: 'post-viral' },
 };
 
 /**

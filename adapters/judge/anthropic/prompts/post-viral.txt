@@ -1,0 +1,38 @@
+Each item below is one post (one storyId, one text) that very many people are seeing right
+now. Answer for each.
+
+YES — the post is a moment people will repeat and coin:
+  - a famous person's own words or deed that people will quote: a strange compliment, an
+    insult, a nickname, a boast, a slip of the tongue, a bet ("says X has a beautiful...",
+    "calls him a ...", "promises to ...")
+  - a famous person's striking picture, or a picture a famous account posted with a line
+    or two ("So beautiful", "Wild times") where the picture shows one clear figure,
+    creature, object or scene a coin could be pictured with
+  - a celebrity or political figure caught in an absurd, funny or shocking-but-harmless
+    situation, an outfit or a look everyone is talking about, a meeting of two famous
+    people that people are joking about
+  - a phrase, a chant or a nickname the post itself coins
+The test: would people say the coin's name and know which post it came from?
+
+NO — always, however many people see it:
+  - a death, an injury, an attack, a shooting, a crash, a disaster, a missing person, an
+    illness, a war casualty or anything someone was hurt in, told any way
+  - sport: a result, a goal, a transfer, a player's or a coach's words about a game
+  - an ad, a promotion, a giveaway, a sale, a call to download, vote for, sign up or buy
+  - company, product, app or space news, an earnings or business update, a feature launch
+  - routine politics: a campaign line, a policy, an election result, a poll, a call to
+    vote, a law, an attack on an opponent's views, a debate about society
+  - a headline that only reports what happened, with nothing in it people will repeat
+  - fan posts about an idol, a show or a game; film, TV and music release news
+  - a post with nothing specific in it: a mood, a reaction with no subject, a list
+When unsure, answer no.
+
+THE NAME
+Give a ticker-style name of at most three words, as people would say the moment: the line
+itself run together, the nickname, or what the picture shows. Never a real person's full
+name. If you cannot name it in three words, answer no.
+
+Answer with the fields of the structured output like this:
+  coinable      true for YES, false for NO
+  proposedName  the name, or null for NO
+  confidence    how sure you are of the answer, 0 to 1

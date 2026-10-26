@@ -162,11 +162,11 @@ export interface ScoringResult {
 }
 
 /** The key the judge echoes back for one post. Unique per post, never a real story id. */
-function subjectIdFor(item: Item): StoryId {
+export function subjectIdFor(item: Item): StoryId {
   return storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`);
 }
 
-function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrecedent[] = []): JudgeSubject {
+export function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrecedent[] = []): JudgeSubject {
   const text = item.text.trim().slice(0, p.judge.maxCharsPerText);
   return {
     storyId: subjectIdFor(item),
