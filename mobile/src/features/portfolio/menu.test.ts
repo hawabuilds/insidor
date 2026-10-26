@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { joinedPill, menuRows, placesOf, type Place } from './menu-rows.ts';
 
 /** Everything the long menu reached before it was condensed (2026-10-21). */
-const BEFORE: readonly Place[] = ['profile', 'edit-profile', 'wallet-card', 'export-key', 'import-wallet', 'link-wallet', 'linked-wallets', 'show-trades', 'notifications', 'leaderboard', 'learn', 'missed-posts', 'leave'];
+/* How Insidor works ('learn') was taken off the menu by the owner on 2026-10-26. */
+const BEFORE: readonly Place[] = ['profile', 'edit-profile', 'wallet-card', 'export-key', 'import-wallet', 'link-wallet', 'linked-wallets', 'show-trades', 'notifications', 'leaderboard', 'missed-posts', 'leave'];
 
 test('★ condensed, not cut: everything the long menu reached is still reached', () => {
   const places = placesOf({ owner: true, member: true, canExport: true });
@@ -13,9 +14,9 @@ test('★ condensed, not cut: everything the long menu reached is still reached'
   assert.ok(places.includes('invite-controls'));
 });
 
-test("★ Trador's order: wallets, invites, settings, the two links, the owner's tools, sign out last", () => {
-  assert.deepEqual(menuRows({ owner: true, member: true, canExport: true }), ['wallets', 'invites', 'settings', 'leaderboard', 'learn', 'owner', 'leave']);
-  assert.deepEqual(menuRows({ owner: false, member: true, canExport: true }), ['wallets', 'invites', 'settings', 'leaderboard', 'learn', 'leave'], 'owner tools for the owner only');
+test("★ Trador's order: wallets, invites, settings, the leaderboard, the owner's tools, sign out last", () => {
+  assert.deepEqual(menuRows({ owner: true, member: true, canExport: true }), ['wallets', 'invites', 'settings', 'leaderboard', 'owner', 'leave']);
+  assert.deepEqual(menuRows({ owner: false, member: true, canExport: true }), ['wallets', 'invites', 'settings', 'leaderboard', 'leave'], 'owner tools for the owner only');
 });
 
 test('a session still coming back shows no profile, no invites and no export', () => {
