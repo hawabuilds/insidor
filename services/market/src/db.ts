@@ -93,6 +93,8 @@ export async function assetsToRead(
   saved: SavedCoins | null = null,
   picked: PickedCoins | null = null,
   firstHour: FirstHourCoins | null = null,
+  /** The tape's coins to read every pass (tapeCoins): at most this many; null reads none. */
+  tapeLimit: number | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
@@ -100,6 +102,7 @@ export async function assetsToRead(
   const held = picked === null ? [] : await pickedCoins(db, chain, picked);
   const young = firstHour === null ? [] : await firstHourCoins(db, chain, firstHour);
   const war = await warCoin(db, chain);
+  const tape = tapeLimit === null ? [] : await tapeCoins(db, chain, tapeLimit);
   const rest = await onScreenThenNewest(db, chain, limit);
   /* The tied candidates in their first hour, then the coins tied to saved posts, then the picked and
      stated coins, then the older coins a pick is weighing, then the hour's coins, go first among the
@@ -107,7 +110,7 @@ export async function assetsToRead(
      limit, and the pass its bound — so on a full pass what gives way is the newest end. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...tape, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
@@ -129,6 +132,37 @@ async function warCoin(db: Db, chain: string): Promise<readonly (AssetRow & { ti
          from public.war_coin w join public.asset a on a.chain = $1 and a.address = w.address
         where a.origin = any($2::text[])`,
       [chain, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ★ THE TAPE'S COINS ARE READ EVERY PASS (the owner, 2026-10-26: "improve the tape"). The running
+ * coins strip shows coins of viral posts trending over the day (services/read running-coins.ts,
+ * public.tape_coin 0141), any post age, and leaves out a coin whose newest reading is older than
+ * `runningCoins.freshMs`. A picked coin off For You was read only every few passes, so the day's
+ * biggest runners fell off the strip for being unread. These are the coins a pick held or the owner
+ * called right that traded most in any hour of the last day, at most `limit` (the caller's). A failed read is
+ * an empty list: the pass reads its usual coins.
+ */
+async function tapeCoins(db: Db, chain: string, limit: number): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `with origin as (
+         select address from internal.post_coin_pick where outcome = 'picked' and address is not null
+         union select address from internal.narrative_coin_pick where outcome = 'picked' and address is not null
+         union select coin_address from internal.owner_feedback where subject_kind = 'coin_match' and verdict in ('right', 'wrong') and coin_address is not null
+       )
+       select a.chain, a.address, 2 as tier
+         from public.asset a join origin o on o.address = a.address
+         join lateral (select max(m.volume_1h_usd) as v from public.market_reading m
+                        where m.asset_key = a.asset_key and m.taken_at >= now() - interval '24 hours') d on d.v is not null
+        where a.chain = $1 and a.origin = any($2::text[])
+        order by d.v desc, a.asset_key
+        limit $3`,
+      [chain, [...OBSERVED_ASSET_ORIGINS], limit],
     );
   } catch {
     return [];

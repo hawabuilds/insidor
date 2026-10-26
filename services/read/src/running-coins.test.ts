@@ -145,3 +145,9 @@ test('★ viral-post coins trending over the day: ordered by the day\'s dollars,
   const { coins } = runningCoins([dayRow('small-day', 50_000, floor * 2), dayRow('big-day', 40_000, floor * 50), dayRow('quiet', 900_000, floor - 1)], NOW);
   assert.deepEqual(coins.map((c) => c.address), ['big-day', 'small-day']);
 });
+
+test('a viral-post coin that halved over the day is left off the tape, however busy', () => {
+  const dumped = row('dumped', 50_000, -60);
+  const r = { ...dumped, coin: { ...(dumped['coin'] as Record<string, unknown>), volume24hUsd: { v: 5_000_000 } } };
+  assert.deepEqual(runningCoins([r], NOW).coins, []);
+});

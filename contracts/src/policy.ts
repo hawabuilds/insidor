@@ -5252,6 +5252,8 @@ export interface RunningCoinsPolicy {
   readonly minCapUsd: number;
   /** A coin of a viral post is on the strip only with at least this many dollars traded over the last day. */
   readonly minVolume24hUsd: number;
+  /** …and moved more than this over the day, in percent: -50 leaves out a coin that halved (a dump, not a trend). */
+  readonly maxDrop24hPct: number;
   /**
    * …and at least this many trades (buys plus sells) in that hour, so a few large fills from one
    * wallet cannot put a coin on the strip by volume alone. The market source counts transactions,
@@ -8438,6 +8440,7 @@ const POLICY_V1: Policy = {
     keepMs: 30_000,
     minCapUsd: 20_000,
     minVolume24hUsd: 24_000,
+    maxDrop24hPct: -50,
     /* policy.v150 (the owner, 2026-10-23: "coins that have volume right now — I don't want to see
        few-day-old dead coins"): only coins trading in the last hour, most dollars traded first.
        Measured 23 Oct ~22:50 UTC on 590 launchpad coins we read: 91 had no trade in the hour; of
