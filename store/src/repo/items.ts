@@ -427,7 +427,7 @@ export class PgItemRepo implements ItemRepo {
     if (args.limit <= 0) return [];
     const rows = await this.#db.query<ItemRow & { by_item: string; by_author: string; by_handle: string | null; by_followers: string | number | null; by_words: string; how: 'quoted' | 'samePicture' | 'reposted'; shared_at: Date | string }>(
       `with q as (
-         select i.item_id, i.author_key, i.posted_at, i.first_seen_at, i.reproduction_of, i.media->0->>'uri' as m, i.body,
+         select i.item_id, i.author_key, i.posted_at, i.first_seen_at, i.reproduction_of, i.rebroadcast_of, i.media->0->>'uri' as m, i.body,
                 a.handle, a.follower_count
            from public.item i
            join public.author a on a.author_key = i.author_key
