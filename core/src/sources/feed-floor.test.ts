@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceFloor, sliceWindow, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, langBandWindow, langEveryMs, langPostsPerDay, langShare, langSplitOn, langTarget, laneTargets, lateBandEveryMs, lateBandFloor, lateBands, lateLangs, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceFloor, sliceWindow, slowLaneDue, startFloors } from './feed-floor.ts';
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
    The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
@@ -216,4 +216,21 @@ test('★ a language window goes once it spans the spacing, and reaches back tha
 test('a language target is its posts a day over the posting minutes its asks covered, each band tiling the day once', () => {
   assert.equal(langTarget(2_880, 30, SPLIT), 30);
   assert.equal(langTarget(2_880, 0, SPLIT), 0);
+});
+
+test('★ the late bands ask their own languages on their own spacing (policy.v185), the slow lane\'s and every pass when unset', () => {
+  const unset = { ...LATE, feed: { ...LATE.feed, slow: { ...LATE.feed.slow, langs: ['en', 'ja'] } } };
+  assert.deepEqual(lateLangs(unset), ['en', 'ja']);
+  assert.equal(lateBandEveryMs(unset), 0);
+  const own = { ...unset, feed: { ...unset.feed, fresh: { ...unset.feed.fresh, late: { ...unset.feed.fresh.late, langs: ['en', 'ja', 'ar'], everyMs: 600_000 } } } };
+  assert.deepEqual(lateLangs(own), ['en', 'ja', 'ar']);
+  assert.equal(lateBandEveryMs(own), 600_000);
+  assert.equal(lateBandEveryMs({ ...own, feed: { ...own.feed, fresh: { ...own.feed.fresh, late: { ...own.feed.fresh.late, everyMs: -5 } } } }), 0);
+});
+
+test('a late band covers a slice only when it asks every language the slice would', () => {
+  const both = { ...LATE, feed: { ...LATE.feed, slow: { ...LATE.feed.slow, langs: ['en', 'ja'] } } };
+  assert.equal(sliceCoveredByLateBand(285, 15, both), true);
+  const short = { ...both, feed: { ...both.feed, fresh: { ...both.feed.fresh, late: { ...both.feed.fresh.late, langs: ['en'] } } } };
+  assert.equal(sliceCoveredByLateBand(285, 15, short), false, 'Japanese would go unasked at five hours');
 });

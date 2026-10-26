@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceFloor, sliceWindow, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, pacedDailyUsd, paceBetweenPages, langBandWindow, langEveryMs, langPostsPerDay, langSplitOn, langTarget, laneJudgeUsd, laneMayAsk, searchDayAllowanceUsd, searchDayMayAsk, searchDayMayFinish, laneTargets, laneWindowMin, lateBandEveryMs, lateBandFloor, lateBands, lateLangs, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, sliceFloor, sliceWindow, slowLangs, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -555,9 +555,10 @@ export interface BandLanguageAsk extends LanguageAsk {
  */
 export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined, split?: LanguageSplit): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] {
   const base = feedQueryFor('all', floors, now, policy);
+  const lateEvery = lateBandEveryMs(policy);
   const ask = (age: number, keyOf: (lang: string | null) => string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean; readonly languages: readonly BandLanguageAsk[] }[] => {
-    /* A late band asks the slow lane's languages (`slow.langs`): it is the slow lane's kind of search. */
-    const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval, ...(late ? { langs: slowLangs(policy) } : {}) } };
+    /* A late band asks its own languages (`fresh.late.langs`, else the slow lane's): it is the slow lane's kind of search. */
+    const banded: DiscoveryQuery = { ...base, filter: { ...base.filter!, minApproval, ...(late ? { langs: lateLangs(policy) } : {}) } };
     /* ★ EACH LANGUAGE ITS OWN WINDOW (work/languages.ts): from where that language's last answered
        ask ended, so one that failed is asked again and the others are not re-bought. With the split
        (`feed.langSplit`) a fresh band's language also has its own floor, and is asked only once its
@@ -566,7 +567,13 @@ export function freshBandQueries(source: string, floors: LaneFloors, now: Millis
       const clockKey = keyOf(l.lang);
       const own = split !== undefined && !late && l.lang !== null;
       const lastUntil = clock?.lastUntil(clockKey) ?? null;
-      const window = own ? langBandWindow(age, lastUntil, now, split.everyMsOf(l.lang!), policy) : bandWindow(age, lastUntil, now, policy);
+      /* ★ A LATE BAND'S LANGUAGE ON ITS SPACING (`fresh.late.everyMs`): asked once its window holds that
+         much posting time, so ten minutes of posts pay one set of one-post minimums, not one a pass. */
+      const window = own
+        ? langBandWindow(age, lastUntil, now, split.everyMsOf(l.lang!), policy)
+        : late && lateEvery > 0
+          ? langBandWindow(age, lastUntil, now, lateEvery, policy)
+          : bandWindow(age, lastUntil, now, policy);
       if (window === null) return [];
       const filter = own ? { ...l.query.filter!, minApproval: bandFloor(age, { ...floors, all: split.floorOf(l.lang!) }, policy) } : l.query.filter;
       return [{ ...l, clockKey, query: { ...l.query, ...(filter === undefined ? {} : { filter }), sinceMs: Math.round(window.since) as Millis, untilMs: Math.round(window.until) as Millis } }];
@@ -579,7 +586,7 @@ export function freshBandQueries(source: string, floors: LaneFloors, now: Millis
   };
   /* A single language (or none) keeps the band's own key, so its clock reads as it always has. */
   const one = languageAsks(base).length === 1;
-  const oneLate = slowLangs(policy).length <= 1;
+  const oneLate = lateLangs(policy).length <= 1;
   return [
     ...policy.feed.fresh.bandAgesMin.flatMap((age) => ask(age, (lang) => bandKey(source, age, one ? null : lang), bandFloor(age, floors, policy), false)),
     /* ★ LATE BANDS (`feed.fresh.late`): the same tiling at an age in hours, at a fixed floor. Empty while off. */
@@ -705,7 +712,8 @@ interface PageRule {
   readonly full: boolean;
   readonly maxPages: number;
   readonly deadlineMs: number | null;
-  readonly ledger: { readonly lane: CappedLane; readonly dailyUsd: number; readonly spentUsd: number } | null;
+  /* `dailyUsd` what may be spent by now (a paced search's share of its day so far); `hardUsd` its whole day. */
+  readonly ledger: { readonly lane: CappedLane; readonly dailyUsd: number; readonly hardUsd: number; readonly spentUsd: number } | null;
 }
 
 /** Why one language's search stopped, for the log: the source's end, or which of our limits. */
@@ -999,7 +1007,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
       /* The middle lane is in neither figure: it stops at its own cap (`feed.middle.cap`), which is its worst day. */
       /* Every language is its own search (work/languages.ts), so each ask's pages are counted once a language. */
-      worstUsd: usdPerPage * (Math.max(1, deps.policy.feed.langs.length) * pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length : MAIN_LANES.length) * passesPerDay + Math.max(1, slowLangs(deps.policy).length) * (pages * lateBands(deps.policy).length * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay)),
+      worstUsd: usdPerPage * (Math.max(1, deps.policy.feed.langs.length) * pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length : MAIN_LANES.length) * passesPerDay + Math.max(1, lateLangs(deps.policy).length) * pages * lateBands(deps.policy).length * (lateBandEveryMs(deps.policy) > 0 ? MS_PER_DAY / lateBandEveryMs(deps.policy) : passesPerDay) + Math.max(1, slowLangs(deps.policy).length) * deps.policy.feed.slow.slices * slowPassesPerDay),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
@@ -1143,7 +1151,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.info(listed.paced === true ? 'a paced search is ahead of its day; not asked this pass' : 'a search has spent its day; not asked', { source, search: key, spentUsd: spent, capUsd: capNow, dailyUsd: listed.dailyUsd });
         return;
       } else {
-        rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: capNow, spentUsd: spent } };
+        rule = { full: true, maxPages: listed.maxPages, deadlineMs: listed.passDeadlineMs, ledger: { lane: ledgerLane, dailyUsd: capNow, hardUsd: listed.dailyUsd, spentUsd: spent } };
       }
     }
 
@@ -1250,11 +1258,17 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     /* ★ EACH PAGE AFTER THE ASK'S FIRST IS CHECKED BEFORE IT IS ASKED FOR: against the meter's paced
        line, the lane's own day (the middle lane's cap, or the search's `dailyUsd`), a shutdown and
        the deadline. The first was checked above, where a refusal is recorded as `paused`. */
+    const pacedPages = paceBetweenPages(deps.policy);
     const sharedStop = async (): Promise<Stop | null> => {
       if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) return 'meter';
-      if (dayGated && !searchDayMayAsk((await dayBill(estimate.vendor)) ?? Number.NaN, estimate.usd, deps.now(), deps.policy)) return 'day';
+      /* ★ A PACE STARTS AN ASK AND DOES NOT END ONE (`feed.paging.paceBeforeAskOnly`): between pages the
+         X day and a paced search are held to their hard totals; the pace was checked before the first
+         page, and the next pass waits for it. Pages come newest first, so a pace closing here would
+         leave the older rest of each open language's window unread for good. */
+      const bill = dayGated ? ((await dayBill(estimate.vendor)) ?? Number.NaN) : 0;
+      if (dayGated && !(pacedPages ? searchDayMayAsk(bill, estimate.usd, deps.now(), deps.policy) : searchDayMayFinish(bill, estimate.usd, deps.policy))) return 'day';
       if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) return 'cap';
-      if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > rule.ledger.dailyUsd) return 'cap';
+      if (rule.ledger !== null && rule.ledger.spentUsd + laneUsd + estimate.usd > (pacedPages ? rule.ledger.dailyUsd : rule.ledger.hardUsd)) return 'cap';
       if (deps.signal.aborted) return 'aborted';
       /* ★ THE DEADLINE (`feed.middle.passDeadlineMs`, a search's `passDeadlineMs`): a slow or
          refusing supplier costs the ask its deeper pages this pass, never minutes. The next pass
