@@ -92,6 +92,7 @@ import {
   PgFeedFloorRepo,
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
+  PgViralMomentRepo,
   PgImageEmbeddingRepo,
   PgCoinFirstRepo,
   PgOneCoinRepo,
@@ -134,6 +135,7 @@ import { storeArrivals } from './work/arrivals.ts';
 import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { earlyJudge, type EarlyResult } from './work/early-judge.ts';
+import { viralMoments } from './work/viral-moments.ts';
 import { precedentsWanted, searchDayStart } from '@insidor/core';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
@@ -452,6 +454,7 @@ function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
   return {
     story: () => judgeFor('story', policy.judge.maxOutputTokens),
     kind: () => judgeFor('kind', policy.judge.postBatchMaxOutputTokens),
+    viral: () => judgeFor('viral', policy.judge.postBatchMaxOutputTokens),
     namer: (): NamePort => openNamer({ ...common, client: client(policy.names.maxOutputTokens), names: policy.names }),
     translator: (): TranslatePort => openTranslator({ ...common, client: client(policy.translate.maxOutputTokens), translate: policy.translate }),
     sameSubject: (): SameSubjectPart => {
@@ -1110,6 +1113,14 @@ export async function withRuntime<T>(
          first and no separate backup host, the pair below had no first side and answered nothing).
          With no pair, the post question's own judges ask it, in the same order. */
       const kindJudge = pick(askWith.kind, () => openJudgePair('kind') ?? mainKindJudge(), mainKindJudge);
+      /* ★ THE VIRAL-MOMENT QUESTION (Policy.judge.viral, work/viral-moments.ts) goes where the kind
+         question goes, in the same order and sharing its rest: the two are asked of the same posts. */
+      const mainViralJudge = (): JudgePort | null => withFallback(roles.primary === 'open' ? (firstSide === null ? null : buildOpenJudge(firstSide.setup, firstSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'viral')) : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'viral'), null, 'viral');
+      const openViralJudge = (): JudgePort | null =>
+        firstAsk === null || firstSide === null
+          ? null
+          : failoverJudge({ primary: firstAsk.viral(), fallback: behindAsk === null ? null : behindAsk.viral(), state: failover, policy: failoverPolicy, names: { primary: sideName(firstSide), fallback: behindSide === null ? 'none' : sideName(behindSide) }, question: 'viral', log: failoverLog, now: () => Date.now() });
+      const viralJudge = policy.judge.viral.on ? pick(askWith.kind, () => openViralJudge() ?? mainViralJudge(), mainViralJudge) : null;
       /* QUALIFY's narrative question. */
       const judge = pick(askWith.stories, () => openJudgePair('story'), () => mainStoryJudge);
       /* The same-subject question for borderline pictures (work/image-pairs.ts), GROUP's and the coin match's. */
@@ -1127,6 +1138,7 @@ export async function withRuntime<T>(
         names: namer?.model ?? null,
         translate: translator?.model ?? null,
         kind: kindJudge?.id ?? null,
+        viral: viralJudge?.id ?? null,
         stories: judge?.id ?? null,
         sameSubject: pairsJudge?.id ?? null,
       });
@@ -1171,7 +1183,21 @@ export async function withRuntime<T>(
               now: () => Date.now() as Millis,
             })
           : null;
-      const early = earlyJudge({
+      /* ★ THE VIRAL EXCEPTION (work/viral-moments.ts), asked after each early pass on the same loop. */
+      const viral = viralMoments({
+        viralJudge,
+        kindJudge,
+        repo: new PgViralMomentRepo(db),
+        items: repos.items,
+        precedents: earlyPrecedents ?? precedents,
+        ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'viral-lane' })),
+        meter,
+        mode: cfg.spend.kind,
+        policy,
+        log: log.child({ step: 'viral-moments' }),
+        now: () => Date.now() as Millis,
+      });
+      const earlyAlone = earlyJudge({
         judge: postJudge,
         kindJudge,
         precedents: earlyPrecedents,
@@ -1187,6 +1213,16 @@ export async function withRuntime<T>(
         log: log.child({ step: 'early-judge' }),
         now: () => Date.now() as Millis,
       });
+      /* The early loop runs the viral pass after its own; a failure there never costs the early pass its counts. */
+      const early = async (): Promise<EarlyResult> => {
+        const r = await earlyAlone();
+        try {
+          await viral();
+        } catch (e) {
+          log.error('viral moments pass failed', { err: errorText(e) });
+        }
+        return r;
+      };
       /* The namer: example posts and their vectors kept for the process, guesses after each scoring pass. */
       const names = nameGuesser({
         namer,

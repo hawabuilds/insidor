@@ -26,7 +26,9 @@ export const PROMPT_NAMES = ['system', 'coinability-core', 'subject-vs-story'] a
 export const POST_PROMPT_NAMES = ['post-system', 'post-coinability'] as const;
 /** The feed's second question: which kind of post this is, so marketing, sport, fandom and showbiz are held back. */
 export const VETO_PROMPT_NAMES = ['post-veto-system', 'post-veto'] as const;
-export type PromptName = (typeof PROMPT_NAMES)[number] | (typeof POST_PROMPT_NAMES)[number] | (typeof VETO_PROMPT_NAMES)[number];
+/** The viral-moment question, asked only of a huge, fast post the first answer turned down (Policy.judge.viral). */
+export const VIRAL_PROMPT_NAMES = ['post-viral-system', 'post-viral'] as const;
+export type PromptName = (typeof PROMPT_NAMES)[number] | (typeof POST_PROMPT_NAMES)[number] | (typeof VETO_PROMPT_NAMES)[number] | (typeof VIRAL_PROMPT_NAMES)[number];
 
 export interface Prompt {
   readonly name: PromptName;
@@ -50,6 +52,8 @@ export const PROMPTS: Readonly<Record<PromptName, Prompt>> = Object.freeze({
   'post-coinability': load('post-coinability'),
   'post-veto-system': load('post-veto-system'),
   'post-veto': load('post-veto'),
+  'post-viral-system': load('post-viral-system'),
+  'post-viral': load('post-viral'),
 });
 
 /**
@@ -76,6 +80,12 @@ export const POST_PROMPT_SET_SHA: string = createHash('sha256')
 /** The kind question's own hash: an answer to it is never mistaken for the coinability answer. */
 export const VETO_PROMPT_SET_SHA: string = createHash('sha256')
   .update(VETO_PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
+  .digest('hex')
+  .slice(0, 8);
+
+/** The viral-moment question's own hash, apart from the post and kind questions' for the same reason. */
+export const VIRAL_PROMPT_SET_SHA: string = createHash('sha256')
+  .update(VIRAL_PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
   .digest('hex')
   .slice(0, 8);
 

@@ -61,6 +61,7 @@ export { PgQuoteTargetRepo, type QuoteTarget } from './repo/quote-targets.ts';
 /* The account watch's accounts (Policy.feed.accountWatch): accounts whose viral posts were coined again and again. */
 export { PgWatchAccountRepo, type WatchAccount } from './repo/watch-accounts.ts';
 export { PgJudgeShadowRepo } from './repo/judge-shadow.ts';
+export { PgViralMomentRepo, type StoredViral, type ViralDue, type ViralRecord } from './repo/viral-moment.ts';
 export type { ShadowPair } from './repo/judge-shadow.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
 export type { OwnerAlert } from './repo/owner-alerts.ts';
