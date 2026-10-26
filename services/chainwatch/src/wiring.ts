@@ -345,7 +345,13 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trade
   tradeLog.info('trade feed source', { relay: cfg.tradeRelayUrl !== null });
   const rpc = { rpcUrl: TRADE_RPC_URL + cfg.tradeFeedKey, fetch: globalThis.fetch, timeoutMs: tf.callTimeoutMs };
   const chain: ChainPort = {
-    places: (coins) => curvePlaces(rpc, coins),
+    /* On the relay a graduated coin is still measured: its pool's trades come on the same stream
+       (relay-trade-socket.ts), so only a coin with no curve at all is set aside. */
+    places: async (coins) => {
+      const r = await curvePlaces(rpc, coins);
+      if (cfg.tradeRelayUrl === null) return r;
+      return { ...r, places: new Map([...r.places].map(([a, p]) => [a, p === 'graduated' ? 'curve' : p] as const)) };
+    },
     transactionTrades: async (signature, coin) => {
       const logs = await transactionLogs(rpc, signature);
       if (logs === null) return null;

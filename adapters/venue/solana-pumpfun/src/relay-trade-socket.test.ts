@@ -45,9 +45,9 @@ test('a launch frame carries the creator\'s opening buy as a trade', () => {
   assert.equal(r.kind, 'trades');
 });
 
-test('another pool or a migrate is a completed curve; another quote token is other_quote, never 0', () => {
-  assert.equal(readRelayFrame(tradeFrame({ pool: 'pump-amm' }), COIN).kind, 'completed');
-  assert.equal(readRelayFrame(tradeFrame({ action: 'migrate' }), COIN).kind, 'completed');
+test('★ a graduated coin\'s pool trades still count, and a migrate ends nothing; another quote token is other_quote, never 0', () => {
+  assert.equal(readRelayFrame(tradeFrame({ pool: 'pump-amm' }), COIN).kind, 'trades');
+  assert.equal(readRelayFrame(tradeFrame({ action: 'migrate' }), COIN).kind, 'ignored');
   assert.equal(readRelayFrame(tradeFrame({ quoteMint: 'DJTu7vi8norVzdVAffgvb39VP7wjKeTsgaMBJrzfxvoF' }), COIN).kind, 'other_quote');
 });
 
