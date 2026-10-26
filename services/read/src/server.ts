@@ -55,6 +55,7 @@ import { edgeHeaders } from './edge-cache.ts';
 import type { PreparedAnswers } from './prepared.ts';
 import { handle, type Deps } from './routes.ts';
 import type { BoardStream } from './stream.ts';
+import type { LiveCoins } from './live-coins.ts';
 
 export interface ServerDeps extends Deps {
   readonly allowedOrigins: readonly string[];
@@ -72,6 +73,8 @@ export interface ServerDeps extends Deps {
    * should say rather than opening a socket nothing will ever write to.
    */
   readonly stream?: BoardStream;
+  /** Every trade of the coins a phone has open (live-coins.ts). Absent: /live/coins is a 404. */
+  readonly liveCoins?: LiveCoins;
   /** The replies kept ready in memory (prepared.ts). Absent: every request is built as it arrives. */
   readonly prepared?: PreparedAnswers;
 }
@@ -163,6 +166,15 @@ export function createReadServer(deps: ServerDeps): Server {
       });
       res.end();
       return;
+    }
+
+    /* ★ The live trades of the coins on a phone's screen (live-coins.ts), a stream like the board's. */
+    if (deps.liveCoins !== undefined) {
+      const coins = deps.liveCoins.match(req.method ?? 'GET', req.url ?? '/');
+      if (coins !== null) {
+        deps.liveCoins.attach(res, coins, shared);
+        return;
+      }
     }
 
     /* The live channel, matched before `handle` because a stream is a response that is

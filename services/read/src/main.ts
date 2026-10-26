@@ -43,6 +43,7 @@ import { createTradeCard } from './trade-card.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
+import { createLiveCoins } from './live-coins.ts';
 
 const log = createLogger();
 
@@ -319,7 +320,9 @@ async function main(): Promise<void> {
      when a board frame lands. */
   const prepared = createPrepared({ db: deps.db, log, build: (url) => handle('GET', url, routeDeps, '') });
   kept = prepared;
-  const server = createReadServer({ ...routeDeps, allowedOrigins: cfg.allowedOrigins, stream, prepared });
+  /* ★ Every trade of the coins on the phones' screens, from the coin watcher (live-coins.ts). */
+  const liveCoins = createLiveCoins(cfg.liveUpstreamUrl, log);
+  const server = createReadServer({ ...routeDeps, allowedOrigins: cfg.allowedOrigins, stream, prepared, liveCoins });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();
@@ -333,6 +336,7 @@ async function main(): Promise<void> {
        `server.close()` ahead of this would wait for connections that are designed not to
        end and the process would hang until the platform killed it. */
     stream.close();
+    liveCoins.close();
     prepared.close();
     await notifier.close();
     server.close();
