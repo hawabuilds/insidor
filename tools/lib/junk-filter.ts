@@ -40,7 +40,6 @@
 import { readFileSync } from 'node:fs';
 
 import { DEFAULT_POLICY, type Policy } from '../../contracts/src/policy.ts';
-import { POST_SPACE } from '../../adapters/embed/voyage/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgLearningRepo, type Db } from '../../store/src/index.ts';
 import { PgJunkFilterRepo } from '../../store/src/repo/junk-filter.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
@@ -151,7 +150,11 @@ export async function refitJunk(db: Db, opts: { readonly record: boolean; readon
   const now = opts.now ?? new Date();
   const repo = new PgJunkFilterRepo(db);
   const labels = await loadJunkLabels(db, p);
-  const vectors = await repo.vectors([...labels.keys()], POST_SPACE);
+  /* ★ THE POLICY'S POST SPACE, not one model's (2026-10-26): this read Voyage's name from its adapter,
+     so after the switch to our own models (policy.v172, v182) every nightly fit was in a space no new
+     post has, the core refused to score with it, and For You took posts with no junk check at all. */
+  const space = p.group.image.postSpace;
+  const vectors = await repo.vectors([...labels.keys()], space);
   const examples: JunkExample[] = [...labels.entries()].flatMap(([itemId, group]) => {
     const v = vectors.get(itemId);
     return v === undefined || v.values.length === 0 ? [] : [{ itemId, group, text: v.text, values: v.values }];
@@ -165,7 +168,7 @@ export async function refitJunk(db: Db, opts: { readonly record: boolean; readon
   const fit = fitJunk(examples, l2);
 
   /* Today's traffic, scored by the full fit: what share of posts the judge answered it would skip. */
-  const traffic = await repo.judgedSince(new Date(now.getTime() - DAY_MS), POST_SPACE);
+  const traffic = await repo.judgedSince(new Date(now.getTime() - DAY_MS), space);
   const labelledIds = new Set(labels.keys());
   const unlabelled = traffic.filter((t) => !labelledIds.has(t.itemId));
   const trafficScore = new Map(unlabelled.map((t) => [t.itemId, junkScore(t.values, fit)] as const));
@@ -191,7 +194,7 @@ export async function refitJunk(db: Db, opts: { readonly record: boolean; readon
   if (opts.record) {
     id = await repo.record({
       fittedAt: now,
-      space: POST_SPACE,
+      space,
       intercept: fit.intercept,
       weights: fit.weights,
       threshold: pick.threshold,
