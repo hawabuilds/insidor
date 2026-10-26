@@ -125,10 +125,13 @@ test('★ the rule picks the coin people are buying: cap, buyers and three times
   assert.equal(o.kind === 'picked' && o.confirmed, true);
 });
 
-test('★ rugs are out: the creator sold, or the cap fell under 30% of its peak', () => {
-  const sold = pickOneCoin([c('A', 1_005, trades({ creatorSold: true })), c('B', 1_006, trades({ netBuy: 2, capUsd: 9_000 }))], null, NOW, true, BARS);
+test('★ rugs are out: the creator sold into a crash (under half its peak), or the cap fell under 30% of its peak', () => {
+  const sold = pickOneCoin([c('A', 1_005, trades({ creatorSold: true, cap: 100, peakCap: 220 })), c('B', 1_006, trades({ netBuy: 2, capUsd: 9_000 }))], null, NOW, true, BARS);
   assert.equal(sold.kind, 'waiting');
   assert.equal(sold.kind === 'waiting' && sold.standings.find((s) => s.address === 'A')?.out, 'creator_sold');
+  /* ★ Softened (the owner, 2026-10-26): a creator taking profit on a coin near its peak is not out ($DOUPI A7mHZR). */
+  const profit = pickOneCoin([c('A', 1_005, trades({ creatorSold: true, cap: 200, peakCap: 220 }))], null, NOW, true, BARS);
+  assert.equal(profit.kind === 'picked' && profit.address, 'A');
   const fell = pickOneCoin([c('A', 1_005, trades({ cap: 50, peakCap: 500, capUsd: 4_000 }))], { address: 'A', sinceMs: 1_011 * MIN }, NOW, true, BARS);
   assert.equal(fell.kind, 'waiting');
   assert.equal(fell.kind === 'waiting' && fell.droppedHolder, 'A');
@@ -160,8 +163,8 @@ test('★ a held coin that dips stays on grace: the floor, the grace and a leadi
   /* Back over the share: the grace is over and forgotten. */
   const back = pickOneCoin([c('A', 1_005, trades({}))], { ...holder, underShareSinceMs: NOW - 5 * MIN }, NOW, true, BARS);
   assert.equal(back.kind === 'picked' && back.underShareSinceMs, null);
-  /* The creator selling is no dip. */
-  assert.equal(pickOneCoin([c('A', 1_005, trades({ creatorSold: true }))], holder, NOW, true, BARS).kind, 'waiting');
+  /* The creator selling into a crash is no dip: out at once, no grace. */
+  assert.equal(pickOneCoin([c('A', 1_005, trades({ creatorSold: true, cap: 100, peakCap: 220 }))], holder, NOW, true, BARS).kind, 'waiting');
 });
 
 test('★ $Laura (20 Oct): the dip from $51k to $12k keeps the card on the coin through its run to $219k', () => {

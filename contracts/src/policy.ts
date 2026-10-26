@@ -2607,6 +2607,13 @@ export interface OneCoinPolicy {
   /** …or it has stayed under the share this long, or a rival clears the bars and leads it. */
   readonly rugGraceMs: number;
   /**
+   * The creator's wallet selling puts a coin out only while its cap is also under this share of its
+   * peak (the owner, 2026-10-26: "soften the creator sold rule"). $DOUPI's A7mHZR: the creator put in
+   * 1.98 SOL, took out 13.1 SOL as it rose, and the coin kept running — out for good under the old
+   * rule. A creator's dump that crashes the coin still puts it out at once, sooner than the rug share.
+   */
+  readonly creatorDumpShareOfPeak: number;
+  /**
    * A held coin still worth this many USD is never dropped for time spent under the share: only a
    * rival can take it. 25 Oct: the real $Marvin, $657k at its peak, was dropped at $151k after half an
    * hour under 30% of it, for a $22k coin.
@@ -5861,8 +5868,12 @@ const POLICY_V1: Policy = {
      coin loses the pick at once to a coin made for the post worth twice it, and that coin is pushed
      like a runner hand-over. `oneCoin.rugKeepAboveUsd` $50k: a held coin worth that is never dropped
      for time under its peak alone. `race.on` false is the PvP rollback; the two bars at Infinity are
-     theirs. */
-  version: 'policy.v190',
+     theirs. 
+     v191 softens the creator rule (the owner, 2026-10-26): the creator's wallet selling puts a coin out
+     only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
+     was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
+     the old rule. */
+  version: 'policy.v191',
 
   admit: {
     maxAgeMin: 240,
@@ -7502,6 +7513,7 @@ const POLICY_V1: Policy = {
     rugFloorUsd: 10_000,
     rugGraceMs: 1_800_000, // half an hour
     rugKeepAboveUsd: 50_000,
+    creatorDumpShareOfPeak: 0.5,
     crashCapRatio: 2,
     /* The owner's "earliest entry" (2026-10-26). tools/race-replay.ts --readings, 19-26 Oct, 1,585 posts:
        $10k / 1.5x showed the real coin earlier than the pick on 20 posts (median 9.8 min after launch,

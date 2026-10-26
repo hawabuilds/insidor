@@ -113,7 +113,7 @@ async function main(): Promise<void> {
 
     console.log('\nearliest the card showed the real coin (as the pick, or among the racers), and the noise:');
     for (const r of RACES) {
-      const bars: RaceBars | null = r.bars === null ? null : { ...r.bars, rugShareOfPeak: newBars.rugShareOfPeak };
+      const bars: RaceBars | null = r.bars === null ? null : { ...r.bars, rugShareOfPeak: newBars.rugShareOfPeak, creatorDumpShareOfPeak: newBars.creatorDumpShareOfPeak };
       const seen: Seen[] = [];
       let earlierThanPick = 0;
       let raced = 0;

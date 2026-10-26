@@ -10,7 +10,7 @@ import type { Contender } from './one-coin.ts';
 
 const MIN = 60_000;
 const NOW = 1_000 * MIN;
-const BARS: RaceBars = { windowMs: 30 * MIN, minCapUsd: 10_000, gapRatio: 1.5, size: 2, rugShareOfPeak: 0.3 };
+const BARS: RaceBars = { windowMs: 30 * MIN, minCapUsd: 10_000, gapRatio: 1.5, size: 2, rugShareOfPeak: 0.3, creatorDumpShareOfPeak: 0.5 };
 const coin = (address: string, capUsd: number, o: Partial<Contender> = {}, peak = capUsd): Contender => ({
   address,
   launchedAtMs: NOW - 2 * MIN,
@@ -38,7 +38,7 @@ test('a coin that only shares the name never races, and does not count as the fi
 
 test('a crashed coin or one whose creator sold is out; a racer past the window ends the race', () => {
   assert.deepEqual(racingCoins([coin('A', 30_000, {}, 177_000), coin('B', 22_000), coin('C', 12_000)], NOW, BARS), ['B', 'C']);
-  const sold = coin('A', 53_000, { trades: { uniqueBuyers: 50, netBuy: 1, capUsd: 53_000, cap: 500, peakCap: 500, creatorSold: true } });
+  const sold = coin('A', 53_000, { trades: { uniqueBuyers: 50, netBuy: 1, capUsd: 53_000, cap: 200, peakCap: 500, creatorSold: true } });
   assert.deepEqual(racingCoins([sold, coin('B', 22_000), coin('C', 12_000)], NOW, BARS), ['B', 'C']);
   assert.deepEqual(racingCoins([coin('A', 53_000, { launchedAtMs: NOW - 31 * MIN }), coin('B', 22_000)], NOW, BARS), []);
 });
