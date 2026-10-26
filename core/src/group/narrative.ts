@@ -303,6 +303,8 @@ export interface NarrativePair {
   readonly b: string;
   readonly meaning: number;
   readonly samePicture: boolean;
+  /** Both posts carry the same uploaded video (the caller's video key): links whatever the words (`narrative.sameVideo`). */
+  readonly sameVideo?: boolean;
 }
 
 export interface FormedNarrative {
@@ -369,6 +371,15 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
   const links = { name: 0, picture: 0, topic: 0 };
   const edges: [string, string][] = [];
   for (const pair of input.pairs) {
+    /* ★ The same uploaded video links whatever the words say (the H2O monkey, 2026-10-26). */
+    if (n.sameVideo.on && pair.sameVideo === true && pair.a !== pair.b) {
+      if (!details.has(pair.a) || !details.has(pair.b)) continue;
+      if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.sameVideo.maxGapMs) continue;
+      if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
+      links.picture += 1;
+      edges.push([pair.a, pair.b]);
+      continue;
+    }
     if (pair.a === pair.b || pair.meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
     const da = details.get(pair.a);
     const db = details.get(pair.b);

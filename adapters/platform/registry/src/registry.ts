@@ -95,6 +95,8 @@ import type { XAdapterDeps } from '@insidor/platform-x';
 /* The key accounts whose share counts whatever their followers (Policy.judge.resurface.keyAccountsOn): re-exported
    so the runner, which names no single platform, can read them. */
 export { KEY_ACCOUNTS } from '@insidor/platform-x/key-accounts.ts';
+/* The uploaded video behind a post, for the narratives' same-video link (Policy.narrative.sameVideo). */
+export { videoKeyOf } from '@insidor/platform-x/video-key.ts';
 
 /**
  * Which vendor bills for each post-source role in `Policy.budget.supplierLines`. Here,
