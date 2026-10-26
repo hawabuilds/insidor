@@ -124,7 +124,7 @@ export function runningCoins(rows: readonly Row[], nowMs: number, policy: Policy
      one that does not (an older reader) keeps the hour's rule. */
   /* A coin that halved over the day is being dumped, not trending, however much it traded doing it. */
   const passes = (e: Seen): boolean =>
-    e.hour !== null && e.coin.marketCapUsd >= rule.minCapUsd && (e.day !== null ? e.day >= rule.minVolume24hUsd && e.coin.change24hPct > rule.maxDrop24hPct : e.hour.volume1hUsd >= rule.minVolume1hUsd && e.hour.trades1h >= rule.minTrades1h);
+    e.hour !== null && e.coin.marketCapUsd >= rule.minCapUsd && e.coin.marketCapUsd <= rule.maxCapUsd && (e.day !== null ? e.day >= rule.minVolume24hUsd && e.coin.change24hPct > rule.maxDrop24hPct : e.hour.volume1hUsd >= rule.minVolume1hUsd && e.hour.trades1h >= rule.minTrades1h);
   const coins = [...best.values()]
     .filter(passes)
     .sort((a, b) => (b.day ?? b.hour?.volume1hUsd ?? 0) - (a.day ?? a.hour?.volume1hUsd ?? 0) || (a.coin.address < b.coin.address ? -1 : a.coin.address > b.coin.address ? 1 : 0))
