@@ -909,10 +909,14 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
  */
 export function openWebSocket(url: string, handlers: StreamHandlers): StreamSocket {
   const ws = new WebSocket(url);
+  // A relay that sends its JSON as binary frames (the trade relay does) arrives as bytes, read as
+  // UTF-8; without this a binary frame stringifies to "[object Blob]" and every frame is undecodable.
+  ws.binaryType = 'arraybuffer';
+  const utf8 = new TextDecoder();
   ws.onopen = () => handlers.onOpen();
   ws.onmessage = (event: MessageEvent) => {
     const { data } = event;
-    handlers.onMessage(typeof data === 'string' ? data : String(data));
+    handlers.onMessage(typeof data === 'string' ? data : data instanceof ArrayBuffer ? utf8.decode(data) : String(data));
   };
   // Error and close are one event to the caller. A socket that errors always
   // closes, and reporting both would open an outage and then try to open it
