@@ -101,8 +101,17 @@ export interface PromotedPicks {
 
 export const NO_PROMOTED_PICKS: PromotedPicks = { byPromo: new Map(), byOriginal: new Map() };
 
-/** Whether this pick's coin is the original's now: young at the launch, or old and running. */
-export const carries = (p: Pick<PromotedPick, 'age' | 'revives'>): boolean => p.age === 'young' || p.revives;
+/**
+ * Whether this pick's coin is the original's now: young at the launch, or old and running — and, in
+ * both, launched after the original went up (`launchLeadMs` before it at most). ★ A COIN OLDER THAN
+ * THE ORIGINAL IS NEVER ITS COIN (the owner, 2026-10-26, "links wrong ticker"): a caller's "baba
+ * pairing" quote of @firstpost's Doupi cat was picked $BABA, a coin of the name launched thirty hours
+ * before the cat was posted, and the original's card showed it. An unknown launch is not carried
+ * either: it cannot be shown to have come after.
+ */
+export const carries = (p: Pick<PromotedPick, 'age' | 'revives' | 'launchedAtMs' | 'original'>, leadMs: number = DEFAULT_POLICY.oneCoin.launchLeadMs): boolean =>
+  (p.age === 'young' || p.revives)
+  && p.launchedAtMs !== null && p.original.postedAtMs !== null && p.launchedAtMs >= p.original.postedAtMs - leadMs;
 
 /** The one coin an original carries from its promotions' picks (the header), or none. */
 export function carriedBy(picks: readonly PromotedPick[]): ReadonlyMap<string, PromotedPick> {

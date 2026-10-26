@@ -73,3 +73,15 @@ test('★ the running route pulls the original back in its promotion\'s place, o
   const plain = await loadRunningPicks(dbOf([pickRow('x:other')]), NOW, undefined, null, promos);
   assert.deepEqual([...plain.keys()], ['x:other'], 'a post that is no promotion is pulled as before');
 });
+
+test('★ a coin older than the original is never carried to it (the owner, 2026-10-26: $BABA on the Doupi cat)', () => {
+  /* @quanterquant's "baba pairing" quoting @firstpost's Doupi, picked $BABA launched 30 h before the cat was posted. */
+  const posted = Date.UTC(2026, 9, 26, 18, 34);
+  const original = { itemId: 'x:2114787710082961619', authorKey: 'x:firstpost', reach: 50_000, postedAtMs: posted };
+  const baba = promoted({ original, address: 'BABA', age: 'young', revives: false, launchedAtMs: posted - 30 * 60 * MIN });
+  assert.equal(carriedBy([baba]).size, 0);
+  /* Launched with the post (inside the lead) or after it: carried as before. */
+  assert.equal(carriedBy([promoted({ original, address: 'DOUPI', age: 'young', revives: false, launchedAtMs: posted - 5 * MIN })]).get(original.itemId)?.address, 'DOUPI');
+  /* An unknown launch cannot be shown to have come after. */
+  assert.equal(carriedBy([promoted({ original, address: 'X', age: 'young', revives: false, launchedAtMs: null })]).size, 0);
+});
