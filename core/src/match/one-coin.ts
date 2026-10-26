@@ -512,10 +512,14 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const wait = (reason: WaitingReason): OneCoinOutcome => ({ kind: 'waiting', reason, droppedHolder: dropped, basis, standings });
   if (standings.every((s) => !s.visible)) return wait('too_early');
   if (live.length === 0) return wait('all_out');
-  /* ★ A held coin the trades already put out stays out on the readings fallback (2026-10-26, $DOUPI): a
+  /* ★ A coin the trades already put out stays out on the readings fallback (2026-10-26, $DOUPI): a
      curve's reading can stand still for an hour after the curve is emptied, and $41,293 on readings
-     re-held a coin the trades read at $1,985. */
-  if (basis === 'trades' && unmeasured) return pickOneCoin(contenders, holder !== null && dropped !== null ? null : holder, nowMs, false, bars);
+     picked again — fresh, as the leader — a coin the trades read at $1,985. Only the coins the
+     trades could not read are judged on readings; the ones they ruled out are not judged at all. */
+  if (basis === 'trades' && unmeasured) {
+    const outOnTrades = new Set(standings.filter((s) => s.measured && s.out !== null).map((s) => s.address));
+    return pickOneCoin(contenders.filter((c) => !outOnTrades.has(c.address)), holder !== null && outOnTrades.has(holder.address) ? null : holder, nowMs, false, bars);
+  }
   const top = ranked[0];
   if (top === undefined) return wait('too_early');
   if (!top.clears) return wait('under_bars');
