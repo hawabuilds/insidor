@@ -32,6 +32,9 @@ export const LIVE_POLL_MS = 4_000;
 /** A price read longer ago than this is not shown as live; the screen falls back to its own reply. */
 export const LIVE_KEEP_MS = 90_000;
 
+/** A live trade's price stands this long against a market reply read after it. */
+const LIVE_TRADE_HOLDS_MS = 20_000;
+
 /** The launchpad's mints carry this suffix; a coin on its curve is one regardless. */
 const LAUNCHPAD_SUFFIX = /pump$/;
 
@@ -39,6 +42,11 @@ export interface LivePrice {
   readonly priceUsd: number;
   /** When this app read it (the reader's clock), for freshness. */
   readonly readAt: number;
+  /**
+   * The cap the trade itself carried (shared/live-coins.ts), from the coin's real supply: a coin of
+   * two billion tokens is not "price × a billion". Absent for a price read from a market reply.
+   */
+  readonly capUsd?: number;
 }
 
 /** Whether "price × a billion" is this coin's cap. */
@@ -69,6 +77,7 @@ export function marketPrice(market: CoinMarket | null): number | null {
  *   3. the server's cap as sent (`served`), absence and reason included.
  */
 export function capOf(served: Measured, live: LivePrice | undefined, now: number, address = '', servedPrice: Measured | null = null): Measured {
+  if (live !== undefined && live.capUsd !== undefined && live.capUsd > 0 && now - live.readAt <= LIVE_KEEP_MS) return { known: true, amount: live.capUsd };
   if (live !== undefined && live.priceUsd > 0 && now - live.readAt <= LIVE_KEEP_MS) return { known: true, amount: capAtPrice(live.priceUsd) };
   if (servedPrice?.known === true && servedPrice.amount > 0 && knownSupply(address)) return { known: true, amount: capAtPrice(servedPrice.amount) };
   return served;
@@ -85,7 +94,22 @@ function notePrice(address: string, priceUsd: number | null, readAt: number): vo
   if (priceUsd === null || !(priceUsd > 0) || !Number.isFinite(priceUsd)) return;
   const had = prices.get(address);
   if (had !== undefined && had.readAt > readAt) return;
+  /* A market reply is seconds behind the trades: it never replaces a live trade's price still fresh. */
+  if (had?.capUsd !== undefined && readAt - had.readAt < LIVE_TRADE_HOLDS_MS) return;
   prices.set(address, { priceUsd, readAt });
+  version += 1;
+  for (const l of listeners) l();
+}
+
+/**
+ * ★ A TRADE AS IT LANDS (shared/live-coins.ts): its price and the cap it carried, any coin the line
+ * follows — the trade is newer than any market read, and carries its own supply.
+ */
+export function noteLiveTrade(address: string, priceUsd: number | null, capUsd: number | null, readAt: number): void {
+  if (priceUsd === null || !(priceUsd > 0) || !Number.isFinite(priceUsd)) return;
+  const had = prices.get(address);
+  if (had !== undefined && had.readAt > readAt) return;
+  prices.set(address, capUsd !== null && capUsd > 0 && Number.isFinite(capUsd) ? { priceUsd, readAt, capUsd } : { priceUsd, readAt });
   version += 1;
   for (const l of listeners) l();
 }

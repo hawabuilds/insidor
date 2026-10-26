@@ -68,6 +68,7 @@ import { pairChip, pairFrom, poolLiquidity, shownName, venueChip, type CoinListi
 
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
+import { useLiveMarket } from './live-market.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { goBack } from '../../shared/nav.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
@@ -129,11 +130,13 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
     const timer = setInterval(reload, MARKET_POLL_MS);
     return () => clearInterval(timer);
   }, [reload, active]);
-  const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
+  const readMarket: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
   /* Every read's price goes to the shared store, so every screen showing this coin agrees. */
   useEffect(() => {
-    if (market !== null) noteMarket(facts.address, market, Date.now());
-  }, [market, facts.address]);
+    if (readMarket !== null) noteMarket(facts.address, readMarket, Date.now());
+  }, [readMarket, facts.address]);
+  /* ★ Every trade as it lands, laid over the last read (live-market.ts): the chart's last candle and the Trades list move with each fill. */
+  const market = useLiveMarket(facts.address, readMarket, tf, active);
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;

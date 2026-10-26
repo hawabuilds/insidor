@@ -23,6 +23,7 @@ import { fetchCoinMarket } from './api/index.ts';
 import { capOf, livePrice, LIVE_POLL_MS, noteMarket, priceStore } from './coin-cap.ts';
 import type { Measured } from './format/measure.ts';
 import { useNow } from './hooks.ts';
+import { followCoin } from './live-coins.ts';
 import { useScreenActive } from './screen-active.ts';
 
 /** At most this many coins are read live at once; the rest show the server's cap. */
@@ -74,5 +75,7 @@ export function useCoinCap(address: string, served: Measured, poll = false, serv
   /* A screen kept hidden (a bottom tab, or a page kept behind for Back, App.tsx) stops watching. */
   const active = useScreenActive();
   useEffect(() => (poll && active ? watch(address) : undefined), [address, poll, active]);
+  /* ★ Every cap on screen follows its coin's trades as they land (live-coins.ts), feed cards included. */
+  useEffect(() => (active ? followCoin(address) : undefined), [address, active]);
   return capOf(served, livePrice(address), Date.now(), address, servedPrice);
 }

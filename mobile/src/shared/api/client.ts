@@ -198,6 +198,26 @@ const LIVE_BASE: string | null =
   ((import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '').trim().replace(/\/+$/, '') ||
   (import.meta.env?.DEV === true ? '/api/read' : null);
 
+/**
+ * The live trades of `coins` (shared/live-coins.ts, the read service's GET /live/coins): `onReady`
+ * with whether the line is delivering, `onData` with each message's text. Returns the close, or null
+ * when this build has nowhere to listen.
+ */
+export function openLiveCoins(coins: readonly string[], handlers: { readonly onReady: (live: boolean) => void; readonly onData: (data: string) => void; readonly onError: () => void }): (() => void) | null {
+  if (LIVE_BASE === null || coins.length === 0 || typeof EventSource === 'undefined') return null;
+  const es = new EventSource(`${LIVE_BASE}/live/coins?c=${coins.map(encodeURIComponent).join(',')}`);
+  es.addEventListener('ready', (e) => {
+    try {
+      handlers.onReady((JSON.parse((e as MessageEvent).data) as { live?: boolean }).live === true);
+    } catch {
+      handlers.onReady(false);
+    }
+  });
+  es.onerror = handlers.onError;
+  es.onmessage = (e) => handlers.onData(String(e.data));
+  return () => es.close();
+}
+
 /** The feed's number alone; it moves with every frame the projector commits. Null when it could not be read. */
 export async function fetchRisingTick(feed: RisingFeedId, signal?: AbortSignal): Promise<number | null> {
   try {
