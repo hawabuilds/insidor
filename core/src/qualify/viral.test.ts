@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { clearsViralBar, passesAsViral, viralEligible, type ViralAnswer } from './viral.ts';
+import { clearsEarlyViralBar, clearsViralBar, earlyPace, passesAsViral, viralEligible, type ViralAnswer } from './viral.ts';
 
 const P = DEFAULT_POLICY;
 const OFF = { ...P, judge: { ...P.judge, viral: { ...P.judge.viral, on: false } } };
@@ -50,6 +50,29 @@ test('slow, late, unread or undated is not huge and fast', () => {
   assert.equal(clearsViralBar([{ atMs: posted + 10 * MIN, reach: null }], posted, P), false);
   assert.equal(clearsViralBar([{ atMs: posted + 10 * MIN, reach: 900_000 }], null, P), false);
   assert.equal(clearsViralBar([{ atMs: posted + 10 * MIN, reach: 900_000 }], posted, P), true);
+});
+
+test('★ the early bar (v188): 10k a minute on a reading inside the first 30 minutes is enough to ask', () => {
+  const posted = 1_800_000_000_000;
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 5 * MIN, reach: 60_000 }], posted, P), true, '12k a minute at five minutes');
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 5 * MIN, reach: 40_000 }], posted, P), false, '8k a minute is under it');
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 40 * MIN, reach: 800_000 }], posted, P), false, 'outside the first 30 minutes: the late bar decides');
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 5 * MIN, reach: null }], posted, P), false, 'an unread count is not fast');
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 5 * MIN, reach: 90_000 }], null, P), false, 'no post time');
+  const off = { ...P, judge: { ...P.judge, viral: { ...P.judge.viral, early: { ...P.judge.viral.early, on: false } } } };
+  assert.equal(clearsEarlyViralBar([{ atMs: posted + 5 * MIN, reach: 90_000 }], posted, off), false, 'off: never');
+});
+
+test("★ @PopBase's first two readings (5.6k and 4.3k a minute) are under the early bar, over the fast-climb watch's", () => {
+  const posted = at('2026-10-25T20:43:24Z');
+  const first = [
+    { atMs: at('2026-10-25T20:46:46Z'), reach: 18_752 },
+    { atMs: at('2026-10-25T20:49:33Z'), reach: 26_665 },
+  ];
+  assert.equal(clearsEarlyViralBar(first, posted, P), false);
+  const pace = earlyPace(first, posted, P.track.fastClimb.withinMs);
+  assert.ok(pace !== null && pace >= P.track.fastClimb.minReachPerMinute && pace < P.judge.viral.early.minReachPerMinute, String(pace));
+  assert.equal(earlyPace([], posted, P.track.fastClimb.withinMs), null, 'no reading: unknown, not slow');
 });
 
 const YES: ViralAnswer = { moment: true, confidence: 0.85, name: 'BEAUTIFUL', kind: 'SHOWBIZ' };

@@ -16,8 +16,13 @@
  *   - ★ first of all, a found post the judge said yes to that is not on For You yet, until it joins or
  *     reaches `track.judgedYesMaxAgeMs` (`judgedYesUnshown`), past the three-hour cut below;
  *   - a post the owner called a meme, whatever the judge said: the projector passes it.
+ * ★ AND A "NO" CLIMBING FAST (`climbingNoPace`, `track.fastClimb`, policy.v188): a found post the viral
+ * exception is for — the judge's no, or a politics or showbiz hold — young, and fast on a reading in
+ * its first half hour, is read on to `fastClimb.maxAgeMs`, at most `maxPosts` at once (the caller
+ * keeps the fastest), so the viral bars (core viral.ts) see its climb. Without it such a post was
+ * read twice before its answer and never again (@PopBase, 25 Oct: +3, +6 and +301 minutes).
  * ★ IN ORDER (`rereadTier`, policy.v183): those yeses; then what is on a feed and the found posts
- * still waiting on their answer; then big accounts; then the rest — mostly narrative members read for
+ * still waiting on their answer; then big accounts and the climbing "no"s; then the rest — mostly narrative members read for
  * their pages. The rest may spend only `track.rereadOrder.restShare` of the paced re-read day, so they
  * can no longer use it up before a yes is read (`rereadsThatFit`).
  * Skipped:
@@ -46,7 +51,7 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { couldPassWithBoost, heldKind, postScoreReason } from '@insidor/core';
+import { couldPassWithBoost, earlyPace, heldKind, postScoreReason, viralEligible, type ReachLevel } from '@insidor/core';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
 /** Whether this answer could still put the post on a feed, given the luckiest picture match. */
@@ -138,11 +143,42 @@ export function judgedYesUnshown(itemId: string, postedAt: number | null, now: n
 }
 
 /**
+ * Whether this post may be a climbing "no" at all (`track.fastClimb`), before its readings are
+ * fetched: on, a found post with a post time inside `maxAgeMs`, not on a feed (read there anyway),
+ * not the owner's "not a meme", and an answer the viral exception is for (core `viralEligible`).
+ */
+export function mayClimb(itemId: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
+  const f = policy.track.fastClimb;
+  if (!f.on || postedAt === null || now - postedAt > f.maxAgeMs) return false;
+  if (!facts.catchAll.has(itemId) || facts.onFeed.has(itemId) || facts.ownerCall.get(itemId) === 'not') return false;
+  const j = facts.judged.get(itemId);
+  return j !== undefined && viralEligible(j.coinable, facts.kindOf.get(itemId) ?? null, policy);
+}
+
+/**
+ * ★ THE CLIMBING "NO" (`track.fastClimb`, policy.v188, see the header): its fastest early pace when
+ * `mayClimb` and a reading inside `withinMs` of the post averages `minReachPerMinute` or more; else
+ * null. The caller keeps the `maxPosts` fastest.
+ */
+export function climbingNoPace(itemId: string, postedAt: number | null, readings: readonly ReachLevel[], now: number, facts: TrackingFacts, policy: Policy): number | null {
+  if (!mayClimb(itemId, postedAt, now, facts, policy)) return null;
+  const f = policy.track.fastClimb;
+  const pace = earlyPace(readings, postedAt, f.withinMs);
+  return pace !== null && pace >= f.minReachPerMinute ? pace : null;
+}
+
+/** The fastest `track.fastClimb.maxPosts` of these climbing posts, by pace. */
+export function fastestClimbers(paces: ReadonlyMap<string, number>, policy: Policy): ReadonlySet<string> {
+  return new Set([...paces.entries()].sort((a, b) => b[1] - a[1]).slice(0, policy.track.fastClimb.maxPosts).map(([id]) => id));
+}
+
+/**
  * ★ WHICH RE-READS GO FIRST (`track.rereadOrder`, policy.v183), lowest first:
  *   0  a found yes not on For You yet (`judgedYesUnshown`): only a reading can let it join;
  *   1  a post on a feed now, or one a lane found that has no answer yet — its reach decides
  *      whether it is judged at all;
- *   2  a post by an account with at least `bigAccountFollowers` followers;
+ *   2  a post by an account with at least `bigAccountFollowers` followers, and a "no" climbing fast
+ *      (`climbingNoPace`, v188) — the money a viral moment caught fresh is worth;
  *   3  the rest: mostly narrative members read for their pages' views, and answered posts that
  *      could still pass.
  * TRACK pulls and spends in this order, and tier 3 may take only `restShare` of the paced re-read
@@ -153,10 +189,11 @@ export function judgedYesUnshown(itemId: string, postedAt: number | null, now: n
 export type RereadTier = 0 | 1 | 2 | 3;
 export const REST_TIER: RereadTier = 3;
 
-export function rereadTier(itemId: string, yesUnshown: boolean, followers: number | null, facts: TrackingFacts, policy: Policy): RereadTier {
+export function rereadTier(itemId: string, yesUnshown: boolean, followers: number | null, facts: TrackingFacts, policy: Policy, climbing = false): RereadTier {
   if (yesUnshown) return 0;
   if (facts.onFeed.has(itemId) || facts.onForYou.has(itemId)) return 1;
   if (facts.catchAll.has(itemId) && answerCanShow(itemId, facts, policy) === null) return 1;
+  if (climbing) return 2;
   if (followers !== null && followers >= policy.track.rereadOrder.bigAccountFollowers) return 2;
   return REST_TIER;
 }

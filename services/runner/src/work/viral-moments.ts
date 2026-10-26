@@ -8,6 +8,11 @@
  * them again. It runs in the early loop beside the quote boost (early-judge.ts) — its own cadence,
  * never the discovery pass, whose stalls emptied the feed twice on 2026-10-16.
  *
+ * ★ ASKED WHILE FRESH (policy.v188, `judge.viral.early`): a post is also due once a reading in its
+ * first half hour averages the early bar's views a minute — the store's `dueEarly`, read first, so a
+ * minutes-old post is not queued behind the day's huge ones. Asked once either way: a post asked early
+ * is not asked again when it is huge, since the moment question reads the post, not its views.
+ *
  * ★ BOUNDED THREE WAYS, LIKE EARLY JUDGING: `maxPerPass` posts a pass (the biggest first), the early
  * loop's `everyMs` between passes, and `dailyUsd` a UTC day of both questions' spend, kept in
  * internal.lane_spend (lane 'viral', 0088) so a restart does not refill it. An unreadable ledger
@@ -39,7 +44,7 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgeOutcome, JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { NOT_MEME_MATCH, clearsViralBar, heldAsNotMeme, viralEligible } from '@insidor/core';
+import { NOT_MEME_MATCH, clearsEarlyViralBar, clearsViralBar, heldAsNotMeme, viralEligible } from '@insidor/core';
 import type { PgItemRepo, PgViralMomentRepo, ViralRecord } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -59,7 +64,7 @@ export interface ViralDeps {
   readonly viralJudge: JudgePort | null;
   /** The feed's kind question; null: a moment "yes" is not written, and waits. */
   readonly kindJudge: JudgePort | null;
-  readonly repo: Pick<PgViralMomentRepo, 'due' | 'record'> & Partial<Pick<PgViralMomentRepo, 'kindDue' | 'recordKind'>>;
+  readonly repo: Pick<PgViralMomentRepo, 'due' | 'record'> & Partial<Pick<PgViralMomentRepo, 'kindDue' | 'recordKind' | 'dueEarly'>>;
   readonly items: Pick<PgItemRepo, 'byIds' | 'reachReadings'>;
   /** The owner's labels, for the not-a-meme hold; absent or null: nothing is held by it. */
   readonly precedents?: Pick<PrecedentSource, 'forPosts'> | null;
@@ -200,14 +205,23 @@ export function viralMoments(deps: ViralDeps): () => Promise<ViralResult> {
     }
     let due: Awaited<ReturnType<ViralDeps['repo']['due']>>;
     try {
-      due = await deps.repo.due({ since, minReach: v.minReach, liftsKinds: v.liftsKinds, heldKinds: p.judge.heldKinds, limit: v.maxPerPass * PREFETCH_FACTOR });
+      const queue = { since, liftsKinds: v.liftsKinds, heldKinds: p.judge.heldKinds, limit: v.maxPerPass * PREFETCH_FACTOR };
+      /* ★ The fresh ones first (`early`, v188): a minutes-old post is the one the owner wants caught now. */
+      const early = v.early.on && deps.repo.dueEarly !== undefined ? await deps.repo.dueEarly({ ...queue, minPerMinute: v.early.minReachPerMinute, withinMs: v.early.withinMs }) : [];
+      const late = await deps.repo.due({ ...queue, minReach: v.minReach });
+      /* One entry a post, in first-seen order: a post in both queues is the same ask. */
+      due = [...new Map([...early, ...late].map((d) => [d.itemId, d] as const)).values()];
     } catch (e) {
       deps.log.warn('viral moments: the queue could not be read (0138 not applied?); nothing asked', { err: errorText(e) });
       return nothing();
     }
     if (due.length === 0) return caughtUp === 0 ? nothing() : { ...nothing(), spentUsd: await charged(deps, caughtUp) };
     const readings = await deps.items.reachReadings(due.map((d) => d.itemId as ItemId), since);
-    const picked = due.filter((d) => viralEligible(d.firstCoinable, d.kindLabel, p) && clearsViralBar(readings.get(d.itemId) ?? [], d.postedAtMs, p)).slice(0, v.maxPerPass);
+    const fast = (d: (typeof due)[number]): boolean => {
+      const r = readings.get(d.itemId) ?? [];
+      return clearsViralBar(r, d.postedAtMs, p) || clearsEarlyViralBar(r, d.postedAtMs, p);
+    };
+    const picked = due.filter((d) => viralEligible(d.firstCoinable, d.kindLabel, p) && fast(d)).slice(0, v.maxPerPass);
     if (picked.length === 0) return caughtUp === 0 ? nothing() : { ...nothing(), spentUsd: await charged(deps, caughtUp) };
     const found = await deps.items.byIds(picked.map((d) => d.itemId as ItemId));
     const items = picked.flatMap((d) => found.get(d.itemId as ItemId) ?? []);

@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { judgedYesUnshown, offFeedTooOld, rereadTier, rereadsThatFit, offForYouPerPostTooOld, staleUnpassed, worthRereading, type RereadTier } from './track-gate.ts';
+import { climbingNoPace, fastestClimbers, judgedYesUnshown, mayClimb, offFeedTooOld, rereadTier, rereadsThatFit, offForYouPerPostTooOld, staleUnpassed, worthRereading, type RereadTier } from './track-gate.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -192,4 +192,40 @@ test('a held member does not count toward its narrative being on the board', () 
   const f = facts({ storiesOf: new Map([['w', ['s']]]), membersOf: new Map([['s', members]]), judged: new Map([['p1', yes], ['p2', yes]]), kindOf: new Map([['p2', 'SPORT']]) });
   assert.equal(r.narrativeMinPassingPosts, 2);
   assert.equal(worthRereading('w', f, P), false);
+});
+
+test('★ a "no" climbing fast in its first half hour is read on, as tier 2, to two hours (v188 `track.fastClimb`)', () => {
+  const now = 1_800_000_000_000;
+  const M = 60_000;
+  const posted = now - 20 * M;
+  const no = facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]) });
+  /* @PopBase's first reading: 18,752 at 3.4 minutes, 5.5k a minute. */
+  const fast = [{ atMs: posted + 3.4 * M, reach: 18_752 }];
+  const slow = [{ atMs: posted + 3.4 * M, reach: 6_000 }];
+  assert.equal(worthRereading('a', no, P), false, 'a no is not re-read on its own');
+  assert.ok((climbingNoPace('a', posted, fast, now, no, P) ?? 0) > P.track.fastClimb.minReachPerMinute);
+  assert.equal(climbingNoPace('a', posted, slow, now, no, P), null, 'slow: not kept');
+  assert.equal(climbingNoPace('a', posted, [], now, no, P), null, 'unread: not shown fast');
+  assert.equal(climbingNoPace('a', posted, [{ atMs: posted + 40 * M, reach: 900_000 }], now, no, P), null, 'only a reading in the first half hour counts');
+  const old = now - 3 * 60 * M;
+  assert.equal(climbingNoPace('a', old, [{ atMs: old + 3.4 * M, reach: 18_752 }], now, no, P), null, 'past two hours: done');
+  assert.equal(climbingNoPace('a', null, fast, now, no, P), null, 'no post time');
+  /* Politics or showbiz holds are the exception's too; other holds, the owner's not and unfound posts are not. */
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), kindOf: new Map([['a', 'POLITICS']]) }), P), true);
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]), kindOf: new Map([['a', 'SPORT']]) }), P), false);
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]), ownerCall: new Map([['a', 'not' as const]]) }), P), false);
+  assert.equal(mayClimb('a', posted, now, facts({ judged: new Map([['a', firmNo]]) }), P), false, 'not found by a lane');
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]) }), P), false, 'a yes is read as a yes already');
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']) }), P), false, 'unjudged is read as unjudged already');
+  const off = { ...P, track: { ...P.track, fastClimb: { ...P.track.fastClimb, on: false } } };
+  assert.equal(mayClimb('a', posted, now, no, off), false, 'off: as v183');
+  /* Tier 2, beside the big accounts: under the yeses and the posts on a feed, over the rest. */
+  assert.equal(rereadTier('a', false, null, no, P, true), 2);
+  assert.equal(rereadTier('a', false, null, no, P), 3);
+  /* At most `maxPosts` at once, the fastest. */
+  const many = new Map(Array.from({ length: P.track.fastClimb.maxPosts + 5 }, (_, i) => [`p${i}`, 5_000 + i] as const));
+  const kept = fastestClimbers(many, P);
+  assert.equal(kept.size, P.track.fastClimb.maxPosts);
+  assert.equal(kept.has(`p${P.track.fastClimb.maxPosts + 4}`), true);
+  assert.equal(kept.has('p0'), false);
 });
