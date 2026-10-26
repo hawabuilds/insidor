@@ -820,6 +820,8 @@ export interface JudgePolicy {
     readonly k: number;
     readonly maxChars: number;
     readonly holdNotSimilarity: number;
+    /** The not-a-meme hold's bar for a post with no words: its picture alone, held only when near-identical (policy.v184). */
+    readonly holdNotSimilarityNoWords: number;
     readonly labelsPerPass: number;
     /**
      * Of the `k`, up to this many go to the closest labels from the post's own source, shown first
@@ -5601,8 +5603,13 @@ const POLICY_V1: Policy = {
      posts on a feed and found posts waiting on an answer, then accounts of 100k followers or more,
      then the rest, which may take only 0.8 of the paced re-read day. And TRACK's gate reads the post
      question's own answer, the kind hold and the owner's call apart, as the projector does: a held
-     yes stays unread as before; an owner's "meme" is now read, an owner's "not" is not. */
-  version: 'policy.v183',
+     yes stays unread as before; an owner's "meme" is now read, an owner's "not" is not.
+
+     v184 adds `judge.precedents.holdNotSimilarityNoWords` (0.945): a post with no words — a link, emoji
+     or tags only — is held as NOT_MEME_MATCH only when its picture is near-identical to the labelled
+     one, not at 0.891. Two @twaniimals animal posts (311k, 436k views, judged yes) were held on 26 Oct
+     at 0.891 and 0.924 for looking like another labelled animal photo. Posts with words are unchanged. */
+  version: 'policy.v184',
 
   admit: {
     maxAgeMin: 240,
@@ -5881,6 +5888,9 @@ const POLICY_V1: Policy = {
          "not" labels. 0.80 would hold 20, 0.92 five. A first cut on the owner's labels alone: a live
          post is not one of them, so expect some meme posts near a "not" — measure the holds. */
       holdNotSimilarity: 0.891,
+      /* policy.v184: a post with no words is its picture alone; held only at `group.image.nearIdentical`'s
+         0.945, a near-copy of the labelled picture, not another animal photo (two @twaniimals posts, 26 Oct). */
+      holdNotSimilarityNoWords: 0.945,
       labelsPerPass: 40,
       /* Off until the owner switches it on. On 2026-10-16 the labels held 34 short-video taps (33
          "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short

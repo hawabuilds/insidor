@@ -114,8 +114,23 @@ export function closestNot(v: ArrayLike<number>, labels: readonly LabelledVector
   return best;
 }
 
-/** Held as NOT_MEME_MATCH: at or over the bar. No similarity (no vector, no "not" label) holds nothing. */
-export const heldAsNotMeme = (similarity: number | null, p: Policy): boolean => similarity !== null && similarity >= p.judge.precedents.holdNotSimilarity;
+/**
+ * Held as NOT_MEME_MATCH: at or over the bar. No similarity (no vector, no "not" label) holds nothing.
+ *
+ * ★ A POST WITH NO WORDS (`words` false) is held only at `holdNotSimilarityNoWords` (the owner,
+ * 2026-10-26): its vector is its picture alone, so "close" meant "another cute animal photo" — two
+ * @twaniimals posts (311k and 436k views, judged yes 0.85) were held at 0.891 and 0.924 beside a
+ * labelled animal post. Without words only a near-identical picture says it is the post the owner
+ * turned down. Unknown (`words` absent) is held at the ordinary bar, as before.
+ */
+export const heldAsNotMeme = (similarity: number | null, p: Policy, words?: boolean): boolean =>
+  similarity !== null && similarity >= (words === false ? p.judge.precedents.holdNotSimilarityNoWords : p.judge.precedents.holdNotSimilarity);
+
+/** Whether a post's texts hold any words once links, @handles, #tags, $tickers, digits and emoji are taken out. */
+export function hasWords(texts: readonly string[]): boolean {
+  const left = texts.join(' ').replace(/https?:\/\/\S+/gu, ' ').replace(/[@#$][\p{L}\p{N}_]+/gu, ' ');
+  return (left.match(/\p{L}/gu) ?? []).length >= 2;
+}
 
 /** The neighbours as the judge is shown them: words trimmed to Policy.judge.precedents.maxChars. */
 export function precedentsFor(neighbours: readonly Neighbour[], p: Policy): readonly JudgePrecedent[] {

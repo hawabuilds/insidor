@@ -76,7 +76,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgePrecedent, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { JunkSkip, PgItemRepo, PgJunkFilterRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
-import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, heldAsNotMeme, heldKind, junkVerdict, type JunkFit } from '@insidor/core';
+import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, hasWords, heldAsNotMeme, heldKind, junkVerdict, type JunkFit } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
@@ -524,7 +524,7 @@ async function askKinds(
   const stillAsk: KindAsk[] = [];
   for (const a of askKind) {
     const n = near.get(String(a.itemId));
-    if (deps.mode !== 'live' || n === undefined || n.closestNot === null || !heldAsNotMeme(n.closestNot, deps.policy)) {
+    if (deps.mode !== 'live' || n === undefined || n.closestNot === null || !heldAsNotMeme(n.closestNot, deps.policy, a.subject === undefined ? undefined : hasWords(a.subject.texts))) {
       stillAsk.push(a);
       continue;
     }
