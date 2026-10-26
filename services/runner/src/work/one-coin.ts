@@ -426,7 +426,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   /* ★ An early pick is held against this rule's "waiting", and its record kept on every later write (early-pick.ts `holdEarly`). */
   /* ★ The race (core match/coin-race.ts): the coins made for the post that broke away together, kept
      on the pick's evidence so the card can offer them all ("See 2 coins"); off, nothing is written. */
-  const raceBars = { ...P.race, rugShareOfPeak: P.rugShareOfPeak };
+  const raceBars = { ...P.race, rugShareOfPeak: P.rugShareOfPeak, creatorDumpShareOfPeak: P.creatorDumpShareOfPeak };
   const byId = new Map(open1);
   const withRace = (w: PickWrite): PickWrite => {
     const rs = byId.get(w.subjectId);

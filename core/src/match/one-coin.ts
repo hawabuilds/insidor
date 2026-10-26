@@ -309,6 +309,8 @@ export interface OneCoinBars {
   readonly rugGraceMs: number;
   /** …but never for time alone while it is still worth this many USD. */
   readonly rugKeepAboveUsd: number;
+  /** The creator selling puts a coin out only while its cap is under this share of its peak. */
+  readonly creatorDumpShareOfPeak: number;
   /** Under the share, a rival made for the post worth this many times its cap takes it (the crash switch). */
   readonly crashCapRatio: number;
   readonly openingCapUsd: number;
@@ -400,7 +402,9 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
     const t = c.trades;
     if (t === null) return { address: c.address, evidence: c.evidence, visible, measured: false, strength: null, uniqueBuyers: null, capUsd: c.market?.capUsd ?? null, out: null, clears: false };
     const f: TradeFacts = t === 'quiet' ? { uniqueBuyers: 0, netBuy: 0, capUsd: null, cap: null, peakCap: null, creatorSold: false } : t;
-    const out: OutReason | null = f.creatorSold ? 'creator_sold' : f.cap !== null && f.peakCap !== null && f.peakCap > 0 && f.cap < bars.rugShareOfPeak * f.peakCap ? 'fell_from_peak' : null;
+    const under = (share: number): boolean => f.cap !== null && f.peakCap !== null && f.peakCap > 0 && f.cap < share * f.peakCap;
+    /* ★ A creator's sale counts only with the coin down under `creatorDumpShareOfPeak` of its peak: profit-taking on a runner is not a rug. */
+    const out: OutReason | null = f.creatorSold && under(bars.creatorDumpShareOfPeak) ? 'creator_sold' : under(bars.rugShareOfPeak) ? 'fell_from_peak' : null;
     const capUsd = f.capUsd ?? c.market?.capUsd ?? null;
     const clears = out === null && capUsd !== null && capUsd >= bars.minCapUsd && f.uniqueBuyers >= bars.minUniqueBuyers && f.netBuy > 0;
     return { address: c.address, evidence: c.evidence, visible, measured: true, strength: f.netBuy, uniqueBuyers: f.uniqueBuyers, capUsd, out, clears };
@@ -533,7 +537,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly creatorDumpShareOfPeak: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -547,6 +551,7 @@ export function oneCoinBars(
     rugFloorUsd: p.rugFloorUsd,
     rugGraceMs: p.rugGraceMs,
     rugKeepAboveUsd: p.rugKeepAboveUsd,
+    creatorDumpShareOfPeak: p.creatorDumpShareOfPeak,
     crashCapRatio: p.crashCapRatio,
     openingCapUsd: p.openingCapUsd,
     minLiquidityUsd: p.minLiquidityUsd,

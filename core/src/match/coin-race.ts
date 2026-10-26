@@ -33,6 +33,8 @@ export interface RaceBars {
   readonly gapRatio: number;
   readonly size: number;
   readonly rugShareOfPeak: number;
+  /** The creator selling puts a racer out only under this share of its peak (one-coin.ts's own bar). */
+  readonly creatorDumpShareOfPeak: number;
 }
 
 const MADE: readonly MatchEvidence[] = ['link', 'picture', 'name_stated', 'missed_runner'];
@@ -56,7 +58,7 @@ export function racingCoins(contenders: readonly Contender[], nowMs: number, bar
     .filter((c) => c.evidence.some((e) => MADE.includes(e)))
     .map((c) => ({ c, f: capOf(c) }))
     .filter((x): x is { c: Contender; f: { cap: number; peak: number; creatorSold: boolean } } => x.f !== null)
-    .filter((x) => !x.f.creatorSold && !(x.f.peak > 0 && x.f.cap < bars.rugShareOfPeak * x.f.peak))
+    .filter((x) => !(x.f.creatorSold && x.f.peak > 0 && x.f.cap < bars.creatorDumpShareOfPeak * x.f.peak) && !(x.f.peak > 0 && x.f.cap < bars.rugShareOfPeak * x.f.peak))
     .sort((a, b) => b.f.cap - a.f.cap || a.c.address.localeCompare(b.c.address));
   const racers = field.slice(0, bars.size);
   if (racers.length < bars.size) return [];
