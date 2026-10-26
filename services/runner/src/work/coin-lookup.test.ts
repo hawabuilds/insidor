@@ -196,3 +196,15 @@ test("★ the store's count of today's coins holds the cap after a restart", asy
   });
   assert.equal(reads.length, 0);
 });
+
+test("★ the namer's guesses fill in only when the judge's names found no coin (the owner, 2026-10-26: Dandy, not Hazel)", async () => {
+  const source: CoinSearch = { search: async (q: string) => ({ hits: q === 'DANDY' ? [hit('DANDY1', 'Dandy', 60_000)] : q === 'Hazel' ? [hit('HAZEL1', 'Hazel', 60_000)] : [], capped: false }) };
+  const term: LookupTerm = { kind: 'post', id: 'x:dandy', term: 'DANDY', names: ['DANDY'], guesses: ['Hazel'], attempts: 0 };
+  const { d, recorded } = deps(term, [source]);
+  await lookUpCoins(d);
+  assert.deepEqual(recorded[0]?.hits, ['DANDY1'], 'the judge found DANDY: no $HAZEL from the guess');
+  const none: CoinSearch = { search: async (q: string) => ({ hits: q === 'Hazel' ? [hit('HAZEL1', 'Hazel', 60_000)] : [], capped: false }) };
+  const r2 = deps(term, [none]);
+  await lookUpCoins(r2.d);
+  assert.deepEqual(r2.recorded[0]?.hits, DEFAULT_POLICY.names.on ? ['HAZEL1'] : [], 'the judge found nothing: the guess fills in');
+});
