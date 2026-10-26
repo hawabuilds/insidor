@@ -88,6 +88,7 @@ export { closestNot, embedInput, hasWords, heldAsNotMeme, nearestLabelled, ownSo
 export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
 export type { AnswerSide, BlockCutoff, CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
+export { clearsViralBar, passesAsViral, viralEligible, type ViralAnswer } from './qualify/viral.ts';
 export { coinVouches, type CoinVouchFacts } from './qualify/coin-vouch.ts';
 export { forYouJunkBar, junkProbability, junkVerdict, underJunkBar } from './qualify/junk-filter.ts';
 export type { HeldOutRow, JunkFit, JunkVerdict } from './qualify/junk-filter.ts';

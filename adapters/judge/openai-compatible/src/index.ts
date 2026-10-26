@@ -91,11 +91,12 @@ export function fitPrecedents(batch: readonly JudgeSubject[], policy: JudgePolic
  * since 2026-10-16: the owner moved every question off the main judge). Each is the live judge's
  * prompt files, exactly as its port assembles them.
  */
-export type OpenQuestion = 'post' | 'kind' | 'story';
+export type OpenQuestion = 'post' | 'kind' | 'story' | 'viral';
 
 const QUESTION: Readonly<Record<OpenQuestion, { readonly system: string; readonly instructions: string }>> = {
   post: { system: PROMPTS['post-system'].text, instructions: PROMPTS['post-coinability'].text },
   kind: { system: PROMPTS['post-veto-system'].text, instructions: PROMPTS['post-veto'].text },
+  viral: { system: PROMPTS['post-viral-system'].text, instructions: PROMPTS['post-viral'].text },
   story: { system: PROMPTS.system.text, instructions: `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-vs-story'].text}` },
 };
 

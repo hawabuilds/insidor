@@ -1126,6 +1126,48 @@ export interface JudgePolicy {
     readonly maxPerPass: number;
     readonly dailyUsd: number;
   };
+  /**
+   * ★ THE VIRAL EXCEPTION (the owner, 2026-10-26: "let viral politics/showbiz through", after
+   * @PopBase's "Trump says Nicki Minaj has a beautiful a**" — judge no, 2.96M views — and @elonmusk's
+   * "So beautiful" — judge no, 590k in 51 minutes). A post the post question said no to, or the kind
+   * question held as one of `liftsKinds`, whose views clear a huge-and-fast bar, is asked a second,
+   * narrower question (the judge adapter's viral-moment prompt: is the post itself a moment people
+   * coin?) and then the kind question. It reaches For You — For You only, never Popular — when the
+   * moment answer is a yes at `minConfidence` or more with a name of at most `rising.maxNameWords`
+   * words AND the kind answer is one of `passKinds`: a TRAGEDY, an ad, sport, fandom, company or
+   * media news never pass this way, whatever the moment answer said. The owner's "Not a meme" (on the
+   * post, or a close match to one: NOT_MEME_MATCH), a shill and every other held kind still hold.
+   *
+   * The bar: some view reading within `maxAgeMs` of the post at `minReach` or more, at an average of
+   * `minReachPerMinute` or more since the post. Chosen 2026-10-26 on the seven days before
+   * (read only; posts found through a coin's link left out): at 500k and 8k a minute, judge-"no"
+   * posts were coined within six hours as often as judged-yes posts over For You's own 40k bar (17%
+   * and 17%), but that share is almost all automated launches on one account's every post (6% with
+   * it left out) and none of them ran to $200k (5 judged-yes posts did) — so the bar alone does not
+   * earn For You, and the second question does the choosing. ~73 posts a day clear it. Both posts
+   * above clear it. Asked of 50 of that week's posts on Nemotron ($0.0076, ~$0.00015 a post): two
+   * moment yeses, the Nicki Minaj post ("BEAUTIFUL ASS", 0.93) and once, unsurely, a renaming of New
+   * Mexico; every sports, injury and death post a no; "So beautiful" a no even with the quoted video
+   * beside it. ~$0.01 a day, ~$0.35 a month.
+   *
+   * Asked in the early loop (work/viral-moments.ts), at most `maxPerPass` posts a pass, charged to
+   * internal.lane_spend lane 'viral' and stopped at `dailyUsd` a UTC day (failing closed). One ask a
+   * post, its answer in internal.viral_moment (0138): never in post_judgement, so no reader of a
+   * post's newest answer is changed by it. Off: nothing is asked and nothing passes this way.
+   */
+  readonly viral: {
+    readonly on: boolean;
+    readonly minReach: number;
+    readonly minReachPerMinute: number;
+    readonly maxAgeMs: number;
+    readonly liftsKinds: readonly string[];
+    readonly passKinds: readonly string[];
+    readonly minConfidence: number;
+    readonly maxPerPass: number;
+    /** Times the kind question is asked about one "yes" moment before it is left unanswered (0138 kind_asks). */
+    readonly maxKindAsks: number;
+    readonly dailyUsd: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -5654,8 +5696,14 @@ const POLICY_V1: Policy = {
      language every ten minutes (`fresh.late.everyMs`) instead of every pass, is paced over the UTC
      day (`paging.searches.late_300.paced`) and adds Arabic and Korean (`fresh.late.langs`); and
      Arabic joins the newest bands at Korean's share (`feed.langs`, `langSplit.shares`). No day, cap
-     or the X search day changes. v184 back is the rollback (v184 is the hold fix, made alongside). */
-  version: 'policy.v185',
+     or the X search day changes. v184 back is the rollback (v184 is the hold fix, made alongside).
+
+     v186 adds `judge.viral`, the viral exception (the owner, 2026-10-26): a post the judge turned
+     down, or held as politics or showbiz, that reached 500k views at 8k a minute within six hours is
+     asked the viral-moment question and the kind question, and reaches For You when both say so —
+     never a tragedy, an ad, sport, fandom or company news, never over the owner's "Not a meme" or a
+     shill. `judge.viral.on` false is the rollback: nothing else reads the new table. */
+  version: 'policy.v186',
 
   admit: {
     maxAgeMin: 240,
@@ -6067,6 +6115,23 @@ const POLICY_V1: Policy = {
       maxOriginalAgeMs: 43_200_000, // twelve hours
       maxPerPass: 10,
       dailyUsd: 0.25,
+    },
+    /* See JudgePolicy.viral. 500k at 8k a minute (the measurement there); OTHER passes as well as the
+       two lifted kinds, since a "no" post never met the kind question. The cap is ten times a busy
+       day's two questions, so it holds only a runaway. */
+    viral: {
+      on: true,
+      minReach: 500_000,
+      minReachPerMinute: 8_000,
+      maxAgeMs: 21_600_000, // six hours, For You's own
+      liftsKinds: ['POLITICS', 'SHOWBIZ'],
+      passKinds: ['POLITICS', 'SHOWBIZ', 'OTHER'],
+      minConfidence: 0.7,
+      maxPerPass: 10,
+      /* Three: on 2026-10-26 the kind question's reply about the Nicki Minaj post ran on inside its
+         confidence number twice in two asks and named no kind it could be read by. */
+      maxKindAsks: 3,
+      dailyUsd: 0.3,
     },
   },
 
