@@ -177,6 +177,29 @@ export function contendersOf(rows: readonly CandidateRow[], trades: ReadonlyMap<
   });
 }
 
+/** Pairs needed before the trades' caps are given a dollar value: fewer, and one odd reading would set it. */
+const MIN_PRICE_PAIRS = 5;
+
+/**
+ * ★ THE TRADES' CAPS IN DOLLARS (the owner, 2026-10-26, $DOUPI: "now showing the one that rugged at
+ * 2k"). The trade feed knows each coin's cap in SOL, live, and never in dollars, so every dollar bar
+ * of the rule — the $10k floor that ends a held coin's grace, the keep bar, the crash switch, PvP —
+ * fell back to the coin's market reading, which for a coin on its curve can stand still for an hour
+ * after the curve is emptied: $DOUPI (BEc9…) read $41,293 six times while its trades said 20 SOL,
+ * about $2k, and the card kept it. The SOL price is the median, over the coins read both ways, of the
+ * reading's dollars over the trades' SOL — a median, so a frozen reading is outvoted — and every
+ * trade rollup without a dollar cap gets its SOL cap times that. Too few pairs: unchanged.
+ */
+export function withDollarCaps(trades: ReadonlyMap<string, TradeRollup>, market: ReadonlyMap<string, MarketFacts>): ReadonlyMap<string, TradeRollup> {
+  const ratios = [...trades].flatMap(([a, t]) => {
+    const m = market.get(a);
+    return t.cap !== null && t.cap > 0 && m !== undefined && m.capUsd > 0 ? [m.capUsd / t.cap] : [];
+  }).sort((x, y) => x - y);
+  if (ratios.length < MIN_PRICE_PAIRS) return trades;
+  const solUsd = ratios[Math.floor(ratios.length / 2)]!;
+  return new Map([...trades].map(([a, t]) => [a, t.capUsd === null && t.cap !== null ? { ...t, capUsd: t.cap * solUsd } : t] as const));
+}
+
 /** The pick row for an outcome: the coin and since when, or no coin; the standings as the evidence. */
 export function pickWrite(subjectId: string, o: OneCoinOutcome, prev: StoredPick | undefined, nowMs: number, mode: 'shadow' | 'live'): PickWrite {
   if (o.kind === 'none') return { subjectId, address: null, outcome: 'none', decidedAtMs: prev?.outcome === 'none' ? prev.decidedAtMs : nowMs, evidence: { mode, reason: 'no_candidates' }, basis: null };
@@ -324,9 +347,11 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     repo.appliedFit(),
   ]);
   const running = trades !== null && feedAt !== null && now - feedAt <= P.tradeFeedFreshMs;
+  /* ★ The trades' caps in dollars (withDollarCaps): never a stale reading's when the trades are live. */
+  const tradesUsd = trades === null ? null : withDollarCaps(trades, market);
   const ruleBars = oneCoinBars(P, fit);
   const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined): OneCoinOutcome =>
-    pickOneCoin(contendersOf(rs, running ? trades : null, watched, market), holderOf(prev), now, running, ruleBars);
+    pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, market), holderOf(prev), now, running, ruleBars);
   /* ★ The owner's coin call stands: his posts are judged without the stated-name tie. */
   const called = deps.ownerCalled === undefined || byPost.size === 0 ? new Set<string>() : await deps.ownerCalled([...byPost.keys()]);
   const withoutStated = (rs: readonly CandidateRow[]): CandidateRow[] => rs.map((r) => (Array.isArray(r.evidence['ties']) && r.evidence['ties'].includes('name_stated') ? { ...r, evidence: { ...r.evidence, ties: r.evidence['ties'].filter((t: unknown) => t !== 'name_stated') } } : r));
@@ -352,7 +377,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const withRace = (w: PickWrite): PickWrite => {
     const rs = byId.get(w.subjectId);
     if (!P.race.on || rs === undefined) return w;
-    const racing = racingCoins(contendersOf(rs, running ? trades : null, watched, market), now, raceBars);
+    const racing = racingCoins(contendersOf(rs, running ? tradesUsd : null, watched, market), now, raceBars);
     return racing.length === 0 ? w : { ...w, evidence: { ...w.evidence, racing } };
   };
   const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
