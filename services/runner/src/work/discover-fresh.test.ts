@@ -180,8 +180,10 @@ test('late bands on: the slow lane drops the slice that holds the band\'s age, a
 
 test('★ slices floored by age (policy.v181): each asks the lane\'s floor scaled to its age, and the five-hour one is asked when the late band would ask more', () => {
   const at = (slow: number) => ({ ...startFloors(LATE), slow });
-  const high = slowSliceQueries(at(9_000), NOW, LATE);
+  /* Off in the live policy from v183; this pins what the switch does when it is on. */
+  const SCALED: Policy = { ...LATE, feed: { ...LATE.feed, slow: { ...LATE.feed.slow, ageScaledFloor: true } } };
+  const high = slowSliceQueries(at(9_000), NOW, SCALED);
   assert.deepEqual(high.map((q) => [(NOW - q.untilMs!) / MIN, q.filter?.minApproval]), [[105, 3_000], [165, 4_500], [225, 6_000], [345, 9_000]], 'five hours at 7,500 is over the band\'s 6,500: covered by it');
-  const low = slowSliceQueries(at(7_200), NOW, LATE);
+  const low = slowSliceQueries(at(7_200), NOW, SCALED);
   assert.ok(low.some((q) => q.untilMs === NOW - 285 * MIN && q.filter?.minApproval === 6_000), 'five hours at 6,000, under the band\'s 6,500: asked, so the posts between are not lost');
 });

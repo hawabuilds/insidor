@@ -196,7 +196,7 @@ test('★ when the slow lane is due it looks back six hours in hourly slices, at
   assert.equal(slow.at(-1)?.sinceMs, NOW - 6 * hour, 'the oldest slice reaches the whole six hours');
   slow.forEach((q, i) => {
     assert.equal(q.filter?.mediaOnly, false);
-    /* Each slice at the lane's floor scaled to its age (`slow.ageScaledFloor`): the six-hour one asks it whole. */
+    /* Each slice at the lane's own floor (`slow.ageScaledFloor` off from policy.v183; on, scaled to its age). */
     assert.equal(q.filter?.minApproval, sliceFloor(333 * 5, (i + 1) * 60, DEFAULT_POLICY), 'its own floor adapted low; held at 5x what the main lane sends');
   });
   assert.equal(slow.at(-1)?.filter?.minApproval, 333 * 5);

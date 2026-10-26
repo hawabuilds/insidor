@@ -154,12 +154,17 @@ test('★ with the slice\'s own floor given, a late band covers it only when the
 /* ── the slow slices: a floor by age and a window by clock (policy.v181) ── */
 
 test('★ a slice\'s floor is the slow lane\'s scaled to its age over the six hours; off, the lane\'s own', () => {
-  assert.equal(sliceFloor(9_000, 120, P), 3_000, 'two hours: a third');
-  assert.equal(sliceFloor(9_000, 360, P), 9_000, 'six hours: whole');
-  assert.equal(sliceFloor(9_000, 720, P), 9_000, 'never more than whole');
-  assert.equal(sliceFloor(40, 60, P), P.feed.effectiveFloorMin, 'never under the effective minimum');
-  const flat = { ...P, feed: { ...P.feed, slow: { ...P.feed.slow, ageScaledFloor: false } } };
-  assert.equal(sliceFloor(9_000, 120, flat), 9_000);
+  const scaled = { ...P, feed: { ...P.feed, slow: { ...P.feed.slow, ageScaledFloor: true } } };
+  assert.equal(sliceFloor(9_000, 120, scaled), 3_000, 'two hours: a third');
+  assert.equal(sliceFloor(9_000, 360, scaled), 9_000, 'six hours: whole');
+  assert.equal(sliceFloor(9_000, 720, scaled), 9_000, 'never more than whole');
+  assert.equal(sliceFloor(40, 60, scaled), P.feed.effectiveFloorMin, 'never under the effective minimum');
+  assert.equal(sliceFloor(9_000, 120, P), 9_000);
+});
+
+test('★ policy.v183: the slow lane\'s slices are back on one floor, the lane\'s own, whatever their age', () => {
+  assert.equal(DEFAULT_POLICY.feed.slow.ageScaledFloor, false);
+  for (const age of [60, 120, 240, 360]) assert.equal(sliceFloor(9_000, age, DEFAULT_POLICY), 9_000);
 });
 
 test('★ a slice\'s window starts where its last ask ended, so passes further apart than its width leave no gap', () => {
