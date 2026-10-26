@@ -40,14 +40,16 @@ export interface CardPick {
   readonly outcome: 'picked' | 'waiting' | 'none';
   readonly ties: readonly string[];
   readonly launchedAfterMs: number | null;
+  /** The racing coins kept on the pick (the race, core match/coin-race.ts); empty when none. */
+  readonly racing?: readonly string[];
 }
 
 /** Each post's pick (0113), with the ties its candidate row recorded. Empty before 0113. */
 export async function loadPostPicks(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, CardPick>> {
   if (itemIds.length === 0) return new Map();
   try {
-    const rows = await db.query<{ item_id: string; address: string | null; outcome: CardPick['outcome']; ties: unknown; after: number | string | null }>(
-      `select p.item_id, p.address, p.outcome, c.evidence -> 'ties' as ties, (c.evidence ->> 'launchedAfterMs') as after
+    const rows = await db.query<{ item_id: string; address: string | null; outcome: CardPick['outcome']; ties: unknown; after: number | string | null; racing: unknown }>(
+      `select p.item_id, p.address, p.outcome, c.evidence -> 'ties' as ties, (c.evidence ->> 'launchedAfterMs') as after, p.evidence -> 'racing' as racing
          from internal.post_coin_pick p
          left join internal.one_coin_candidate c on c.item_id = p.item_id and c.address = p.address
         where p.item_id = any($1::text[])`,
@@ -58,6 +60,7 @@ export async function loadPostPicks(db: Db, itemIds: readonly string[]): Promise
       outcome: r.outcome,
       ties: Array.isArray(r.ties) ? r.ties.filter((t): t is string => typeof t === 'string') : [],
       launchedAfterMs: r.after === null || r.after === undefined || !Number.isFinite(Number(r.after)) ? null : Number(r.after),
+      racing: Array.isArray(r.racing) ? r.racing.filter((a): a is string => typeof a === 'string') : [],
     }] as const));
   } catch (e) {
     if (missingTable(e)) return new Map();
@@ -87,6 +90,8 @@ export function pickedEvidence(pick: CardPick, launchedAfterMs: number | null): 
     samePicture: pick.ties.includes('picture') ? true : null,
     launchedAfterMs: pick.launchedAfterMs ?? launchedAfterMs,
     picked: true,
+    /* The race is said only when the picked coin is one of the racers: "See N coins" beside it. */
+    ...(pick.address !== null && (pick.racing ?? []).length >= 2 && (pick.racing ?? []).includes(pick.address) ? { racing: (pick.racing ?? []).length } : {}),
   };
 }
 

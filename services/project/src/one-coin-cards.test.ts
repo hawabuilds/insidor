@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { liveCoinLine, type CardPick } from './one-coin-cards.ts';
+import { liveCoinLine, pickedEvidence, type CardPick } from './one-coin-cards.ts';
 import type { WireCoin, WirePostCoinLink } from './wire.ts';
 
 const coin = { address: 'PICK', ticker: 'PAN' } as unknown as WireCoin;
@@ -34,4 +34,10 @@ test('a coin the owner called wrong is never the pick shown; a coin we cannot pr
 test('a post not judged yet keeps "still checking" and "Couldn\'t check"; never a guessed Create', () => {
   assert.deepEqual(liveCoinLine({ kind: 'pending' }, undefined, null, { count: 0, more: false }, new Set()), { kind: 'pending' });
   assert.deepEqual(liveCoinLine({ kind: 'unchecked' }, undefined, null, { count: 0, more: false }, new Set()), { kind: 'unchecked' });
+});
+
+test('★ the race reaches the card as a count beside the picked coin, only when that coin is racing', () => {
+  assert.equal(pickedEvidence(picked({ racing: ['PICK', 'OTHER'] }), null).racing, 2);
+  assert.equal(pickedEvidence(picked({ racing: ['A', 'B'] }), null).racing, undefined);
+  assert.equal(pickedEvidence(picked(), null).racing, undefined);
 });

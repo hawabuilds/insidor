@@ -268,3 +268,15 @@ test('★ a launch from the post that started a narrative says so, in place of t
     assert.equal(alertText('coin_launched', { symbol: 'KIM', started }).title, '$KIM launched for a post you may have seen', `no title (${String(started)}): the normal wording`);
   }
 });
+
+test('★ a PvP push names every coin of the post with its cap (the owner, 2026-10-26, $Marvin)', () => {
+  const t = alertText('coin_launched', { symbol: 'Marvin', mcUsd: 132_000, author: '@cb_doge', excerpt: 'I don\'t ever give up.', pvp: [{ symbol: 'Marvin', mcUsd: 35_000 }] });
+  assert.equal(t.title, "PvP on @cb_doge's post: 2 coins");
+  assert.match(t.body, /^\$Marvin \$132K vs \$Marvin \$35K\. Tap to see both\.$/);
+});
+
+test('★ a held coin passed in a PvP says which coin passed it and both caps', () => {
+  const t = alertText('holding_down', { pvp: true, symbol: 'Marvin', heldCapUsd: 58_000, rivalSymbol: 'Marvin', rivalCapUsd: 75_000 });
+  assert.equal(t.title, 'PvP: the other $Marvin for this post just passed yours');
+  assert.equal(t.body, '$Marvin $75K, yours $Marvin $58K.');
+});

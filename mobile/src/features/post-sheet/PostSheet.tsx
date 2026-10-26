@@ -38,11 +38,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
+import { ReadError, fetchPostSheet, type PostCoinLink, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
 import { askForReading } from '../../shared/api/people.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
+import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { QuoteInset } from '../../shared/ui/QuoteInset.tsx';
@@ -194,7 +195,7 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
         )}
       </Sheet>
       {buying !== null ? (
-        <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} />
+        <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} warning={pvpWarning(data, buying, () => { setBuying(null); setView('coins'); })} onClose={() => setBuying(null)} onNote={setNote} />
       ) : null}
       {creating && data !== null ? (
         <CreateCoin
@@ -491,3 +492,17 @@ function Avatar({ file, url, letter }: { file: string | null; url: string | null
   if (src !== null) return <img key={tryKey} className={styles['avatarImg']} src={src} alt="" onError={onError} />;
   return <span className={styles['avatarLetter']} aria-hidden="true">{(letter.trim()[0] ?? '?').toUpperCase()}</span>;
 }
+
+/**
+ * ★ PVP ABOVE A BUY (the owner, 2026-10-26, $Marvin): when the post's card says coins made for it are
+ * being bought together (`evidence.racing`), the ticket names the biggest other one before anyone
+ * buys, and offers them all. Null when there is no PvP or no other coin to name.
+ */
+function pvpWarning(data: { readonly post: { readonly coins: PostCoinLink }; readonly coins: readonly SheetCoin[] } | null, buying: SheetCoin, seeAll: () => void): { line: string; action: string; onAction: () => void } | null {
+  if (data === null || data.post.coins.kind !== 'matched' || data.post.coins.evidence.racing === undefined) return null;
+  const other = data.coins.filter((c) => c.address !== buying.address && c.marketCapUsd.known).sort((a, b) => (b.marketCapUsd.known ? b.marketCapUsd.amount : 0) - (a.marketCapUsd.known ? a.marketCapUsd.amount : 0))[0];
+  if (other === undefined || !other.marketCapUsd.known) return null;
+  const cap = formatUsd(other.marketCapUsd);
+  return { line: `PvP: another coin for this post, ${tickerText(other.ticker ?? other.name ?? '')}, is at ${cap.kind === 'value' ? cap.text : 'a cap we have not read'}.`, action: 'See all', onAction: seeAll };
+}
+

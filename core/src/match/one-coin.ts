@@ -32,6 +32,10 @@
  * came back had fallen to $2-6k, and every one held over $10k was still trading. A coin not yet
  * held keeps the bare rule: a fall before we ever showed it is evidence against it.
  *
+ * Two more for a held coin (25 Oct, $Marvin): one still worth `rugKeepAboveUsd` is never dropped for
+ * time under the share alone, and one under the share loses the pick at once to a rival made for
+ * the post worth `crashCapRatio` times its cap (the crash switch, beside `pickOneCoin`).
+ *
  * ★ A SHORT TICKER NEEDS THE POST'S OWN WORDS. An exact name or ticker ties a launch; a looser
  * spelling does not, and a ticker under `minVariantLength` letters never counts as one. So "Rip Kim
  * Jong-Un" ($KIM) met none of 19 Oct's "KIMJONGUN" posts. `namedInText` ties it when the coin's
@@ -303,6 +307,10 @@ export interface OneCoinBars {
   readonly rugFloorUsd: number;
   /** …or it has stayed under the share this long, or a rival clears the bars and leads it. */
   readonly rugGraceMs: number;
+  /** …but never for time alone while it is still worth this many USD. */
+  readonly rugKeepAboveUsd: number;
+  /** Under the share, a rival made for the post worth this many times its cap takes it (the crash switch). */
+  readonly crashCapRatio: number;
   readonly openingCapUsd: number;
   readonly minLiquidityUsd: number;
 }
@@ -364,6 +372,8 @@ export type OneCoinOutcome =
       readonly sinceMs: number;
       readonly confirmed: boolean;
       readonly handedOverFrom: string | null;
+      /** The hand-over was the crash switch (the held coin crashed under a rival made for the post): pushed like a runner's. */
+      readonly crash?: true;
       /** The held coin has been under `rugShareOfPeak` of its peak since then, and is kept on grace; null: it is not under. */
       readonly underShareSinceMs: number | null;
       readonly basis: Basis;
@@ -474,8 +484,23 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const held = holder === null ? null : standings.find((s) => s.address === holder.address) ?? null;
   /* A held coin under the share stays on grace: not under the floor, not under for `rugGraceMs`. */
   const under = held?.out === 'fell_from_peak' ? holder?.underShareSinceMs ?? nowMs : null;
-  const onGrace = held !== null && under !== null && !(held.capUsd !== null && held.capUsd < bars.rugFloorUsd) && nowMs - under < bars.rugGraceMs;
+  const keptByCap = held !== null && held.capUsd !== null && held.capUsd >= bars.rugKeepAboveUsd;
+  const onGrace = held !== null && under !== null && !(held.capUsd !== null && held.capUsd < bars.rugFloorUsd) && (nowMs - under < bars.rugGraceMs || keptByCap);
   if (holder !== null && held !== null && (held.out === null || onGrace)) {
+    /* ★ THE CRASH SWITCH. Under the share, a rival the creators made for the post that is now worth
+       `crashCapRatio` times the held coin takes it on caps alone: a crash says nothing about net
+       buying, which a pump and its dump leave flat on both coins. */
+    if (onGrace && held.capUsd !== null) {
+      const heldCap = held.capUsd;
+      const crashTo = standings
+        .filter((s) => s.address !== holder.address && s.visible && s.out === null && s.capUsd !== null && s.capUsd >= bars.minCapUsd && s.capUsd >= bars.crashCapRatio * heldCap)
+        .filter((s) => { const c = contender(s.address); return c !== undefined && madeForPost(c); })
+        .sort((a, b) => (b.capUsd ?? 0) - (a.capUsd ?? 0))[0];
+      if (crashTo !== undefined) {
+        const o = picked(crashTo.address, nowMs, holder.address);
+        return o.kind === 'picked' ? { ...o, crash: true } : o;
+      }
+    }
     const challenger = ranked.find((s) => s.address !== holder.address);
     const holdStrength = Math.max(held.strength ?? 0, floor);
     /* On grace a rival takes it on the bar of a fresh pick against it; standing, only at the hand-over bar. */
@@ -501,7 +526,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -514,6 +539,8 @@ export function oneCoinBars(
     rugShareOfPeak: p.rugShareOfPeak,
     rugFloorUsd: p.rugFloorUsd,
     rugGraceMs: p.rugGraceMs,
+    rugKeepAboveUsd: p.rugKeepAboveUsd,
+    crashCapRatio: p.crashCapRatio,
     openingCapUsd: p.openingCapUsd,
     minLiquidityUsd: p.minLiquidityUsd,
   };
