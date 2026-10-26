@@ -47,6 +47,9 @@ import { VENUE_ID } from '@insidor/venue-solana-pumpfun';
 import type { Db, Row } from './queries.ts';
 
 /**
+ * Read from public.tape_coin (0141), a view that runs as its owner: the browser's role reads the
+ * finished rows and never the picks and calls they come from.
+ *
  * ★ THE COINS OF VIRAL POSTS, TRENDING OVER THE DAY (the owner, 2026-10-26: "the coins that are
  * trending last 24 hrs that have viral post origin, regardless how old the post is"). Every coin a
  * post's or a narrative's pick ever held, and every coin the owner called right for a post, whatever
@@ -55,44 +58,7 @@ import type { Db, Row } from './queries.ts';
  * hour counted once, at the busiest reading of that hour, so an hour read twenty times is not counted
  * twenty times.
  */
-export const RUNNING_COINS_SQL = `
-with origin as (
-  select address from internal.post_coin_pick where outcome = 'picked' and address is not null
-  union
-  select address from internal.narrative_coin_pick where outcome = 'picked' and address is not null
-  union
-  select coin_address from internal.owner_feedback where subject_kind = 'coin_match' and verdict in ('right', 'wrong') and coin_address is not null
-),
-coin as (
-  select a.address, a.symbol, a.image_uri, a.venue_id, a.origin, a.asset_key
-    from public.asset a join origin o on o.address = a.address
-   where a.chain = 'solana'
-),
-hours as (
-  select m.asset_key, date_trunc('hour', m.taken_at) as h, max(m.volume_1h_usd) as v
-    from public.market_reading m join coin c on c.asset_key = m.asset_key
-   where m.taken_at >= now() - interval '24 hours' and m.volume_1h_usd is not null
-   group by 1, 2
-),
-day as (select asset_key, sum(v) as volume_24h from hours group by 1),
-latest as (
-  select distinct on (m.asset_key) m.asset_key, m.taken_at, m.market_cap_usd, m.price_change_24h_pct, m.volume_1h_usd,
-         coalesce(m.buys_1h, 0) + coalesce(m.sells_1h, 0) as trades, m.tradable
-    from public.market_reading m join coin c on c.asset_key = m.asset_key
-   where m.taken_at >= now() - interval '2 hours'
-   order by m.asset_key, m.taken_at desc
-)
-select jsonb_build_object(
-         'coinId', 'solana:' || c.address, 'address', c.address, 'ticker', c.symbol, 'imageUrl', c.image_uri,
-         'tradable', coalesce(l.tradable, false),
-         'marketCapUsd', jsonb_build_object('v', l.market_cap_usd),
-         'priceChange24h', jsonb_build_object('v', l.price_change_24h_pct),
-         'volume1hUsd', jsonb_build_object('v', l.volume_1h_usd),
-         'trades1h', jsonb_build_object('v', l.trades),
-         'volume24hUsd', jsonb_build_object('v', d.volume_24h)
-       ) as coin,
-       (extract(epoch from l.taken_at) * 1000)::bigint as at_ms, c.venue_id, c.origin
-  from coin c join latest l on l.asset_key = c.asset_key join day d on d.asset_key = c.asset_key`;
+export const RUNNING_COINS_SQL = `select coin, at_ms, venue_id, origin from public.tape_coin`;
 
 /** One coin on the strip. Every number is known: a coin without one is not on it. */
 export interface RunningCoin {
