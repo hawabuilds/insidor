@@ -290,6 +290,9 @@ test('★ a held coin the trades put out is not re-held on the readings fallback
   const unread = c('OTHER', 1_003, null, { evidence: ['link'], market: { capUsd: 18_000, peakCapUsd: 21_000 } });
   const o = pickOneCoin([rug, unread], holder, NOW, true, BARS);
   assert.notEqual(o.kind === 'picked' ? o.address : null, 'RUG');
+  /* Nor picked afresh as the readings' leader when nobody holds it. */
+  const fresh = pickOneCoin([rug, unread], null, NOW, true, BARS);
+  assert.notEqual(fresh.kind === 'picked' ? fresh.address : null, 'RUG');
 });
 
 test('★ the crash switch: under the share, a coin made for the post worth twice the held one takes it, on trades too', () => {
