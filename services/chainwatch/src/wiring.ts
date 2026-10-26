@@ -65,6 +65,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { BASE_URLS, geckoterminal } from '@insidor/market-geckoterminal';
 import { curveAddress, curvePlaces, launchOpening, transactionLogs } from '@insidor/venue-solana-pumpfun/curve-rpc.ts';
 import { curveEvents } from '@insidor/venue-solana-pumpfun/events.ts';
+import { createRelayTradeSocket } from '@insidor/venue-solana-pumpfun/relay-trade-socket.ts';
 import { createTradeSocket } from '@insidor/venue-solana-pumpfun/trade-socket.ts';
 import {
   ACCOUNTS_PER_CALL,
@@ -308,23 +309,40 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime['trade
     tradeLog.warn('trade feed off: watched coins stay unmeasured', { policyOn: tf.on, keySet: cfg.tradeFeedKey !== null });
     return null;
   }
-  const socket = createTradeSocket({
-    url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
-    accountOf: curveAddress,
-    staleAfterMs: tf.staleAfterMs,
-    probeEveryMs: tf.probeEveryMs,
-    // The same answer to "how long must a connection last" as the launch stream's.
-    healthyAfterMs: cfg.backoffMaxMs,
-    now: () => Date.now() as Millis,
-    reconnectDelayMs: (attempt) => backoffDelayMs(attempt, { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs }, Math.random()),
-    open: openWebSocket,
-    schedule: (fn, ms) => {
-      const timer = setTimeout(fn, ms);
-      timer.unref();
-      return () => clearTimeout(timer);
-    },
-    note: (msg, fields) => tradeLog.warn(msg, fields),
-  });
+  const reconnectDelayMs = (attempt: number): number => backoffDelayMs(attempt, { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs }, Math.random());
+  const schedule = (fn: () => void, ms: number): (() => void) => {
+    const timer = setTimeout(fn, ms);
+    timer.unref();
+    return () => clearTimeout(timer);
+  };
+  /* The free relay when its address is set (the owner's switch, 2026-10-26: the billed socket hit
+     its day cap by 06:00 UTC daily); the keyed chain socket otherwise. */
+  const socket =
+    cfg.tradeRelayUrl !== null
+      ? createRelayTradeSocket({
+          url: cfg.tradeRelayUrl,
+          staleAfterMs: tf.staleAfterMs,
+          healthyAfterMs: cfg.backoffMaxMs,
+          now: () => Date.now() as Millis,
+          reconnectDelayMs,
+          open: openWebSocket,
+          schedule,
+          note: (msg, fields) => tradeLog.warn(msg, fields),
+        })
+      : createTradeSocket({
+          url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
+          accountOf: curveAddress,
+          staleAfterMs: tf.staleAfterMs,
+          probeEveryMs: tf.probeEveryMs,
+          // The same answer to "how long must a connection last" as the launch stream's.
+          healthyAfterMs: cfg.backoffMaxMs,
+          now: () => Date.now() as Millis,
+          reconnectDelayMs,
+          open: openWebSocket,
+          schedule,
+          note: (msg, fields) => tradeLog.warn(msg, fields),
+        });
+  tradeLog.info('trade feed source', { relay: cfg.tradeRelayUrl !== null });
   const rpc = { rpcUrl: TRADE_RPC_URL + cfg.tradeFeedKey, fetch: globalThis.fetch, timeoutMs: tf.callTimeoutMs };
   const chain: ChainPort = {
     places: (coins) => curvePlaces(rpc, coins),

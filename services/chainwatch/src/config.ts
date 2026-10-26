@@ -104,6 +104,13 @@ export interface ChainwatchConfig {
    */
   readonly tradeFeedKey: string | null;
   /**
+   * The free trade relay's stream address (TRADE_RELAY_URL). OPTIONAL: set, the trade feed reads
+   * every watched coin's trades from it (relay-trade-socket.ts), with nothing capped; unset, it reads
+   * them from the keyed chain socket as before, so going back is unsetting it. The key above is
+   * still needed either way: the feed's few RPC reads (curve places, launch openings) use it.
+   */
+  readonly tradeRelayUrl: string | null;
+  /**
    * The market data key the launch listing reads its pages with (COINGECKO_API_KEY, its plan from
    * COINGECKO_API_PLAN: `demo`, otherwise the paid host — the same two variables the runner and
    * the read service take). OPTIONAL: null reads the keyless listing, which the host's shared
@@ -197,6 +204,8 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
   const backoffMaxMs = r.int('BACKOFF_MAX_MS', 1_000, 3_600_000);
   const listingRpcUrl = (env['LISTING_RPC_URL'] ?? '').trim() || null;
   const tradeFeedKey = (env['HELIUS_API_KEY'] ?? '').trim() || null;
+  const tradeRelayUrl = (env['TRADE_RELAY_URL'] ?? '').trim() || null;
+  if (tradeRelayUrl !== null && !/^wss:\/\//.test(tradeRelayUrl)) problems.push("TRADE_RELAY_URL must be a websocket URL ('wss://')");
   if (tradeFeedKey !== null && !/^[A-Za-z0-9-]+$/.test(tradeFeedKey)) problems.push('HELIUS_API_KEY must be a bare key (letters, digits, dashes)');
   if (listingRpcUrl !== null && !/^https:\/\//.test(listingRpcUrl)) problems.push('LISTING_RPC_URL must be an https URL');
   const marketKey = (env['COINGECKO_API_KEY'] ?? '').trim();
@@ -268,6 +277,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     backoffMaxMs,
     listingRpcUrl,
     tradeFeedKey,
+    tradeRelayUrl,
     listingMarketKey,
     heartbeat,
   };
