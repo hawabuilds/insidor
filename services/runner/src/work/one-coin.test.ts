@@ -234,3 +234,15 @@ test('★ stated name: a post found after its stated coin launched gets it; the 
   await oneCoinPass(deps(held), newOneCoinState());
   assert.equal(held.picks.get('x:toc')?.address, 'REAL');
 });
+
+test('★ the trades\' caps get dollars from the median price, so a frozen reading cannot keep a rug (2026-10-26, $DOUPI)', async () => {
+  const { withDollarCaps } = await import('./one-coin.ts');
+  const t = (cap: number) => ({ uniqueBuyers: 50, netBuy: 1, capUsd: null, cap, peakCap: cap, creatorSold: false });
+  const trades = new Map([['a', t(100)], ['b', t(200)], ['c', t(300)], ['d', t(400)], ['e', t(500)], ['rug', t(20)]]);
+  /* Five coins read at $102 a SOL; the rug's reading froze at $41,293 while its trades say 20 SOL. */
+  const market = new Map([['a', { capUsd: 10_200, peakCapUsd: 10_200 }], ['b', { capUsd: 20_400, peakCapUsd: 20_400 }], ['c', { capUsd: 30_600, peakCapUsd: 30_600 }], ['d', { capUsd: 40_800, peakCapUsd: 40_800 }], ['e', { capUsd: 51_000, peakCapUsd: 51_000 }], ['rug', { capUsd: 41_293, peakCapUsd: 113_000 }]]);
+  const out = withDollarCaps(trades, market);
+  assert.equal(Math.round(out.get('rug')?.capUsd ?? 0), 2_040);
+  /* Too few coins read both ways: nothing is guessed. */
+  assert.equal(withDollarCaps(new Map([['rug', t(20)]]), market).get('rug')?.capUsd, null);
+});
