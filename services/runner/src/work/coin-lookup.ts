@@ -213,7 +213,10 @@ async function searchOne(
     memo?.set(k, asked);
     return asked;
   };
-  const perName = await Promise.all(searchNames(term, Math.max(1, l.namesPerSubject), guessMax).map(ask));
+  const names = searchNames(term, Math.max(1, l.namesPerSubject), guessMax);
+  /* How many of `names` are the judge's own (the rest are the namer's guesses, searchNames' order). */
+  const judgeNames = searchNames({ ...term, guesses: [] }, Math.max(1, l.namesPerSubject), 0).length;
+  const perName = await Promise.all(names.map(ask));
   const answers = perName.flat();
   const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
   if (read.length === 0) {
@@ -245,10 +248,17 @@ async function searchOne(
      proposed name's coins; the union is listed newest first. */
   const kept = new Map<string, (typeof merged)[number]>();
   let cut = false;
-  for (const answersOfName of perName) {
+  /* ★ THE NAMER'S GUESSES ONLY FILL IN (the owner, 2026-10-26: "dog name saying hazel instead of
+     dandy"). When the judge's own names found a coin, a guess's coins are not kept: Cap's Breakpoint
+     video was DANDY to the judge, and the namer's second guess, Hazel (the dog of his older video), put
+     $HAZEL among the post's three coins. */
+  const recentOf = (answersOfName: (typeof perName)[number]) => newest(mergeHits(answersOfName.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []))).filter(isRecent));
+  const judgeFound = perName.slice(0, judgeNames).some((a) => recentOf(a).length > 0);
+  for (const [i, answersOfName] of perName.entries()) {
+    if (judgeFound && i >= judgeNames) continue;
     /* A name every source failed on may hold coins we did not see: the list says "more". */
     if (answersOfName.every((a) => a.status === 'rejected')) cut = true;
-    const recentOfName = newest(mergeHits(answersOfName.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []))).filter(isRecent));
+    const recentOfName = recentOf(answersOfName);
     if (recentOfName.length > l.hitsPerTerm) cut = true;
     for (const h of recentOfName.slice(0, l.hitsPerTerm)) if (!kept.has(h.address)) kept.set(h.address, merged.find((m) => m.address === h.address) ?? h);
   }
