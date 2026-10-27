@@ -3230,6 +3230,18 @@ export interface RisingPolicy {
    *                                     we hold, and fewer followers than this (core `isLauncher`)
    * Off: no read, no judgement, no admission by this route.
    */
+  /**
+   * ★ A POST ONLY A COIN'S LINK FOUND MUST HAVE BEEN SEEN (policy.v192; the owner, 2026-10-27: "unless
+   * the post gotten from coinlist has viral post origin do not add it to fyp" — "the post they reference
+   * as the narrative of the coin should be the one that gets checked if it clears the bar"). A post the
+   * coin_link lane credited and no other lane did joins For You only when its own views clear For You's
+   * views bar; the coin-first route, the coin's vouch, a running coin, the late and key-share routes no
+   * longer stand in for them. The coin-first walk still swaps a launcher's pointer for the original, so
+   * it is the original's views that are read. Over 25-27 Oct, 81 For You posts came by a coin's link
+   * alone: launchers' promos with a few hundred views (@TheBoxPump's 703) beside originals at 0.5M-2M.
+   * Off: the routes decide as before.
+   */
+  readonly coinListNeedsReach: boolean;
   readonly coinFirst: {
     readonly on: boolean;
     readonly fetchesPerDay: number;
@@ -5881,7 +5893,7 @@ const POLICY_V1: Policy = {
      only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
      was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
      the old rule. */
-  version: 'policy.v191',
+  version: 'policy.v192',
 
   admit: {
     maxAgeMin: 240,
@@ -7724,6 +7736,7 @@ const POLICY_V1: Policy = {
        Sizeyon...); at 50,000 they took in accounts that post their own work (Sauers_, aizendyor).
        Reads: about 9 originals a day we do not hold, and for the first two days after deploy the held
        posts stored before their links were kept — 115 a day replayed, $0.02, well inside 200. */
+    coinListNeedsReach: true,
     coinFirst: {
       on: true, fetchesPerDay: 200, judgementsPerDay: 200, perPass: 10, lookbackMs: 3_600_000, admitWithinMs: 7_200_000,
       origin: { maxDepth: 3, rereadLinks: true, launcherLookbackMs: 604_800_000, launcherMinLinkedPosts: 5, launcherMinLinkedShare: 0.5, launcherMaxFollowers: 15_000 },

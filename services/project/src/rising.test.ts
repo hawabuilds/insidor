@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, firstCount, forYouBarPolicy, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
+import { barReadings, coinListHolds, firstCount, forYouBarPolicy, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -298,4 +298,14 @@ test("For You's speed path starts at its own age; the scorer's shared age is lef
   /* The speed bar off stays off. */
   const off = { ...fifteen, rising: { ...fifteen.rising, speedBar: { ...fifteen.rising.speedBar, enabled: false } } };
   assert.equal(clearsReachBar('fyp', readings, posted, forYouBarPolicy(off)), false);
+});
+
+test("★ a post only a coin's link found joins For You only once its own views clear the bar", () => {
+  assert.equal(coinListHolds({ coin_list_only: true }, false), true);
+  assert.equal(coinListHolds({ coin_list_only: true }, true), false);
+  /* Found by another lane too, or a row built by hand: the routes decide as before. */
+  assert.equal(coinListHolds({ coin_list_only: false }, false), false);
+  assert.equal(coinListHolds({}, false), false);
+  const off = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, coinListNeedsReach: false } };
+  assert.equal(coinListHolds({ coin_list_only: true }, false, off), false);
 });
