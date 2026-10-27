@@ -1,0 +1,25 @@
+-- 0146_item_posted_idx.sql
+--
+-- THE POSTS-NAMING-A-COIN SEARCH, READ BY TIME INSTEAD OF IN FULL (2026-10-27, the evening the
+-- database stopped keeping up: For You's projection timed out on every run from 18:34 and judging
+-- fell from ~700 posts an hour to none).
+--
+-- Measured over two minutes of pg_stat_statements that evening: 55% of every block the database
+-- read from disk was one statement, the runner's coin-universe search for posts that name a new
+-- coin (store/src/repo/coin-universe.ts `postsNaming`, `posted_at between … and body ilike any …
+-- order by posted_at limit …`), called 37 times in the two minutes. public.item had no index on
+-- `posted_at`, so every call read the whole table (464 MB) to keep the last two days of it. With
+-- the disk at its limit, every other query waited behind it, and whichever of the projection's
+-- statements crossed its timeout first failed the frame.
+--
+-- Indexed on `posted_at`, a call reads its window in order and stops at its limit.
+--
+-- HOW IT IS APPLIED: built first by hand with CREATE INDEX CONCURRENTLY (the migrator runs each
+-- file in a transaction, where CONCURRENTLY cannot run; a plain build would hold ingest's writes to
+-- public.item for as long as it reads 464 MB). This file then finds it built and does nothing. On a
+-- fresh database the table is small and the plain build here is instant.
+--
+-- What breaks if changed carelessly: the partial `where origin = 'observed'` must match the
+-- query's own filter, or the planner cannot use the index for it.
+
+create index if not exists item_observed_posted_idx on public.item (posted_at) where origin = 'observed';
