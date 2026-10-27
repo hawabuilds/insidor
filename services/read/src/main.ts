@@ -38,6 +38,7 @@ import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
+import { createMarketWarm } from './market-warm.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
 import { createTradeCard } from './trade-card.ts';
 import { createWallet } from './wallet.ts';
@@ -329,6 +330,9 @@ async function main(): Promise<void> {
   prepared.start();
   /* The first screens of the app, built at boot so the first phone after a deploy does not wait. */
   prepared.warm(WARM_URLS);
+  /* ★ The token pages people are about to open, read ahead (market-warm.ts): the first tap is instant. */
+  const marketWarm = createMarketWarm({ db: deps.db, log, market: marketData });
+  marketWarm.start();
 
   const stop = async (signal: string): Promise<void> => {
     log.info('shutting down', { signal, streams: stream.size() });
@@ -337,6 +341,7 @@ async function main(): Promise<void> {
        end and the process would hang until the platform killed it. */
     stream.close();
     liveCoins.close();
+    marketWarm.stop();
     prepared.close();
     await notifier.close();
     server.close();
