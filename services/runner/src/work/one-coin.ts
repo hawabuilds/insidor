@@ -229,8 +229,9 @@ const WAITING_SWEEP_MS = 2 * 86_400_000;
 const WAITING_SWEEP_LIMIT = 1_000;
 export const WAITING_SWEEP_MIN_PEAK_QUOTE = 100;
 /* Only readings this fresh count: a coin read hours ago at its peak ($DX1MhZ… read $41k at 03:10 and
-   was at $2.7k by 10:40) must never be picked on that number. */
-const WAITING_FRESH_MS = 30 * 60_000;
+   was at $2.7k by 10:40) must never be picked on that number. Ninety minutes: the market service reads
+   each of these coins about once an hour (services/market db.ts `waitingCoins`). */
+const WAITING_FRESH_MS = 90 * 60_000;
 
 /**
  * ★ THE WAITING SWEEP (the owner, 2026-10-27, "paws at you": about thirty coins in ten minutes, the pick
