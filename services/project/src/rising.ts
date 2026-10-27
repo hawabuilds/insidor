@@ -296,6 +296,11 @@ export interface RisingRow {
   net_add?: boolean | null;
   /** A catch-all lane credited the post (internal.item_found_by); false for a late post loaded by id alone. Absent on a row built by hand. */
   credited?: boolean;
+  /**
+   * Only a coin's link found the post: the coin_link lane credited it and no other lane did
+   * (`rising.coinListNeedsReach`). Absent on a row built by hand: read as found some other way.
+   */
+  coin_list_only?: boolean | null;
   /** When the post was found deleted from its source (0131, `loadDeleted`); absent or null when it is not known to be. */
   deleted_at?: Date | string | null;
   /** The viral exception's stored answers (0138, `loadViral`), read only while Policy.judge.viral.on; absent or null: never asked. */
@@ -347,7 +352,9 @@ export async function loadCandidates(
             pic.similarity as picture_similarity,
             s.story_id,
             oc.verdict as owner_call,
-            f.credited
+            f.credited,
+            (exists (select 1 from internal.item_found_by c1 where c1.item_id = i.item_id and c1.lane = 'coin_link')
+             and not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link')) as coin_list_only
        from (select fb.item_id, true as credited from internal.item_found_by fb
              union all
              select u.item_id, false from unnest($4::text[]) as u(item_id)
@@ -812,6 +819,14 @@ export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: Crypt
   return { why: judge === undefined ? 'not_scored' : judge === 'passes' ? 'not_memeable' : judge, route: null };
 }
 
+/**
+ * Whether For You holds a post back because only a coin's link found it and its own views have not
+ * cleared For You's bar (`rising.coinListNeedsReach`): no route may then put it on For You. `seen`
+ * is whether its views clear the bar.
+ */
+export const coinListHolds = (row: Pick<RisingRow, 'coin_list_only'>, seen: boolean, policy = DEFAULT_POLICY): boolean =>
+  policy.rising.coinListNeedsReach && row.coin_list_only === true && !seen;
+
 /** Whether one loaded post passes (`postRoute`'s answer without the route). */
 export function postStanding(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): FeedRejectionReason | 'passes' {
   return postRoute(row, policy, signal).why;
@@ -1092,7 +1107,14 @@ export async function buildRising(
       ownerNone: check?.none === true,
       wrong: check?.wrong ?? new Set(),
     }, coinFirst, nowMs, policy);
-    const byViews = !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
+    /* ★ FOUND ONLY BY A COIN'S LINK, IT MUST HAVE BEEN SEEN (`rising.coinListNeedsReach`, the owner
+       2026-10-27: "unless the post gotten from coinlist has viral post origin do not add it to fyp").
+       Such a post — the original the coin-first walk reached, or a launcher's post that points at
+       nothing — joins For You only once its own views clear For You's bar: no route stands in for
+       them, the coin's vouch and a running coin included. Found by any other lane too, the routes
+       decide as before. */
+    const coinListHeld = coinListHolds(row, clearsReachBar('fyp', barViews, postedAt, fypBar, scale), policy);
+    const byViews = !coinListHeld && !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
     const byLate = lateLets({
       itemId: row.item_id,
@@ -1111,10 +1133,10 @@ export async function buildRising(
     const byRunning = runningLets(running.get(row.item_id), { ownerNotMeme: row.owner_call === 'not', ownerNone: check?.none === true, wrong: check?.wrong ?? new Set() }, nowMs, policy);
     return {
       passes: passing.has(row.item_id),
-      byCoin,
-      byKeyShare,
-      byLate,
-      byRunning,
+      byCoin: byCoin && !coinListHeld,
+      byKeyShare: byKeyShare && !coinListHeld,
+      byLate: byLate && !coinListHeld,
+      byRunning: byRunning && !coinListHeld,
       /* Loaded by the running route alone, no lane credited it: For You's, never Popular's. */
       runningOnly: running.has(row.item_id) && row.credited === false,
       /* Loaded by the late route alone: For You's, never Popular's. */
@@ -1132,7 +1154,7 @@ export async function buildRising(
       }, checks.get(row.item_id) ?? null, (row.reproduction_of === null || row.reproduction_of === undefined ? undefined : quoted.get(row.reproduction_of)) ?? null), lookup)),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: atOf(row),
-      fyp: byViews || byCoin || byRunning || byKeyShare,
+      fyp: !coinListHeld && (byViews || byCoin || byRunning || byKeyShare),
       byViews,
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */

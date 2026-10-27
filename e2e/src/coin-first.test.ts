@@ -126,14 +126,15 @@ test('the one-coin pass gets the route\'s coins back for the whole watch, past t
   assert.equal(recent.length, 0);
 });
 
-test('★ For You takes the post on the yes and the pick alone, a day after it went up, with no view reading — once', async () => {
+test('★ For You takes the post on the yes and the pick alone, a day after it went up — once; found only by the coin\'s link, not until its views clear the bar', async () => {
   const pick = (itemId: string, address: string | null, outcome: string) =>
     db.query(
       `insert into internal.post_coin_pick (item_id, address, outcome, decided_at, evidence, updated_at) values ($1, $2, $3, $4, '{}'::jsonb, $4)
        on conflict (item_id) do update set address = excluded.address, outcome = excluded.outcome, decided_at = excluded.decided_at`,
       [itemId, address, outcome, iso(NOW - 2 * MIN)],
     );
-  const policy = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, varietyOn: false } };
+  /* The route as it stood before policy.v192: the post found only by the coin's link joins with no view reading. */
+  const policy = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, varietyOn: false, coinListNeedsReach: false } };
   await pick(ORIGINAL, null, 'waiting');
   let frame = await buildRising(db, NOW as Millis, new Map(), 30 * MIN, policy);
   assert.ok(!frame.fyp.some((p) => p.id === ORIGINAL), 'no pick yet: not on For You');
@@ -144,6 +145,11 @@ test('★ For You takes the post on the yes and the pick alone, a day after it w
   assert.ok(frame.coinFirst?.has(ORIGINAL), 'by the route alone');
   const card = frame.fyp.find((p) => p.id === ORIGINAL);
   assert.equal(card?.coins.kind === 'matched' ? card.coins.coin.address : null, LAURA, 'the card shows the coin that brought it');
+
+  /* ★ policy.v192 (the owner, 2026-10-27): found only by a coin's link, it must have been seen — with no
+     view reading it is held off For You by every route, the coin-first route included. */
+  const needsReach = { ...policy, rising: { ...policy.rising, coinListNeedsReach: true } };
+  assert.ok(!(await buildRising(db, NOW as Millis, new Map(), 30 * MIN, needsReach)).fyp.some((p) => p.id === ORIGINAL), 'only the coin\'s link found it and its views are unread: held');
 
   await recordAdmitted(db, [ORIGINAL], NOW);
   frame = await buildRising(db, NOW as Millis, new Map(), 30 * MIN, policy);
