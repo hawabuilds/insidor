@@ -83,3 +83,14 @@ test('★ a second look inside the keep time costs nothing; a refusal serves the
   const coin = await market.coin(GRADUATED_MINT, '5m');
   assert.equal(coin.candles?.length, 5, 'the vendor refused; the last good candles were served');
 });
+
+test('★ past the keep time the last answer comes back at once, and a fresh one is fetched behind it', async () => {
+  const { market, asked, advance } = source();
+  await market.coin(GRADUATED_MINT, '5m');
+  const first = asked.length;
+  advance(60_000);
+  const coin = await market.coin(GRADUATED_MINT, '5m');
+  assert.equal(coin.candles?.length, 5, 'served from the last answer');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(asked.length > first, 'refreshed in the background');
+});
