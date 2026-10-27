@@ -60,6 +60,8 @@ const ALL_MAX_PX = 7;
 /** Room kept for the price axis when All works out how many candles fit. */
 const AXIS_PX = 64;
 const MARK_PX = 26;
+/** The gap between the top of the candle's wick and the bubble's bottom. */
+const MARK_LIFT_PX = 4;
 const DOUBLE_TAP_MS = 280;
 
 interface Colours {
@@ -259,17 +261,17 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         else break;
       }
       const x = ch.timeScale().timeToCoordinate(toUtcSeconds(at.t) as UTCTimestamp);
-      /* At the cap the push itself said, when the axis is in caps; else at the candle's close. */
-      const y = ser.priceToCoordinate(k !== 1 && notified?.marketCapUsd != null ? notified.marketCapUsd : at.price * k);
+      /* Just above the candle's wick, as pump.fun's bubbles sit: the candle stays readable under it. */
+      const y = ser.priceToCoordinate((at.high ?? at.price) * k);
       if (x === null || y === null) {
         hide();
         return;
       }
       /* ★ WHERE WE TOLD PEOPLE, AS PUMP.FUN'S TRADER BUBBLES (the owner, 2026-10-27: "when we notified
-         users of the coin"): our logo in a ringed circle on the candle of our first push, at the
-         market cap that push carried — no line, no words. */
+         users of the coin"): our logo in a ringed circle just above the candle of our first push —
+         no line, no words. */
       img.style.display = 'block';
-      img.style.transform = `translate(${Math.round(x - MARK_PX / 2)}px, ${Math.round(Math.max(0, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX / 2)))}px)`;
+      img.style.transform = `translate(${Math.round(x - MARK_PX / 2)}px, ${Math.round(Math.max(0, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX)))}px)`;
     };
     if (series === null || data.length === 0) {
       placeMarkRef.current();
