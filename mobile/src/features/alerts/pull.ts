@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { scrollTopNow } from '../../shared/scroller.ts';
 
 const PULL_AT = 64;
 const MAX_PULL = 96;
@@ -43,7 +44,7 @@ export function usePullToRefresh(refresh: () => Promise<void>): { readonly pull:
   useEffect(() => {
     let startY: number | null = null;
     let tracking = false;
-    const top = () => (document.scrollingElement?.scrollTop ?? window.scrollY) <= 0;
+    const top = () => scrollTopNow() <= 0;
     const onStart = (e: TouchEvent) => {
       if (!top() || busy.current || e.touches.length !== 1) return;
       /* A drag inside an open sheet or pop-up is that sheet's (its swipe to close), never a refresh. */

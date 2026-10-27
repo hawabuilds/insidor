@@ -38,6 +38,7 @@ import { ownerStore } from '../owner/owner-store.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
 import { BACKUP_CHECK_MS, merge, reconcile, staggerDelay } from './live-feed.ts';
 import type { Order } from './feed-order.ts';
+import { scrollByY, scrollTopNow } from '../../shared/scroller.ts';
 
 /** How a card that is new to the list comes in. */
 export interface Arrival {
@@ -68,7 +69,7 @@ const AWAY_REBUILD_MS = 5 * 60_000;
 /** The attribute every live card carries, so the anchor can be found again after the list changes. */
 export const LIVE_ID_ATTR = 'data-live-id';
 
-const scrollTop = (): number => document.scrollingElement?.scrollTop ?? window.scrollY;
+const scrollTop = scrollTopNow;
 
 /** The first card any part of which is on screen, and where its top is now. */
 function firstVisibleCard(): { readonly id: string; readonly top: number } | null {
@@ -156,7 +157,7 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
     const el = document.querySelector<HTMLElement>(`[${LIVE_ID_ATTR}="${CSS.escape(was.id)}"]`);
     if (el === null) return;
     const moved = el.getBoundingClientRect().top - was.top;
-    if (moved !== 0) window.scrollBy(0, moved);
+    if (moved !== 0) scrollByY(moved);
   }, [list]);
 
   /* Read the feed again when the number moved past the one we hold, or when we cannot tell. */

@@ -327,8 +327,6 @@
   right: 0;
   bottom: calc(14px + env(safe-area-inset-bottom));
   z-index: 40;
-  /* Moved by the visible screen's drift from the page box, 0 almost always (shared/viewport.ts). */
-  transform: translateY(var(--vv-drift, 0px));
   display: flex;
   justify-content: center;
   pointer-events: none;
