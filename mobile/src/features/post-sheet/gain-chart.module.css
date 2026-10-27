@@ -166,3 +166,11 @@
   stroke: #0d0d10;
   stroke-width: 1.5;
 }
+
+/* From the post going up (0 views) to our first reading: drawn, but plainly not read. */
+.lead {
+  stroke: #b48cff;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
