@@ -100,15 +100,26 @@ export class PgTradeFeedRepo {
   /**
    * The coins whose watch has not ended. A watch with no end runs `defaultWatchMs` from the coin's
    * launch (0112's "reader's default"), or from when it was listed when the launch is unknown.
+   *
+   * ★ TWO PARTS, ONE ANSWER (2026-10-27). As one `coalesce(w.until, …) > now` over the join it read
+   * every coin in public.asset (202 MB) on each call, a dozen times every two minutes, to return a
+   * few hundred: 15% of all the database's disk reads on a disk-bound evening. A watch with an end
+   * is now found by 0112's `coin_watch_until_idx` and only those few coins are joined; a watch with
+   * no end (none at the time) is the second part, joined as before. The same rows either way:
+   * `coalesce(until, x) > now` is `until > now` when until is set and `x > now` when it is not.
    */
   async watchList(nowMs: number, defaultWatchMs: number): Promise<readonly WatchedCoin[]> {
     const rows = await this.#db.query<{ address: string; until_at: string; measured_from: string | null; unmeasured_from: string | null }>(
-      `select w.address, w.measured_from, w.unmeasured_from,
-              coalesce(w.until, coalesce(a.minted_at, w.since) + make_interval(secs => $2::double precision / 1000)) as until_at
+      `select w.address, w.measured_from, w.unmeasured_from, w.until as until_at
+         from internal.coin_watch w
+        where w.until > $1 and w.since <= $1
+       union all
+       select w.address, w.measured_from, w.unmeasured_from,
+              coalesce(a.minted_at, w.since) + make_interval(secs => $2::double precision / 1000) as until_at
          from internal.coin_watch w
          left join public.asset a on a.chain = $3 and a.address = w.address
-        where w.since <= $1
-          and coalesce(w.until, coalesce(a.minted_at, w.since) + make_interval(secs => $2::double precision / 1000)) > $1`,
+        where w.until is null and w.since <= $1
+          and coalesce(a.minted_at, w.since) + make_interval(secs => $2::double precision / 1000) > $1`,
       [iso(nowMs), defaultWatchMs, this.#chain],
     );
     return rows.map((r) => ({ address: r.address, untilMs: new Date(r.until_at).getTime(), measuredFromMs: r.measured_from === null ? null : new Date(r.measured_from).getTime(), unmeasured: r.unmeasured_from !== null }));
