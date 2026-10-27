@@ -28,9 +28,13 @@
  * trade priced in another token than SOL is `otherQuote`, whose SOL figures are unknown, never 0.
  * Nothing is billed, so `bytes` stays empty and no coin can reach a byte cap.
  *
- * What breaks if changed carelessly: the prefilter. Parsing every frame is a few megabytes of JSON a
- * second; matching on anything but the frame's first mint lets a router's transfer frame, whose
- * first mint is a leg's, pose as a trade of the coin.
+ * ★ WITH THE CHARTS ON, EVERY FRAME WITH A MINT IS PARSED ONCE (`chart`, chainwatch chart.ts), because
+ * a coin's chart must start before anyone opens it. Measured on 2026-10-27: 796 frames and 1.25 MB a
+ * second, about 20 ms of parsing a second. The parse is shared, so the live feed and the watch list
+ * cost nothing more.
+ *
+ * What breaks if changed carelessly: the prefilter. Matching on anything but the frame's first mint
+ * lets a router's transfer frame, whose first mint is a leg's, pose as a trade of the coin.
  */
 
 import type { Millis } from '@insidor/contracts';
@@ -50,6 +54,8 @@ export interface RelayTradeSocketOptions {
   readonly note: (msg: string, fields: Readonly<Record<string, unknown>>) => void;
   /** ★ THE LIVE FEED (live.ts in chainwatch): every trade of a coin someone has open, as it lands, and the SOL price. */
   readonly live?: LiveHooks;
+  /** ★ THE CHARTS (chart.ts in chainwatch): every trade of every coin, so a coin's candles start at its first trade. */
+  readonly chart?: ChartHooks;
 }
 
 /** One trade as it lands, for the screens: facts of the trade, never anything of the rule. */
@@ -68,6 +74,8 @@ export interface LiveTick {
   readonly quoteMint: string;
   /** The pool it traded in ("pump" on the curve, another after it graduated). */
   readonly pool: string;
+  /** The pool's own account; null when the relay gave none. */
+  readonly poolAddress: string | null;
   /** The chain's time of the trade, ms. */
   readonly atMs: number;
   /** When it reached us, ms. */
@@ -80,6 +88,16 @@ export interface LiveHooks {
   readonly onTick: (t: LiveTick) => void;
   /** SOL in dollars, from the relay's own SOL and USDC trades. */
   readonly onSolUsd: (usd: number, atMs: number) => void;
+}
+
+/**
+ * Every trade frame of every coin, for the charts. Unlike the live feed this is not filtered by who
+ * has a coin open: a chart must begin at the coin's first trade, before anyone knew to open it. The
+ * cost is one JSON parse per frame (measured 2026-10-27, see chart.ts in chainwatch).
+ */
+export interface ChartHooks {
+  /** One frame's legs of `coin`; `launch` when the frame is the coin's own creation (it may carry no leg). */
+  readonly onTrades: (coin: string, ticks: readonly LiveTick[], launch: boolean, seenAtMs: number) => void;
 }
 
 /** The stablecoin and wrapped SOL, as the relay names them: their trades give SOL's dollar price. */
@@ -99,6 +117,7 @@ export function liveTicksOf(frame: Record<string, unknown>, seenAtMs: number): L
   const capQuote = num(frame['marketCapQuote']);
   const priceQuote = num(frame['price']);
   const pool = str(frame['pool']) ?? '';
+  const poolAddress = str(frame['poolId']);
   const out: LiveTick[] = [];
   for (const leg of frame['breakdown'] as unknown[]) {
     if (leg === null || typeof leg !== 'object') continue;
@@ -108,7 +127,7 @@ export function liveTicksOf(frame: Record<string, unknown>, seenAtMs: number): L
     const quoteAmount = num(l['quoteAmount']);
     const tokens = num(l['tokenAmount']);
     if ((side !== 'buy' && side !== 'sell') || trader === null || quoteAmount === null || tokens === null) continue;
-    out.push({ coin, signature, side, quoteAmount, tokens, trader, capQuote: capQuote !== null && capQuote > 0 ? capQuote : null, priceQuote: priceQuote !== null && priceQuote > 0 ? priceQuote : null, quoteMint, pool, atMs: ts, seenAtMs });
+    out.push({ coin, signature, side, quoteAmount, tokens, trader, capQuote: capQuote !== null && capQuote > 0 ? capQuote : null, priceQuote: priceQuote !== null && priceQuote > 0 ? priceQuote : null, quoteMint, pool, poolAddress, atMs: ts, seenAtMs });
   }
   return out;
 }
@@ -253,16 +272,24 @@ export function createRelayTradeSocket(opts: RelayTradeSocketOptions): TradeSock
     const coin = firstMint(data);
     if (coin === null) return;
     const live = opts.live;
+    const chart = opts.chart;
+    /* One parse per frame at most, shared by the live feed, the charts and the watch list. */
+    let parsed: Record<string, unknown> | null | undefined;
+    const parse = (): Record<string, unknown> | null => {
+      if (parsed === undefined) {
+        try {
+          parsed = JSON.parse(data) as Record<string, unknown>;
+        } catch {
+          parsed = null;
+        }
+      }
+      return parsed;
+    };
     /* ★ The live feed and the SOL price: parsed only for a coin someone has open, and SOL's pairs every few seconds. */
     if (live !== undefined) {
       const priceFrame = (coin === USDC || coin === WRAPPED_SOL) && seenAt - solSampledAt >= SOL_PRICE_EVERY_MS;
       if (priceFrame || live.wants(coin)) {
-        let f: Record<string, unknown> | null = null;
-        try {
-          f = JSON.parse(data) as Record<string, unknown>;
-        } catch {
-          f = null;
-        }
+        const f = parse();
         if (f !== null) {
           if (priceFrame) {
             const usd = solUsdOf(f);
@@ -275,11 +302,16 @@ export function createRelayTradeSocket(opts: RelayTradeSocketOptions): TradeSock
         }
       }
     }
+    if (chart !== undefined && coin !== USDC && coin !== WRAPPED_SOL) {
+      const f = parse();
+      if (f !== null) {
+        const ticks = liveTicksOf(f, seenAt);
+        if (ticks.length > 0 || f['action'] === 'create') chart.onTrades(coin, ticks, f['action'] === 'create', seenAt);
+      }
+    }
     if (!wanted.has(coin)) return;
-    let frame: Record<string, unknown>;
-    try {
-      frame = JSON.parse(data) as Record<string, unknown>;
-    } catch {
+    const frame = parse();
+    if (frame === null) {
       undecodable += 1;
       return;
     }

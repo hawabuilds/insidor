@@ -62,7 +62,7 @@ test('the prefilter reads the frame\'s first mint without parsing it', () => {
   assert.equal(firstMint('{"action":"transfer"}'), null);
 });
 
-function harness() {
+function harness(chart?: Parameters<typeof createRelayTradeSocket>[0]['chart']) {
   let t = 1_000;
   let handlers: StreamHandlers | null = null;
   const timers: (() => void)[] = [];
@@ -81,6 +81,7 @@ function harness() {
       return () => {};
     },
     note: () => {},
+    ...(chart === undefined ? {} : { chart }),
   });
   return {
     sock,
@@ -130,4 +131,20 @@ test('silence past the stale window is an outage from the last frame', () => {
   x.h().onOpen();
   x.at(1_000 + 30_001);
   assert.equal(x.sock.live(), false);
+});
+
+test('★ the charts see every coin\'s trades, watched or not, with its pool and whether it is a launch', () => {
+  const seen: { coin: string; legs: number; launch: boolean; pool: string | null }[] = [];
+  const x = harness({ onTrades: (coin, ticks, launch) => seen.push({ coin, legs: ticks.length, launch, pool: ticks[0]?.poolAddress ?? null }) });
+  x.sock.start();
+  x.h().onOpen();
+  x.h().onMessage(JSON.stringify(tradeFrame()));
+  x.h().onMessage(JSON.stringify(tradeFrame({ action: 'create', breakdown: [] })));
+  x.h().onMessage(JSON.stringify({ action: 'transfer', signature: 's', mint: 'other' }));
+  x.h().onMessage(JSON.stringify(tradeFrame({ mint: SOL })));
+  assert.deepEqual(seen, [
+    { coin: COIN, legs: 2, launch: false, pool: 'pool' },
+    { coin: COIN, legs: 0, launch: true, pool: null },
+  ]);
+  assert.equal(x.sock.drain().trades.length, 0, 'the watch list is unchanged: nothing watched, nothing kept');
 });
