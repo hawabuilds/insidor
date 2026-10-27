@@ -493,7 +493,7 @@ test('★ the pairs listing and the pairs counts are over ONE population', async
      predicate lives in a string literal, so the string is the only thing a test without a
      database can hold. */
   const asks = await assetAsks();
-  const listing = asks.find((a) => a.sql.includes('join latest l on l.asset_key = a.asset_key'));
+  const listing = asks.find((a) => a.sql.includes('join lateral (') && !a.sql.includes('left join lateral (') && a.sql.includes('order by r.taken_at desc'));
   const counts = asks.find((a) => a.sql.includes('as minted'));
   assert.notEqual(listing, undefined, 'no pairs listing statement was issued');
   assert.notEqual(counts, undefined, 'no pairs counts statement was issued');
