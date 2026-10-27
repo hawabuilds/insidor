@@ -281,12 +281,8 @@ export interface RunnerConfig {
   /** OPEN_JUDGE_POST_FIRST: `second` (unset) asks the second host's model the post question first; `router` the router's. */
   readonly postJudgeFirst: PostFirst;
   /**
-   * The image embedding vendor, or dormant. Dormant is a supported state: posts go without
-   * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
-   */
-  readonly embeddings: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string };
-  /**
    * Our own embedding service (services/embed), or dormant: EMBED_SERVICE_URL and EMBED_SECRET.
+   * Dormant is a supported state: posts go without vectors and GROUP groups them on the free tiers.
    * Configured or not, it embeds only when the policy's picture space is its space
    * (Policy.group.image.space; embed-port.ts): setting these two changes nothing on its own, so the
    * service can be deployed and tried before the policy edit that switches to it.
@@ -525,14 +521,6 @@ export function loadRunnerConfig(env: Env, openOnly: boolean = DEFAULT_POLICY.ju
     openJudge: readOpenJudgeSetup(env),
     openJudgeBackup: readOpenJudgeBackupSetup(judgeEnv),
     postJudgeFirst: readPostFirst(env),
-    embeddings:
-      (env['VOYAGE_API_KEY'] ?? '').trim() === ''
-        ? { state: 'dormant' }
-        : {
-            state: 'configured',
-            apiKey: (env['VOYAGE_API_KEY'] ?? '').trim(),
-            baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
-          },
     selfEmbed:
       (env['EMBED_SERVICE_URL'] ?? '').trim() === '' || (env['EMBED_SECRET'] ?? '').trim() === ''
         ? { state: 'dormant' }

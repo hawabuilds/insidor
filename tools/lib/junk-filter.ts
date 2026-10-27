@@ -150,7 +150,7 @@ export async function refitJunk(db: Db, opts: { readonly record: boolean; readon
   const now = opts.now ?? new Date();
   const repo = new PgJunkFilterRepo(db);
   const labels = await loadJunkLabels(db, p);
-  /* ★ THE POLICY'S POST SPACE, not one model's (2026-10-26): this read Voyage's name from its adapter,
+  /* ★ THE POLICY'S POST SPACE, not one model's (2026-10-26): this read the hosted model's space name from its adapter,
      so after the switch to our own models (policy.v172, v182) every nightly fit was in a space no new
      post has, the core refused to score with it, and For You took posts with no junk check at all. */
   const space = p.group.image.postSpace;

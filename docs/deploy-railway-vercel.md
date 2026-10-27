@@ -75,7 +75,7 @@ under `coin-logos/`; without them it skips and the app shows each coin's own pic
 **runner** — `DATABASE_URL`, `SPEND` (`live`), `DISCOVER` (`on`), `DAILY_BUDGET_USD` (`21`),
 `X_API_KEY`, `X_API_BASE` (optional), `APIFY_TOKEN`, `TIKTOK_DISCOVERY_ACTOR_ID`,
 `TIKTOK_OBSERVE_ACTOR_ID`, `TIKTOK_API_BASE` (optional), `ANTHROPIC_API_KEY`, `JUDGE_MODEL`,
-`ANTHROPIC_BASE_URL` (optional), `VOYAGE_API_KEY`, `VOYAGE_API_BASE` (optional),
+`ANTHROPIC_BASE_URL` (optional), `EMBED_SERVICE_URL`, `EMBED_SECRET`,
 `HELIUS_API_KEY`, `COINGECKO_API_KEY` (optional), `COINGECKO_API_PLAN` (optional),
 `METADATA_GATEWAY` (optional), `DISCOVER_TERMS` (optional), `RANK` (optional),
 `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_USER_AGENT` (optional),

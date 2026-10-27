@@ -19,9 +19,9 @@ test("★ a test is refused before it would cross the tests' $1 day, whichever v
   const tests = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now });
   const m = combinedMeter({ own, shared: book, tests, prefix: 'learn:test:' });
   m.record(spend('openrouter', 0.7));
-  assert.equal(m.mayspend('voyage', 0.2), true);
-  assert.equal(m.mayspend('voyage', 0.4), false, '$0.70 + $0.40 crosses $1 though the stage cap and the book have room');
-  assert.ok(Math.abs(m.line('voyage').remainingUsd - 0.3) < 1e-9);
+  assert.equal(m.mayspend('together', 0.2), true);
+  assert.equal(m.mayspend('together', 0.4), false, '$0.70 + $0.40 crosses $1 though the stage cap and the book have room');
+  assert.ok(Math.abs(m.line('together').remainingUsd - 0.3) < 1e-9);
   assert.equal(book.entries()[0]?.endpoint, 'learn:test:judge', 'the row is labelled a test in the book');
 });
 

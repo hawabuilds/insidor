@@ -322,7 +322,7 @@ const NARRATIVES: readonly Record<string, unknown>[] = [
     firstSeen: ago(4 * HOUR), coins: { kind: 'one', coin: FERRY },
     evidence: posts(
       [['X', 'nordkyst_ferge'], ['X', 'harbourdaily'], ['TikTok', 'boatsdaily'], ['Instagram', 'fjordlife'], ['X', 'maritimeclips'],
-        ['TikTok', 'hornsound'], ['Instagram', 'portviews'], ['X', 'captainsdesk'], ['TikTok', 'lastvoyage'], ['X', 'shipspotter'],
+        ['TikTok', 'hornsound'], ['Instagram', 'portviews'], ['X', 'captainsdesk'], ['TikTok', 'lastcrossing'], ['X', 'shipspotter'],
         ['Instagram', 'harbourlights'], ['TikTok', 'ferryfans'], ['X', 'nordicnews'], ['Instagram', 'tugboatdiary']],
       15 * MIN, 4 * HOUR, 'every boat answered',
     ),

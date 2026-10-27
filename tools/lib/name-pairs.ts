@@ -24,7 +24,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { embedInput, postPicture } from '../../core/src/qualify/precedents.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './own-embed.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
 import { goldCoins } from '../../eval/src/gold/coin-origins.ts';
 import { matchCases } from '../../eval/src/gold/match-cases.ts';
@@ -117,7 +117,8 @@ export async function vectorsFor(db: Db, posts: readonly PairPost[], space: stri
   }
   const left = posts.filter((p) => !out.has(p.itemId)).slice(0, maxPaid);
   if (left.length > 0 && meter !== null) {
-    const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+    /* Our own service, computing the post space asked for (the policy's, from every caller). */
+    const embed = ownEmbed(meter, { spaces: { space: DEFAULT_POLICY.group.image.space, postSpace: space } });
     const size = embed.maxBatch;
     for (let i = 0; i < left.length; i += size) {
       const batch = left.slice(i, i + size);

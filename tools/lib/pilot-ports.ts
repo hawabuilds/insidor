@@ -1,5 +1,6 @@
 /**
- * THE HISTORY PILOT'S SUPPLIERS, wired for `tools/history-pilot.ts run`: Voyage for pictures,
+ * THE HISTORY PILOT'S SUPPLIERS, wired for `tools/history-pilot.ts run`: our own embedding service
+ * for pictures (in the policy's picture space, tools/lib/own-embed.ts),
  * the judge for borderline pairs and creator posts, X for creator posts and the search back,
  * GeckoTerminal for a coin's peak (free).
  *
@@ -18,7 +19,7 @@ import type { Millis } from '../../contracts/src/vocabulary.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
 import type { Policy } from '../../contracts/src/policy.ts';
 import { checkCreatorLink, namesCoin } from '../../core/src/origin/check.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
+import { ownEmbedChoice } from './own-embed.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../../adapters/judge/anthropic/src/index.ts';
 import { xPlatform, httpClient as xClient } from '../../adapters/platform/x/src/index.ts';
 import { geckoterminal } from '../../adapters/market/geckoterminal/src/index.ts';
@@ -42,14 +43,14 @@ export function pilotPorts(cfg: { readonly out: URL; readonly meter: Meter; read
     return { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + DEADLINE_MS };
   };
 
-  const voyageKey = cfg.env['VOYAGE_API_KEY'] ?? '';
   const xKey = cfg.env['X_API_KEY'] ?? '';
   const setup = readJudgeSetup(cfg.env);
-  if (voyageKey === '' || xKey === '' || setup.state !== 'configured') throw new Error('VOYAGE_API_KEY, X_API_KEY and the judge (ANTHROPIC_API_KEY, JUDGE_MODEL) must all be set to run the pilot.');
+  const embedChoice = ownEmbedChoice(cfg.meter, { env: cfg.env, spaces: P.group.image });
+  if (embedChoice.port === null || xKey === '' || setup.state !== 'configured') throw new Error('EMBED_SERVICE_URL and EMBED_SECRET, X_API_KEY and the judge (ANTHROPIC_API_KEY, JUDGE_MODEL) must all be set to run the pilot.');
   const price = priceFor(setup.model);
   if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price.`);
 
-  const embed = voyageEmbed({ client: voyageClient({ apiKey: voyageKey, baseUrl: cfg.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter: cfg.meter, now: Date.now });
+  const embed = embedChoice.port;
   const judge = anthropicJudge({
     client: judgeClient({
       apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.pairMaxOutputTokens, effort: price.effort,
@@ -61,7 +62,8 @@ export function pilotPorts(cfg: { readonly out: URL; readonly meter: Meter; read
   const x = xPlatform({ client: xClient({ apiKey: xKey, baseUrl: cfg.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch }), meter: cfg.meter, now: () => Date.now() });
   const market = geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: 15_000, now: Date.now });
 
-  const vectors = jsonFile<Record<string, number[] | null>>(new URL('vectors.json', cfg.out), {});
+  /* One cache per picture space: a vector cached from another model is not comparable with ours. */
+  const vectors = jsonFile<Record<string, number[] | null>>(new URL(`vectors.${P.group.image.space}.json`, cfg.out), {});
   const pairs = jsonFile<Record<string, 'yes' | 'no' | 'unsure'>>(new URL('pairs.json', cfg.out), {});
 
   /** A picture's vector: cached, or embedded now and charged. Null when it could not be read. */
@@ -69,7 +71,7 @@ export function pilotPorts(cfg: { readonly out: URL; readonly meter: Meter; read
     const held = vectors.get()[uri];
     if (held !== undefined) return held;
     const result = await embed.embedMedia!([image(uri)], budget());
-    charges.push({ supplier: 'voyage', step: 'picture', usd: result.spend.usd });
+    charges.push({ supplier: 'embed-service', step: 'picture', usd: result.spend.usd });
     const v = result.value[0];
     const values = v === null || v === undefined ? null : Array.from(v.values);
     vectors.save({ ...vectors.get(), [uri]: values });

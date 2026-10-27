@@ -3,10 +3,9 @@
  * the story; a different raccoon that only looks alike does not — even when it claims the
  * same name — because the judge, shown both pictures, says "no".
  *
- * Real schema (PGlite), the real GROUP loop, the real embedding step through the Voyage port,
- * and the real same-subject question through the judge client. The vendor replies are in each
- * vendor's documented shape and written by hand (see adapters/embed/voyage/src/__fixtures__);
- * nothing here opens a socket.
+ * Real schema (PGlite), the real GROUP loop, the real embedding step over a stand-in embedding
+ * port, and the real same-subject question through the judge client. The judge's replies are in
+ * the vendor's documented shape and written by hand; nothing here opens a socket.
  */
 
 import { strict as assert } from 'node:assert';
@@ -14,10 +13,10 @@ import { before, test } from 'node:test';
 
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId, storyId } from '@insidor/contracts/ids.ts';
+import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
-import { voyageEmbed } from '@insidor/embed-voyage';
 import { anthropicJudge, httpClient } from '@insidor/judge-anthropic';
 import { policyHash } from '@insidor/runner/src/hash.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
@@ -68,7 +67,7 @@ function post(n: number, author: string, picture: string, text: string, minutesA
 }
 
 /**
- * The image vectors, as the Voyage reply carries them: the original raccoon photo along one
+ * The image vectors, as the embedding port returns them: the original raccoon photo along one
  * axis; the cropped and captioned copy at cosine 0.90 to it; a different raccoon at 0.76.
  */
 function vectorFor(uri: string): number[] {
@@ -84,6 +83,22 @@ function vectorFor(uri: string): number[] {
   }
   return v;
 }
+
+/**
+ * A stand-in embedding port, in the space the measured bars were set in (policy-measured-bars.ts):
+ * the hand-written cosines above are that space's, and the stored vectors are read under its name.
+ */
+const embedPort: EmbedPort = {
+  id: 'embed:test',
+  space: P.group.image.space,
+  dimensions: 1024,
+  maxBatch: 32,
+  embedText: async () => ({ value: [], spend: { vendor: 'test', endpoint: 'embed', unit: 'per-item-returned', units: 0, usd: 0, at: NOW } }),
+  embedMedia: async (media) => ({
+    value: media.map((m) => ({ space: P.group.image.space, dimensions: 1024, values: Float32Array.from(vectorFor(m.uri)) })),
+    spend: { vendor: 'test', endpoint: 'embed', unit: 'per-item-returned', units: media.length, usd: 0, at: NOW },
+  }),
+};
 
 const judgedName = (name: string): Judgement => ({
   judgeId: 'judge:test@1', promptId: 'p@1', judgedAt: NOW, coinable: true, confidence: 0.85, lookedAt: 'text',
@@ -116,16 +131,7 @@ before(async () => {
 
   /* Every picture embedded through the real step and port. */
   await embedImages({
-    embed: voyageEmbed({
-      client: {
-        embed: async ({ inputs }) => ({
-          vectors: inputs.map((i) => Float32Array.from(vectorFor('imageUrl' in i ? i.imageUrl : ''))),
-          totalTokens: inputs.length * 1_446,
-        }),
-      },
-      meter: openMeter,
-      now: () => NOW,
-    }),
+    embed: embedPort,
     images: new PgImageEmbeddingRepo(db),
     mode: 'live',
     policy: P,

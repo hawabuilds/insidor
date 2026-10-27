@@ -1,5 +1,5 @@
 /**
- * The image embedding step, with the real Voyage port over a reply in the vendor's shape:
+ * The image embedding step, with our own embedding port over a reply in the service's shape:
  * dry runs send nothing, live runs store each vector once, a refused budget leaves posts
  * without vectors rather than failing anything, and only pictures something will read are sent.
  */
@@ -12,12 +12,22 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { UnembeddedImage } from '@insidor/store';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { PictureRefused, readReply, voyageEmbed } from '@insidor/embed-voyage';
-import { TWO_IMAGES } from '@insidor/embed-voyage/__fixtures__/replies.ts';
+import { MODEL_DIMENSIONS, readReply, selfEmbed, SPACE } from '@insidor/embed-selfhost';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import type { Logger } from '../log.ts';
 import { embedImages } from './embed-images.ts';
+
+/* A reply in the service's shape: one unit vector per input, or null for a picture it could not read. */
+const unit = (): number[] => [1, ...new Array<number>(MODEL_DIMENSIONS - 1).fill(0)];
+const reply = (read: readonly boolean[]) => ({
+  model: 'm',
+  space: SPACE,
+  postSpace: `${SPACE}.post`,
+  dimensions: MODEL_DIMENSIONS,
+  vectors: read.map((r) => (r ? unit() : null)),
+  pictures: read.map((r) => (r ? 'read' : 'unread')),
+});
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 const passed: NonNullable<UnembeddedImage['judgement']> = { coinable: true, confidence: 0.9, lookedAt: 'picture', proposedName: 'RACCOON' };
@@ -35,8 +45,8 @@ function setup(allow = true, queue: readonly UnembeddedImage[] = QUEUE) {
     mayspend: () => allow,
     line: () => ({ capUsd: 1, spentUsd: 0, stopAtUsd: 1, remainingUsd: 1, unrecordedUsd: 0 }),
   } as unknown as Meter;
-  const embed = voyageEmbed({
-    client: { embed: async (input) => ((calls += 1), readReply(TWO_IMAGES, input.inputs.length)) },
+  const embed = selfEmbed({
+    client: { embed: async (inputs) => ((calls += 1), readReply(reply(inputs.map(() => true)), inputs.length)) },
     meter,
     now: () => 0 as Millis,
   });
@@ -99,12 +109,12 @@ test('★ a picture the vendor could not read is skipped on the next pass, and t
   const sent: string[][] = [];
   const recorded: string[] = [];
   const meter = { record: () => undefined, spentUsd: () => 0, mayspend: () => true, line: () => ({ capUsd: 1, spentUsd: 0, stopAtUsd: 1, remainingUsd: 1, unrecordedUsd: 0 }) } as unknown as Meter;
-  const embed = voyageEmbed({
+  const embed = selfEmbed({
     client: {
-      embed: async (input) => {
-        sent.push(input.inputs.map((i) => i.imageUrl ?? ''));
-        if (input.inputs.some((i) => i.imageUrl === dead)) throw new PictureRefused('embed');
-        return readReply(TWO_IMAGES, input.inputs.length);
+      embed: async (inputs) => {
+        sent.push(inputs.map((i) => i.imageUrl ?? ''));
+        /* The service answers the picture it could not fetch with a null vector, the rest as read. */
+        return readReply(reply(inputs.map((i) => i.imageUrl !== dead)), inputs.length);
       },
     },
     meter,

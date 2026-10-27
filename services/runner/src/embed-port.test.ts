@@ -9,13 +9,15 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { E5_POST_SPACE, POST_SPACE as SELF_POST, SPACE as SELF } from '@insidor/embed-selfhost';
-import { POST_SPACE as HOSTED_POST, SPACE as HOSTED } from '@insidor/embed-voyage';
 
 import { embedPortFor } from './embed-port.ts';
 
+/* The hosted model's spaces from before our own: still the space of older stored vectors, no longer computed. */
+const HOSTED = 'multimodal-3.1024';
+const HOSTED_POST = `${HOSTED}.post`;
+
 const meter = {} as Meter;
 const both = {
-  embeddings: { state: 'configured', apiKey: 'k', baseUrl: 'https://vendor.example' },
   selfEmbed: { state: 'configured', baseUrl: 'http://embed.internal:8790', secret: 's'.repeat(30) },
 } as const;
 
@@ -26,10 +28,10 @@ test('★ the default policy (v172) runs on our own service, whatever else is co
   assert.ok(got.port?.id.includes('embed-service'));
 });
 
-test('★ the policy naming the hosted space goes back to the hosted port: the rollback', () => {
+test('★ the policy naming the hosted model\'s old spaces is dormant: no port computes them any more', () => {
   const got = embedPortFor(both, { space: HOSTED, postSpace: HOSTED_POST }, meter);
-  assert.equal(got.port?.space, HOSTED);
-  assert.ok(!got.port?.id.includes('embed-service'));
+  assert.equal(got.port, null);
+  assert.match(got.dormant ?? '', /no embedding port/);
 });
 
 test('★ the policy naming our own space switches to our own service', () => {

@@ -35,12 +35,14 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { embedInput, postPicture } from '../core/src/qualify/precedents.ts';
-import { POST_SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { asDb, createPool, DB_ROLE, PgCoinModelRepo, PgPostEmbeddingRepo } from '../store/src/index.ts';
 import { hashShare, TEST_SHARE } from './lib/coin-model.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 
 const P = DEFAULT_POLICY;
+/* The policy's post space: the one the runner keeps post vectors in, and the one our own service is built for here. */
+const POST_SPACE = P.group.image.postSpace;
 const arg = (name: string): string | null => {
   const i = process.argv.indexOf(name);
   return i < 0 ? null : (process.argv[i + 1] ?? null);
@@ -81,7 +83,7 @@ try {
   let kept = held.length;
   if (todo.length > 0) {
     const { meter, close } = await openSharedMeter(capUsd, process.env, answered ? book : 'learning');
-    const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+    const embed = ownEmbed(meter);
     try {
       for (let k = 0; k < todo.length; k += embed.maxBatch) {
         const part = todo.slice(k, k + embed.maxBatch);

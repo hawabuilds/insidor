@@ -5,7 +5,7 @@
  * joins nothing and seeds nothing. A story with no name is not searched, and says so.
  *
  * Real schema (PGlite), the real backfill and embedding steps, the real GROUP loop. The
- * source answers from a table and the image vectors are in the vendor's reply shape;
+ * source answers from a table and the image vectors come from a stand-in embedding port;
  * nothing opens a socket.
  */
 
@@ -14,11 +14,11 @@ import { before, test } from 'node:test';
 
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId, storyId } from '@insidor/contracts/ids.ts';
+import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
-import { voyageEmbed } from '@insidor/embed-voyage';
 import { policyHash } from '@insidor/runner/src/hash.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
 import { groupLoop } from '@insidor/runner/src/loops/group.ts';
@@ -83,6 +83,22 @@ function vectorFor(uri: string): number[] {
   return v;
 }
 
+/**
+ * A stand-in embedding port, in the space the measured bars were set in (policy-measured-bars.ts):
+ * the hand-written cosines above are that space's, and the stored vectors are read under its name.
+ */
+const embedPort: EmbedPort = {
+  id: 'embed:test',
+  space: P.group.image.space,
+  dimensions: 1024,
+  maxBatch: 32,
+  embedText: async () => ({ value: [], spend: { vendor: 'test', endpoint: 'embed', unit: 'per-item-returned', units: 0, usd: 0, at: NOW } }),
+  embedMedia: async (media) => ({
+    value: media.map((m) => ({ space: P.group.image.space, dimensions: 1024, values: Float32Array.from(vectorFor(m.uri)) })),
+    spend: { vendor: 'test', endpoint: 'embed', unit: 'per-item-returned', units: media.length, usd: 0, at: NOW },
+  }),
+};
+
 const source = {
   id: X,
   capabilities: { discovery: ['keyword', 'catchall'] },
@@ -113,11 +129,7 @@ function backfillDeps(): BackfillDeps {
 
 async function embed(): Promise<void> {
   await embedImages({
-    embed: voyageEmbed({
-      client: { embed: async ({ inputs }) => ({ vectors: inputs.map((i) => Float32Array.from(vectorFor('imageUrl' in i ? i.imageUrl : ''))), totalTokens: inputs.length * 1_446 }) },
-      meter: openMeter,
-      now: () => NOW,
-    }),
+    embed: embedPort,
     images: new PgImageEmbeddingRepo(db),
     mode: 'live',
     policy: P,

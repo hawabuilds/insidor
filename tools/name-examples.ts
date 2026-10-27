@@ -19,7 +19,7 @@
 
 import process from 'node:process';
 
-import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
+import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE, PgNameExampleRepo, type NamePair } from '../store/src/index.ts';
 import { allPairPosts, vectorsFor } from './lib/name-pairs.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
@@ -28,7 +28,10 @@ const arg = (name: string, fallback: string): string => {
   const i = process.argv.indexOf(name);
   return i >= 0 ? (process.argv[i + 1] ?? fallback) : fallback;
 };
-const CACHE = arg('--cache', 'var/name-vectors.json');
+/* The policy's post space: the vectors the runner stores and the namer reads. */
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
+/* One cache per space: a vector cached in another space is a different representation under the same post id. */
+const CACHE = arg('--cache', `var/name-vectors.${POST_SPACE}.json`);
 const paid = process.env['SPEND'] === 'live' && process.argv.includes('--yes');
 const CAP = Number(arg('--cap', '0.3'));
 

@@ -76,7 +76,7 @@ test('cost: each supplier in its part, anything unknown still in the total', () 
   assert.equal(costPartOf('twitterapi.io'), 'x');
   assert.equal(costPartOf('together'), 'judge');
   assert.equal(costPartOf('scrapecreators'), 'tiktok');
-  assert.equal(costPartOf('voyage'), 'pictures');
+  assert.equal(costPartOf('embed-service'), 'pictures');
   assert.equal(costPartOf('someone-new'), 'other');
   const rows: GoalRows = { ...none, spend: [{ dayMs: 0, part: 'x', usd: 2 }, { dayMs: 0, part: 'other', usd: 1.5 }] };
   assert.equal(line('X').cell(rows).text, '$2.00');

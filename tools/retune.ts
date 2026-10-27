@@ -168,7 +168,6 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { JudgeEvidence } from '../contracts/src/judgement.ts';
 import { lessonsLine, narrativeLessons } from './lib/narrative-lessons.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, PgOwnerSeenRepo, type GoldAddition } from '../store/src/index.ts';
-import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, keptYes, type KeptPost, gate, goalsText, latestSlot, junkBRose, missedCaught, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, ratesOf, regressions, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type OwnerPick, type OwnerSets, type OwnerSide, type Rate } from '../eval/src/feed/examples.ts';
@@ -192,6 +191,8 @@ import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
 import { RULEBOOK_HEADING, countCalls, withOwnerRules, writeRulebook } from './lib/rulebook.ts';
 
 const P = DEFAULT_POLICY;
+/* The policy's post space, the one the runner stores label vectors in (not one model's adapter constant). */
+const POST_SPACE = P.group.image.postSpace;
 const L = P.learning;
 
 /* ── operational constants: how much is read and spent, never what is decided ─────────────────── */

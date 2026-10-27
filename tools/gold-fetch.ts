@@ -9,7 +9,7 @@
  *   search    one search back for the coin's name, ending at its launch.                  Paid: X.
  *   quotes    the post each read post quotes, one hop — the earliest-post search.          Paid: X.
  *   judge     the judge's "nameable subject?" for each creator post that reaches it.      Paid: Anthropic.
- *   images    every picture embedded; each post's similarity to the coin's picture.       Paid: Voyage.
+ *   images    every picture embedded; each post's similarity to the coin's picture.       Ours: $0, metered.
  *   pairs     the judge's same-subject answer for each borderline picture that names the coin. Paid: Anthropic.
  *
  * ★ TUNING SET ONLY. The 30% held out is never fetched here: evidence gathered for it would
@@ -28,9 +28,9 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { storyId } from '../contracts/src/ids.ts';
 import type { Author, Item } from '../contracts/src/vocabulary.ts';
 import type { Meter } from '../contracts/src/ports/meter.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { goldCoins, tuning, type GoldCoin } from '../eval/src/gold/coin-origins.ts';
@@ -38,7 +38,10 @@ import { EVIDENCE_FILE, loadEvidence, type CoinEvidence, type PostRead } from '.
 
 const P = DEFAULT_POLICY;
 const X_USD_PER_POST = 0.000_15;
-const VOYAGE_USD_PER_IMAGE = (1_450 * 0.12) / 1e6;
+/* Our own embedding service, in the policy's picture space (tools/lib/own-embed.ts): a fixed monthly
+   machine, $0 a call. Similarities recorded before it were measured on the hosted model we used
+   before our own and are not re-measured: a stage skips a coin that already has them. */
+const EMBED_USD_PER_IMAGE = 0;
 const JUDGE_USD_PER_POST = 0.000_7;
 const PAIR_USD = 0.003;
 const SEARCH_LIMIT = P.backfill.searchResultCap;
@@ -141,7 +144,7 @@ function estimate(): void {
     ['search', `${n.searches} searches, at most ${SEARCH_LIMIT} posts each`, n.worstSearchPosts * X_USD_PER_POST],
     ['quotes', `about ${quoteGuess} quoted posts, one hop (a guess: a tenth of what searches return)`, quoteGuess * X_USD_PER_POST],
     ['judge', `at most ${n.postLinks} creator posts, one at a time`, n.postLinks * JUDGE_USD_PER_POST],
-    ['images', `at most ${images} pictures (coins, creator posts, origins, search results)`, images * VOYAGE_USD_PER_IMAGE],
+    ['images', `at most ${images} pictures (coins, creator posts, origins, search results)`, images * EMBED_USD_PER_IMAGE],
     ['pairs', `borderline pictures that name the coin, capped at ${P.group.image.pairChecksPerDay}`, P.group.image.pairChecksPerDay * PAIR_USD],
   ];
   console.log(`Tuning set: ${coins.length} coins (the 30% held out is not fetched).\n`);
@@ -277,16 +280,15 @@ async function judge(): Promise<void> {
 }
 
 async function images(): Promise<void> {
-  const key = process.env['VOYAGE_API_KEY'] ?? '';
-  if (key === '') refuse('VOYAGE_API_KEY is not set.');
+  if ((process.env['EMBED_SERVICE_URL'] ?? '').trim() === '' || (process.env['EMBED_SECRET'] ?? '').trim() === '') refuse('EMBED_SERVICE_URL and EMBED_SECRET are not set.');
   const todo = coins.filter((c) => evidence.get(c.id)?.similarity === undefined && evidence.get(c.id)?.meta?.imageUri);
   const per = (c: GoldCoin) => {
     const ev = evidence.get(c.id);
     return [...(ev?.search?.results ?? []), ...(ev?.creator?.kind === 'post' && ev.creator.post ? [ev.creator.post] : []), ...(ev?.origin?.post ? [ev.origin.post] : [])].filter((p) => p.imageUri !== null);
   };
   const total = todo.reduce((n, c) => n + 1 + per(c).length, 0);
-  const meter = await paid(total * VOYAGE_USD_PER_IMAGE * 2, `images: ${total} pictures`);
-  const embed = voyageEmbed({ client: voyageClient({ apiKey: key, baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  const meter = await paid(total * EMBED_USD_PER_IMAGE * 2, `images: ${total} pictures`);
+  const embed = ownEmbed(meter);
   for (const c of todo) {
     const posts = per(c);
     const media = [evidence.get(c.id)?.meta?.imageUri ?? '', ...posts.map((p) => p.imageUri ?? '')].map((uri) => ({ kind: 'image' as const, uri, width: null, height: null, durationMs: null }));

@@ -47,12 +47,14 @@ import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
-import { SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
+/* The policy's picture space: the coined pictures the projector's boost reads, and the one our own service computes. */
+const SPACE = P.group.image.space;
 /* ★ STOPPED (the owner, 2026-10-16: "no Anthropic API at all from now on"). This tool asks the main
    judge only; the open judge's measurement of the same sets is `tools/retune.ts measure`. Kept, not
    deleted, so the main judge's numbers it recorded stay readable beside it; `--main` runs it anyway. */
@@ -175,7 +177,7 @@ if (BOOST) {
     coined.push({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] });
   }
   await pool.end();
-  const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  const embed = ownEmbed(meter);
   for (const p of posts) {
     if (p.imageUri === null || postVectors.has(p.imageUri)) continue;
     const line = meter.line();

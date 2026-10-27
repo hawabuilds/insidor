@@ -49,7 +49,8 @@ const ALIVE_FILE = new URL('alive.json', OUT);
 
 /* Prices, as the other paid tools state them (tools/gold-fetch.ts). */
 const X_USD_PER_POST = 0.000_15;
-const VOYAGE_USD_PER_IMAGE = (1_800 * 0.12) / 1e6;
+/* Pictures go to our own embedding service (tools/lib/pilot-ports.ts): a fixed monthly machine, $0 a call. */
+const EMBED_USD_PER_IMAGE = 0;
 const JUDGE_USD_PER_POST = 0.000_7;
 /* One X search back per narrative: one page of results from just before its first coin. */
 const SEARCH_RESULTS = 20;
@@ -174,9 +175,9 @@ function estimate(): void {
   const narratives = biggestFirst(groupCoins(coins, [], P));
   const multi = narratives.filter((n) => n.coins.length > 1).length;
 
-  const pictures = coins.length * VOYAGE_USD_PER_IMAGE;
+  const pictures = coins.length * EMBED_USD_PER_IMAGE;
   const creator = coins.length * CREATOR_POST_SHARE * X_USD_PER_POST;
-  const perNarrative = SEARCH_RESULTS * X_USD_PER_POST + PICTURES_PER_SEARCH * VOYAGE_USD_PER_IMAGE + JUDGED_PER_SEARCH * JUDGE_USD_PER_POST;
+  const perNarrative = SEARCH_RESULTS * X_USD_PER_POST + PICTURES_PER_SEARCH * EMBED_USD_PER_IMAGE + JUDGED_PER_SEARCH * JUDGE_USD_PER_POST;
   const searches = narratives.length * perNarrative;
   const total = pictures + creator + searches;
   const affordable = Math.max(0, Math.floor((H.pilotUsd - pictures - creator) / perNarrative));
@@ -356,11 +357,11 @@ function pilotEstimate(coins: readonly PilotCoin[]) {
   const confirms = Math.ceil(pairs * 0.2) + narratives * 2;
   const searchPictures = narratives * PICTURES_PER_SEARCH;
   const lines = {
-    voyage: { calls: pictured.size + searchPictures, usd: (pictured.size + searchPictures) * VOYAGE_USD_PER_IMAGE },
+    'embed-service': { calls: pictured.size + searchPictures, usd: (pictured.size + searchPictures) * EMBED_USD_PER_IMAGE },
     x: { calls: xLinks + narratives, usd: xLinks * X_USD_PER_POST + narratives * SEARCH_RESULTS * X_USD_PER_POST },
     anthropic: { calls: confirms + xLinks + narratives * JUDGED_PER_SEARCH, usd: confirms * PAIR_USD + xLinks * JUDGE_USD_PER_POST + narratives * JUDGED_PER_SEARCH * JUDGE_USD_PER_POST },
   };
-  return { narratives, pairs, xLinks, searches: narratives, imageChecks: pictured.size + searchPictures, confirms, lines, total: lines.voyage.usd + lines.x.usd + lines.anthropic.usd };
+  return { narratives, pairs, xLinks, searches: narratives, imageChecks: pictured.size + searchPictures, confirms, lines, total: lines['embed-service'].usd + lines.x.usd + lines.anthropic.usd };
 }
 
 async function run(): Promise<void> {
@@ -386,10 +387,10 @@ async function run(): Promise<void> {
   /* What is left of the pilot's total, AND the owner's daily lines shared with the live runner. */
   const { meter, close } = await openSharedMeter(left);
   const reserve = {
-    pictures: 2 * VOYAGE_USD_PER_IMAGE,
+    pictures: 2 * EMBED_USD_PER_IMAGE,
     confirm: PAIR_USD,
     creator: X_USD_PER_POST + JUDGE_USD_PER_POST,
-    search: SEARCH_RESULTS * X_USD_PER_POST + PICTURES_PER_SEARCH * VOYAGE_USD_PER_IMAGE + JUDGED_PER_SEARCH * PAIR_USD,
+    search: SEARCH_RESULTS * X_USD_PER_POST + PICTURES_PER_SEARCH * EMBED_USD_PER_IMAGE + JUDGED_PER_SEARCH * PAIR_USD,
   };
   const log = { info: (m: string, f?: object) => console.log(m, f ?? ''), warn: (m: string, f?: object) => console.warn(m, f ?? ''), error: (m: string, f?: object) => console.error(m, f ?? ''), child: () => log };
   const result = await runPilot(coins, { ports: pilotPorts({ out: OUT, meter, policy: P, env: process.env }), reserve, history, policy: P, log: log as never, now: () => Date.now() as never });

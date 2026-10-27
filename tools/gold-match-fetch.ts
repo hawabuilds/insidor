@@ -10,7 +10,7 @@
  *            from the creator's host behind the adapter's address fence when the link names no
  *            content id, for every coin not launched before its post. Free (RPC credits).
  *   posts    a picture for each origin post we never read: X posts by id, TikTok covers.        Paid: X (a few posts).
- *   images   each post's picture against each coin that could still be its coin (launched after it). Paid: Voyage.
+ *   images   each post's picture against each coin that could still be its coin (launched after it). Ours: $0, metered.
  *   pairs    the judge's same-subject answer on borderline pairs, capped at `PAIRS_CAP`.        Paid: Anthropic.
  *   reads    an X post we never read, by id, for its words and its author.                     Paid: X (a few posts).
  *   replies  the newest replies under each X post before the timing window closed, and its own
@@ -43,13 +43,13 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { Meter } from '../contracts/src/ports/meter.ts';
 import type { CoinSearch } from '../contracts/src/ports/coin-search.ts';
 import { mergeHits } from '../core/src/search/merge.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { dexscreenerSearch } from '../adapters/market/dexscreener/src/index.ts';
 import { geckoterminal } from '../adapters/market/geckoterminal/src/index.ts';
 import { fetchDeclaredMetadata, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { goldCoins } from '../eval/src/gold/coin-origins.ts';
 import { matchCases, MATCH_EVIDENCE_FILE, loadMatchEvidence, pairKey, type FoundCoin, type MatchCase, type PostReplies } from '../eval/src/gold/match-cases.ts';
@@ -62,7 +62,10 @@ import { hashPicture, hashDistance } from '../services/runner/src/work/picture-h
 
 const P = DEFAULT_POLICY;
 const X_USD_PER_POST = 0.000_15;
-const VOYAGE_USD_PER_IMAGE = (1_450 * 0.12) / 1e6;
+/* Our own embedding service, in the policy's picture space (tools/lib/own-embed.ts): a fixed monthly
+   machine, $0 a call. Similarities recorded before it were measured on the hosted model we used
+   before our own and are not re-measured: a pair that already has one is skipped. */
+const EMBED_USD_PER_IMAGE = 0;
 const PAIR_USD = 0.003;
 /* The judge is asked about at most this many borderline pairs in one run. */
 const PAIRS_CAP = 150;
@@ -317,8 +320,7 @@ async function posts(): Promise<void> {
 }
 
 async function images(): Promise<void> {
-  const key = process.env['VOYAGE_API_KEY'] ?? '';
-  if (key === '') refuse('VOYAGE_API_KEY is not set.');
+  if ((process.env['EMBED_SERVICE_URL'] ?? '').trim() === '' || (process.env['EMBED_SECRET'] ?? '').trim() === '') refuse('EMBED_SERVICE_URL and EMBED_SECRET are not set.');
   const todo = cases.flatMap((c) => {
     const img = imageOf(c);
     if (img === null) return [];
@@ -326,8 +328,8 @@ async function images(): Promise<void> {
     return coins.length === 0 ? [] : [{ c, img, coins }];
   });
   const uris = new Set(todo.flatMap((t) => [t.img, ...t.coins.map((f) => coinImage(f) as string)]));
-  const meter = await paid(uris.size * VOYAGE_USD_PER_IMAGE * 2, `images: ${uris.size} pictures for ${todo.length} posts`);
-  const embed = voyageEmbed({ client: voyageClient({ apiKey: key, baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  const meter = await paid(uris.size * EMBED_USD_PER_IMAGE * 2, `images: ${uris.size} pictures for ${todo.length} posts`);
+  const embed = ownEmbed(meter);
   const vectors = new Map<string, readonly number[] | null>();
   const list = [...uris];
   for (let i = 0; i < list.length; i += EMBED_BATCH) {

@@ -5847,7 +5847,7 @@ const POLICY_V1: Policy = {
      v182 switches posts to our second space (`group.image.postSpace` me5-base+siglip2-b16-224.1536.post:
      multilingual-e5-base words at full precision beside the SigLIP picture) once its boot fill had
      written every kept post, label and name example into it, and copies v180's `postSpaceNextBars`
-     over the bars they name (each by v173's rule: the strict tiers at twice Voyage's unrelated share,
+     over the bars they name (each by v173's rule: the strict tiers at twice the hosted model's unrelated share,
      the held-as-not-a-meme and loose bars at its share), clearing both next-space fields. Pictures,
      their space and their bars are unchanged. v181 back is the rollback: its vectors stay stored.
 
