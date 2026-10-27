@@ -132,7 +132,11 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
     const timer = setInterval(reload, MARKET_POLL_MS);
     return () => clearInterval(timer);
   }, [reload, active]);
-  const readMarket: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
+  /* ★ NEVER BLANK BETWEEN VIEWS (the owner, 2026-10-27: "took a long time for the intervals to
+     load"): while a new view loads, the last one read stays drawn, and the Trades list with it. */
+  const lastRead = useRef<CoinMarket | null>(null);
+  if (loaded.state === 'ready') lastRead.current = loaded.value;
+  const readMarket: CoinMarket | null = loaded.state === 'ready' ? loaded.value : loaded.state === 'loading' ? lastRead.current : null;
   /* Every read's price goes to the shared store, so every screen showing this coin agrees. */
   useEffect(() => {
     if (readMarket !== null) noteMarket(facts.address, readMarket, Date.now());
