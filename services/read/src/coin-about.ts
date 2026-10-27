@@ -88,6 +88,18 @@ select story_id
  order by (payload #>> '{coins,kind}' = 'one' and payload #>> '{coins,coin,address}' = $1) desc, story_id
  limit 1`;
 
+/**
+ * ★ THE NARRATIVE ITS POSTS ARE IN (the owner, 2026-10-27: "if a narrative has formed show the narrative
+ * below the chart"): when no narrative names this coin as its own, the board narrative that holds any of
+ * the coin's posts, the most viewed. `$1` the posts' ids. None: the page shows the post.
+ */
+export const POSTS_STORY_SQL = `
+select story_id
+  from public.story_view
+ where payload -> 'postIds' ?| $1::text[]
+ order by (payload #>> '{viewsTotal,v}')::float8 desc nulls last, story_id
+ limit 1`;
+
 /** The kinds of link the page has a button for, in the page's order. */
 export const LINK_KINDS = ['x', 'telegram', 'website', 'tiktok'] as const;
 export type LinkKind = (typeof LINK_KINDS)[number];
@@ -248,6 +260,9 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
         ),
     deps.db.query(NOTIFIED_SQL, [address]).catch(() => []),
   ]);
+  /* No narrative names the coin: the one its posts are in, if one has formed. */
+  const postIds = posts.flatMap((r) => (typeof r['item_id'] === 'string' ? [r['item_id']] : []));
+  const postsStory = text(story[0]?.['story_id']) !== null || postIds.length === 0 ? null : text((await deps.db.query(POSTS_STORY_SQL, [postIds]).catch(() => []))[0]?.['story_id']);
   const told = notified[0];
   const toldAt = typeof told?.['at'] === 'number' && Number.isFinite(told['at']) ? told['at'] : null;
   const toldCap = typeof told?.['mc_usd'] === 'number' && Number.isFinite(told['mc_usd']) && told['mc_usd'] > 0 ? told['mc_usd'] : null;
@@ -268,7 +283,7 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
         const p = postOf(r);
         return p === null ? [] : [p];
       }),
-      storyId: text(story[0]?.['story_id']),
+      storyId: text(story[0]?.['story_id']) ?? postsStory,
       /* When we first pushed it to phones and at what market cap; null when we never did. */
       notified: toldAt === null ? null : { at: toldAt, marketCapUsd: toldCap },
     }),
