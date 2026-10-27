@@ -294,6 +294,40 @@ export class PgItemRepo implements ItemRepo {
    * Note which catch-all lane found these posts (0025). The first lane to find a post
    * keeps it: a post the media lane found again later was still found by the first one.
    */
+  /**
+   * ★ The posts the judge called a meme while they were under `maxAgeMs` old, judged since
+   * `judgedSince`, that no lane has credited: credited to 'judged' (0142) so TRACK re-reads their views
+   * and For You may show them (services/runner work/credit-judged.ts). Observed posts only, at most
+   * `limit`, newest judged first. Returns the ids credited.
+   */
+  async creditJudged(judgedSince: Millis, maxAgeMs: number, limit: number, at: Millis): Promise<readonly string[]> {
+    if (limit <= 0) return [];
+    const rows = await this.#db.query<{ item_id: string }>(
+      `with latest as (
+         select distinct on (j.item_id) j.item_id, j.coinable, j.judged_at
+           from internal.post_judgement j
+          where j.judged_at >= $1 and j.prompt_id not like 'post-kind%'
+          order by j.item_id, j.judged_at desc
+       ), due as (
+         select l.item_id
+           from latest l
+           join public.item i on i.item_id = l.item_id
+          where l.coinable
+            and i.origin = 'observed'
+            and coalesce(i.posted_at, i.first_seen_at) >= $4::timestamptz - make_interval(secs => $2::double precision / 1000)
+            and not exists (select 1 from internal.item_found_by f where f.item_id = l.item_id)
+          order by l.judged_at desc
+          limit $3
+       )
+       insert into internal.item_found_by (item_id, lane, found_at)
+       select item_id, 'judged', $4 from due
+       on conflict (item_id) do nothing
+       returning item_id`,
+      [toTimestamp(judgedSince), maxAgeMs, limit, toTimestamp(at)],
+    );
+    return rows.map((r) => r.item_id);
+  }
+
   async markFoundBy(itemIds: readonly ItemId[], lane: string, at: Millis): Promise<void> {
     if (itemIds.length === 0) return;
     await this.#db.query(

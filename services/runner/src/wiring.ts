@@ -199,6 +199,7 @@ import type { DecisionLog, LoopDeps } from './loop.ts';
 import type { StageRunRecorder } from './run-record.ts';
 import { declareSources, watchedRegistry, type WatchDeps } from './sources.ts';
 import { storeWork, type StageRepos } from './work/stages.ts';
+import { creditJudged } from './work/credit-judged.ts';
 
 export interface Runtime {
   readonly db: Db;
@@ -1247,6 +1248,8 @@ export async function withRuntime<T>(
         } catch (e) {
           log.error('viral moments pass failed', { err: errorText(e) });
         }
+        /* ★ A fresh post the judge passed is followed however it was found (work/credit-judged.ts). */
+        await creditJudged({ items: repos.items, policy, log: log.child({ step: 'credit-judged' }), now: () => Date.now() as Millis });
         return r;
       };
       /* The namer: example posts and their vectors kept for the process, guesses after each scoring pass. */
