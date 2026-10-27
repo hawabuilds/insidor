@@ -230,6 +230,27 @@ export async function withTransaction<T>(pool: Pool, fn: (db: Db) => Promise<T>)
 }
 
 /**
+ * One client shared by several loops, its statements sent one at a time, in the order they were asked.
+ *
+ * ★ WHY. A lock holder's whole process writes through the lock's own client (chainwatch: the mint feed,
+ * the launch listing, the trade feed and the charts, each on its own clock). pg queued a statement
+ * asked while another was running, and pg 8 now warns that this is deprecated and will be removed in
+ * pg 9 ("Calling client.query() when the client is already executing a query"). This is that same
+ * queue, held here: the statements and their order are what pg would have sent, so nothing written
+ * changes. A failed statement fails its own caller only; the next one still runs.
+ */
+export function serialDb(client: Pick<PoolClient, 'query'>): Db {
+  let tail: Promise<unknown> = Promise.resolve();
+  return {
+    query<R extends QueryResultRow>(sql: string, params?: readonly unknown[]): Promise<R[]> {
+      const run = tail.then(async () => (await client.query<R>(sql, params ? [...params] : undefined)).rows);
+      tail = run.catch(() => undefined);
+      return run;
+    },
+  };
+}
+
+/**
  * A genuine singleton guard: hold a session advisory lock for the life of `fn`.
  *
  * This is the thing serverless could not provide and the reason two overlapping
@@ -255,10 +276,12 @@ export async function withAdvisoryLock<T>(
       [lockKey],
     );
     if (held.rows[0]?.locked !== true) return null;
+    /* The unlock goes through the same queue, after anything a loop left in flight. */
+    const db = serialDb(client);
     try {
-      return await fn(asDb(client));
+      return await fn(db);
     } finally {
-      await client.query('select pg_advisory_unlock($1)', [lockKey]);
+      await db.query('select pg_advisory_unlock($1)', [lockKey]);
     }
   } finally {
     client.release();

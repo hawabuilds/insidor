@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createPool, DB_ROLE, withAdvisoryLock } from './client.ts';
+import { createPool, DB_ROLE, serialDb, withAdvisoryLock } from './client.ts';
 
 const SESSION = 'postgres://u:pw@pooler.example:5432/db';
 const TRANSACTION = 'postgres://u:pw@pooler.example:6543/db';
@@ -50,4 +50,27 @@ test('a session-mode lock pool opens, and a smaller max is honoured but never a 
   const wide = createPool(DB_ROLE.app, { env: { DATABASE_URL_APP: SESSION }, max: 50 });
   assert.ok(wide.options.max <= 3);
   await wide.end();
+});
+
+test('★ loops sharing the lock\'s client never overlap a statement: each waits its turn, in order, and a failure is its own', async () => {
+  let running = 0;
+  let most = 0;
+  const order: string[] = [];
+  const client = {
+    query: async (sql: string) => {
+      running += 1;
+      most = Math.max(most, running);
+      await new Promise((r) => setTimeout(r, 5));
+      running -= 1;
+      order.push(sql);
+      if (sql === 'bad') throw new Error('bad');
+      return { rows: [{ sql }] };
+    },
+  };
+  const db = serialDb(client as never);
+  /* Two flushes from two loops, asked at the same instant. */
+  const results = await Promise.allSettled([db.query('candles 1'), db.query('trade feed'), db.query('bad'), db.query('candles 2')]);
+  assert.equal(most, 1);
+  assert.deepEqual(order, ['candles 1', 'trade feed', 'bad', 'candles 2']);
+  assert.deepEqual(results.map((r) => r.status), ['fulfilled', 'fulfilled', 'rejected', 'fulfilled']);
 });
