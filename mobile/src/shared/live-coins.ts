@@ -19,6 +19,7 @@
 
 import { openLiveCoins } from './api/client.ts';
 import { noteLiveTrade } from './coin-cap.ts';
+import { createTickGuard } from './tick-guard.ts';
 
 /** One trade as the service sends it (services/chainwatch live.ts `WireTick`). */
 export interface LiveTrade {
@@ -46,6 +47,8 @@ let close: (() => void) | null = null;
 let openSet = '';
 let reopenTimer: ReturnType<typeof setTimeout> | null = null;
 let up = false;
+/* One odd trade never moves a price on screen: a jump waits for a second trade (tick-guard.ts). */
+const guard = createTickGuard<LiveTrade>();
 
 const setUp = (v: boolean): void => {
   if (up === v) return;
@@ -74,7 +77,7 @@ function reopen(): void {
       }
       setUp(true);
       const now = Date.now();
-      for (const t of msg.ticks ?? []) {
+      for (const t of guard.pass(msg.ticks ?? [], now)) {
         noteLiveTrade(t.a, t.p, t.c, now);
         const ls = tradeListeners.get(t.a);
         if (ls !== undefined) for (const l of ls) l(t);
