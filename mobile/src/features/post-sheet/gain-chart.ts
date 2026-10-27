@@ -140,6 +140,29 @@ export function lastGain(slots: GainSlots | null, interval: GainInterval): numbe
 /** "+420K". */
 export const plus = (n: number): string => `${n >= 0 ? '+' : ''}${compact(n)}`;
 
+/**
+ * The views axis (the owner, 2026-10-27, option A: "lacking axis labelling and showing actual values"):
+ * round steps from 0 that cover `max` in about `count` steps — 0, 25K, 50K, 75K — and the top tick,
+ * which the chart scales to so the highest label sits on a gridline.
+ */
+export function axisTicks(max: number, count = 3): { readonly ticks: readonly number[]; readonly top: number } {
+  if (!(max > 0) || !Number.isFinite(max)) return { ticks: [0, 1], top: 1 };
+  const raw = max / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = ([1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag);
+  const n = Math.max(1, Math.ceil(max / step));
+  const ticks = Array.from({ length: n + 1 }, (_, i) => i * step);
+  return { ticks, top: n * step };
+}
+
+/** A bucket's length as the axis says it: "5m", "15m", "1h", "4h", "1D". */
+export function spanLabel(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m}m`;
+  if (m < 1_440) return `${Math.round(m / 60)}h`;
+  return `${Math.round(m / 1_440)}D`;
+}
+
 /** "14:22" today, "Thu 14:22" on another day: the user's own clock, to the minute. */
 export function hm(at: number, now: number): string {
   const d = new Date(at);

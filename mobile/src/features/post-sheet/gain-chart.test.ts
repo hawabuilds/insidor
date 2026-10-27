@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { CoinMarket } from '../../shared/api/index.ts';
-import { buckets, firstWords, gapText, lastGain, launchTime, placePills, postSlots } from './gain-chart.ts';
+import { axisTicks, buckets, spanLabel, firstWords, gapText, lastGain, launchTime, placePills, postSlots } from './gain-chart.ts';
 import { MIN_TRADES, mcChange, pctText } from './mc-change.ts';
 
 const M = 60_000;
@@ -67,4 +67,12 @@ test('★ the market move is hidden until the coin has enough trades, and is pri
   assert.equal(mcChange(market(MIN_TRADES), '1h'), null, 'nothing a whole hour back');
   assert.equal(pctText(12.4), '+12%');
   assert.equal(pctText(-4.46), '-4.5%');
+});
+
+test('★ the views axis climbs in round steps from 0 and its top tick covers the highest point', () => {
+  assert.deepEqual(axisTicks(72_000), { ticks: [0, 25_000, 50_000, 75_000], top: 75_000 });
+  assert.deepEqual(axisTicks(9_000), { ticks: [0, 5_000, 10_000], top: 10_000 });
+  assert.deepEqual(axisTicks(0).ticks, [0, 1]);
+  assert.equal(spanLabel(15 * 60_000), '15m');
+  assert.equal(spanLabel(4 * 3_600_000), '4h');
 });
