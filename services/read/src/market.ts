@@ -39,11 +39,12 @@
  * coin with no trades.
  */
 
-import type { MarketData, Pool, Timeframe } from '@insidor/market-geckoterminal';
+import type { CoinMarket, MarketData, Pool, Timeframe } from '@insidor/market-geckoterminal';
 import { ownSide, pairedWith, TIMEFRAMES } from '@insidor/market-geckoterminal';
 
 import type { Db } from './queries.ts';
 import type { Logger } from './log.ts';
+import { ownMarket, type HeldTrades } from './own-market.ts';
 
 /* A coin we hold: its full row, or the name index (0037) once the keep rule has deleted that. */
 export const ASSET_SQL = `
@@ -55,7 +56,13 @@ limit 1`;
 export interface MarketDeps {
   readonly db: Db;
   readonly log: Logger;
-  readonly market: Pick<MarketData, 'coin'>;
+  readonly market: Pick<MarketData, 'coin'> & Partial<Pick<MarketData, 'pool'>>;
+  /**
+   * chainwatch's latest trades of a coin (own-market.ts). Set, the chart and trades come from our own
+   * data whenever it holds enough of the coin, and the market source is asked only otherwise; null or
+   * absent, the market source answers every read as before.
+   */
+  readonly heldTrades?: ((mint: string) => Promise<HeldTrades>) | null;
   /** A curve's progress from its account, 0..1; null when the address holds no curve. Null reader: no RPC configured. */
   readonly curveProgress: ((address: string) => Promise<number | null>) | null;
   /** True for an address a recent search returned (search.ts): openable without being in the universe. */
@@ -117,6 +124,27 @@ export function coinOf(pool: Pool | null, mint: string): { ticker: string | null
   return own === null || (own.symbol === null && own.name === null) ? null : { ticker: own.symbol, name: own.name };
 }
 
+/**
+ * ★ OUR OWN DATA FIRST (own-market.ts), the market source when ours does not hold enough of the coin.
+ * Our candles with the source's trades when only the trades fall short; a source that fails then is
+ * trades not read (null), never the whole page unavailable over a chart we could draw.
+ */
+async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): Promise<CoinMarket> {
+  const heldTrades = deps.heldTrades ?? null;
+  let own: Awaited<ReturnType<typeof ownMarket>> = null;
+  if (heldTrades !== null) {
+    try {
+      own = await ownMarket(mint, timeframe, { db: deps.db, heldTrades, pool: (m) => deps.market.pool?.(m) ?? Promise.resolve(null), now: Date.now });
+    } catch (e) {
+      deps.log.info('own market data unreadable; asking the market source', { mint, err: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  if (own === null) return deps.market.coin(mint, timeframe);
+  if (own.trades !== null) return { pool: own.pool, candles: own.candles, trades: own.trades };
+  const source = await deps.market.coin(mint, timeframe).catch(() => null);
+  return { pool: source?.pool ?? own.pool, candles: own.candles, trades: source?.trades ?? null };
+}
+
 export async function coinMarket(assetKey: string, rawTf: string | null, deps: MarketDeps): Promise<MarketReply | null> {
   const timeframe = (TIMEFRAMES as readonly string[]).includes(rawTf ?? '') ? (rawTf as Timeframe) : rawTf === null ? '1m' : null;
   if (timeframe === null) return json(400, { error: 'bad request' });
@@ -127,7 +155,7 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
   const mint = typeof asset?.['address'] === 'string' && asset['chain'] === 'solana' ? asset['address'] : (searched ?? '');
 
   try {
-    const market = await deps.market.coin(mint, timeframe);
+    const market = await marketOf(mint, timeframe, deps);
     const onCurve = market.pool?.dex === 'pump-fun';
     let progress: number | null = null;
     let progressWhy = onCurve ? (deps.curveProgress === null ? 'not_reported' : 'unreadable') : 'not_reported';

@@ -51,3 +51,34 @@ test('a tokenised stock is named so in both its name and its symbol', () => {
   assert.equal(tokenisedStock(null, 'MicroStrategy xStock'), false);
   assert.equal(tokenisedStock('SOL', 'Wrapped SOL'), false);
 });
+
+test('★ served from our own data, the reply has the same shape, and the market source is not asked', async () => {
+  const NOW = Date.now();
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL, CANDLES_SQL } = await import('./own-market.ts');
+  const db = {
+    query: async (sql: string) => {
+      if (sql === ASSET_SQL) return [{ chain: 'solana', address: LAURA }];
+      if (sql === CHART_SQL) return [{ recorded_from: NOW - 600_000, from_launch: true, pool: 'pump', pool_address: 'curve1', quote_mint: SOL.address, symbol: 'Laura', name: 'Forever Laura', image_uri: null }];
+      if (sql === CANDLES_SQL) return [{ t: NOW - 120_000, o: 1, h: 2, l: 0.5, c: 1.5 }];
+      throw new Error('unexpected');
+    },
+  };
+  let asked = 0;
+  const trade = { tx: 's1', side: 'buy' as const, tokenAmount: 10, usd: null, priceUsd: 0.1, at: NOW - 1000, maker: 'w1' };
+  const r = await coinMarket(`solana:${LAURA}`, '1m', {
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => { asked += 1; throw new Error('not asked'); }, pool: async () => null },
+    curveProgress: async () => 0.42,
+    heldTrades: async () => ({ held: true, whole: true, trades: [trade] }),
+  });
+  assert.equal(asked, 0);
+  const body = JSON.parse(r!.body);
+  assert.deepEqual(Object.keys(body), ['kind', 'timeframe', 'venue', 'candles', 'trades', 'curveProgress', 'pair', 'coin']);
+  assert.equal(body.venue, 'curve');
+  assert.deepEqual(body.curveProgress, { v: 0.42 });
+  assert.deepEqual(body.trades[0], { tx: 's1', side: 'buy', tokenAmount: { v: 10 }, usd: { v: null, why: 'not_reported' }, priceUsd: { v: 0.1 }, at: { at: NOW - 1000 }, maker: 'w1' });
+  assert.deepEqual(body.coin, { ticker: 'Laura', name: 'Forever Laura' });
+  assert.equal(body.pair.token.ticker, 'SOL');
+});

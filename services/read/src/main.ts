@@ -39,6 +39,7 @@ import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
 import { createMarketWarm } from './market-warm.ts';
+import { heldTradesFrom } from './own-market.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
 import { createTradeCard } from './trade-card.ts';
 import { createWallet } from './wallet.ts';
@@ -69,6 +70,8 @@ const IDLE_CLIENT_MS = 120_000;
 const MARKET_TIMEOUT_MS = 6_000;
 /** A curve account read is kept this long; the page polls, and a curve moves trade by trade. */
 const CURVE_KEEP_MS = 15_000;
+/** chainwatch is on the same private network: a reply slower than this is taken as no reply, and the market source answers. */
+const HELD_TRADES_TIMEOUT_MS = 400;
 /** A coin's profile (links, day volume) is kept this long: a page polls, and links rarely change. */
 const PROFILE_KEEP_MS = 60_000;
 /** Profiles held at once; past it the oldest-kept go, so a day of opened coins cannot grow the process. */
@@ -210,6 +213,8 @@ async function main(): Promise<void> {
   });
   const market = {
     market: marketData,
+    /* Our own candles and chainwatch's latest trades first (own-market.ts); the source above otherwise. */
+    heldTrades: heldTradesFrom(cfg.liveUpstreamUrl, HELD_TRADES_TIMEOUT_MS),
     curveProgress:
       chain === null
         ? null
