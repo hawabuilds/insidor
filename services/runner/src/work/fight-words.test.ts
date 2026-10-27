@@ -11,7 +11,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { Millis } from '@insidor/contracts';
-import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE } from '@insidor/contracts/policy.ts';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import type { StoredNarrative } from '@insidor/store';
 
@@ -19,6 +19,9 @@ import { createLogger } from '../log.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { FIGHT_WORDS_LANE, fightWarsToAsk, fightWords, fightWordsPass, forgetFirstLooks, type FightWordsDeps } from './fight-words.ts';
+
+/* The search as it works when on; policy.v196 switched it off with the war that prompted it, which is a choice of the policy's, not of this file's. */
+const P = { ...LIVE, feed: { ...LIVE.feed, fightWords: { ...LIVE.feed.fightWords, on: true } } };
 import { memoryLaneLedger } from './lane-ledger.ts';
 import { NOW, openMeter, pagingSource } from './lane-search-fakes.ts';
 

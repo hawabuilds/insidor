@@ -141,15 +141,17 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
   /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in its own
      (`fresh.late.langs`: the slow lane's, and Arabic and Korean from policy.v185). */
   const lateLangs = P5.feed.fresh.late.langs ?? P5.feed.slow.langs ?? LANGS;
-  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko']);
-  assert.equal(seen.length, 2 * LANGS.length + lateLangs.length);
+  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme']);
+  /* Every late band (five hours; eight from policy.v196) asks the late languages. */
+  const lateBands = P5.feed.fresh.late.bands.length;
+  assert.equal(seen.length, 2 * LANGS.length + lateBands * lateLangs.length);
   const windows = [...new Set(seen.map((s) => s.q.untilMs))];
-  assert.equal(windows.length, 3);
+  assert.equal(windows.length, 2 + lateBands);
   for (const window of windows) {
     const langs = seen.filter((s) => s.q.untilMs === window).map((s) => s.lang);
     assert.ok(JSON.stringify(langs) === JSON.stringify([...LANGS]) || JSON.stringify(langs) === JSON.stringify(lateLangs), `each band asks its languages in policy order: ${langs.join(',')}`);
   }
-  assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + 7 + 2 * (lateLangs.length - 1));
+  assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + lateBands * (7 + 2 * (lateLangs.length - 1)));
   assert.equal(stored.filter((s) => [...new Set(s.langs)].sort().join() === [...LANGS].sort().join()).length, 2, 'one store per fresh band, holding every language');
 });
 

@@ -5912,8 +5912,11 @@ const POLICY_V1: Policy = {
      v191 softens the creator rule (the owner, 2026-10-26): the creator's wallet selling puts a coin out
      only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
      was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
-     the old rule. */
-  version: 'policy.v195',
+     the old rule.
+     v196 (2026-10-27, the owner: "catch almost every post") adds an 8-hour late band (`fresh.late`, its day
+     `paging.searches.late_480`) and the wordless and emoji-only posts to the late searches, paid for by
+     `band_6` $1.55 → $1.05 and `fightWords` off: search spend about the same. */
+  version: 'policy.v196',
 
   admit: {
     maxAgeMin: 240,
@@ -6685,9 +6688,17 @@ const POLICY_V1: Policy = {
          likes, never asked after 50 minutes; Arabic: `feed.langs`). Inside the same `late_300` day. */
       late: {
         on: true,
-        bands: [{ ageMin: 300, minApproval: 6_500 }],
+        /* The 8-hour band from policy.v196 (2026-10-27, the owner: "catch almost every post"): past 6 hours no
+           search looked at a post again, and the posts that start slow and go viral later were lost there —
+           of 984 coined X posts over 5k likes in a week, 413 were coined more than 6 h after the post and
+           unfound before the coin. Replayed on that week, a look at 8 hours over 10k likes would have held
+           119–192 more of them before their coin (210 were), and 10–13 of the owner's 37 never-found
+           missed posts outside the "World War" wave. Its day is `paging.searches.late_480`. */
+        bands: [{ ageMin: 300, minApproval: 6_500 }, { ageMin: 480, minApproval: 10_000 }],
         everyMs: 600_000, // ten minutes
-        langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko'],
+        /* `zxx` (no words: a picture or a video alone) and `qme` (only emoji) from v196: two of the
+           never-found missed posts, 232k and 142k likes, were `zxx`. */
+        langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme'],
       },
     },
     /* On from 2026-10-16, the owner's approval ("the middle X search for posts 15 min to 3 h old with
@@ -6780,7 +6791,9 @@ const POLICY_V1: Policy = {
            1.4 → 1.2), the late band and slow lane take it (1.05 → 1.3, 0.9 → 1.05). Still $5.10 together. */
         /* `paced` from policy.v158 (the owner, 2026-10-24: "spread it"): the same $1.55, spread over the
            whole UTC day instead of spent by mid-afternoon. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55, paced: true },
+        /* $1.55 → $1.05 from policy.v196, paying for `late_480`: in the week to 27 Oct the 6-minute band found
+           64,027 posts, 0.34% of them reached For You and none was an owner's meme or missed post. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.05, paced: true },
         /* `paced` from policy.v181 (2026-10-25): unpaced, the 50-minute band spent its $1.20 by 20:55 UTC on
            23 Oct and 19:22 on 24 Oct, and asked nothing for the rest of each day (its ledger, internal.
            lane_spend); 25 Oct 05:00–12:00 it spent at $1.48 a day. The same $1.20, spread; the language
@@ -6790,6 +6803,8 @@ const POLICY_V1: Policy = {
            (20:57 UTC on 25 Oct), now that a held-back ask is bought on the next one (`fresh.late.everyMs`)
            and a pace no longer ends an ask between its pages (`paceBeforeAskOnly`). */
         late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3, paced: true },
+        /* The 8-hour band (policy.v196, `fresh.late`): paid for by the cut to `band_6` and fight words off. */
+        late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.7, paced: true },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
       },
     },
@@ -6953,7 +6968,8 @@ const POLICY_V1: Policy = {
        likes returned about 3 times (~10 to 40 a side a day), ~$0.02 to $0.07; about $0.03 a war a day,
        ~$1 a month. $0.10 a day caps it whatever a busy war brings. */
     fightWords: {
-      on: true,
+      /* Off from policy.v196 (the owner, 2026-10-27: the "World War" narrative has passed). */
+      on: false,
       everyMs: 1_800_000, // half an hour
       lookbackMs: 5_400_000, // ninety minutes
       minApproval: 300,

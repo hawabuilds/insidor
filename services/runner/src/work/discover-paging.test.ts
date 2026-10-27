@@ -43,7 +43,8 @@ const withFeed = (feed: Partial<Policy['feed']>): Policy => ({
     ...DEFAULT_POLICY.feed,
     langs: ['en'],
     slow: { ...DEFAULT_POLICY.feed.slow, langs: ['en'] },
-    fresh: { ...DEFAULT_POLICY.feed.fresh, late: { ...DEFAULT_POLICY.feed.fresh.late, langs: ['en'] } },
+    /* One late band, the 5-hour one these cases count pages for; the 8-hour band (v196) pages the same way. */
+    fresh: { ...DEFAULT_POLICY.feed.fresh, late: { ...DEFAULT_POLICY.feed.fresh.late, langs: ['en'], bands: [DEFAULT_POLICY.feed.fresh.late.bands[0]!] } },
     ...feed,
   },
 });
@@ -131,13 +132,14 @@ test('★ as shipped: the middle lane and every other catch-all search read past
   assert.equal(DEFAULT_POLICY.feed.middle.maxPages, 40);
   assert.equal(DEFAULT_POLICY.feed.middle.passDeadlineMs, 180_000);
   assert.equal(DEFAULT_POLICY.feed.middle.cap.dailyUsd, 3);
-  assert.deepEqual(Object.keys(DEFAULT_POLICY.feed.paging.searches).sort(), ['band_50', 'band_6', 'late_300', 'slow']);
+  assert.deepEqual(Object.keys(DEFAULT_POLICY.feed.paging.searches).sort(), ['band_50', 'band_6', 'late_300', 'late_480', 'slow']);
   for (const [name, s] of Object.entries(DEFAULT_POLICY.feed.paging.searches)) {
     assert.equal(s.full, true, `${name} reads to the source's end (the re-split of 2026-10-19)`);
     assert.ok(s.dailyUsd > 0 && s.maxPages >= 1 && s.passDeadlineMs > 0, `${name} has its own day`);
   }
   assert.equal(pagingKey({ lane: 'all', slice: false, band: 6, late: false, middle: false }), 'band_6');
   assert.equal(pagingKey({ lane: 'slow', slice: false, band: 300, late: true, middle: false }), 'late_300');
+  assert.equal(pagingKey({ lane: 'slow', slice: false, band: 480, late: true, middle: false }), 'late_480');
   assert.equal(pagingKey({ lane: 'slow', slice: true, band: null, late: false, middle: false }), 'slow');
   assert.equal(pagingKey({ lane: null, slice: false, band: null, late: false, middle: true }), null);
 });
