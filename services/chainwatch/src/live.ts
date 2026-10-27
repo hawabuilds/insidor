@@ -17,8 +17,8 @@
  * the Trades list wants each fill, and a busy coin's 40 trades a second arrive as four messages, not
  * forty. A coin nobody asked for is never parsed (the relay socket's prefilter asks `wants`).
  *
- * ★ DOLLARS ONLY WITH A PRICE. A tick in SOL becomes dollars at the SOL price the relay's SOL and
- * USDC trades gave in the last `SOL_FRESH_MS`; with none that fresh, the dollar fields are null and
+ * ★ DOLLARS ONLY WITH A PRICE. A tick in SOL becomes dollars at the median SOL price the relay's SOL
+ * and USDC trades gave in the last `SOL_FRESH_MS` (one odd sample is not kept); with none that fresh, the dollar fields are null and
  * the screen shows the SOL cap's age rather than a guessed number. A coin priced in another token
  * than SOL carries no dollars here.
  *
@@ -36,6 +36,11 @@ const FLUSH_MS = 250;
 const MAX_COINS = 400;
 /** The SOL price is used for dollars this long after it was read. */
 const SOL_FRESH_MS = 60_000;
+/** A SOL sample this far from the last minute's median (a share of it) is not kept, once there are enough to judge. */
+const SOL_OUTLIER = 0.03;
+const SOL_MIN_SAMPLES = 5;
+/** The most SOL samples kept for the median. */
+const SOL_MAX_SAMPLES = 200;
 /** A comment line this often, so a quiet stream is not taken for a dead one. */
 const HEARTBEAT_MS = 15_000;
 /** The relay's name for wrapped SOL. */
@@ -87,6 +92,7 @@ export function createLiveHub(now: () => number = Date.now): LiveHub {
   const wanted = new Map<string, number>();
   let pending: WireTick[] = [];
   let solUsd: { readonly usd: number; readonly at: number } | null = null;
+  let solSamples: { readonly usd: number; readonly at: number }[] = [];
 
   const dollars = (t: LiveTick): { c: number | null; p: number | null } => {
     if (t.quoteMint !== WRAPPED_SOL || solUsd === null || now() - solUsd.at > SOL_FRESH_MS) return { c: null, p: null };
@@ -130,7 +136,19 @@ export function createLiveHub(now: () => number = Date.now): LiveHub {
         pending.push({ a: t.coin, s: t.side === 'buy' ? 'b' : 's', q: t.quoteAmount, k: t.tokens, w: t.trader, c: d.c, p: d.p, cq: t.capQuote, t: t.atMs, x: t.signature, o: t.pool });
       },
       onSolUsd: (usd, atMs) => {
-        if (Number.isFinite(usd) && usd > 0) solUsd = { usd, at: atMs };
+        if (!Number.isFinite(usd) || !(usd > 0)) return;
+        /* ★ THE MEDIAN OF THE LAST MINUTE, NOT THE LAST TRADE (the owner, 2026-10-27: a token page "looked
+           like it rugged for a second"). Every SOL/USDC trade on any pool reaches here; one in a thin or
+           odd pool at a bad price would put every coin's dollars wrong until the next. A sample more
+           than SOL_OUTLIER from the median of the kept ones is not kept. */
+        solSamples = solSamples.filter((x) => atMs - x.at <= SOL_FRESH_MS);
+        const kept = [...solSamples].map((x) => x.usd).sort((a, b) => a - b);
+        const median = kept.length === 0 ? null : kept[Math.floor(kept.length / 2)]!;
+        if (median !== null && kept.length >= SOL_MIN_SAMPLES && Math.abs(usd - median) > SOL_OUTLIER * median) return;
+        solSamples.push({ usd, at: atMs });
+        if (solSamples.length > SOL_MAX_SAMPLES) solSamples.shift();
+        const all = solSamples.map((x) => x.usd).sort((a, b) => a - b);
+        solUsd = { usd: all[Math.floor(all.length / 2)]!, at: atMs };
       },
     },
     serve(req, res) {
