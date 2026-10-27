@@ -3,6 +3,8 @@
  * (the owner, 2026-10-23, design A of reports/ticker): each coin's logo, ticker, market cap and
  * 24-hour move, sliding slowly left like a stock ticker. A tap opens that coin's page.
  *
+ * ★ EACH CAP IS LIVE: the server's figure, then every trade as it lands (useCoinCap, the live line).
+ *
  * ★ WHICH COINS IS THE SERVER'S CALL (services/read running-coins.ts): only the one coin of a post
  * or narrative we found, launched on the launchpad, with a fresh price and real trading in the last
  * hour, most dollars traded first. This file draws them in that order and decides nothing about them.
@@ -29,11 +31,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { fetchRunningCoins, type RunningCoin } from '../api/index.ts';
+import { known } from '../format/measure.ts';
 import { useLoad } from '../hooks.ts';
 import { hrefFor } from '../route.ts';
 import { stripCap, stripMove } from '../running-coins.ts';
 import { tickerText } from '../format/ticker.ts';
 import { useScreenActive } from '../screen-active.ts';
+import { useCoinCap } from '../useCoinCap.ts';
 import { CoinLogo } from './CoinLogo.tsx';
 import styles from './running-coins.module.css';
 
@@ -47,11 +51,14 @@ const REREAD_MS = 60_000;
 function Item({ coin, hidden }: { coin: RunningCoin; hidden: boolean }) {
   const move = stripMove(coin.change24hPct);
   const tone = move.direction === 'up' ? styles['up'] : move.direction === 'down' ? styles['down'] : styles['flat'];
+  /* ★ THE CAP MOVES WITH EVERY TRADE (the owner, 2026-10-27: "update market cap on tape more
+     frequently"): the server's figure, then each trade as it lands on the live line, as every other cap. */
+  const cap = useCoinCap(coin.address, known(coin.marketCapUsd));
   return (
     <a className={styles['item']} href={hrefFor({ screen: 'token', coinId: coin.coinId })} tabIndex={hidden ? -1 : undefined} aria-hidden={hidden ? true : undefined} draggable={false}>
       <CoinLogo address={coin.address} ticker={coin.ticker} imageUrl={coin.imageUrl} size={20} small eager />
       <span className={styles['ticker']}>{tickerText(coin.ticker)}</span>
-      <span className={styles['cap']}>{stripCap(coin.marketCapUsd)}</span>
+      <span className={styles['cap']}>{stripCap(cap.known ? cap.amount : coin.marketCapUsd)}</span>
       <span className={`${styles['move']} ${tone}`}>{move.text}</span>
     </a>
   );
