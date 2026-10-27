@@ -1894,27 +1894,33 @@ export interface PairWindow {
 }
 
 /**
- * The latest reading per asset, as a CTE both statements below share verbatim.
+ * The latest reading of ONE asset `a`, as a lateral subquery both statements below share verbatim.
  *
- * `distinct on (asset_key) … order by asset_key, taken_at desc` walks 0010's
- * `market_reading_latest_idx (asset_key, taken_at desc)` and stops at the first row per
- * key, so the cost is one seek per coin rather than a scan of the series.
+ * Each coin in the window seeks 0010's `market_reading_latest_idx (asset_key, taken_at desc)`
+ * once and takes its first row: the cost is one index probe per coin in the window.
+ *
+ * ★ IT WAS A CTE, `distinct on (asset_key) … order by asset_key, taken_at desc` over the whole
+ * table, and that is NOT one seek per coin: with no filter inside the CTE, Postgres walks every
+ * reading of every coin ever read to keep the first of each. On 2026-10-27 market_reading was
+ * 761 MB, the walk took ~30 s on a disk-bound evening, and both pairs statements hit the service
+ * role's 30 s statement timeout on every run. Lateral, the window bounds the work.
  *
  * ★ IT IS ONE STRING BECAUSE THE TWO STATEMENTS MUST NOT DRIFT. The listing and the counts
  * are two queries over one population, and the sentence on screen — "6 of 192 mints have a
  * market" — is only true while both mean the same thing by "has a market". A second copy of
- * this CTE with `taken_at desc` fixed in one place and not the other would make the ratio
+ * this subquery with `taken_at desc` fixed in one place and not the other would make the ratio
  * quietly wrong rather than loudly broken.
  */
-const LATEST_READING_CTE = `with latest as (
-       select distinct on (r.asset_key)
-              r.asset_key, r.taken_at,
+const LATEST_READING = `lateral (
+       select r.taken_at,
               r.price_usd, r.price_absent,
               r.market_cap_usd, r.market_cap_absent, r.market_cap_basis,
               r.liquidity_usd, r.liquidity_absent
          from public.market_reading r
-        order by r.asset_key, r.taken_at desc
-     )`;
+        where r.asset_key = a.asset_key
+        order by r.taken_at desc
+        limit 1
+     ) l`;
 
 /**
  * The mints that reached a market, newest MINT first.
@@ -1960,8 +1966,7 @@ const LATEST_READING_CTE = `with latest as (
  */
 async function loadPairs(db: Db, window: PairWindow): Promise<readonly PairRow[]> {
   return db.query<PairRow>(
-    `${LATEST_READING_CTE}
-     select a.asset_key,
+    `select a.asset_key,
             a.address,
             a.venue_id,
             left(a.symbol, $3::int) as symbol,
@@ -1974,7 +1979,7 @@ async function loadPairs(db: Db, window: PairWindow): Promise<readonly PairRow[]
             l.market_cap_usd, l.market_cap_absent, l.market_cap_basis,
             l.liquidity_usd, l.liquidity_absent
        from public.asset a
-       join latest l on l.asset_key = a.asset_key
+       join ${LATEST_READING} on true
       where a.minted_at is not null
         and a.minted_at_conf <> 'unknown'
         and a.minted_at >= to_timestamp($1::double precision / 1000.0)
@@ -2027,14 +2032,13 @@ export async function loadPairFacts(db: Db, window: PairWindow): Promise<readonl
  */
 export async function loadPairCounts(db: Db, window: PairWindow): Promise<PairCounts> {
   const rows = await db.query<{ minted: string; with_market: string; without_market: string }>(
-    `${LATEST_READING_CTE}
-     select count(*)::text as minted,
+    `select count(*)::text as minted,
             count(*) filter (where l.taken_at is not null and l.price_absent is null)::text
               as with_market,
             (count(*) - count(*) filter (where l.taken_at is not null and l.price_absent is null))::text
               as without_market
        from public.asset a
-       left join latest l on l.asset_key = a.asset_key
+       left join ${LATEST_READING} on true
       where a.minted_at is not null
         and a.minted_at_conf <> 'unknown'
         and a.minted_at >= to_timestamp($1::double precision / 1000.0)
