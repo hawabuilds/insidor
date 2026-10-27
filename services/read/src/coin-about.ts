@@ -229,8 +229,9 @@ function postOf(r: Row): Record<string, unknown> | null {
 }
 
 /**
- * When we first pushed this coin to phones, and the market cap the push carried (0143
- * public.coin_notified): the token chart's bubble. Before 0143 the view is missing and the answer is
+ * When the app first showed this coin as a post's matched coin, and the market cap the card showed
+ * (0145 public.coin_notified; 0143 read the coin pushes, which not every phone gets): the token
+ * chart's bubble. Before 0143 the view is missing and the answer is
  * none, never an error: the page draws its chart without it.
  */
 export const NOTIFIED_SQL = `select (extract(epoch from notified_at) * 1000)::float8 as at, mc_usd from public.coin_notified where address = $1`;
