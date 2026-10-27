@@ -651,12 +651,21 @@
 
 /* Our mark on the candle where Insidor caught the coin's post (PriceChart): the logo in a ringed
    circle sitting on the candle, as pump.fun draws a trader's bubble — no line, no words. */
-.caught {
+.caughtTap {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 3;
   display: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.caught {
+  display: block;
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -664,6 +673,23 @@
   background: var(--bg);
   box-shadow: 0 0 0 1.5px var(--up), 0 0 0 3px var(--bg);
   pointer-events: none;
+}
+
+/* The bubble's facts in the header (CoinChart): the small bubble before them, as on the chart. */
+.alertedDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  background: center / cover url('/icons/favicon-64.png?v=keyhole');
+  box-shadow: 0 0 0 1.5px var(--up);
+}
+
+.alertedLine {
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 /* The candle under the finger, in market cap: open, high, low, close. Its line is held so nothing jumps. */
