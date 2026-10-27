@@ -822,6 +822,29 @@ export class PgOneCoinRepo {
   }
 
   /**
+   * The posts still waiting for a coin, decided since `sinceMs`, with a candidate whose trades have
+   * peaked at `minPeakQuote` or more in the quote token, newest first (the runner's waiting sweep,
+   * work/one-coin.ts): a post judged "waiting" in its hour is otherwise never judged again. The peak
+   * keeps the sweep to the posts where a coin did trade; most waiting posts have only dust.
+   */
+  async waitingPostPicks(sinceMs: number, limit: number, minPeakQuote: number): Promise<readonly StoredPick[]> {
+    try {
+      const rows = await this.#db.query<{ id: string; decided_at: string; evidence: Record<string, unknown> }>(
+        `select p.item_id as id, p.decided_at, p.evidence from internal.post_coin_pick p
+          where p.outcome = 'waiting' and p.decided_at >= $1
+            and exists (select 1 from internal.one_coin_candidate oc join internal.coin_trade_state s on s.address = oc.address
+                         where oc.item_id = p.item_id and s.peak_mcap_sol >= $3)
+          order by p.decided_at desc limit $2`,
+        [new Date(sinceMs).toISOString(), limit, minPeakQuote],
+      );
+      return rows.map((r) => ({ subjectId: r.id, address: null, outcome: 'waiting' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence }));
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
+  /**
    * Each coin's last hour from its newest market reading since `sinceMs` (0127's volume and trades),
    * with that reading's cap. A newest reading without its hour is absent: unread, never a quiet hour.
    */

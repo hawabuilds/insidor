@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -220,6 +220,55 @@ export async function rugSweep(
   const writes = crashed.flatMap((p) => {
     const rs = byItem.get(p.subjectId);
     return rs === undefined || rs.length === 0 ? [] : [pickWrite(p.subjectId, judge(rs, p, facts), p, now, P.mode)];
+  });
+  return writes.length === 0 ? 0 : repo.writePicks('post', writes, prev, P.mode, now);
+}
+
+/** How far back the waiting sweep looks, how many posts it judges a pass, and the trade peak (in the quote token) a candidate needs. */
+const WAITING_SWEEP_MS = 2 * 86_400_000;
+const WAITING_SWEEP_LIMIT = 1_000;
+export const WAITING_SWEEP_MIN_PEAK_QUOTE = 100;
+/* Only readings this fresh count: a coin read hours ago at its peak ($DX1MhZ… read $41k at 03:10 and
+   was at $2.7k by 10:40) must never be picked on that number. */
+const WAITING_FRESH_MS = 30 * 60_000;
+
+/**
+ * ★ THE WAITING SWEEP (the owner, 2026-10-27, "paws at you": about thirty coins in ten minutes, the pick
+ * "waiting, under the bars" at 01:58, and $paws Fp4Jkq… bonding at 04:13 and running to $44k with the
+ * card still showing nothing). A post is judged only while its candidates are inside
+ * `oneCoin.watchMs` of being found, so a post left waiting at the hour's end was never judged again,
+ * whatever its coins did next. Every pass, the waiting posts of the last two days that the open posts
+ * above did not judge, and that have a candidate whose trades peaked at
+ * `WAITING_SWEEP_MIN_PEAK_QUOTE` or more, are judged again by the same rule on all their candidates,
+ * on the market readings the market service keeps fresh for exactly these coins (services/market
+ * db.ts `pickedCoins`). Only a pick is written: a post still waiting is left as it was, so its
+ * decided time does not move. Returns how many changed.
+ */
+export async function waitingSweep(
+  repo: OneCoinDeps['repo'],
+  judgedNow: ReadonlySet<string>,
+  judge: (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }) => OneCoinOutcome,
+  now: number,
+  P: OneCoinDeps['policy']['oneCoin'],
+): Promise<number> {
+  if (repo.waitingPostPicks === undefined) return 0;
+  const waiting = (await repo.waitingPostPicks(now - WAITING_SWEEP_MS, WAITING_SWEEP_LIMIT, WAITING_SWEEP_MIN_PEAK_QUOTE)).filter((p) => !judgedNow.has(p.subjectId));
+  if (waiting.length === 0) return 0;
+  const rows = await repo.candidatesOf(waiting.map((p) => p.subjectId));
+  const addresses = [...new Set(rows.map((r) => r.address))];
+  /* ★ ON FRESH READINGS ALONE. The coin watcher follows a coin's trades only while it is watched, so
+     hours later its trade state is the state it had then (Fp4Jkq…'s last trade on file is 02:25, two
+     hours before it bonded): judged on that, a coin that ran later would look like it never did. */
+  const [watched, market] = await Promise.all([repo.watched(addresses, now), repo.marketFacts(addresses, now - WAITING_FRESH_MS)]);
+  const facts = { trades: null, watched, market };
+  const byItem = new Map<string, CandidateRow[]>();
+  for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
+  const prev = new Map(waiting.map((p) => [p.subjectId, p] as const));
+  const writes = waiting.flatMap((p) => {
+    const rs = byItem.get(p.subjectId);
+    if (rs === undefined || rs.length === 0) return [];
+    const o = judge(rs, p, facts);
+    return o.kind === 'picked' ? [pickWrite(p.subjectId, o, p, now, P.mode)] : [];
   });
   return writes.length === 0 ? 0 : repo.writePicks('post', writes, prev, P.mode, now);
 }
@@ -455,6 +504,9 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   /* ── the rug sweep: a held pick past its hour whose coin crashed ── */
   const swept = await rugSweep(repo, new Set(byPost.keys()), judge, now, P, solUsd);
   if (swept > 0) deps.log.info('one coin: the rug sweep moved held picks whose coin crashed', { changed: swept });
+  /* ── the waiting sweep: a post left waiting at its hour's end whose coin ran later ── */
+  const unstuck = await waitingSweep(repo, new Set(byPost.keys()), judge, now, P);
+  if (unstuck > 0) deps.log.info('one coin: the waiting sweep picked a coin for posts left waiting', { changed: unstuck });
 
   /* ── hand over: a later coin made for a held post, running now ──── */
   let handovers: readonly Handover[] = [];
