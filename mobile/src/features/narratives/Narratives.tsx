@@ -61,6 +61,7 @@ import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../ow
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
 import styles from './narratives.module.css';
+import { scrollTopNow } from '../../shared/scroller.ts';
 
 /** The space between two cards (narratives.module.css .cards had it as its gap). */
 const CARD_GAP_PX = 10;
@@ -297,7 +298,7 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
   useLayoutEffect(() => {
     const next = new Map<string, number>();
     for (const [id, el] of els.current) {
-      const top = el.getBoundingClientRect().top + window.scrollY;
+      const top = el.getBoundingClientRect().top + scrollTopNow();
       next.set(id, top);
       const was = tops.current.get(id);
       if (was === undefined || Math.abs(was - top) < 1) continue;

@@ -16,8 +16,7 @@
   width: 100%;
   max-width: 480px;
   padding: 0 var(--gutter);
-  /* Down by the visible screen's drift from the page box, 0 almost always (shared/viewport.ts). */
-  transform: translate(-50%, var(--vv-drift, 0px));
+  transform: translateX(-50%);
   pointer-events: none;
 }
 

@@ -35,7 +35,7 @@ import { listenForOpens, settleLaunch, tapInHand } from './features/alerts/push-
 import { trackHistory } from './shared/nav.ts';
 import { startTapLog } from './shared/tap-log.ts';
 import { noteBeforeMoves } from './shared/entry-scroll.ts';
-import { followVisibleScreen, holdZoom } from './shared/viewport.ts';
+import { pinPage, holdZoom } from './shared/viewport.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
@@ -59,8 +59,8 @@ listenForOpens();
 /* An iPhone never zooms the page in on a small text box, which left the tab bar sliding with every
    scroll until the app was closed (shared/viewport.ts). Before the first frame. */
 holdZoom();
-/* The bottom bars follow the visible screen when the page box drifts from it mid-scroll (shared/viewport.ts). */
-followVisibleScreen();
+/* The page stays at its top: only the app's column scrolls, so the bottom bars never leave the glass (shared/viewport.ts, shared/scroller.ts). */
+pinPage();
 /* iPhone Safari draws a pressed (:active) state only on a page that listens for touches (tokens.css). */
 document.addEventListener('touchstart', () => undefined, { passive: true });
 

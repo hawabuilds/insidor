@@ -36,6 +36,7 @@ import { useContext, useEffect, useRef, type RefObject } from 'react';
 import { entryIdOf } from '../nav.ts';
 import { savedFor, setHeld } from '../entry-scroll.ts';
 import { ShownEntry } from '../screen-active.ts';
+import { scroller, scrollTopNow, scrollToY } from '../scroller.ts';
 
 interface Layer {
   /** The history entry of the page it was opened on. */
@@ -77,9 +78,10 @@ function sync(): void {
   const open = layersOf(entry).length > 0;
   if (open && held !== null && held.entry !== entry) giveBack(false);
   if (open && held === null) {
-    const root = document.documentElement;
-    held = { y: window.scrollY, entry, overflow: root.style.overflow };
-    root.style.overflow = 'hidden';
+    /* The column is what scrolls (shared/scroller.ts): holding it still keeps its place. */
+    const root = scroller();
+    held = { y: scrollTopNow(), entry, overflow: root.style.overflowY };
+    root.style.overflowY = 'hidden';
     setHeld(true);
   } else if (!open && held !== null) {
     giveBack(held.entry === entry);
@@ -91,14 +93,14 @@ function giveBack(here: boolean): void {
   const h = held;
   held = null;
   setHeld(false);
-  document.documentElement.style.overflow = h.overflow;
+  scroller().style.overflowY = h.overflow;
   /* Left for another page: that page's own position is the shell's to set (App.tsx). */
   if (!here) return;
   const y = (h.entry === null ? undefined : savedFor(h.entry)) ?? h.y;
-  window.scrollTo(0, y);
+  scrollToY(y);
   /* A history step can restore its own idea of the scroll a frame later; ours wins. */
   requestAnimationFrame(() => {
-    if (entryNow() === h.entry && held === null) window.scrollTo(0, y);
+    if (entryNow() === h.entry && held === null) scrollToY(y);
   });
 }
 

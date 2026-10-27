@@ -63,6 +63,7 @@ import { later } from './shared/ui/later.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
 import { LateFlex } from './features/trade/late-flex.tsx';
+import { scroller, scrollTopNow, scrollToY } from './shared/scroller.ts';
 
 /*
  * ★ For You and Narratives come with the app; every other screen is its own chunk, fetched ahead
@@ -184,18 +185,20 @@ function useScrollPerEntry(place: Place, shown: KeptTab | null): void {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
     const onScroll = (e: Event) => {
       const t = e.target;
-      if (t instanceof Element && t !== document.documentElement && t !== document.body) noteInner(t);
-      else noteWindow(window.scrollY);
+      /* The column (shared/scroller.ts) is the page's own scroll; anything else is an inner scroller. */
+      const column = scroller();
+      if (t instanceof Element && t !== document.documentElement && t !== document.body && t !== column) noteInner(t);
+      else noteWindow(scrollTopNow());
     };
     document.addEventListener('scroll', onScroll, { passive: true, capture: true });
     return () => document.removeEventListener('scroll', onScroll, { capture: true });
   }, []);
   useLayoutEffect(() => {
     const y = showEntry(place.id, shown);
-    window.scrollTo(0, y);
+    scrollToY(y);
     restoreInner();
     /* Only a page too short for its spot yet (still drawing) is tried again; one that got there is left alone. */
-    if (Math.abs(window.scrollY - y) < 1) return;
+    if (Math.abs(scrollTopNow() - y) < 1) return;
     let moved = false;
     const touched = () => {
       moved = true;
@@ -203,7 +206,7 @@ function useScrollPerEntry(place: Place, shown: KeptTab | null): void {
     window.addEventListener('touchstart', touched, { passive: true });
     window.addEventListener('wheel', touched, { passive: true });
     const frame = requestAnimationFrame(() => {
-      if (!moved && Math.abs(window.scrollY - y) >= 1) window.scrollTo(0, y);
+      if (!moved && Math.abs(scrollTopNow() - y) >= 1) scrollToY(y);
     });
     return () => {
       cancelAnimationFrame(frame);

@@ -32,12 +32,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useScreenActive } from '../screen-active.ts';
+import { onColumnScroll, scrollByY, scrollTopNow, viewHeight } from '../scroller.ts';
 import { anchorShift, rowAt, rowOffsets, rowsNear } from './window-range.ts';
 
 /** Within this many pixels of the top counts as at the top: nothing is held there. */
 const TOP_SLACK_PX = 8;
 
-const scrollTop = (): number => document.scrollingElement?.scrollTop ?? window.scrollY;
+const scrollTop = scrollTopNow;
 
 export function WindowList<T>({
   items,
@@ -86,7 +87,7 @@ export function WindowList<T>({
        the same scroll position finds them already drawn. */
     if (el === null || !activeRef.current) return;
     const listTop = el.getBoundingClientRect().top;
-    view.current = { top: -listTop, height: window.innerHeight };
+    view.current = { top: -listTop, height: viewHeight() };
   }, []);
 
   const noteAnchor = useCallback(() => {
@@ -112,10 +113,10 @@ export function WindowList<T>({
         else noteAnchorRef.current();
       });
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const stopScroll = onColumnScroll(onScroll);
     window.addEventListener('resize', onScroll);
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      stopScroll();
       window.removeEventListener('resize', onScroll);
       cancelAnimationFrame(frame);
     };
@@ -130,7 +131,7 @@ export function WindowList<T>({
     const was = anchor.current;
     if (was !== null && scrollTop() > TOP_SLACK_PX) {
       const shift = anchorShift(was.key, was.at, keys, offsets);
-      if (Math.abs(shift) >= 0.5) window.scrollBy(0, shift);
+      if (Math.abs(shift) >= 0.5) scrollByY(shift);
     }
     readView();
     const next = rowsNear(offsets, view.current.top, view.current.height, overscan);

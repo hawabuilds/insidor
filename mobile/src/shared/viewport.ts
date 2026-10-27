@@ -42,81 +42,41 @@ export function holdZoom(): void {
 }
 
 /**
- * How far an installed app's page box falls short of the screen once a keyboard has gone, in CSS
- * pixels: the screen's height less the page box's, counted only when it is at least `minGap` (a
- * keyboard's worth) and no text box has the keyboard up. Smaller gaps are the status bar's or
- * rounding, and moving the bar for them put it off its place (the owner, 2026-10-23: "the
- * navigation sits a little high", after a full-screen-height rule). Pure, for the tests.
+ * ★ THE PAGE STAYS AT ITS TOP (the owner, 2026-10-27, the fifth "navigation bar keeps moving up").
+ * The page itself never scrolls any more: the app's column does (shared/scroller.ts, tokens.css). An
+ * iPhone can still move the page on its own — to bring a text box above the keyboard, and sometimes
+ * leaving it there once the keyboard has gone or the app comes back — and a page moved off its top
+ * carries the fixed bars with it. So whenever the page is found off its top with no text box being
+ * typed in, it is put back. Nothing is measured and no bar is moved: the four fixes before this one
+ * measured the gap between the page and the glass and moved the bars by it, and iOS reported that
+ * gap wrong often enough to leave a bar mid-screen. While a text box has the keyboard, the page is
+ * left where iOS put it, so the box stays in view.
  */
-export function shortAfterKeyboard(screenHeight: number, innerHeight: number, typing: boolean, minGap: number): number {
-  if (typing) return 0;
-  const gap = Math.round(screenHeight - innerHeight);
-  return gap >= minGap ? gap : 0;
-}
-
-/**
- * How far the visible screen's bottom sits from the page box's bottom, in CSS pixels: 0 when they
- * agree, which is always the case except in the iPhone quirk below. Pure, for the tests.
- */
-export function bottomDrift(innerHeight: number, viewportHeight: number, viewportTop: number): number {
-  const drift = viewportTop + viewportHeight - innerHeight;
-  return Math.abs(drift) < 1 ? 0 : Math.round(drift);
-}
-
-/**
- * ★ THE BOTTOM BARS FOLLOW THE GLASS, NOT THE PAGE (the owner, 2026-10-23: "the navigation is moving
- * up the page again at times", just scrolling). The tab bar and the Buy and Sell bars are fixed to
- * the page's own box. On an iPhone that box and the visible screen can come apart mid-scroll, and a
- * bar fixed to the box rises with it until the app is reopened. The visual viewport says where the
- * screen really is; the gap is written to `--vv-drift` and the bars move by it (ui.module.css
- * .tabbar, trade.module.css .bar, narrative.module.css .bar). With no gap it is 0px and nothing moves.
- */
-/** A keyboard is at least this tall; a smaller shortfall is the status bar or rounding, never moved for. */
-const KEYBOARD_GAP_PX = 150;
-
-export function followVisibleScreen(): void {
-  if (typeof window === 'undefined' || window.visualViewport == null) return;
-  const vv = window.visualViewport;
-  const root = document.documentElement;
-  let last = 0;
-  let queued = false;
-  const installed = window.matchMedia?.('(display-mode: standalone)').matches === true;
+export function pinPage(): void {
+  if (typeof window === 'undefined') return;
   const typing = () => {
     const el = document.activeElement;
     return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
   };
-  const write = () => {
-    queued = false;
-    /* A page box left a keyboard short (installed app only): the bars go down by the gap, onto the glass. */
-    const short = installed ? shortAfterKeyboard(window.screen.height, window.innerHeight, typing(), KEYBOARD_GAP_PX) : 0;
-    /* ★ NEVER UP (2026-10-24, "ffs again": the tab bar mid-screen). A visible screen reported short —
-       the keyboard's size kept after it closed, or a stale reading after the app comes back — gave a
-       large negative gap and lifted the bars halfway up. The bars only ever move down onto the glass;
-       with the keyboard open they stay where they are, behind it. */
-    const d = Math.max(0, bottomDrift(window.innerHeight, vv.height, vv.offsetTop) + short);
-    if (d === last) return;
-    last = d;
-    root.style.setProperty('--vv-drift', `${d}px`);
-  };
-  const soon = () => {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(write);
-  };
-  vv.addEventListener('resize', soon);
-  vv.addEventListener('scroll', soon);
-  window.addEventListener('scroll', soon, { passive: true });
-  window.addEventListener('resize', soon);
-  document.addEventListener('focusout', () => window.setTimeout(soon, 350));
-  /* Back from the background or another app: measure again, once at once and once after iOS settles. */
   const back = () => {
-    soon();
-    window.setTimeout(soon, 400);
+    if (typing()) return;
+    if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+    if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+    if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
   };
+  /* After the keyboard goes, once at once and once after iOS has finished moving things. */
+  const settle = () => {
+    back();
+    window.setTimeout(back, 120);
+    window.setTimeout(back, 400);
+  };
+  window.addEventListener('scroll', back, { passive: true });
+  window.visualViewport?.addEventListener('resize', settle);
+  document.addEventListener('focusout', () => window.setTimeout(settle, 50));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') back();
+    if (document.visibilityState === 'visible') settle();
   });
-  window.addEventListener('pageshow', back);
-  window.addEventListener('focus', back);
-  write();
+  window.addEventListener('pageshow', settle);
+  window.addEventListener('orientationchange', settle);
+  back();
 }

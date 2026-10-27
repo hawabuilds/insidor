@@ -19,6 +19,8 @@
  * later) writes the wrong spot; the shell switches the noted entry before the new page draws.
  */
 
+import { scrollTopNow } from './scroller.ts';
+
 const byEntry = new Map<string, number>();
 const byTab = new Map<string, number>();
 /** Entries kept, at most; the oldest are forgotten first. */
@@ -38,7 +40,7 @@ let watching = false;
 export function noteBeforeMoves(): void {
   if (watching) return;
   watching = true;
-  const note = () => noteWindow(window.scrollY);
+  const note = () => noteWindow(scrollTopNow());
   window.addEventListener('popstate', note);
   window.addEventListener('hashchange', note);
 }
