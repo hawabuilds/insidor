@@ -11,6 +11,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import {
+  totalReachSeries,
   climbPerMinute,
   detailOf,
   foldNarrativeCalls,
@@ -25,6 +26,7 @@ import {
   type NarrativePair,
   type NarrativePost,
 } from './narrative.ts';
+import type { MemberReach } from './narrative.ts';
 
 const P = withMeasuredBars(DEFAULT_POLICY);
 const HOUR = 3_600_000;
@@ -204,4 +206,15 @@ test('★ the same uploaded video links whatever the words, within its gap (the 
   /* Past the gap, the same video does not link. */
   const far = [post('a', 'x video'), post('b', 'y video', [], P.narrative.sameVideo.maxGapMs + HOUR)];
   assert.deepEqual(membersOf(run(far, [same('a', 'b')])), []);
+});
+
+test('★ total views over time: a post brings the views it had when found in over the time it was up, not at the first post', () => {
+  const H = 3_600_000;
+  const early: MemberReach = { postedAtMs: 0, points: [{ atMs: 1 * H, reach: 100 }, { atMs: 3 * H, reach: 300 }] };
+  /* Joined late: went up at 2h, first read at 4h with 1,000 already. */
+  const late: MemberReach = { postedAtMs: 2 * H, points: [{ atMs: 4 * H, reach: 1_000 }] };
+  const s = totalReachSeries([early, late], 0, 4 * H, H, 10);
+  assert.equal(s.fromMs, 0);
+  assert.deepEqual(s.values, [100, 200, 300 + 500, 300 + 1_000]);
+  assert.deepEqual(totalReachSeries([{ postedAtMs: null, points: [] }], 0, H, H, 10).values, []);
 });

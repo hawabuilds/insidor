@@ -776,6 +776,10 @@ export interface WireStory {
    * narrative.reach.allStepMs): the page's "All" line for a story older than `viewsGained` spans.
    */
   readonly viewsGainedAll?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
+  /** Every post's views at each slot's end, added up: the day in five-minute slots (core `totalReachSeries`). The chart's total line. */
+  readonly viewsTotals?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
+  /** The same over the window in "All"'s coarser slots. */
+  readonly viewsTotalsAll?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
   /**
    * Each listed post's newest views, its own last-hour gain (null where it has no reading) and when
    * we first saved it (the page's "First post we caught": the earliest of these among its posts now).

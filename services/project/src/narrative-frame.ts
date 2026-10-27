@@ -71,7 +71,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { barWindowMs, coinCallFor, foldNarrativeCalls, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { barWindowMs, coinCallFor, foldNarrativeCalls, totalReachSeries, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -492,6 +492,10 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     /* "All": from its first reading to now in coarser slots, at most the window's length (an older story's line is its last two days). */
     const r = policy.narrative.reach;
     const all = gainedSeries(memberReach, Math.max(options.nowMs - policy.narrative.windowMs, foundAtMs ?? options.nowMs), options.nowMs, r.allStepMs, Math.ceil(policy.narrative.windowMs / r.allStepMs));
+    /* ★ Total views over time (core `totalReachSeries`): the day in five-minute slots and the window in
+       "All"'s, each post's views brought in over the time it was up before we read it. */
+    const totals = totalReachSeries(memberReach, options.nowMs - r.spanMs, options.nowMs, r.stepMs, Math.floor(r.spanMs / r.stepMs));
+    const totalsAll = totalReachSeries(memberReach, options.nowMs - policy.narrative.windowMs, options.nowMs, r.allStepMs, Math.ceil(policy.narrative.windowMs / r.allStepMs));
     extras.set(n.id, {
       postIds: members.map((m) => m.itemId),
       postCount: members.length,
@@ -501,6 +505,8 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       viewsGained1hPosts: views.lastHour.counted,
       viewsGained: views.gained,
       viewsGainedAll: all,
+      viewsTotals: totals,
+      viewsTotalsAll: totalsAll,
       viewsPerMinute: speeds === null ? null : { now: perMin(speeds.now), before: perMin(speeds.before), posts: speeds.posts, nowBySource: Object.fromEntries(Object.entries(speeds.nowBySource).map(([k, v]) => [k, perMin(v)])) },
       viewsGainedDay: measured(reachGained(memberReach, options.nowMs - spans.today, options.nowMs).value, 'not_read_yet'),
       viewsGainedWeek: measured(reachGained(memberReach, options.nowMs - spans.week, options.nowMs).value, 'not_read_yet'),

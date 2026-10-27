@@ -850,6 +850,58 @@ function gainIn(run: readonly [number, number, number], from: number, to: number
 }
 
 /**
+ * One post's views at `t`: 0 before it went up; from its going up to our first reading, a straight rise
+ * from 0 to that first count (the views it had when we found it, spread over the time it was up, as
+ * the post sheet's dashed rise draws it); between two readings, the straight line between them; after
+ * its last reading, that count. A post with no counted reading adds 0. With no posting time, its first
+ * count stands from its first reading on.
+ */
+function reachAt(post: MemberReach, t: number): number {
+  const pts = post.points.filter((x): x is { atMs: number; reach: number } => x.reach !== null).sort((a, b) => a.atMs - b.atMs);
+  const first = pts[0];
+  if (first === undefined) return 0;
+  if (t < first.atMs) {
+    const up = post.postedAtMs;
+    if (up === null || t <= up || up >= first.atMs) return 0;
+    return (first.reach * (t - up)) / (first.atMs - up);
+  }
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1] as { atMs: number; reach: number };
+    const b = pts[i] as { atMs: number; reach: number };
+    if (t < b.atMs) return a.reach + (Math.max(a.reach, b.reach) - a.reach) * ((t - a.atMs) / (b.atMs - a.atMs));
+  }
+  return (pts[pts.length - 1] as { reach: number }).reach;
+}
+
+/**
+ * ★ TOTAL VIEWS OVER TIME (the owner, 2026-10-27, the narrative chart: "fix the narrative start"). Every
+ * post's views at the end of each `stepMs` slot from `fromMs` to now, added up (`reachAt`): a post that
+ * joined with a million views brings them in over the time it was up before we read it, not all at the
+ * story's first post. The slots start at the first post's going up (or its first reading) inside the
+ * span, so the line starts at 0 there and ends on every post's newest count. Separate from
+ * `gainedSeries`, which still counts only what was gained while read.
+ */
+export function totalReachSeries(members: readonly MemberReach[], fromMs: number, nowMs: number, stepMs: number, maxSlots: number): GainedSeries {
+  const starts = members.flatMap((m) => {
+    const read = m.points.filter((x) => x.reach !== null).map((x) => x.atMs);
+    const first = read.length === 0 ? null : Math.min(...read);
+    return first === null ? [] : [m.postedAtMs !== null && m.postedAtMs < first ? m.postedAtMs : first];
+  });
+  if (starts.length === 0) return { fromMs: nowMs, stepMs, values: [] };
+  const begin = Math.max(fromMs, Math.min(...starts));
+  const slots = Math.min(maxSlots, Math.max(1, Math.ceil((nowMs - begin) / stepMs)));
+  const start = nowMs - slots * stepMs;
+  const values: (number | null)[] = [];
+  for (let i = 0; i < slots; i++) {
+    const end = start + (i + 1) * stepMs;
+    let sum = 0;
+    for (const m of members) sum += reachAt(m, end);
+    values.push(Math.round(sum));
+  }
+  return { fromMs: start, stepMs, values };
+}
+
+/**
  * ★ PER POST, THEN ADDED UP (the owner, 2026-10-17). A post's gain between two of its readings is
  * spread evenly over the time between them (some sources are read less often, so one late jump
  * becomes the slope it was); before its first reading and after its last it adds nothing, never a
