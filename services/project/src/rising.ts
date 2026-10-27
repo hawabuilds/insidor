@@ -304,6 +304,12 @@ export interface RisingRow {
    * by hand: read as found some other way.
    */
   coin_list_only?: boolean | null;
+  /**
+   * The view count the source gave when the post was last fetched (public.item.counters), for a post
+   * loaded by id that has no series of re-reads: a six-day-old original at 69M views is seen, though
+   * no re-read of it is on file. Read only by the coin-list hold.
+   */
+  stored_reach?: string | number | null;
   /** When the post was found deleted from its source (0131, `loadDeleted`); absent or null when it is not known to be. */
   deleted_at?: Date | string | null;
   /** The viral exception's stored answers (0138, `loadViral`), read only while Policy.judge.viral.on; absent or null: never asked. */
@@ -356,7 +362,8 @@ export async function loadCandidates(
             s.story_id,
             oc.verdict as owner_call,
             f.credited,
-            not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link') as coin_list_only
+            not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link') as coin_list_only,
+            i.counters -> 'reach' ->> 'value' as stored_reach
        from (select fb.item_id, true as credited from internal.item_found_by fb
              union all
              select u.item_id, false from unnest($4::text[]) as u(item_id)
@@ -1125,7 +1132,9 @@ export async function buildRising(
        them, the coin's vouch and a running coin included. Found by any other lane too, the routes
        decide as before. */
     /* A post a key account shared (the Dandy route below) is loaded by id with no lane too: the share stands in for its views. */
-    const coinListHeld = !shares.has(row.item_id) && coinListHolds(row, clearsReachBar('fyp', barViews, postedAt, fypBar, scale), policy);
+    const storedReach = row.stored_reach === null || row.stored_reach === undefined ? null : Number(row.stored_reach);
+    const seen = clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || (storedReach !== null && Number.isFinite(storedReach) && storedReach >= policy.rising.fypMinReach * scale);
+    const coinListHeld = !shares.has(row.item_id) && coinListHolds(row, seen, policy);
     const byViews = !coinListHeld && !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
     const byLate = lateLets({
