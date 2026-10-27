@@ -46,11 +46,14 @@ import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, 
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { KNOWN_MODELS, OPEN_API_KEY, closestModel, listModels, openChatClient, openJudge, readOpenJudgeBackupSetup, readOpenJudgeSetup, readPostFirst, type HostModel, type OpenJudgeSetup } from '../../adapters/judge/openai-compatible/src/index.ts';
-import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './own-embed.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
 
 const P = DEFAULT_POLICY;
+/* The policy's spaces: the ones the runner stores and reads vectors in, and the ones our own service is built for. */
+const POST_SPACE = P.group.image.postSpace;
+const EMBED_SPACE = P.group.image.space;
 
 /** A post to grade. `group` is the caller's own name for the set it belongs to. */
 export interface EvalPost<G extends string = string> {
@@ -264,7 +267,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   /* Each post's own picture embedded, for the boost. */
   const postVectors = new Map<string, number[] | null>();
   if (o.coined !== null && o.textOnly !== true) {
-    const embed = voyageEmbed({ client: voyageClient({ apiKey: (o.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: o.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter: o.meter, now: Date.now });
+    const embed = ownEmbed(o.meter, { env: o.env });
     const uris = [...new Set(posts.flatMap((p) => (p.imageUri === null ? [] : [p.imageUri])))];
     const stored = o.vectors === undefined ? new Map<string, readonly number[]>() : await o.vectors.stored(uris, EMBED_SPACE).catch(() => new Map<string, readonly number[]>());
     for (const [uri, v] of stored) postVectors.set(uri, [...v]);
@@ -303,7 +306,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     }
     const ask = posts.filter((p) => !vectors.has(p.id) && (inputOf(p).text !== '' || inputOf(p).picture !== null));
     if (ask.length > 0) {
-      const embed = voyageEmbed({ client: voyageClient({ apiKey: (o.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: o.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter: o.meter, now: Date.now });
+      const embed = ownEmbed(o.meter, { env: o.env });
       for (let k = 0; k < ask.length; k += embed.maxBatch) {
         const part = ask.slice(k, k + embed.maxBatch);
         const line = o.meter.line();

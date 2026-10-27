@@ -102,7 +102,7 @@ const judge = {
 } as unknown as JudgePort;
 
 const embed = {
-  id: 'embed:voyage/test',
+  id: 'embed:embed-service/test',
   space: SPACE,
   dimensions: 1024,
   maxBatch: 32,

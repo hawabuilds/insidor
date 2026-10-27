@@ -14,7 +14,6 @@
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
     "@insidor/embed-selfhost": "workspace:*",
-    "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
     "@insidor/judge-openai-compatible": "workspace:*",
     "@insidor/market-dexscreener": "workspace:*",

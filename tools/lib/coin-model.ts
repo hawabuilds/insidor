@@ -72,13 +72,17 @@ import { readFileSync } from 'node:fs';
 
 import { DEFAULT_POLICY, type CoinModelTarget, type Policy } from '../../contracts/src/policy.ts';
 import { clearsReachBar, COIN_FEATURES, coinModelFeatures, coinModelProbability, oneHotsOf, standardised, type CoinModelFacts, type CoinModelFit } from '../../core/src/index.ts';
-import { POST_SPACE } from '../../adapters/embed/voyage/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgCoinModelRepo, PgLearningRepo, PgOwnerSeenRepo, type AppliedCoinModel, type CoinFactRow, type Db, type FirstAnswer } from '../../store/src/index.ts';
 import { PgJunkFilterRepo } from '../../store/src/repo/junk-filter.ts';
 import { averagePrecision, chooseThreshold, fitLogistic, scoreRow, standardisation, tableRow, THRESHOLDS, type FitRow, type LogisticFit, type TablePost, type TableRow } from '../../eval/src/feed/coin-fit.ts';
 import { loadJunkLabels } from './junk-filter.ts';
 import { GEMMA_JUDGE, HAIKU_JUDGE, oldLabel } from './junk-sample.ts';
 import { EARLY_SHARE, NEAR_24H_MS, VIRAL_LINE } from './scorecard.ts';
+
+/* ★ THE POLICY'S POST SPACE, the one the runner stores and scores in. This read one embedding model's
+   name from its adapter, so after the switch to our own models (policy.v172, v182) the fit read and
+   recorded vectors in a space no new post has. */
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 
 const SPLIT = new URL('../../eval/src/feed/coin-model-split.json', import.meta.url);
 const BACKTEST = new URL('../../eval/src/feed/backtest-coined.json', import.meta.url);

@@ -35,7 +35,7 @@ import process from 'node:process';
 
 import type { Millis } from '../contracts/src/index.ts';
 import { DEFAULT_POLICY as P, type Policy } from '../contracts/src/policy.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { httpClient as judgeClient } from '../adapters/judge/anthropic/src/index.ts';
 import { anthropicNamer } from '../adapters/judge/anthropic/src/name-guess.ts';
 import { dexscreenerSearch } from '../adapters/market/dexscreener/src/index.ts';
@@ -91,7 +91,7 @@ async function guess(): Promise<void> {
     const namer = anthropicNamer({ client, meter, now: () => Date.now() as Millis, model: setup.model, judge: P.judge, names: P.names, effort: price.effort });
     /* The runner's own step, its scope widened to every scroll member and its pass to every card. */
     const policy: Policy = { ...P, names: { ...P.names, on: true, feedOnly: true, windowMs: ALL_MEMBERS_MS, perPass: cards.length } };
-    const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: () => Date.now() as Millis });
+    const embed = ownEmbed(meter);
     const step = nameGuesser({
       namer, embed, meter, mode: 'live', policy, log, now: () => Date.now() as Millis,
       examples: new PgNameExampleRepo(db), guesses: new PgNameGuessRepo(db),

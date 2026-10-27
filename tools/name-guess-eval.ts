@@ -30,7 +30,6 @@ import { DEFAULT_POLICY as P } from '../contracts/src/policy.ts';
 import type { NameGuess, NameSubject } from '../contracts/src/ports/names.ts';
 import { cleanGuesses, exampleShown, guessHit, nearestExamples, type ExampleVector } from '../core/src/create/name-guess.ts';
 import { sourceOfItemId } from '../core/src/qualify/precedents.ts';
-import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { httpClient as judgeClient } from '../adapters/judge/anthropic/src/index.ts';
 import { anthropicNamer } from '../adapters/judge/anthropic/src/name-guess.ts';
 import { postNameIdeas } from '../services/project/src/post-match.ts';
@@ -45,7 +44,10 @@ const arg = (name: string, fallback: string): string => {
 };
 const CAP = Number(arg('--cap', '1.2'));
 const LINKED = Number(arg('--linked', '120'));
-const CACHE = arg('--cache', 'var/name-vectors.json');
+/* The policy's post space: the vectors the runner stores and the namer reads. */
+const POST_SPACE = P.group.image.postSpace;
+/* One cache per space: a vector cached in another space is a different representation under the same post id. */
+const CACHE = arg('--cache', `var/name-vectors.${POST_SPACE}.json`);
 const OUT = arg('--out', 'var/name-guess-eval.json');
 const MAX_PAID_VECTORS = Number(arg('--max-vectors', '1500'));
 

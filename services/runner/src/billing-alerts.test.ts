@@ -185,10 +185,10 @@ test('wired to the vendor edge: a billing error built in an adapter reaches the 
   const h = harness();
   const off = onOutOfCredit({ refused: (e) => h.b.refused(e), answered: (v) => h.b.answered(v) });
   try {
-    const e = outOfCredit('voyage', 'POST /v1/multimodalembeddings', 'no payment method on file', 429);
+    const e = outOfCredit('together', 'POST /v1/chat/completions', 'no payment method on file', 429);
     assert.equal(e.reason, 'no payment method on file');
     await h.b.flush();
-    vendorAnswered('voyage');
+    vendorAnswered('together');
     h.setNow(T0 + RECOVERY_HOLD_MS);
     await h.b.flush();
     assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);

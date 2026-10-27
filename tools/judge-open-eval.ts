@@ -65,7 +65,7 @@ import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 import { anthropicJudge, httpClient as anthropicClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { DEFAULT_BASE_URL, DEFAULT_OPEN_MODEL, DEFAULT_VENDOR, ESTIMATE_MARGIN, closestModel, keyAllowance, listModels, openChatClient, openJudge, openProviders, type HostModel } from '../adapters/judge/openai-compatible/src/index.ts';
-import { POST_SPACE, SPACE as PICTURE_SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { ownEmbedOrNull } from './lib/own-embed.ts';
 import { postTimeFromId } from '../adapters/platform/x/src/index.ts';
 import { BudgetRefused } from '../adapters/kit/vendor/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
@@ -74,6 +74,9 @@ import { goldOriginPosts, handGoldIds } from './lib/pass-rates.ts';
 import { agreement, blend, chooseBand, fileRow, grade, ofN, pct, recommend, setRates, speed, subjectOf, timedClient, tuneOpenCutoff, type Band, type Near, type OpenEvalPost, type Row, type SetRates, type Signal, type Timing } from './lib/judge-open.ts';
 
 const P = DEFAULT_POLICY;
+/* The policy's spaces, the ones the runner stores and reads vectors in (not one model's adapter constants). */
+const POST_SPACE = P.group.image.postSpace;
+const PICTURE_SPACE = P.group.image.space;
 const KEY_VAR = 'OPENROUTER_API_KEY';
 /** The owner's picks (2026-10-15), each checked against the host's model list at the start of a run. */
 const DEFAULT_MODELS = ['meta-llama/llama-4-maverick', 'qwen/qwen2.5-vl-72b-instruct', 'google/gemma-3-27b-it'];
@@ -302,9 +305,9 @@ const signals: Map<string, Signal> = new Map(await repo.cryptoSignals(allPosts.m
 const near = new Map<string, Near>();
 try {
   const labels: readonly LabelledVector[] = await labelRepo.all(POST_SPACE);
-  const coined = await repo.coinedPictureVectors(P.group.image.space);
-  const voyageKey = (process.env['VOYAGE_API_KEY'] ?? '').trim();
-  const embed = voyageKey === '' ? null : voyageEmbed({ client: voyageClient({ apiKey: voyageKey, baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  const coined = await repo.coinedPictureVectors(PICTURE_SPACE);
+  /* Our own embedding service (EMBED_SERVICE_URL, EMBED_SECRET), or none: the rest go without. */
+  const embed = ownEmbedOrNull(meter);
   const parse = (t: string): number[] => JSON.parse(t) as number[];
   /* Vectors already stored: each For You post's own (0074), and every picture embedded before. */
   const storedPost = new Map((await db.query<{ item_id: string; e: string }>('select item_id, embedding::text as e from internal.post_embedding where space = $1 and item_id = any($2)', [POST_SPACE, fypPosts.map((p) => p.id)])).map((r) => [r.item_id, parse(r.e)] as const));
@@ -320,7 +323,7 @@ try {
   }
   const toEmbed = allPosts.filter((p) => !postVec.has(p.id) && (inputOf(p).text !== '' || inputOf(p).picture !== null));
   const toPicture = pictures.filter((u) => !storedPic.has(u));
-  say(`vectors: ${postVec.size} posts and ${storedPic.size} pictures already stored; ${embed === null ? 'no embedding key, so the rest go without precedents and picture boost (for every judge alike)' : `${toEmbed.length} posts and ${toPicture.length} pictures to embed`}`);
+  say(`vectors: ${postVec.size} posts and ${storedPic.size} pictures already stored; ${embed === null ? 'no embedding service configured, so the rest go without precedents and picture boost (for every judge alike)' : `${toEmbed.length} posts and ${toPicture.length} pictures to embed`}`);
   if (embed !== null) {
     for (let k = 0; k < toEmbed.length; k += embed.maxBatch) {
       const part = toEmbed.slice(k, k + embed.maxBatch);

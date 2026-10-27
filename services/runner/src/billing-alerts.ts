@@ -70,7 +70,6 @@ export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   'twitterapi.io': { supplier: 'twitterapi.io', uses: 'X posts' },
   apify: { supplier: 'Apify', uses: 'TikTok videos' },
   scrapecreators: { supplier: 'ScrapeCreators', uses: 'TikTok re-reads, creators and the For You feed' },
-  voyage: { supplier: 'Voyage', uses: 'picture matching' },
   geckoterminal: { supplier: 'CoinGecko', uses: 'coin prices' },
   gemini: { supplier: 'Gemini', uses: 'embeddings' },
 };

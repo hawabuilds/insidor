@@ -6,8 +6,9 @@
  *
  * The picture is the one the feed would show (a video's preview included): from
  * eval/src/feed/gold-origin-pictures.json when it was re-read there, else the gold evidence.
- * Paid: one image embedding each (a fraction of a cent), on the shared ledger as a job. Pictures
- * already held are skipped, so a rerun pays only for new ones.
+ * One image embedding each, on our own embedding service in the policy's picture space
+ * (tools/lib/own-embed.ts; $0 a call, still recorded on the shared ledger as a job). Pictures
+ * already held in that space are skipped, so a rerun embeds only new ones.
  *
  * What breaks if changed carelessly: only ORIGIN pictures go in. A coin's own logo, or a post that
  * merely mentioned the coin, would make the boost reward looking like a token's logo.
@@ -16,12 +17,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import process from 'node:process';
 
-import { voyageEmbed, httpClient as voyageClient, SPACE } from '../adapters/embed/voyage/src/index.ts';
+import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { asDb, createPool, DB_ROLE, PgCoinedPictureRepo } from '../store/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 
 const USD_PER_PICTURE = 0.001;
+/* The policy's picture space: the one the projector's picture boost reads coined pictures in. */
+const SPACE = DEFAULT_POLICY.group.image.space;
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
   console.error('coined-pictures refused: this embeds pictures, which costs money. Set SPEND=live and pass --yes.');
@@ -42,7 +46,7 @@ const held = await repo.known(SPACE);
 const todo = [...wanted].filter(([uri]) => !held.has(uri));
 console.log(`${wanted.size} origin pictures, ${todo.length} not yet held; at most $${(todo.length * USD_PER_PICTURE).toFixed(3)}.`);
 const { meter, close } = await openSharedMeter(Math.max(todo.length * USD_PER_PICTURE, 0.01));
-const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+const embed = ownEmbed(meter);
 let stored = 0;
 try {
   for (const [uri, coinId] of todo) {

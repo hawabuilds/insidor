@@ -32,7 +32,7 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { closestNot, embedInput, postPicture, type LabelledVector } from '../core/src/qualify/precedents.ts';
-import { POST_SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { ownEmbed } from './lib/own-embed.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, mergeLabels, type LabelledPost } from '../store/src/index.ts';
@@ -47,6 +47,8 @@ const arg = (name: string): string | null => {
 const measureOnly = process.argv.includes('--measure');
 const cacheFile = arg('--cache');
 const capUsd = Number(arg('--cap') ?? '0.5');
+/* The policy's post space: the one the runner reads precedents in, and the one our own service is built for here. */
+const POST_SPACE = DEFAULT_POLICY.group.image.postSpace;
 if (!measureOnly && (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes'))) {
   console.error('label-embeddings refused: embedding costs money. Set SPEND=live and pass --yes, or pass --measure.');
   process.exit(1);
@@ -97,7 +99,7 @@ console.log(`${todo.length} to embed now (${all.length - todo.length} already he
 let paid = 0;
 if (todo.length > 0 && !measureOnly) {
   const { meter, close } = await openSharedMeter(capUsd, process.env, 'learning');
-  const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  const embed = ownEmbed(meter);
   try {
     for (let k = 0; k < todo.length; k += embed.maxBatch) {
       const part = todo.slice(k, k + embed.maxBatch);

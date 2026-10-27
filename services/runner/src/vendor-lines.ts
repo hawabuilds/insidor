@@ -17,7 +17,6 @@
 
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { VENDOR as SELF_EMBED_VENDOR } from '@insidor/embed-selfhost';
-import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
 import { BACKUP_VENDOR as SECOND_OPEN_JUDGE_VENDOR, DEFAULT_VENDOR as OPEN_JUDGE_VENDOR } from '@insidor/judge-openai-compatible';
 import { SECOND_VIDEO_VENDOR, SUPPLIER_VENDORS } from '@insidor/platform-registry';
@@ -29,7 +28,7 @@ export function jobVendorLines(policy: Policy, book: 'jobs' | 'learning' = 'jobs
     [SUPPLIER_VENDORS.posts]: lines.posts,
     [SUPPLIER_VENDORS.video]: lines.video,
     [JUDGE_VENDOR]: lines.judge,
-    [EMBED_VENDOR]: lines.embeddings,
+    [SELF_EMBED_VENDOR]: lines.embeddings,
   };
 }
 
@@ -69,7 +68,6 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
     /* The second open host (Together, Nemotron: the post judge from 2026-10-17): the judge's line
        again, its own account. About $3.60 a day as the first judge ($0.0005 a post in its copy test on 40 live posts, 2026-10-17, at about 7,200 posts a day). */
     [SECOND_OPEN_JUDGE_VENDOR]: lines.judge,
-    [EMBED_VENDOR]: lines.embeddings,
     /* Our own embedding service: $0 a call (a fixed monthly machine), so the line never binds; it is
        named so its calls sit on the pictures line rather than the default per-source one. */
     [SELF_EMBED_VENDOR]: lines.embeddings,
@@ -94,6 +92,6 @@ export function supplierRoles(judges: readonly string[] = [JUDGE_VENDOR]): reado
     { role: 'posts', vendor: SUPPLIER_VENDORS.posts },
     ...judges.slice(0, 2).map((vendor, i): SupplierRole => ({ role: i === 0 ? 'judge' : 'fallback judge', vendor })),
     { role: 'short video', vendor: SUPPLIER_VENDORS.video },
-    { role: 'pictures', vendor: EMBED_VENDOR },
+    { role: 'pictures', vendor: SELF_EMBED_VENDOR },
   ];
 }

@@ -130,7 +130,8 @@ const PART_OF_VENDOR: Readonly<Record<string, CostPart>> = {
   together: 'judge',
   apify: 'tiktok',
   scrapecreators: 'tiktok',
-  voyage: 'pictures',
+  /* Our own embedding service ($0 a call, still recorded). */
+  'embed-service': 'pictures',
 };
 export const costPartOf = (vendor: string): CostPart => PART_OF_VENDOR[vendor] ?? 'other';
 
