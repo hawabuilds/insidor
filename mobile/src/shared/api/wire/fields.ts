@@ -75,6 +75,8 @@ export const STORY_FIELDS = [
   'postViews',
   /* The page's "All" line, and the tab's orders per window (services/project narrative-trend.ts). */
   'viewsGainedAll',
+  'viewsTotals',
+  'viewsTotalsAll',
   'inWindow',
   'topCoin',
   'postIds',

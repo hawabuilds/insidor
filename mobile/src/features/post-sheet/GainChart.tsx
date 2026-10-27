@@ -47,10 +47,13 @@ export interface ChartMarker {
   readonly at: number | null;
 }
 
-export function GainChart({ slots, allSlots = null, total = null, intervals = GAIN_INTERVALS, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
+export function GainChart({ slots, allSlots = null, total = null, totalSlots = null, totalAllSlots = null, intervals = GAIN_INTERVALS, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
   slots: GainSlots;
   /** The real views now (the post's newest reading, the narrative's total): the line ends on it. Null: the line shows the growth from 0. */
   total?: number | null;
+  /** Every post's views added up at each slot's end (a narrative's, from the projector): drawn as they are, never summed here. */
+  totalSlots?: GainSlots | null;
+  totalAllSlots?: GainSlots | null;
   /** The whole story's coarser slots, drawn on "All"; null: "All" draws `slots` from the first post. */
   allSlots?: GainSlots | null;
   /** The rail's intervals: the narrative page adds "All". */
@@ -103,7 +106,24 @@ export function GainChart({ slots, allSlots = null, total = null, intervals = GA
   /* ★ TOTAL VIEWS, LIKE A MARKET CAP LINE (the owner, 2026-10-27): the running total, ending on the
      real count; a dashed rise from 0 at the post's own time to our first reading, so the chart starts
      at its left edge and the stretch before we found it is plainly drawn as not read. */
-  const totals = useMemo(() => totalSeries(shown, total), [shown, total]);
+  const totalSrc = all ? totalAllSlots : totalSlots;
+  const totals = useMemo(() => {
+    /* A narrative: all its posts' views added up, read straight off the projector's totals at each bucket's end. */
+    if (totalSrc !== null && totalSrc.values.length > 0) {
+      const at = (t: number): number | null => {
+        const i = Math.round((t - totalSrc.fromMs) / totalSrc.stepMs) - 1;
+        const v = i < 0 ? 0 : totalSrc.values[Math.min(i, totalSrc.values.length - 1)];
+        return v === undefined ? null : v;
+      };
+      const points = shown.flatMap((b) => {
+        const v = at(b.end);
+        return v === null ? [] : [{ t: b.end, v, gain: b.value }];
+      });
+      const first = shown[0];
+      return { start: first === undefined ? null : { t: first.start, v: at(first.start) ?? 0 }, points };
+    }
+    return totalSeries(shown, total);
+  }, [shown, total, totalSrc]);
   const axis = axisTicks(Math.max(1, ...totals.points.map((p) => p.v)));
   const max = axis.top;
   const y = (v: number) => top + TOP_ROOM + (plotH - TOP_ROOM) * (1 - v / max);
@@ -120,7 +140,7 @@ export function GainChart({ slots, allSlots = null, total = null, intervals = GA
   /* One line: the total where our first read bucket begins, then at each bucket's end. */
   const line = totals.start === null ? [] : [{ x: x(totals.start.t), y: y(totals.start.v) }, ...totals.points.map((p) => ({ x: x(p.t), y: y(p.v) }))];
   /* Before our first reading, from the post's own time at 0 views: dashed, never a reading. */
-  const lead = fromIsPost && totals.start !== null && totals.start.t > from ? { x1: x(from), y1: y(0), x2: x(totals.start.t), y2: y(totals.start.v) } : null;
+  const lead = totalSrc === null && fromIsPost && totals.start !== null && totals.start.t > from ? { x1: x(from), y1: y(0), x2: x(totals.start.t), y2: y(totals.start.v) } : null;
   const counted = totals.points.length;
   const mid = from + (end - from) / 2;
   /* The middle time only where it clears the first one ("Thu 14:01 first post" is long on All). */

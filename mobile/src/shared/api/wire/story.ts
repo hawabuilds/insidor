@@ -137,6 +137,10 @@ export interface Story {
   readonly viewsGained: ViewsGained | null;
   /** The same gains from its first reading to now in half-hours: the page's "All" line. Null from an older server. */
   readonly viewsGainedAll: ViewsGained | null;
+  /** Total views at each slot's end, the day in five-minute slots; null from an older server. */
+  readonly viewsTotals: ViewsGained | null;
+  /** The same over the narrative's window in "All"'s slots. */
+  readonly viewsTotalsAll: ViewsGained | null;
   /** Each listed post's newest views, its own last-hour gain and when we found it, by post id. Null from an older server. */
   readonly postViews: ReadonlyMap<string, PostViews> | null;
   /**
