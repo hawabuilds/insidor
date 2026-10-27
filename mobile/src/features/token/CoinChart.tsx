@@ -34,7 +34,7 @@ import styles from './token.module.css';
    saying the same empty line, so nothing moves when the lines draw in. */
 const PriceChart = PRICE_CHART.Component;
 /** PriceChart's own height (PriceChart.tsx HEIGHT). */
-const CHART_HEIGHT = 230;
+const CHART_HEIGHT = 200;
 
 /** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
 export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;

@@ -51,7 +51,7 @@ import { chartPrice } from './chart-format.ts';
 import { compactMoney } from '../../shared/format/number.ts';
 import styles from './token.module.css';
 
-const HEIGHT = 230;
+const HEIGHT = 200;
 /** A candle's width in px on every view but All, which fits the whole life: thin, as pump.fun's, never stretched. */
 const BAR_PX = 7;
 /** All's narrowest and widest candle. */
