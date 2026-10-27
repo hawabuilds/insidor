@@ -145,10 +145,17 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     return true;
   }
 
-  /* Kept for `keepMs`; one request in flight per key; on failure, the last good answer. */
+  /* Kept for `keepMs`; one request in flight per key; on failure, the last good answer.
+     ★ AN OLDER ANSWER IS SERVED AT ONCE (the owner, 2026-10-27: "I need this instant for users"): past
+     `keepMs` the last good answer goes back immediately and a fresh one is fetched behind it, so only a
+     key never fetched before waits on the vendor. The next read gets the fresh one. */
   async function cached<T>(key: string, keepMs: number, load: () => Promise<T>): Promise<T> {
     const hit = kept.get(key);
-    if (hit !== undefined && config.now() - hit.at < keepMs) return hit.value as T;
+    if (hit !== undefined && hit.at > 0 && config.now() - hit.at < keepMs) return hit.value as T;
+    if (hit !== undefined && hit.at > 0) {
+      if (hit.pending === undefined) void refresh(key, hit, load).catch(() => undefined);
+      return hit.value as T;
+    }
     if (hit?.pending !== undefined) return hit.pending as Promise<T>;
     const pending = load();
     kept.set(key, { at: hit?.at ?? 0, value: hit?.value, pending });
@@ -160,6 +167,17 @@ export function geckoterminal(config: GeckoConfig): MarketData {
       kept.set(key, { at: hit?.at ?? 0, value: hit?.value });
       if (hit !== undefined && hit.at > 0) return hit.value as T;
       throw e;
+    }
+  }
+
+  /* The background half of `cached`: one fetch, kept on success, the old answer kept on failure. */
+  async function refresh<T>(key: string, hit: { readonly at: number; readonly value: unknown }, load: () => Promise<T>): Promise<void> {
+    const pending = load();
+    kept.set(key, { at: hit.at, value: hit.value, pending });
+    try {
+      kept.set(key, { at: config.now(), value: await pending });
+    } catch {
+      kept.set(key, { at: hit.at, value: hit.value });
     }
   }
 
