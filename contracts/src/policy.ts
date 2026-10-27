@@ -3239,6 +3239,9 @@ export interface RisingPolicy {
    * longer stand in for them. The coin-first walk still swaps a launcher's pointer for the original, so
    * it is the original's views that are read. Over 25-27 Oct, 81 For You posts came by a coin's link
    * alone: launchers' promos with a few hundred views (@TheBoxPump's 703) beside originals at 0.5M-2M.
+   * A post no lane credited at all, loaded by id by a coin route (the running pick, coin-first), is
+   * held the same way (2026-10-27: a launcher's "Shu Bao could be the next Moo Deng" post, 605 views,
+   * came in by its running coin alone).
    * Off: the routes decide as before.
    */
   readonly coinListNeedsReach: boolean;
@@ -5893,7 +5896,7 @@ const POLICY_V1: Policy = {
      only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
      was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
      the old rule. */
-  version: 'policy.v192',
+  version: 'policy.v193',
 
   admit: {
     maxAgeMin: 240,
