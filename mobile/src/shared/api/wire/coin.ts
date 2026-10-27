@@ -158,4 +158,7 @@ export interface CoinEvidence {
   readonly picked?: true;
   /** This many coins made for the post are being bought together: "See N coins". Absent, or 2 or more. */
   readonly racing?: number;
+  /** The post's trading coins (2 or more, this one first) when an older coin its own coins name is one
+      of them: "See N coins" lists exactly these, whatever their age. Absent otherwise. */
+  readonly tradingCoins?: readonly string[];
 }

@@ -150,6 +150,7 @@ import { withPlausibleLists } from './coin-list.ts';
 import { liveCoinLine, loadPostPicks, type CardPick } from './one-coin-cards.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
+import { loadOlderTrading, olderTradingLine } from './older-trading.ts';
 import { permalinkFor } from './permalinks.ts';
 import { forYouTime, loadShares, projectShare, type WireSharedBy } from './resurfaced.ts';
 import { accountKey, loadTopicLinks, topicsOf, withVariety, type ShareRule } from './variety.ts';
@@ -1034,6 +1035,8 @@ export async function buildRising(
   const promotions = promotionOn(policy) ? await loadPromotions(db, rowIds, ownReachOf) : new Map();
   const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address] : [])))]) : new Map();
   const pickOptions = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
+  /* ★ AN OLDER COIN THE POST'S OWN COINS NAME, STILL TRADING (older-trading.ts, Policy.oneCoin.olderTrading). */
+  const olderTrading = live ? await loadOlderTrading(db, rows.map((row) => ({ itemId: row.item_id, postedAtMs: toMs(row.posted_at) })), policy, pickOptions) : new Map();
   /* ★ THE OWNER'S "SEE N COINS" COUNTS ONLY COINS MADE AFTER THE POST (the owner, 2026-10-24: the
      count said 5 and the list, which leaves out older same-name coins — mobile shared/coins-made.ts —
      was empty). Launched no earlier than COIN_LEAD_MS before the post; a coin of unknown launch is
@@ -1063,6 +1066,13 @@ export async function buildRising(
     if (check?.none === true || owners) return post;
     const pick = picks.get(row.item_id);
     const f = pick?.address === null || pick?.address === undefined ? undefined : pickedFacts.get(pick.address);
+    const trading = olderTrading.get(row.item_id);
+    const tradingLine = trading === undefined ? null : olderTradingLine(trading, pick, f === undefined ? null : projectCoin(f, pickOptions), check?.wrong ?? new Set(), POST_COINS_SHOWN);
+    if (tradingLine !== null) {
+      const out: WireRisingPost = { ...post, coins: tradingLine, storyId: null };
+      assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);
+      return out;
+    }
     const listed = lookup !== null && 'coins' in lookup ? { count: Math.min(madeAfter(row, lookup.coins), POST_COINS_SHOWN), more: false } : { count: 0, more: false };
     const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set());
     const out: WireRisingPost = { ...post, coins, storyId: coins === post.coins ? post.storyId : null };

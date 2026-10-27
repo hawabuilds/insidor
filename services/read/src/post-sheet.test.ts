@@ -47,6 +47,20 @@ test('★ coins come highest market cap first, a coin no market lists after ever
   assert.deepEqual(body.foundAt, { at: 500 });
 });
 
+test('★ the post\'s trading coins (paws at you): all listed, an older one never marked proven, a tied one still is', async () => {
+  const trading = (top: string, evidence: Record<string, unknown>) => ({ ...POST, coins: { kind: 'matched', coin: { address: top }, evidence: { linksPost: null, samePicture: null, launchedAfterMs: -1, ...evidence, tradingCoins: [top, 'FP4', 'HIM2'] } } });
+  const rows = (payload: unknown) => ({
+    [SHEET_POST_SQL]: [{ payload, media: [] }],
+    [SHEET_LIST_SQL]: [{ address: 'COPY' }],
+    [SHEET_COINS_SQL]: [{ address: 'HIM1', symbol: 'Himmel' }, { address: 'FP4', symbol: 'paws' }, { address: 'HIM2', symbol: 'Himmel' }, { address: 'COPY', symbol: 'paws' }],
+  });
+  const quotes = new Map([['HIM1', quote(75_000)], ['FP4', quote(44_000)], ['HIM2', quote(21_000)], ['COPY', quote(3_000)]]);
+  const older = JSON.parse((await createPostSheet(deps(rows(trading('HIM1', {})), quotes)).sheet('x:1')).body);
+  assert.deepEqual(older.coins.map((c: { address: string; proven: boolean }) => [c.address, c.proven]), [['HIM1', false], ['FP4', false], ['HIM2', false], ['COPY', false]]);
+  const tied = JSON.parse((await createPostSheet(deps(rows(trading('HIM1', { picked: true })), quotes)).sheet('x:1')).body);
+  assert.equal(tied.coins[0].proven, true, 'the pick is the post\'s coin, as before');
+});
+
 test('an outage is not an empty market: every cap is "not read yet"', async () => {
   const sheet = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: POST, media: [] }], [SHEET_COINS_SQL]: [{ address: 'B', symbol: 'BEE' }] }, 'down'));
   const body = JSON.parse((await sheet.sheet('x:1')).body);

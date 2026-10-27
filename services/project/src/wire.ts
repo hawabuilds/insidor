@@ -217,6 +217,10 @@ export interface WireCoinEvidence {
       are all being bought — the card offers "See N coins" beside this one. Absent when there is no
       race; never under 2. A fact about the market, not a judgement of which coin is right. */
   readonly racing?: number;
+  /** THE POST'S TRADING COINS, when an older coin its own coins name is one of them (older-trading.ts):
+      their addresses, highest market cap first, this coin first. The card offers "See N coins" beside
+      this one and the sheet lists exactly these, whatever their age. Absent otherwise; never under 2. */
+  readonly tradingCoins?: readonly [string, string, ...string[]];
 }
 
 export interface WireBoardRow {

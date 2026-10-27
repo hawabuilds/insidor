@@ -2664,6 +2664,23 @@ export interface OneCoinPolicy {
    */
   readonly existing: { readonly readingWithinMs: number; readonly minCapUsd: number; readonly lookbackMs: number; readonly lookbackCoins: number; readonly readsPerPass: number };
   /**
+   * ★ AN OLDER COIN THE POST'S OWN COINS NAME, STILL TRADING (policy.v194, core match/older-trading.ts;
+   * the owner, 2026-10-27, "*paws at you*"): an older coin whose name `minCarriers` of the post's
+   * link- or picture-tied coins carry, at `minCapUsd` or more in a pool of `minLiquidityUsd` or more,
+   * is listed with the post's coins, whatever its age; the card's coin is the highest of them. The
+   * market service reads at most `readsPerPass` such coins a pass, for posts picked within
+   * `withinMs`: each until a reading finds it under `minCapUsd`, then again every `recheckMs`.
+   */
+  readonly olderTrading: {
+    readonly on: boolean;
+    readonly minCarriers: number;
+    readonly minCapUsd: number;
+    readonly minLiquidityUsd: number;
+    readonly withinMs: number;
+    readonly readsPerPass: number;
+    readonly recheckMs: number;
+  };
+  /**
    * ★ THE EARLY PICK (policy.v165, core match/early-pick.ts, services/runner work/early-pick.ts): a
    * coin made for the post (a link, one hop through a promotion included, or its stated name) whose
    * fresh reading is in [`minCapUsd`, `maxCapUsd`) and whose rise over `openingCapUsd` is `lead`
@@ -5896,7 +5913,7 @@ const POLICY_V1: Policy = {
      only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
      was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
      the old rule. */
-  version: 'policy.v193',
+  version: 'policy.v194',
 
   admit: {
     maxAgeMin: 240,
@@ -7558,6 +7575,13 @@ const POLICY_V1: Policy = {
        on the 40 coinable posts the owner called on 16-19 Oct, the lookback added 4.6 a post. 50 of
        the market pass's 300 reads go to them, so the newest coins keep most of the bound. */
     existing: { readingWithinMs: 1_800_000, minCapUsd: 15_000, lookbackMs: 172_800_000, lookbackCoins: 5, readsPerPass: 50 },
+    /* policy.v194, measured over 986 picked feed posts on 23-27 Oct: 599 older coins carried a name
+       two or more tied coins carry; $15k in a $10k pool let in 12, every one the post's subject (both
+       Himmels on "*paws at you*", maxxing on four posts, Chada on two). The judge's names alone let in
+       a GTA VI on eight posts and an old ELON on five, so they are not a carrier. A $5k-a-day volume
+       bar on top let in the same 12, so there is none. Two days of picks: 344 such coins, about 40 a
+       pass reads the never-read ones within the hour. */
+    olderTrading: { on: true, minCarriers: 2, minCapUsd: 15_000, minLiquidityUsd: 10_000, withinMs: 172_800_000, readsPerPass: 40, recheckMs: 21_600_000 },
     /* policy.v165 (the owner, 2026-10-24: "make sure I would've caught the right baldcat coin early
        before it took off"). The bar is the read-only replay's best under $20K (tools/sub20k-replay.ts,
        21-24 Oct, "climb 5x cap≥12K ≤30m link"): 12.7 picks a day, 9.3 on posts on For You before the

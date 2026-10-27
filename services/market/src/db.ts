@@ -95,6 +95,8 @@ export async function assetsToRead(
   firstHour: FirstHourCoins | null = null,
   /** The tape's coins to read every pass (tapeCoins): at most this many; null reads none. */
   tapeLimit: number | null = null,
+  /** The older coins a post's own coins name (olderNamedCoins); null reads none. */
+  olderNamed: OlderNamedCoins | null = null,
 ): Promise<readonly AssetRow[]> {
   const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
@@ -103,6 +105,7 @@ export async function assetsToRead(
   const young = firstHour === null ? [] : await firstHourCoins(db, chain, firstHour);
   const war = await warCoin(db, chain);
   const tape = tapeLimit === null ? [] : await tapeCoins(db, chain, tapeLimit);
+  const named = olderNamed === null ? [] : await olderNamedCoins(db, chain, olderNamed);
   const rest = await onScreenThenNewest(db, chain, limit);
   /* The tied candidates in their first hour, then the coins tied to saved posts, then the picked and
      stated coins, then the older coins a pick is weighing, then the hour's coins, go first among the
@@ -110,7 +113,7 @@ export async function assetsToRead(
      limit, and the pass its bound — so on a full pass what gives way is the newest end. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...tape, ...savedCoins, ...held, ...older, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...tape, ...savedCoins, ...held, ...older, ...named, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
@@ -288,6 +291,75 @@ async function olderCandidates(db: Db, chain: string, w: OlderCandidates): Promi
         order by c.found desc, a.asset_key asc
         limit $4`,
       [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** The older coins a post's own coins name (Policy.oneCoin.olderTrading): for posts picked since `nowMs - withinMs`. */
+export interface OlderNamedCoins {
+  readonly nowMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+  readonly minCarriers: number;
+  readonly minCapUsd: number;
+  readonly recheckMs: number;
+  readonly launchLeadMs: number;
+}
+
+/**
+ * ★ AN OLDER COIN THE POST'S OWN COINS NAME IS READ, SO THE CARD CAN LIST IT WHILE IT TRADES (core
+ * match/older-trading.ts; the owner, 2026-10-27, "*paws at you*": two 23 Oct Himmel coins were the
+ * ones trading, and one had never been read). An older coin that only shares a name is on no card and
+ * no pick, so no other list reads it. This reads, for each post picked in the last `withinMs`, its
+ * older coins (internal.older_coin, and its own list) launched `launchLeadMs` or more before it whose
+ * ticker or name `minCarriers` of its link- or picture-tied coins carry: one never read first, then
+ * one whose last reading was at `minCapUsd` or more, and a dead one again only after `recheckMs`.
+ * Two days of picks held 344 such coins; most are dead, so after the first hour this reads a few.
+ *
+ * The name test here is a looser spelling than core's (letters and digits, lower case): it may read a
+ * coin the projector then leaves out, never miss one it would list. A failed read is an empty list.
+ *
+ * What breaks if changed carelessly: the posts' join. Joined to public.asset before the candidates
+ * are cut to posts carrying a name, the planner walks the whole asset table: 15 s a pass, not 0.4.
+ */
+async function olderNamedCoins(db: Db, chain: string, w: OlderNamedCoins): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `with posts as materialized (
+         select p.item_id, i.posted_at, p.evidence -> 'standings' as st
+           from internal.post_coin_pick p join public.item i on i.item_id = p.item_id
+          where p.decided_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000) and i.posted_at is not null
+       ), carried as materialized (
+         select po.item_id, lower(regexp_replace(a.symbol, '[^[:alnum:]]', '', 'g')) as nm
+           from posts po cross join lateral jsonb_array_elements(case when jsonb_typeof(po.st) = 'array' then po.st else '[]'::jsonb end) s
+           join public.asset a on a.chain = $1 and a.address = s ->> 'address'
+          where (s -> 'ties') ?| array['link', 'picture'] and a.symbol is not null
+          group by 1, 2 having count(distinct a.address) >= $6
+       ), named as materialized (
+         select distinct item_id from carried
+       ), cand as materialized (
+         select o.item_id, o.address from internal.older_coin o join named n on n.item_id = o.item_id
+         union
+         select s.subject_id, s.address from public.same_name_coin s join named n on n.item_id = s.subject_id where s.subject_kind = 'post'
+       ), coins as (
+         select distinct a.asset_key, a.chain, a.address
+           from cand c join posts po on po.item_id = c.item_id
+           cross join lateral (select x.* from public.asset x where x.chain = $1 and x.address = c.address) a
+          where a.origin = any($5::text[])
+            and a.minted_at < po.posted_at - make_interval(secs => $9::double precision / 1000)
+            and exists (select 1 from carried k where k.item_id = c.item_id
+                         and k.nm in (lower(regexp_replace(coalesce(a.symbol, ''), '[^[:alnum:]]', '', 'g')), lower(regexp_replace(coalesce(a.name, ''), '[^[:alnum:]]', '', 'g'))))
+       )
+       select c.chain, c.address, 3 as tier
+         from coins c
+         left join lateral (select m.taken_at, m.market_cap_usd from public.market_reading m where m.asset_key = c.asset_key order by m.taken_at desc limit 1) r on true
+        where r.taken_at is null or r.market_cap_usd >= $7
+           or r.taken_at < $2::timestamptz - make_interval(secs => $8::double precision / 1000)
+        order by r.taken_at asc nulls first, c.asset_key asc
+        limit $4`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS], w.minCarriers, w.minCapUsd, w.recheckMs, w.launchLeadMs],
     );
   } catch {
     return [];

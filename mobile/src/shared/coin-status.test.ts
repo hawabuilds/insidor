@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { decodeCoin, decodeCoinLink } from './api/decode.ts';
-import { coinStatus, evidenceFacts, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
+import { decodeCoin, decodeCoinEvidence, decodeCoinLink } from './api/decode.ts';
+import { cardCoinProven, coinStatus, evidenceFacts, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
   decodeCoin({
@@ -139,4 +139,16 @@ test('★ a race says so: "Leading", the race as a fact, Buy and See 2 coins (th
   const calm = postCoinStatus({ kind: 'matched', coin: coin(), evidence: { linksPost: true, samePicture: null, launchedAfterMs: 120_000, picked: true } });
   assert.match(calm.line, /^Coin for this post: /);
   assert.deepEqual(calm.actions.map((a) => a.kind), ['buy']);
+});
+
+test('★ the post\'s trading coins (paws at you): the highest with Buy, "See 3 coins" beside it, no race said', () => {
+  const coins = { kind: 'matched' as const, coin: coin({ marketCapUsd: { v: 75_000 } }), evidence: { linksPost: null, samePicture: null, launchedAfterMs: -224_640_000, tradingCoins: ['HIM1', 'FP4', 'HIM2'] } };
+  const s = postCoinStatus(coins);
+  assert.deepEqual(s.actions.map((a) => a.kind), ['buy', 'see']);
+  assert.deepEqual(s.actions[1], { kind: 'see', count: 3, more: false });
+  assert.ok(!(s.facts ?? []).some((f) => f.startsWith('PvP')));
+  assert.equal(cardCoinProven(coins), false, 'an older coin nothing ties to the post opens as any coin');
+  assert.equal(cardCoinProven({ ...coins, evidence: { ...coins.evidence, picked: true as const } }), true);
+  assert.deepEqual(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, tradingCoins: ['X', 'X', 'Y', 7] }).tradingCoins, ['X', 'Y']);
+  assert.equal(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, tradingCoins: ['X'] }).tradingCoins, undefined);
 });
