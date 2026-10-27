@@ -11,7 +11,7 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label`, the post slimming and the coin vector archive hourly; the
+ * project` every minute; coin logos every two; `market` and the source indicator every five (`pairs` off since 2026-10-27); `label`, the post slimming and the coin vector archive hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
  * minutes; and, when a judge's answer has landed, the quick For You frame) in four lanes — the full
  * frame, the quick frame, the light market pass every minute, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
@@ -73,7 +73,9 @@ if (service in MAIN) {
   const FRAME = { name: 'project', everyMs: 60_000, args: ['tools/db.mjs', 'project'] };
   const JOBS = [
     { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] },
-    { name: 'pairs', everyMs: 300_000, args: ['tools/db.mjs', 'pairs'] },
+    /* `pairs` is off (the owner, 2026-10-27, "turn off pairs"): no screen of the app reads
+       public.pair_view, and its count walked every market reading on each run — it timed out on
+       every run that evening while the database was disk-bound. `tools/db.mjs pairs` still runs it by hand. */
     { name: 'sources', everyMs: 300_000, args: ['services/project/src/sources-main.ts'] },
     /* Copies the logos of coins on screen into our storage (services/project/src/logos-main.ts).
        Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this service; without them it says so and exits. */
