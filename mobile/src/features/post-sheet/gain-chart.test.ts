@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { CoinMarket } from '../../shared/api/index.ts';
-import { axisTicks, buckets, spanLabel, firstWords, gapText, lastGain, launchTime, placePills, postSlots } from './gain-chart.ts';
+import { axisTicks, buckets, spanLabel, totalSeries, firstWords, gapText, lastGain, launchTime, placePills, postSlots } from './gain-chart.ts';
 import { MIN_TRADES, mcChange, pctText } from './mc-change.ts';
 
 const M = 60_000;
@@ -75,4 +75,12 @@ test('★ the views axis climbs in round steps from 0 and its top tick covers th
   assert.deepEqual(axisTicks(0).ticks, [0, 1]);
   assert.equal(spanLabel(15 * 60_000), '15m');
   assert.equal(spanLabel(4 * 3_600_000), '4h');
+});
+
+test('★ total views: the gains add up from the first read bucket and end at the real total', () => {
+  const b = (start: number, value: number | null) => ({ start, end: start + 10, value });
+  const s = totalSeries([b(0, null), b(10, 100), b(20, null), b(30, 50)], 1_000);
+  assert.deepEqual(s.start, { t: 10, v: 850 });
+  assert.deepEqual(s.points.map((p) => p.v), [950, 950, 1_000]);
+  assert.deepEqual(totalSeries([b(0, null)], 5).points, []);
 });

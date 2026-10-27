@@ -6,9 +6,11 @@
  * first post went up), and the 5m 15m 1h 4h 1D rail under it (the narrative page adds All: the whole
  * story from its first post, drawn from the projector's coarser series).
  *
- * ★ ITS NUMBERS ARE ON IT (the owner, 2026-10-27, option A: "lacking axis labelling and showing
- * actual values"): the views gained on the right in round steps with faint gridlines, what one point
- * is ("Views gained per 15m") above it, and a finger on it reads that interval's time and gain. Still
+ * ★ TOTAL VIEWS, WITH ITS NUMBERS ON IT (the owner, 2026-10-27: "we want to see total views chart, isn't
+ * that the most similar to market cap"; and "lacking axis labelling and showing actual values"): the
+ * running total ending on the real count, the views on the right in round steps with faint gridlines,
+ * and a finger on it reads the total then and that interval's gain. A dashed rise from 0 covers the
+ * time from the post going up to our first reading. Still
  * no market cap line and no bars: market cap is a fact in the line above the chart and the full price
  * chart is the token page's. The numbers
  * and the rules (which buckets, which gaps, which times) are gain-chart.ts's; this file only draws.
@@ -24,7 +26,7 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { compact } from '../../shared/format/number.ts';
-import { GAIN_INTERVALS, GAIN_INTERVAL_MS, allBucketMs, axisTicks, buckets, hm, placePills, plus, smoothPath, spanLabel, type ChartInterval, type GainSlots } from './gain-chart.ts';
+import { GAIN_INTERVALS, GAIN_INTERVAL_MS, allBucketMs, axisTicks, buckets, hm, placePills, plus, smoothPath, spanLabel, totalSeries, type ChartInterval, type GainSlots } from './gain-chart.ts';
 import styles from './gain-chart.module.css';
 
 const DAY = 86_400_000;
@@ -45,8 +47,10 @@ export interface ChartMarker {
   readonly at: number | null;
 }
 
-export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
+export function GainChart({ slots, allSlots = null, total = null, intervals = GAIN_INTERVALS, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
   slots: GainSlots;
+  /** The real views now (the post's newest reading, the narrative's total): the line ends on it. Null: the line shows the growth from 0. */
+  total?: number | null;
   /** The whole story's coarser slots, drawn on "All"; null: "All" draws `slots` from the first post. */
   allSlots?: GainSlots | null;
   /** The rail's intervals: the narrative page adds "All". */
@@ -96,12 +100,16 @@ export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, 
   const rows = pills.length === 0 ? 0 : Math.max(...pills.map((p) => p.row)) + 1;
   const top = rows * PILL_ROW;
   const plotH = height;
-  const axis = axisTicks(Math.max(1, ...shown.map((b) => b.value ?? 0)));
+  /* ★ TOTAL VIEWS, LIKE A MARKET CAP LINE (the owner, 2026-10-27): the running total, ending on the
+     real count; a dashed rise from 0 at the post's own time to our first reading, so the chart starts
+     at its left edge and the stretch before we found it is plainly drawn as not read. */
+  const totals = useMemo(() => totalSeries(shown, total), [shown, total]);
+  const axis = axisTicks(Math.max(1, ...totals.points.map((p) => p.v)));
   const max = axis.top;
   const y = (v: number) => top + TOP_ROOM + (plotH - TOP_ROOM) * (1 - v / max);
   const span = spanLabel(bucketMs);
-  /* The interval nearest the finger that was read. */
-  const scrubbed = scrubAt === null ? null : shown.filter((b) => b.value !== null).reduce<(typeof shown)[number] | null>((best, b) => (best === null || Math.abs(x(b.end) - scrubAt) < Math.abs(x(best.end) - scrubAt) ? b : best), null);
+  /* The point nearest the finger. */
+  const scrubbed = scrubAt === null ? null : totals.points.reduce<(typeof totals.points)[number] | null>((best, p) => (best === null || Math.abs(x(p.t) - scrubAt) < Math.abs(x(best.t) - scrubAt) ? p : best), null);
   const scrubTo = (clientX: number) => {
     const el = ref.current;
     if (el === null) return;
@@ -109,19 +117,11 @@ export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, 
   };
   const base = top + plotH;
 
-  /* Unbroken runs of buckets, each point at the end of its interval. */
-  const runs: { x: number; y: number }[][] = [];
-  let open = false;
-  for (const b of shown) {
-    if (b.value === null) {
-      open = false;
-      continue;
-    }
-    if (!open) runs.push([]);
-    open = true;
-    runs[runs.length - 1]?.push({ x: x(b.end), y: y(b.value) });
-  }
-  const counted = shown.filter((b) => b.value !== null).length;
+  /* One line: the total where our first read bucket begins, then at each bucket's end. */
+  const line = totals.start === null ? [] : [{ x: x(totals.start.t), y: y(totals.start.v) }, ...totals.points.map((p) => ({ x: x(p.t), y: y(p.v) }))];
+  /* Before our first reading, from the post's own time at 0 views: dashed, never a reading. */
+  const lead = fromIsPost && totals.start !== null && totals.start.t > from ? { x1: x(from), y1: y(0), x2: x(totals.start.t), y2: y(totals.start.v) } : null;
+  const counted = totals.points.length;
   const mid = from + (end - from) / 2;
   /* The middle time only where it clears the first one ("Thu 14:01 first post" is long on All). */
   const startText = `${hm(from, now)}${fromIsPost ? ` ${firstWord}` : ''}`;
@@ -131,10 +131,10 @@ export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, 
   return (
     <div className={styles['chart']}>
       <div className={styles['readout']} aria-live="polite">
-        {scrubbed !== null && scrubbed.value !== null ? (
-          <>{hm(scrubbed.end, now)}: <b>{plus(scrubbed.value)} views</b> in {span}</>
+        {scrubbed !== null ? (
+          <>{hm(scrubbed.t, now)}: <b>{compact(scrubbed.v)} views</b>{scrubbed.gain !== null ? `, ${plus(scrubbed.gain)} in ${span}` : ''}</>
         ) : (
-          <>Views gained per {span}</>
+          <>Total views</>
         )}
       </div>
       <div
@@ -170,23 +170,23 @@ export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, 
                 if (m === undefined || m.at === null || p.x === null || m.at < from || m.at > end) return null;
                 return <line key={p.key} x1={p.x} x2={p.x} y1={p.row * PILL_ROW + PILL_ROW - 4} y2={base} className={m.tone === 'coin' ? styles['coinLine'] : styles['foundLine']} />;
               })}
-              {runs.map((r, i) => {
-                const d = smoothPath(r);
-                const a = r[0];
-                const z = r[r.length - 1];
-                if (a === undefined || z === undefined) return null;
+              {lead !== null ? <line x1={lead.x1} y1={lead.y1} x2={lead.x2} y2={lead.y2} className={styles['lead']} /> : null}
+              {line.length > 1 ? (() => {
+                const d = smoothPath(line);
+                const a = line[0] as { x: number; y: number };
+                const z = line[line.length - 1] as { x: number; y: number };
                 return (
-                  <g key={i}>
-                    {r.length > 1 ? <path d={`${d}L${z.x.toFixed(1)},${base}L${a.x.toFixed(1)},${base}Z`} fill={`url(#${glow}f)`} /> : null}
+                  <g>
+                    <path d={`${d}L${z.x.toFixed(1)},${base}L${a.x.toFixed(1)},${base}Z`} fill={`url(#${glow}f)`} />
                     <path d={d} className={styles['glow']} filter={`url(#${glow}g)`} />
                     <path d={d} className={styles['line']} />
                   </g>
                 );
-              })}
-              {scrubbed !== null && scrubbed.value !== null ? (
+              })() : null}
+              {scrubbed !== null ? (
                 <g>
-                  <line x1={x(scrubbed.end)} x2={x(scrubbed.end)} y1={top} y2={base} className={styles['scrubLine']} />
-                  <circle cx={x(scrubbed.end)} cy={y(scrubbed.value)} r={3.5} className={styles['scrubDot']} />
+                  <line x1={x(scrubbed.t)} x2={x(scrubbed.t)} y1={top} y2={base} className={styles['scrubLine']} />
+                  <circle cx={x(scrubbed.t)} cy={y(scrubbed.v)} r={3.5} className={styles['scrubDot']} />
                 </g>
               ) : null}
             </svg>

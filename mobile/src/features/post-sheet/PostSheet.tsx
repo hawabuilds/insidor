@@ -124,6 +124,12 @@ function mediaHeight(width: number | null, height: number | null): number {
   return Math.round(Math.min(inner * shape, MEDIA_TALLEST));
 }
 
+/** The post's newest views reading: the total views chart ends on it. */
+function latestViews(readings: readonly { readonly atMs: number; readonly value: number | null }[]): number | null {
+  const read = readings.filter((r) => r.value !== null).sort((a, b) => a.atMs - b.atMs);
+  return read[read.length - 1]?.value ?? null;
+}
+
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal), 'phone');
   usePreloadCreate(postId); /* Create coin then opens on this post's own names, with nothing filling in. */
@@ -375,7 +381,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
           </section>
 
           {slots !== null && slots.values.some((v) => v !== null) ? (
-            <GainChart slots={slots} firstAt={post.postedAt.known ? post.postedAt.at : null} firstWord="posted" now={minute} interval="5m" onInterval={() => undefined} markers={markers} height={chartHeight} rail={false} />
+            <GainChart slots={slots} total={latestViews(data.views)} firstAt={post.postedAt.known ? post.postedAt.at : null} firstWord="posted" now={minute} interval="5m" onInterval={() => undefined} markers={markers} height={chartHeight} rail={false} />
           ) : null}
 
           {data.storyCard !== null ? <StoryCard card={data.storyCard} onOpen={onNarrative} /> : null}

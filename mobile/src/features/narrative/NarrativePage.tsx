@@ -252,7 +252,7 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
 
       {hasHistory && slots !== null ? (
         <div className={styles['chartBox']}>
-          <GainChart slots={slots} allSlots={story.viewsGainedAll} intervals={CHART_INTERVALS} firstAt={firstPost} firstWord="first post" now={now} interval={interval} onInterval={setIntervalPick} markers={markers} height={PLOT_HEIGHT} />
+          <GainChart slots={slots} allSlots={story.viewsGainedAll} total={story.viewsTotal?.known === true ? story.viewsTotal.amount : null} intervals={CHART_INTERVALS} firstAt={firstPost} firstWord="first post" now={now} interval={interval} onInterval={setIntervalPick} markers={markers} height={PLOT_HEIGHT} />
         </div>
       ) : null}
 

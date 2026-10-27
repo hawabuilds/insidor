@@ -130,6 +130,28 @@ export function buckets(slots: GainSlots, intervalMs: number, since: number | nu
   return out.reverse();
 }
 
+/**
+ * ★ TOTAL VIEWS OVER TIME (the owner, 2026-10-27: "we want to see total views chart, isn't that the most
+ * similar to market cap"): the buckets' gains added up from the first one read, ending at `total`,
+ * the real count now, so the line's last point is the number on the card. Each point is the total at
+ * its bucket's end; a bucket not read adds nothing (the line runs flat, then climbs by what the next
+ * reading saw). `start` is the total where the first read bucket begins. With no `total`, the sum
+ * starts at 0 and the line shows the growth across the span.
+ */
+export function totalSeries(shown: readonly GainBucket[], total: number | null): { readonly start: { readonly t: number; readonly v: number } | null; readonly points: readonly { readonly t: number; readonly v: number; readonly gain: number | null }[] } {
+  const firstRead = shown.findIndex((b) => b.value !== null);
+  if (firstRead < 0) return { start: null, points: [] };
+  const from = shown.slice(firstRead);
+  const sum = from.reduce((a, b) => a + (b.value ?? 0), 0);
+  const base = total !== null && Number.isFinite(total) ? Math.max(0, total - sum) : 0;
+  let cum = base;
+  const points = from.map((b) => {
+    cum += b.value ?? 0;
+    return { t: b.end, v: cum, gain: b.value };
+  });
+  return { start: { t: (from[0] as GainBucket).start, v: base }, points };
+}
+
 /** The newest bucket's gain at this interval: the end label and the fact line's "Last 15m". */
 export function lastGain(slots: GainSlots | null, interval: GainInterval): number | null {
   if (slots === null) return null;
