@@ -503,6 +503,8 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     viewsTotalPosts: count(o.viewsTotalPosts),
     viewsGained: decodeViewsGained(o.viewsGained),
     viewsGainedAll: decodeViewsGained(o.viewsGainedAll),
+    viewsTotals: decodeViewsGained(o.viewsTotals),
+    viewsTotalsAll: decodeViewsGained(o.viewsTotalsAll),
     postViews: decodePostViews(o.postViews),
     inWindow: decodeInWindow(o.inWindow, `${path}.inWindow`),
     /* A top coin that does not decode is dropped, never the page: the card then says no coin is settled. */
