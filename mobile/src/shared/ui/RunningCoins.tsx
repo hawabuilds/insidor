@@ -19,9 +19,10 @@
  * repeats its coins until it is wider, or the loop would show a gap. The duration follows the copy's
  * width, so twelve coins and three move at the same reading speed (about 35 s a loop for twelve).
  *
- * ★ IT STOPS FOR A FINGER. Pressing on it pauses the slide (and a mouse over it, on a computer), so
- * a coin can be read and tapped where it is. Reduce Motion: no slide at all; one copy, scrolled by
- * hand.
+ * ★ IT STOPS FOR A FINGER, AND A FINGER CAN SLIDE IT. Pressing on it pauses the slide (and a mouse
+ * over it, on a computer), so a coin can be read and tapped where it is; dragging moves it either
+ * way, and on release it rotates on at its own speed from there. Reduce Motion: no slide at all; one
+ * copy, scrolled by hand.
  *
  * What breaks if changed carelessly: the second copy must stay `aria-hidden` and out of the tab order,
  * or a screen reader reads every coin twice; and the purple of the app never appears here (the
@@ -45,6 +46,8 @@ import styles from './running-coins.module.css';
 const POINTS_PER_SECOND = 60;
 /** Reduce Motion, read once: the strip is then one still copy, scrolled by hand. */
 const STILL = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+/** A finger that moves further than this is dragging the tape, not tapping a coin. */
+const DRAG_PX = 6;
 /** How often the strip is read again while its screen is showing; the server keeps one list 30 s. */
 const REREAD_MS = 60_000;
 
@@ -80,7 +83,15 @@ export function RunningCoins() {
   const copy = useRef<HTMLDivElement | null>(null);
   const [reps, setReps] = useState(1);
   const [copyWidth, setCopyWidth] = useState(0);
-  const [held, setHeld] = useState(false);
+  /* ★ A FINGER CAN SLIDE IT (the owner, 2026-10-27: "I want to also be able to slide on the tape,
+     don't change the rotation"). The slide is driven here, not by a CSS animation, so a drag moves the
+     same offset the rotation moves: it rotates at the same speed in the same direction, a finger drags
+     it either way, and on release it rotates on from where the finger left it. A drag never opens a coin. */
+  const runRef = useRef<HTMLDivElement | null>(null);
+  const offset = useRef(0);
+  const held = useRef(false);
+  const drag = useRef<{ readonly x: number; readonly from: number; moved: boolean } | null>(null);
+  const dragged = useRef(false);
   const key = coins?.map((c) => c.address).join(' ') ?? '';
 
   /* One copy at least as wide as the strip; measured again when the coins or the width change. */
@@ -101,23 +112,71 @@ export function RunningCoins() {
     return () => ro?.disconnect();
   }, [key, reps]);
 
+  useEffect(() => {
+    if (STILL || copyWidth <= 0) return undefined;
+    let last = performance.now();
+    let frame = 0;
+    const tick = (t: number) => {
+      const dt = Math.min(0.1, (t - last) / 1000);
+      last = t;
+      if (!held.current && drag.current === null) offset.current += POINTS_PER_SECOND * dt;
+      offset.current = ((offset.current % copyWidth) + copyWidth) % copyWidth;
+      if (runRef.current !== null) runRef.current.style.transform = `translateX(${-offset.current}px)`;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [copyWidth]);
+
   if (load.state === 'failed' || (coins !== null && coins.length === 0)) return null;
 
   const one = coins === null ? [] : Array.from({ length: reps }, () => coins).flat();
   const run: CSSProperties = copyWidth > 0 ? ({ '--loop': `${(copyWidth / POINTS_PER_SECOND).toFixed(1)}s` } as CSSProperties) : {};
-  const release = () => setHeld(false);
+  const release = () => {
+    drag.current = null;
+    held.current = false;
+  };
   return (
     <div
       ref={strip}
       className={styles['strip']}
       role="region"
       aria-label="Running coins"
-      onPointerDown={() => setHeld(true)}
+      onPointerDown={(e) => {
+        held.current = true;
+        dragged.current = false;
+        drag.current = { x: e.clientX, from: offset.current, moved: false };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (d === null) return;
+        const dx = e.clientX - d.x;
+        if (!d.moved && Math.abs(dx) > DRAG_PX) {
+          d.moved = true;
+          dragged.current = true;
+          strip.current?.setPointerCapture?.(e.pointerId);
+        }
+        if (d.moved) offset.current = d.from - dx;
+      }}
       onPointerUp={release}
       onPointerCancel={release}
-      onPointerLeave={release}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'mouse') release();
+      }}
+      onMouseEnter={() => {
+        held.current = true;
+      }}
+      onMouseLeave={release}
+      onClickCapture={(e) => {
+        /* A drag ends on a coin; it is a drag, not a tap. */
+        if (dragged.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          dragged.current = false;
+        }
+      }}
     >
-      <div className={`${styles['run']} ${copyWidth > 0 && !STILL ? styles['moving'] : ''} ${held ? styles['held'] : ''}`} style={run}>
+      <div ref={runRef} className={styles['run']} style={run}>
         <div ref={copy} className={styles['copy']}>
           {one.map((c, i) => (
             <Item key={`${c.address}:${i}`} coin={c} hidden={i >= (coins?.length ?? 0)} />
