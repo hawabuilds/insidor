@@ -59,9 +59,9 @@ const ALL_MIN_PX = 1.5;
 const ALL_MAX_PX = 7;
 /** Room kept for the price axis when All works out how many candles fit. */
 const AXIS_PX = 64;
-const MARK_PX = 26;
+const MARK_PX = 18;
 /** The gap between the top of the candle's wick and the bubble's bottom. */
-const MARK_LIFT_PX = 4;
+const MARK_LIFT_PX = 3;
 const DOUBLE_TAP_MS = 280;
 
 interface Colours {

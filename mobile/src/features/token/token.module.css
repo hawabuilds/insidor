@@ -657,12 +657,12 @@
   top: 0;
   z-index: 3;
   display: none;
-  width: 26px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   object-fit: cover;
   background: var(--bg);
-  box-shadow: 0 0 0 2px var(--up), 0 0 0 4px var(--bg);
+  box-shadow: 0 0 0 1.5px var(--up), 0 0 0 3px var(--bg);
   pointer-events: none;
 }
 
