@@ -58,7 +58,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
 }) {
   const [style, setStyle] = useState<ChartStyle>(readChartStyle);
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
-  /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when we alerted and the
+  /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when the app first showed the coin and the
      multiple since; nothing is drawn over the chart. Touching the chart or the bubble again ends it. */
   const [alerted, setAlerted] = useState(false);
   const scrub = (p: ChartPoint | null) => {
@@ -105,7 +105,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
           <div>
             <div className={styles['alertedLine']}>
               <span className={styles['alertedDot']} aria-hidden="true" />
-              Alerted {clock(notified.at)}{notified.marketCapUsd !== null ? ` at $${compactMoney(notified.marketCapUsd)}` : ''}
+              Shown {clock(notified.at)}{notified.marketCapUsd !== null ? ` at $${compactMoney(notified.marketCapUsd)}` : ''}
             </div>
             {sinceMultiple !== null ? (
               <span className={`${styles['change']} ${sinceMultiple >= 1 ? styles['up'] : styles['down']}`}>

@@ -104,7 +104,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   scale?: number | null;
   /** When we first pushed this coin to phones, and the market cap that push carried: our bubble sits there. */
   notified?: { readonly at: number; readonly marketCapUsd: number | null } | null;
-  /** The bubble was tapped: the block above shows when we alerted and the multiple since (CoinChart). */
+  /** The bubble was tapped: the block above shows when the app first showed the coin and the multiple since (CoinChart). */
   onNotifiedTap?: () => void;
   /** Colours the line: green when the view ended above where it began. */
   rising: boolean;
@@ -338,7 +338,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         ref={markRef}
         type="button"
         className={styles['caughtTap']}
-        aria-label="When Insidor alerted this coin"
+        aria-label="When Insidor first showed this coin"
         onClick={(e) => {
           e.stopPropagation();
           onNotifiedTap?.();
