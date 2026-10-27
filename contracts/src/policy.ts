@@ -5913,7 +5913,7 @@ const POLICY_V1: Policy = {
      only while its cap is under `oneCoin.creatorDumpShareOfPeak` (half) of its peak. $DOUPI's A7mHZR
      was out for good after its creator took 13.1 SOL off a 1.98 SOL buy while it kept running. 1 is
      the old rule. */
-  version: 'policy.v194',
+  version: 'policy.v195',
 
   admit: {
     maxAgeMin: 240,
@@ -7385,7 +7385,18 @@ const POLICY_V1: Policy = {
          (checked with three calls on Together, 2026-10-17). */
       /* The catchphrase rule (2026-10-17) was dropped by the owner on 2026-10-18: with it the candidate
          did worse twice. */
-      ownerRules: [],
+      /* The owner, 2026-10-27, after tapping "Not a meme" on 114 For You posts in one sitting: what was
+         coined from tragedies and politics (animals, famous people, world leaders, the absurd; one
+         world figure's striking line or object) against what was tapped (ordinary victims of crime and
+         accidents; election day, chants, crowds), and the kinds tapped most besides. */
+      ownerRules: [
+        "A tragedy is a meme only if an animal, a famous person, a world leader or something absurd is at its centre; ordinary people killed, hurt or arrested in crime, accidents, fires, attacks or disasters: no.",
+        "Politics is a meme only when one world-famous figure says or does one striking, repeatable thing (a line, an object, a nickname); election day, voting, chants, hand signs, crowds or partisan jokes: no.",
+        "Promotions are not memes: a game, film, show, toy or brand announcement, a #pr post, an artist promoting their own work, a crypto post pushing a coin, a meta or its poster's own trades.",
+        "Sport is not a meme: a match moment, an injury, a substitution, a team or league account's post, fans reacting to a result.",
+        "An ordinary pet, baby, zoo animal, kid or kind stranger doing something sweet is not a meme without a name, a catchphrase or something strange about it.",
+        "Fans of existing characters are not memes: a VTuber, an original character or sona, an anime, game or monster-collecting character, a celebrity posting about their own role.",
+      ],
       maxRules: 25, maxRuleChars: 220, maxChars: 3_000, maxOutputTokens: 1_500, maxNotes: 30, minNoteUses: 2, maxNoteChars: 60 },
     shortVideo: {
       barAgesMin: [30, 60, 120],
