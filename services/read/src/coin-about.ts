@@ -68,8 +68,10 @@ with named as (
    where c.subject_kind = 'post' and c.address = $1
 )
 select distinct on (n.item_id) n.item_id, n.payload, n.own, n.links_post, n.same_picture, n.launched_after_ms,
-       s.payload ->> 'title' as story_title
+       s.payload ->> 'title' as story_title,
+       (extract(epoch from i.first_seen_at) * 1000)::float8 as found_ms
   from named n
+  left join public.item i on i.item_id = n.item_id
   left join public.story_view s on s.story_id = n.payload ->> 'storyId'
  order by n.item_id, n.own desc
  limit ${POSTS_SHOWN}`;
@@ -204,6 +206,8 @@ function postOf(r: Row): Record<string, unknown> | null {
     excerpt: text(p['excerpt']) ?? '',
     thumbUrl: text(p['thumbUrl']),
     postedAt: p['postedAt'] ?? null,
+    /* When we first saved the post (public.item): the token chart's "caught it" mark. */
+    foundAt: typeof r['found_ms'] === 'number' && Number.isFinite(r['found_ms']) ? { at: r['found_ms'] } : null,
     /* The post's views as its feed card last read them ({ v } or { v: null, why }): the token
        page leads with the most-viewed post, so a missing count must stay missing, not zero. */
     views: views(p['reach']),
@@ -212,13 +216,20 @@ function postOf(r: Row): Record<string, unknown> | null {
   };
 }
 
+/**
+ * When we first pushed this coin to phones, and the market cap the push carried (0143
+ * public.coin_notified): the token chart's bubble. Before 0143 the view is missing and the answer is
+ * none, never an error: the page draws its chart without it.
+ */
+export const NOTIFIED_SQL = `select (extract(epoch from notified_at) * 1000)::float8 as at, mc_usd from public.coin_notified where address = $1`;
+
 export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ readonly status: number; readonly body: string } | null> {
   const held = (await deps.db.query(ASSET_SQL, [assetKey]))[0];
   const searched = assetKey.startsWith('solana:') && deps.recent?.(assetKey.slice('solana:'.length)) === true;
   if ((held === undefined || held['chain'] !== 'solana' || typeof held['address'] !== 'string') && !searched) return null;
   const address = typeof held?.['address'] === 'string' ? held['address'] : assetKey.slice('solana:'.length);
 
-  const [rows, posts, story, profile, holders] = await Promise.all([
+  const [rows, posts, story, profile, holders, notified] = await Promise.all([
     deps.db.query(ABOUT_SQL, [assetKey]),
     deps.db.query(POSTS_SQL, [address]),
     deps.db.query(COIN_STORY_SQL, [address]),
@@ -235,7 +246,11 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
           (n) => ({ ok: true as const, n }),
           () => ({ ok: false as const, n: null }),
         ),
+    deps.db.query(NOTIFIED_SQL, [address]).catch(() => []),
   ]);
+  const told = notified[0];
+  const toldAt = typeof told?.['at'] === 'number' && Number.isFinite(told['at']) ? told['at'] : null;
+  const toldCap = typeof told?.['mc_usd'] === 'number' && Number.isFinite(told['mc_usd']) && told['mc_usd'] > 0 ? told['mc_usd'] : null;
   const row = rows[0];
   const minted = row?.['minted_at'] instanceof Date ? row['minted_at'].getTime() : typeof row?.['minted_at'] === 'string' ? Date.parse(row['minted_at']) : null;
   const marketWhy = profile.ok ? 'not_reported' : 'unreadable';
@@ -254,6 +269,8 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
         return p === null ? [] : [p];
       }),
       storyId: text(story[0]?.['story_id']),
+      /* When we first pushed it to phones and at what market cap; null when we never did. */
+      notified: toldAt === null ? null : { at: toldAt, marketCapUsd: toldCap },
     }),
   };
 }
