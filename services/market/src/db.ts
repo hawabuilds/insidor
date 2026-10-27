@@ -102,6 +102,7 @@ export async function assetsToRead(
   const older = weighing === null ? [] : await olderCandidates(db, chain, weighing);
   const savedCoins = saved === null ? [] : await savedPostCoins(db, chain, saved);
   const held = picked === null ? [] : await pickedCoins(db, chain, picked);
+  const waiting = picked === null ? [] : await waitingCoins(db, chain, picked);
   const young = firstHour === null ? [] : await firstHourCoins(db, chain, firstHour);
   const war = await warCoin(db, chain);
   const tape = tapeLimit === null ? [] : await tapeCoins(db, chain, tapeLimit);
@@ -113,7 +114,7 @@ export async function assetsToRead(
      limit, and the pass its bound — so on a full pass what gives way is the newest end. */
   const seen = new Set<string>();
   const out: AssetRow[] = [];
-  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...tape, ...savedCoins, ...held, ...older, ...named, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+  for (const row of [...war.filter((r) => r.tier === 0), ...rest.filter((r) => r.tier === 0), ...young, ...tape, ...savedCoins, ...waiting, ...held, ...older, ...named, ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
     if (seen.has(row.address) || out.length >= limit) continue;
     seen.add(row.address);
     out.push({ chain: row.chain, address: row.address });
@@ -383,8 +384,7 @@ const WAITING_MIN_PEAK_QUOTE = 100;
  * ($BITCHES) among them — the coin a post had stated, which ran to millions while the pick stayed on
  * a copycat because the rule never saw it trade. This reads, newest first, every coin a post's or a
  * narrative's pick holds (picked, updated since `withinMs`), every candidate tied by the stated
- * name (0113 evidence `name_stated`) found since then, and the traded candidates of a post still
- * waiting for a coin — the longest unread first, so about 240 such
+ * name (0113 evidence `name_stated`) found since then — the longest unread first, so about 240 such
  * coins over two days are each read every few passes — at most `limit` a pass. The running pick on For
  * You and the missed-runner net read the same readings. A failed read here is an empty list.
  */
@@ -398,23 +398,51 @@ async function pickedCoins(db: Db, chain: string, w: PickedCoins): Promise<reado
                  select address, updated_at from internal.narrative_coin_pick where outcome = 'picked' and updated_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
                  union all
                  select address, found_at from internal.one_coin_candidate where found_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000) and evidence->'ties' ? 'name_stated'
-                 union all
-                 /* ★ A post still waiting for a coin: its candidates whose trades peaked at WAITING_MIN_PEAK_QUOTE
-                    or more, so the runner's waiting sweep judges them on fresh readings ("paws at you",
-                    2026-10-27: Fp4Jkq… bonded two hours after the pick was left waiting, unread). */
-                 select oc.address, p.decided_at
-                   from internal.post_coin_pick p
-                   join internal.one_coin_candidate oc on oc.item_id = p.item_id
-                   join internal.coin_trade_state s on s.address = oc.address
-                  where p.outcome = 'waiting' and p.decided_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
-                    and s.peak_mcap_sol >= $6
                ) u group by address) c
          join public.asset a on a.chain = $1 and a.address = c.address
          left join lateral (select m.taken_at from public.market_reading m where m.asset_key = a.asset_key order by m.taken_at desc limit 1) r on true
         where a.origin = any($5::text[])
         order by r.taken_at asc nulls first, c.at desc, a.asset_key asc
         limit $4`,
-      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS], WAITING_MIN_PEAK_QUOTE],
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, w.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** How many of a waiting post's coins are read a pass, from how many of the biggest by their trade peak. */
+const WAITING_READS_PER_PASS = 40;
+const WAITING_TOP = 1_000;
+
+/**
+ * ★ A POST STILL WAITING FOR A COIN: ITS BIGGEST COINS, KEPT FRESH ("paws at you", 2026-10-27: Fp4Jkq…
+ * bonded two hours after the pick was left waiting, unread). The runner's waiting sweep judges these
+ * posts only on recent readings, so they cannot share the picked coins' list, where
+ * about 800 coins took more than an hour to come round. The candidates of posts left waiting since
+ * `withinMs` whose trades peaked at `WAITING_MIN_PEAK_QUOTE` or more (about 450 on 27 Oct, at most
+ * `WAITING_TOP`) are read in turn, the longest unread first, at most `WAITING_READS_PER_PASS` a pass:
+ * each about once an hour, inside the sweep's own freshness bar. A failed read here is an empty list.
+ */
+async function waitingCoins(db: Db, chain: string, w: PickedCoins): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 5 as tier
+         from (select oc.address, max(s.peak_mcap_sol) as peak
+                 from internal.post_coin_pick p
+                 join internal.one_coin_candidate oc on oc.item_id = p.item_id
+                 join internal.coin_trade_state s on s.address = oc.address
+                where p.outcome = 'waiting' and p.decided_at >= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+                  and s.peak_mcap_sol >= $5
+                group by oc.address
+                order by peak desc
+                limit $6) c
+         join public.asset a on a.chain = $1 and a.address = c.address
+         left join lateral (select m.taken_at from public.market_reading m where m.asset_key = a.asset_key order by m.taken_at desc limit 1) r on true
+        where a.origin = any($7::text[])
+        order by r.taken_at asc nulls first, a.asset_key asc
+        limit $4`,
+      [chain, new Date(w.nowMs).toISOString(), w.withinMs, WAITING_READS_PER_PASS, WAITING_MIN_PEAK_QUOTE, WAITING_TOP, [...OBSERVED_ASSET_ORIGINS]],
     );
   } catch {
     return [];
