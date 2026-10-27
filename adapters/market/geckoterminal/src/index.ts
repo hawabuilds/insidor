@@ -101,6 +101,11 @@ export interface MarketData extends CoinSearch {
   /** The coin's primary pool, its candles for one view, and its latest trades. */
   coin(mint: string, timeframe: Timeframe): Promise<CoinMarket>;
   /**
+   * The coin's primary pool alone, kept as `coin` keeps it (the same key, so either warms the other):
+   * for a token page whose candles and trades come from elsewhere but which still names its pool.
+   */
+  pool(mint: string): Promise<Pool | null>;
+  /**
    * One page of the launchpad's pools — on its curve, or bonded — by 24-hour volume. A listing,
    * not a census: the vendor serves at most `LISTING_PAGES` pages, so what it returns is a lower
    * bound on the coins trading there, never the count of them.
@@ -224,6 +229,10 @@ export function geckoterminal(config: GeckoConfig): MarketData {
       const until = Math.floor(untilMs / 1_000);
       const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/minute?aggregate=${bucketMinutes}&limit=${Math.min(limit, CANDLE_LIMIT)}&before_timestamp=${until}&token=${mint}&currency=usd`);
       return { pool, candles: readVolumeCandles(raw) };
+    },
+
+    pool(mint) {
+      return cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
     },
 
     async coin(mint, timeframe) {
