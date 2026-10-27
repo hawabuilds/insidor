@@ -36,6 +36,8 @@ export interface AboutPost {
   readonly excerpt: string;
   readonly thumbUrl: string | null;
   readonly postedAt: Instant;
+  /** When we first saved the post; null from a server that does not say. */
+  readonly foundAt: number | null;
   /** Its views as its feed card last read them; pending with its reason when unread, never zero. */
   readonly views: Measured;
   /** The narrative the post is on, when it is on one. `story` on the wire: the word is ours. */
@@ -54,6 +56,8 @@ export interface CoinAbout {
   readonly posts: readonly AboutPost[];
   /** The board narrative whose coin this is (settled, else its top coin); null when none names it. */
   readonly storyId: string | null;
+  /** When we first pushed this coin to phones, and the market cap that push carried; null when we never did. */
+  readonly notified: { readonly at: number; readonly marketCapUsd: number | null } | null;
 }
 
 const KINDS: readonly AboutLinkKind[] = ['x', 'telegram', 'website', 'tiktok'];
@@ -116,6 +120,11 @@ export function decodeCoinAbout(raw: unknown, path = '$.about'): CoinAbout {
       excerpt: text(r['excerpt']) ?? '',
       thumbUrl: text(r['thumbUrl']),
       postedAt: instantOf(r['postedAt']),
+      foundAt: (() => {
+        const f = r['foundAt'];
+        const at = typeof f === 'object' && f !== null ? (f as Record<string, unknown>)['at'] : null;
+        return typeof at === 'number' && Number.isFinite(at) ? at : null;
+      })(),
       views: measuredOf(r['views']),
       story: storyId !== null && title !== null ? { storyId, title } : null,
       evidence: r['evidence'] === null || r['evidence'] === undefined ? { linksPost: null, samePicture: null, launchedAfterMs: null } : decodeCoinEvidence(r['evidence'], `${path}.posts[${i}].evidence`),
@@ -131,5 +140,13 @@ export function decodeCoinAbout(raw: unknown, path = '$.about'): CoinAbout {
     launchedAt: instantOf(o['launchedAt']),
     posts,
     storyId: text(o['storyId']),
+    notified: (() => {
+      const n = o['notified'];
+      if (typeof n !== 'object' || n === null) return null;
+      const r = n as Record<string, unknown>;
+      const at = r['at'];
+      const cap = r['marketCapUsd'];
+      return typeof at === 'number' && Number.isFinite(at) ? { at, marketCapUsd: typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? cap : null } : null;
+    })(),
   };
 }

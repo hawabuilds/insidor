@@ -12,6 +12,7 @@ import { viralPost } from './viral-post.ts';
 const p = (postId: string, views: number | null, linksPost: boolean | null): AboutPost => ({
   postId, own: false, sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: '', thumbUrl: null,
   postedAt: { known: true, at: 1 as never },
+  foundAt: null,
   views: views === null ? { known: false, pending: 'not_reported' } : { known: true, amount: views },
   story: null,
   evidence: { linksPost, samePicture: null, launchedAfterMs: null },

@@ -13,6 +13,7 @@ const post = (id: string, views: number | null, storyId: string | null): AboutPo
   excerpt: 'x',
   thumbUrl: null,
   postedAt: { known: false, pending: 'not_reported' } as never,
+  foundAt: null,
   views: views === null ? { known: false, pending: 'not_reported' } : { known: true, amount: views },
   story: storyId === null ? null : { storyId, title: 't' },
   evidence: { linksPost: null, samePicture: null, launchedAfterMs: null },

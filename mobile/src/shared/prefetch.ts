@@ -22,7 +22,7 @@ import { fetchCoinAbout, fetchCoinMarket, fetchPostSheet, fetchTradeVenue } from
 import type { Instant } from './format/measure.ts';
 import { readAhead } from './kept-reads.ts';
 import { afterFirstScreen, preloadChart } from './preload.ts';
-import { defaultTimeframe } from '../features/token/chart-data.ts';
+import { defaultView, fetchTimeframe } from '../features/token/chart-view.ts';
 import { firstPageKey, readFirstPage } from '../features/narratives/first-page.ts';
 import { listOf, loadChoice } from '../features/narratives/narrative-order.ts';
 
@@ -92,7 +92,10 @@ export function readPostAhead(postId: string): void {
 
 /** A coin's page, as TokenView.tsx and TradeBar.tsx read it, and the chart's code. */
 export function readCoinAhead(coin: { readonly coinId: string; readonly address: string; readonly launchedAt: Instant }): void {
-  const tf = defaultTimeframe({ onCurve: false, launchedAt: coin.launchedAt.known ? coin.launchedAt.at : null, now: Date.now() });
+  /* The token page's own first view (chart-view.ts), so the read it opens on is this one. */
+  const launchedAt = coin.launchedAt.known ? coin.launchedAt.at : null;
+  const now = Date.now();
+  const tf = fetchTimeframe(defaultView({ onCurve: false, launchedAt, now }), launchedAt === null ? null : now - launchedAt);
   preloadChart();
   ahead(`about:${coin.coinId}`, (signal) => fetchCoinAbout(coin.coinId, signal), true);
   ahead(`market:${coin.coinId}:${tf}`, (signal) => fetchCoinMarket(coin.coinId, tf, signal), false);
