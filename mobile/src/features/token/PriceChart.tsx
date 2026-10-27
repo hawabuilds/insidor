@@ -62,6 +62,8 @@ const AXIS_PX = 64;
 const MARK_PX = 18;
 /** The gap between the top of the candle's wick and the bubble's bottom. */
 const MARK_LIFT_PX = 3;
+/** The bubble's tap area. */
+const MARK_TAP_PX = 32;
 const DOUBLE_TAP_MS = 280;
 
 interface Colours {
@@ -94,7 +96,7 @@ const candleOptions = (c: Colours) => ({
 
 type Series = ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>;
 
-export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, style, emptyLabel, onScrub }: {
+export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, onNotifiedTap, style, emptyLabel, onScrub }: {
   points: readonly ChartPoint[];
   /** All: the whole life is fitted, candles as thin as it takes. Otherwise candles keep BAR_PX and the newest sit at the right. */
   wholeLife?: boolean;
@@ -102,6 +104,8 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   scale?: number | null;
   /** When we first pushed this coin to phones, and the market cap that push carried: our bubble sits there. */
   notified?: { readonly at: number; readonly marketCapUsd: number | null } | null;
+  /** The bubble was tapped: the block above shows when we alerted and the multiple since (CoinChart). */
+  onNotifiedTap?: () => void;
   /** Colours the line: green when the view ended above where it began. */
   rising: boolean;
   windowMs: number;
@@ -118,7 +122,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   const fittedKeyRef = useRef('');
   const lastTapRef = useRef(0);
   const onScrubRef = useRef(onScrub);
-  const markRef = useRef<HTMLImageElement>(null);
+  const markRef = useRef<HTMLButtonElement>(null);
   const wholeLifeRef = useRef(wholeLife);
   wholeLifeRef.current = wholeLife;
   const placeMarkRef = useRef<() => void>(() => undefined);
@@ -270,8 +274,10 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       /* ★ WHERE WE TOLD PEOPLE, AS PUMP.FUN'S TRADER BUBBLES (the owner, 2026-10-27: "when we notified
          users of the coin"): our logo in a ringed circle just above the candle of our first push —
          no line, no words. */
-      img.style.display = 'block';
-      img.style.transform = `translate(${Math.round(x - MARK_PX / 2)}px, ${Math.round(Math.max(0, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX)))}px)`;
+      img.style.display = 'flex';
+      /* The button is a finger's size around the 18px bubble; the bubble is drawn at its centre. */
+      const pad = (MARK_TAP_PX - MARK_PX) / 2;
+      img.style.transform = `translate(${Math.round(x - MARK_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX) - pad))}px)`;
     };
     if (series === null || data.length === 0) {
       placeMarkRef.current();
@@ -328,7 +334,19 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         lastTapRef.current = now;
       }}
     >
-      <img ref={markRef} className={styles['caught']} src="/icons/favicon-64.png?v=keyhole" alt="" aria-hidden="true" draggable={false} />
+      <button
+        ref={markRef}
+        type="button"
+        className={styles['caughtTap']}
+        aria-label="When Insidor alerted this coin"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNotifiedTap?.();
+        }}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
+        <img className={styles['caught']} src="/icons/favicon-64.png?v=keyhole" alt="" draggable={false} />
+      </button>
       {points.length < 2 ? <div className={styles['chartEmpty']}>{emptyLabel}</div> : null}
     </div>
   );

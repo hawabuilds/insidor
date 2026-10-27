@@ -36,6 +36,9 @@ const PriceChart = PRICE_CHART.Component;
 /** PriceChart's own height (PriceChart.tsx HEIGHT). */
 const CHART_HEIGHT = 230;
 
+/** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
+export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;
+
 export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
@@ -55,6 +58,13 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
 }) {
   const [style, setStyle] = useState<ChartStyle>(readChartStyle);
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
+  /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when we alerted and the
+     multiple since; nothing is drawn over the chart. Touching the chart or the bubble again ends it. */
+  const [alerted, setAlerted] = useState(false);
+  const scrub = (p: ChartPoint | null) => {
+    if (p !== null) setAlerted(false);
+    setScrubbed(p);
+  };
   const read = market?.kind === 'read' ? market : null;
 
   const period = periodMs(view, ageMs);
@@ -78,6 +88,8 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   /* ★ THE AXIS IN MARKET CAP (the owner, 2026-10-27): every price times the supply the cap was read at
      (cap over the latest price). Unknown cap: the axis stays in price, never a guessed supply. */
   const supply = cap !== 'loading' && cap.known && latest !== null && latest > 0 ? cap.amount / latest : null;
+  /* The cap now against the cap our push carried: "17.2x since". Unknown either side: no multiple. */
+  const sinceMultiple = notified?.marketCapUsd != null && notified.marketCapUsd > 0 && cap !== 'loading' && cap.known ? cap.amount / notified.marketCapUsd : null;
   const ohlc = scrubbed !== null && supply !== null ? candleFromPoint(scrubbed, points[points.findIndex((p) => p.t === scrubbed.t) - 1]?.price) : null;
   const shownCap: Measured | 'loading' = cap !== 'loading' && cap.known && shown !== null && latest !== null && latest > 0 ? { known: true, amount: cap.amount * (shown / latest) } : cap;
 
@@ -89,6 +101,20 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   return (
     <>
       <div className={styles['priceRow']}>
+        {alerted && notified !== null ? (
+          <div>
+            <div className={styles['alertedLine']}>
+              <span className={styles['alertedDot']} aria-hidden="true" />
+              Alerted {clock(notified.at)}{notified.marketCapUsd !== null ? ` at $${compactMoney(notified.marketCapUsd)}` : ''}
+            </div>
+            {sinceMultiple !== null ? (
+              <span className={`${styles['change']} ${sinceMultiple >= 1 ? styles['up'] : styles['down']}`}>
+                {sinceMultiple >= 1 ? '▲ ' : '▼ '}
+                {multipleText(sinceMultiple)} since
+              </span>
+            ) : null}
+          </div>
+        ) : (
         <div>
           <Value r={shownPrice} className={styles['price']} />
           <span className={`${styles['change']} ${direction === 'up' ? styles['up'] : direction === 'down' ? styles['down'] : ''}`}>
@@ -96,6 +122,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
             <Value r={moveText} /> <span className={styles['tf']}>{label}</span>
           </span>
         </div>
+        )}
         <div className={styles['cap']}>
           <span className={styles['kicker']}>Market cap</span>
           {shownCap === 'loading' ? <span className={styles['capN']} aria-label="reading"><span className={styles['capWait']} /></span> : <Value r={formatUsd(shownCap)} className={styles['capN']} />}
@@ -117,7 +144,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
           </div>
         }
       >
-        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={setScrubbed} />
+        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} />
       </Suspense>
 
       <div className={styles['tfRow']}>
@@ -130,6 +157,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
               className={`${styles['tfButton']} ${v === view ? (rising ? styles['tfOn'] : styles['tfOnDown']) : ''}`}
               onClick={() => {
                 setScrubbed(null);
+                setAlerted(false);
                 onView(v);
               }}
             >
