@@ -54,6 +54,7 @@ import { createHash } from 'node:crypto';
 import {
   DB_ROLE,
   PgAssetRepo,
+  PgChartRepo,
   PgStageRunRepo,
   PgTradeFeedRepo,
   createPool,
@@ -89,6 +90,7 @@ import type { StageRunRecorder } from './run-record.ts';
 import { createStreamFeed } from './stream-feed.ts';
 import { createTradeWatch, type ChainPort, type TradeWatch } from './trade-watch.ts';
 import { createLiveHub, type LiveHub } from './live.ts';
+import { createCharts, type Charts } from './chart.ts';
 
 export interface Runtime {
   readonly feed: MintFeed;
@@ -101,6 +103,8 @@ export interface Runtime {
   readonly trades: { readonly watch: TradeWatch; readonly stop: () => void } | null;
   /** The live feed (live.ts): every trade of a coin someone has open, on the relay only. */
   readonly live: LiveHub;
+  /** Our own candles and latest trades (chart.ts): fed by the relay only; idle on the billed socket. */
+  readonly charts: Charts;
 }
 
 /**
@@ -305,7 +309,7 @@ const TRADE_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=';
  * The trade feed, and the third place this service names a vendor. Off when the policy says so
  * or no key is set: every watched coin then stays unmeasured, and the rule judges on readings.
  */
-function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub): Runtime['trades'] {
+function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, charts: Charts): Runtime['trades'] {
   const tf = DEFAULT_POLICY.oneCoin.tradeFeed;
   const tradeLog = log.child({ part: 'trade-feed' });
   if (!tf.on || cfg.tradeFeedKey === null) {
@@ -332,6 +336,7 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub):
           schedule,
           note: (msg, fields) => tradeLog.warn(msg, fields),
           live: live.hooks,
+          chart: charts.hooks,
         })
       : createTradeSocket({
           url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
@@ -391,6 +396,22 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub):
 function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   const live = createLiveHub();
   const assets = new PgAssetRepo(db);
+  const chartLog = log.child({ part: 'charts' });
+  const charts = createCharts({
+    store: new PgChartRepo(db),
+    solUsd: () => live.solUsdNow(),
+    now: () => Date.now(),
+    note: (level, msg, fields) => chartLog[level](msg, fields),
+    sleep: (ms, signal) =>
+      new Promise((resolve) => {
+        if (signal.aborted) return resolve();
+        const timer = setTimeout(resolve, ms);
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          resolve();
+        }, { once: true });
+      }),
+  });
 
   /*
    * ★ The one place in this service where a contract is narrower than the column
@@ -412,8 +433,9 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   return {
     feed: createFeed(cfg, log),
     listing: buildListing(cfg, assets, log),
-    trades: buildTrades(cfg, db, log, live),
+    trades: buildTrades(cfg, db, log, live, charts),
     live,
+    charts,
 
     sink: {
       // A MintEvent already carries a whole Asset — the feed's job is to have

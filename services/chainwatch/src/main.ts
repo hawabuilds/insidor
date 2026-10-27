@@ -97,7 +97,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
     cfg.coverageToleranceMs,
     () => Date.now(),
     log,
-    (req, res) => runtime.live.serve(req, res),
+    (req, res) => runtime.live.serve(req, res) || runtime.charts.serve(req, res),
   );
   const heartbeat = createHeartbeat(cfg.heartbeat, log);
   const backoff: BackoffOptions = { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs };
@@ -160,6 +160,8 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   const listingDone = runtime.listing === null ? Promise.resolve() : runListing(runtime.listing, ac.signal);
   // The trade feed likewise: its own clock, the same abort, its socket closed on the way out.
   const tradesDone = runtime.trades === null ? Promise.resolve() : runTrades(runtime.trades, ac.signal);
+  // Our own candles (chart.ts) on their own clock too; with no relay they are fed nothing and write nothing.
+  const chartsDone = runtime.charts.run(ac.signal);
 
   /*
    * ★ EVERY HOLE DECLARED SINCE THE LAST WINDOW WE CLOSED, so that the next
@@ -365,6 +367,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
 
   await listingDone;
   await tradesDone;
+  await chartsDone;
   server.close();
   // The pool and the singleton lock are closed by `withRuntime` on the way out of
   // this function, in a `finally`, including when it leaves by throwing.

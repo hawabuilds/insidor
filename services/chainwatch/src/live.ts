@@ -85,6 +85,8 @@ export interface LiveHub {
   serve(req: IncomingMessage, res: ServerResponse): boolean;
   stop(): void;
   stats(): { readonly listeners: number; readonly coins: number; readonly solUsd: number | null };
+  /** SOL in dollars now (the median above), or null when none is fresh: the charts price trades with it. */
+  solUsdNow(): number | null;
 }
 
 export function createLiveHub(now: () => number = Date.now): LiveHub {
@@ -174,5 +176,6 @@ export function createLiveHub(now: () => number = Date.now): LiveHub {
       }
     },
     stats: () => ({ listeners: listeners.size, coins: wanted.size, solUsd: solUsd?.usd ?? null }),
+    solUsdNow: () => (solUsd === null || now() - solUsd.at > SOL_FRESH_MS ? null : solUsd.usd),
   };
 }
