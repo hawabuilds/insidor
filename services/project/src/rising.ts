@@ -297,8 +297,10 @@ export interface RisingRow {
   /** A catch-all lane credited the post (internal.item_found_by); false for a late post loaded by id alone. Absent on a row built by hand. */
   credited?: boolean;
   /**
-   * Only a coin's link found the post: the coin_link lane credited it and no other lane did
-   * (`rising.coinListNeedsReach`). Absent on a row built by hand: read as found some other way.
+   * No search found the post: only a coin's link did (the coin_link lane), or nothing credited it and
+   * a coin route loaded it by id (`rising.coinListNeedsReach`; a launcher's "could be the next Moo
+   * Deng" post with 605 views came in by its running coin alone on 2026-10-27). Absent on a row built
+   * by hand: read as found some other way.
    */
   coin_list_only?: boolean | null;
   /** When the post was found deleted from its source (0131, `loadDeleted`); absent or null when it is not known to be. */
@@ -353,8 +355,7 @@ export async function loadCandidates(
             s.story_id,
             oc.verdict as owner_call,
             f.credited,
-            (exists (select 1 from internal.item_found_by c1 where c1.item_id = i.item_id and c1.lane = 'coin_link')
-             and not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link')) as coin_list_only
+            not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link') as coin_list_only
        from (select fb.item_id, true as credited from internal.item_found_by fb
              union all
              select u.item_id, false from unnest($4::text[]) as u(item_id)
@@ -1113,7 +1114,8 @@ export async function buildRising(
        nothing — joins For You only once its own views clear For You's bar: no route stands in for
        them, the coin's vouch and a running coin included. Found by any other lane too, the routes
        decide as before. */
-    const coinListHeld = coinListHolds(row, clearsReachBar('fyp', barViews, postedAt, fypBar, scale), policy);
+    /* A post a key account shared (the Dandy route below) is loaded by id with no lane too: the share stands in for its views. */
+    const coinListHeld = !shares.has(row.item_id) && coinListHolds(row, clearsReachBar('fyp', barViews, postedAt, fypBar, scale), policy);
     const byViews = !coinListHeld && !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
     const byLate = lateLets({
