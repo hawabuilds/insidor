@@ -1243,6 +1243,14 @@ export interface JudgePolicy {
    *
    * Off: nothing is asked, and the projector counts every post from its own time.
    */
+  /**
+   * A FRESH POST THE JUDGE PASSED IS FOLLOWED, HOWEVER IT WAS FOUND (services/runner work/credit-judged.ts,
+   * the owner 2026-10-26: @nexta_tv's Chada the bear, read once at 0 views and never again): every
+   * pass, the posts judged a meme in the last `judgedWithinMs` while under `maxAgeMs` old that no lane
+   * credited are credited to 'judged' (0142), at most `perPass`, so their views are re-read inside the
+   * paced re-read day. Off: as before.
+   */
+  readonly creditJudged: { readonly on: boolean; readonly judgedWithinMs: number; readonly maxAgeMs: number; readonly perPass: number };
   readonly resurface: {
     readonly on: boolean;
     readonly minFollowers: number;
@@ -6318,6 +6326,7 @@ const POLICY_V1: Policy = {
       dailyUsd: 0.1,
       keyAccountsOn: true,
     },
+    creditJudged: { on: true, judgedWithinMs: 3_600_000, maxAgeMs: 21_600_000, perPass: 200 },
   },
 
   resolve: {
