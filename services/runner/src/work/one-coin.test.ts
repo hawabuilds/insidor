@@ -254,11 +254,12 @@ test('★ a post left waiting at its hour\'s end gets the coin that ran later, j
   const w = world({
     candidates: [cand('DUMPED', 10 * 60), cand('RAN', 10 * 60)],
     picks: new Map([[PAWS, waiting]]),
-    market: new Map([['DUMPED', { capUsd: 2_700, peakCapUsd: 41_000, readAtMs: NOW - 5 * MIN }], ['RAN', { capUsd: 44_000, peakCapUsd: 44_000, readAtMs: NOW - 5 * MIN }]]),
+    /* DUMPED's market reads its frozen curve at $41k, with nothing traded in its last hour. */
+    market: new Map([['DUMPED', { capUsd: 41_000, peakCapUsd: 41_000, readAtMs: NOW - 5 * MIN }], ['RAN', { capUsd: 44_000, peakCapUsd: 44_000, readAtMs: NOW - 5 * MIN }]]),
   });
   const d = deps(w);
   /* Past its hour: the open pass no longer holds the post, only the sweep can judge it. */
-  const repo = { ...d.repo, openCandidates: async () => [], waitingPostPicks: async () => [waiting] };
+  const repo = { ...d.repo, openCandidates: async () => [], waitingPostPicks: async () => [waiting], lastHours: async () => new Map([['DUMPED', { volume1hUsd: 0, trades1h: 0, capUsd: 41_000 }], ['RAN', { volume1hUsd: 3_000, trades1h: 40, capUsd: 44_000 }]]) };
   await oneCoinPass({ ...d, repo }, newOneCoinState());
   assert.equal(w.picks.get(PAWS)?.outcome, 'picked');
   assert.equal(w.picks.get(PAWS)?.address, 'RAN');

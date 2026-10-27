@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -259,7 +259,15 @@ export async function waitingSweep(
   /* ★ ON FRESH READINGS ALONE. The coin watcher follows a coin's trades only while it is watched, so
      hours later its trade state is the state it had then (Fp4Jkq…'s last trade on file is 02:25, two
      hours before it bonded): judged on that, a coin that ran later would look like it never did. */
-  const [watched, market] = await Promise.all([repo.watched(addresses, now), repo.marketFacts(addresses, now - WAITING_FRESH_MS)]);
+  const [watched, fresh, hours] = await Promise.all([
+    repo.watched(addresses, now),
+    repo.marketFacts(addresses, now - WAITING_FRESH_MS),
+    repo.lastHours === undefined ? Promise.resolve(null) : repo.lastHours(addresses, now - WAITING_FRESH_MS),
+  ]);
+  /* ★ ONLY A COIN THAT TRADED IN ITS LAST HOUR. A market source can keep answering a curve that
+     stopped trading at its old price: $DX1MhZ… read $41,261 with $0 traded for nine hours while its
+     trades had fallen to about $2k. Without a last hour that traded, a reading is not a price. */
+  const market = hours === null ? fresh : new Map([...fresh].filter(([a]) => (hours.get(a)?.volume1hUsd ?? 0) > 0));
   const facts = { trades: null, watched, market };
   const byItem = new Map<string, CandidateRow[]>();
   for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
