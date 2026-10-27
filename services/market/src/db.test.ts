@@ -258,3 +258,28 @@ test('★ the "Twitter World War" coin the owner chose is read every pass, first
   } as Db;
   assert.deepEqual((await assetsToRead(before, 'solana', 300)).map((r) => r.address), ['NEW'], 'a database before 0134: the usual pass');
 });
+
+test('★ an older coin a post\'s own coins name is read after the older coins weighed, before the hour and the newest, under the origin rule', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes('internal.older_coin')) return [{ chain: 'solana', address: 'himmel1', tier: 3 }, { chain: 'solana', address: 'screen1', tier: 3 }] as R[];
+      if (s.includes('internal.image_embedding')) return [{ chain: 'solana', address: 'hour1', tier: 2 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }] as R[];
+    },
+  } as Db;
+  const now = Date.UTC(2026, 9, 27);
+  const named = { nowMs: now, withinMs: 172_800_000, limit: 40, minCarriers: 2, minCapUsd: 15_000, recheckMs: 21_600_000, launchLeadMs: 600_000 };
+  const rows = await assetsToRead(db, 'solana', 4, { nowMs: now, afterLaunchMs: 3_600_000, withinMs: 21_600_000, limit: 100 }, null, null, null, null, null, named);
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'himmel1', 'hour1', 'new1']);
+  const sql = statements.find((s) => s.sql.includes('internal.older_coin'));
+  assert.ok(sql !== undefined);
+  assert.match(sql.sql, /\?\| array\['link', 'picture'\]/, 'a name is carried only by coins tied by link or picture');
+  assert.match(sql.sql, /a\.origin = any\(\$\d+::text\[\]\)/);
+  assert.equal(sql.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+  /* Off, nothing is asked. */
+  statements.length = 0;
+  await assetsToRead(db, 'solana', 4);
+  assert.equal(statements.some((s) => s.sql.includes('internal.older_coin')), false);
+});

@@ -28,6 +28,17 @@ export function coinsMadeAfter(coins: readonly SheetCoin[], postedMs: number | n
  */
 export const POST_COINS_SHOWN = 3;
 
+/**
+ * ★ THE POST'S TRADING COINS (the owner, 2026-10-27, "*paws at you*"): when the card names them
+ * (`evidence.tradingCoins`, services/project older-trading.ts) the sheet lists exactly those, highest
+ * market cap first, whatever their age: an older coin the post's own coins name, trading in a real
+ * pool, is the post's as much as one made after it. An unread cap sorts last, never as zero.
+ */
+export function tradingCoinsListed(coins: readonly SheetCoin[], trading: readonly string[]): readonly SheetCoin[] {
+  const cap = (c: SheetCoin): number => (c.marketCapUsd.known ? c.marketCapUsd.amount : -1);
+  return coins.filter((c) => trading.includes(c.address)).sort((a, b) => cap(b) - cap(a));
+}
+
 export function topCoinsMade(coins: readonly SheetCoin[], postedMs: number | null): readonly SheetCoin[] {
   const made = coinsMadeAfter(coins, postedMs);
   const cap = (c: SheetCoin): number => (c.marketCapUsd.known ? c.marketCapUsd.amount : -1);

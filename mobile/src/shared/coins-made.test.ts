@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { SheetCoin } from './api/post-sheet.ts';
-import { coinsMadeAfter, topCoinsMade } from './coins-made.ts';
+import { coinsMadeAfter, topCoinsMade, tradingCoinsListed } from './coins-made.ts';
 
 const POSTED = 1_000_000_000;
 const coin = (address: string, launchedAt: number, cap: number | null, proven = false): SheetCoin => ({
@@ -43,4 +43,14 @@ test('★ the top three made after the post, highest cap first, whatever the cap
 test('the post\'s own coin always leads the three', () => {
   const coins = [coin('A', POSTED + 60_000, 3_300), coin('MINE', POSTED + 90_000, 1_000, true), coin('D', POSTED + 150_000, 2_800), coin('E', POSTED + 180_000, 2_000)];
   assert.deepEqual(topCoinsMade(coins, POSTED).map((c) => c.address), ['MINE', 'A', 'D']);
+});
+
+test('★ the post\'s trading coins are listed exactly, highest cap first, whatever their age (paws at you)', () => {
+  const coins = [
+    coin('FP4', POSTED + 3_600_000, 44_000),
+    coin('HIM1', POSTED - 4 * 86_400_000, 72_000),
+    coin('HIM2', POSTED - 4 * 86_400_000, 21_000),
+    coin('COPY', POSTED + 60_000, 3_000),
+  ];
+  assert.deepEqual(tradingCoinsListed(coins, ['HIM1', 'FP4', 'HIM2']).map((c) => c.address), ['HIM1', 'FP4', 'HIM2']);
 });

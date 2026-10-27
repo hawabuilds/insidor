@@ -80,7 +80,7 @@ import { useMcChange } from './useMcChange.ts';
 import { useOpenedPost } from '../owner/useSeen.ts';
 import styles from './post-sheet.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
-import { topCoinsMade } from '../../shared/coins-made.ts';
+import { topCoinsMade, tradingCoinsListed } from '../../shared/coins-made.ts';
 import { sharePage } from '../../shared/share-link.ts';
 
 export interface PostSheetProps {
@@ -145,6 +145,9 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
     /* A post in a narrative: from the narrative's oldest post, so a coin its first post made still shows. */
     const own = v.post.postedAt.known ? v.post.postedAt.at : null;
     const first = v.narrative?.firstPostedAt ?? null;
+    /* The post's trading coins, when the card names them: exactly those (tradingCoinsListed). */
+    const trading = v.post.coins.kind === 'matched' ? v.post.coins.evidence.tradingCoins ?? null : null;
+    if (trading !== null) return { ...v, coins: tradingCoinsListed(v.coins, trading) };
     return { ...v, coins: topCoinsMade(v.coins, own === null ? first : first === null ? own : Math.min(own, first)) };
   }, [loaded]);
   /* Leaving for another screen: the sheet stays open on the page it was opened over, which stays

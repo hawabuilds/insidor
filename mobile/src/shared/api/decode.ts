@@ -1024,7 +1024,15 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
     ...(o['picked'] === true ? { picked: true as const } : {}),
     /* The race: a whole number of 2 or more, or nothing. */
     ...(typeof o['racing'] === 'number' && Number.isInteger(o['racing']) && o['racing'] >= 2 ? { racing: o['racing'] } : {}),
+    /* The post's trading coins: two or more distinct addresses, or nothing. */
+    ...tradingCoinsOf(o['tradingCoins']),
   };
+}
+
+function tradingCoinsOf(raw: unknown): { readonly tradingCoins?: readonly string[] } {
+  if (!Array.isArray(raw)) return {};
+  const list = [...new Set(raw.filter((a): a is string => typeof a === 'string' && a.trim() !== ''))];
+  return list.length >= 2 ? { tradingCoins: list } : {};
 }
 
 /**

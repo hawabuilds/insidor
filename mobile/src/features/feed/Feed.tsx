@@ -74,6 +74,7 @@ import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import type { CoinFace } from '../narrative/story-coin.ts';
 import { usePreloadCreate } from '../create/preload.ts';
+import { cardCoinProven } from '../../shared/coin-status.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor, parseRoute } from '../../shared/route.ts';
@@ -309,8 +310,9 @@ export function Feed({
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
         seeCoins: () => setSheet({ id: p.id, start: 'coins' }),
-        /* The card's own coin is the post's proven one: its page, with the narrative around it when there is one. */
-        openCoin: (coinId) => (window.location.hash = hrefFor(sheetCoinRoute({ coinId, proven: true }, p.storyId))),
+        /* The card's own coin is the post's proven one: its page, with the narrative around it when there is one
+           (an older trading coin nothing ties to the post opens as any other coin, `cardCoinProven`). */
+        openCoin: (coinId) => (window.location.hash = hrefFor(sheetCoinRoute({ coinId, proven: cardCoinProven(p.coins) }, p.storyId))),
         /* The narrative the post is part of: its small tag opens the narrative page. */
         openStory: (storyId) => (window.location.hash = hrefFor({ screen: 'story', storyId })),
       }}

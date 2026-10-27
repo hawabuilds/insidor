@@ -212,6 +212,18 @@ async function main(): Promise<void> {
       firstHour,
       /* The tape's coins of viral posts, the day's busiest, read every pass so none drops off unread (db.ts). */
       TAPE_READS_PER_PASS,
+      /* The older coins a post's own coins name, read so the card can list one while it trades (db.ts). */
+      DEFAULT_POLICY.oneCoin.olderTrading.on
+        ? {
+            nowMs: now(),
+            withinMs: DEFAULT_POLICY.oneCoin.olderTrading.withinMs,
+            limit: DEFAULT_POLICY.oneCoin.olderTrading.readsPerPass,
+            minCarriers: DEFAULT_POLICY.oneCoin.olderTrading.minCarriers,
+            minCapUsd: DEFAULT_POLICY.oneCoin.olderTrading.minCapUsd,
+            recheckMs: DEFAULT_POLICY.oneCoin.olderTrading.recheckMs,
+            launchLeadMs: DEFAULT_POLICY.oneCoin.launchLeadMs,
+          }
+        : null,
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,

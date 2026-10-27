@@ -255,13 +255,20 @@ export function sheetMedia(raw: unknown): { readonly kind: 'video' | 'image'; re
   return null;
 }
 
-/** The addresses the post's own coin link names: its matched or narrative coin, or a narrative's several. */
+/**
+ * The addresses the post's own coin link names: its matched or narrative coin, or a narrative's several.
+ * ★ And the post's trading coins (`evidence.tradingCoins`, services/project older-trading.ts): listed
+ * after it, never marked proven — an older coin the post's coins name is not proven from the post.
+ */
 export function linkedAddresses(coins: unknown): { readonly proven: string | null; readonly addresses: readonly string[] } {
   const c = rec(coins);
   const kind = str(c['kind']);
   if (kind === 'matched' || kind === 'one') {
     const a = str(rec(c['coin'])['address']);
-    return { proven: a, addresses: a === null ? [] : [a] };
+    const trading = rec(c['evidence'])['tradingCoins'];
+    const listed = kind === 'matched' && Array.isArray(trading) ? trading.flatMap((x) => str(x) ?? []) : [];
+    const proven = rec(c['evidence'])['picked'] === true || rec(c['evidence'])['linksPost'] === true || rec(c['evidence'])['samePicture'] === true || listed.length === 0 ? a : null;
+    return { proven, addresses: [...new Set([...(a === null ? [] : [a]), ...listed])] };
   }
   if (kind === 'several') return { proven: null, addresses: (Array.isArray(c['coins']) ? c['coins'] : []).flatMap((x) => str(rec(x)['address']) ?? []) };
   return { proven: null, addresses: [] };

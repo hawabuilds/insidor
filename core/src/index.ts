@@ -206,6 +206,9 @@ export { coinAt, contendersAt, replayMerit, replayTimeline, scoreReplay, tradesA
 /* The race: coins made for one post that broke away together, shown together (match/coin-race.ts). */
 export { racingCoins } from './match/coin-race.ts';
 export type { RaceBars } from './match/coin-race.ts';
+/* An older coin the post's own coins name, still trading: listed with the post's coins (match/older-trading.ts). */
+export { carriedNames, olderTradingCoins } from './match/older-trading.ts';
+export type { OlderCoin, OlderTradingBars, TiedCoin } from './match/older-trading.ts';
 /* The coin-first route onto For You: what the runner does for a post a running coin links, and whether it joins (match/coin-first.ts). */
 export { coinFirstAdmits, coinFirstBars, coinFirstStep, firstTie, inRouteAge } from './match/coin-first.ts';
 export type { CoinFirstAdmitFacts, CoinFirstBars, CoinFirstStep, CoinFirstTarget, CoinFirstTie } from './match/coin-first.ts';

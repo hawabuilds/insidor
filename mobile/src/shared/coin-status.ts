@@ -131,6 +131,10 @@ export function postCoinStatus(shown: PostCoinLink, owner = false): PostCoinStat
   const racing = coins.kind === 'matched' ? coins.evidence.racing ?? null : null;
   const actions: PostAction[] = status.action === null ? [] : [status.action];
   if (racing !== null) actions.push({ kind: 'see', count: racing, more: false });
+  /* ★ THE POST'S TRADING COINS (the owner, 2026-10-27, "*paws at you*": "list them with see n coins
+     button with highest mc one with buy button"): the highest carries Buy, "See N coins" lists them. */
+  const trading = coins.kind === 'matched' ? coins.evidence.tradingCoins ?? null : null;
+  if (trading !== null && racing === null) actions.push({ kind: 'see', count: trading.length, more: false });
   return {
     line: one ? `${coins.kind === 'matched' && coins.evidence.picked === true ? (racing !== null ? 'Leading: ' : 'Coin for this post: ') : ''}${oneCoinLine(coins.coin)}` : status.line,
     actions,
@@ -155,6 +159,17 @@ function gap(ms: number): string {
  * about the same story. Said instead of "Links this post", never with it: when the post proves
  * the coin itself, the proof is what the card says.
  */
+/**
+ * Whether the card's coin is the post's own: always, but for the highest of the post's trading coins
+ * when nothing ties it to the post (an older coin the post's coins name): its page then carries the
+ * grey "not proven" line like any other coin's.
+ */
+export function cardCoinProven(coins: PostCoinLink): boolean {
+  if (coins.kind !== 'matched' || coins.evidence.tradingCoins === undefined) return true;
+  const e = coins.evidence;
+  return e.picked === true || e.linksPost === true || e.samePicture === true;
+}
+
 export function evidenceFacts(e: CoinEvidence): readonly string[] {
   const out: string[] = [];
   if (e.linksPost === true) out.push('Links this post');
