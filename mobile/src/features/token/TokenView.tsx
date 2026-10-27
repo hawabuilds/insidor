@@ -54,7 +54,7 @@ import { BackIcon, CheckIcon, CopyIcon, ExternalIcon } from '../../shared/ui/ico
 import { useCopied } from '../../shared/useCopied.ts';
 import { Comments } from '../comments/Comments.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
-import { defaultTimeframe } from './chart-data.ts';
+import { defaultView, fetchTimeframe, type ChartView } from './chart-view.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { SocialRow } from './SocialRow.tsx';
@@ -115,9 +115,11 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const toast = useToast();
   const { state: walletState } = useWallet();
   const account = walletState.kind === 'connected' ? walletState.account : null;
-  const [tf, setTf] = useState<MarketTimeframe>(() =>
-    defaultTimeframe({ onCurve: facts.venue === 'curve', launchedAt: facts.launchedAt.known ? facts.launchedAt.at : null, now: Date.now() }),
-  );
+  /* ★ THE VIEW, NOT ONLY A TIMEFRAME (chart-view.ts): All, the coin's whole life, is a young coin's first view. */
+  const launchedAt = facts.launchedAt.known ? facts.launchedAt.at : null;
+  const [view, setView] = useState<ChartView>(() => defaultView({ onCurve: facts.venue === 'curve', launchedAt, now: Date.now() }));
+  const ageMs = launchedAt === null ? null : Date.now() - launchedAt;
+  const tf: MarketTimeframe = fetchTimeframe(view, ageMs);
   const [panel, setPanel] = useState<Panel>('trades');
   const [pickedTape, setTape] = useState<TapeFilter>('all');
   const tape = tapeFilterFor(pickedTape, account);
@@ -210,7 +212,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
-      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
+      <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
       {narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : noNarrative && about !== null ? <ViralPost posts={about.posts} /> : null}
 

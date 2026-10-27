@@ -16,13 +16,14 @@
 
 import { Suspense, useMemo, useState } from 'react';
 
-import type { CoinMarket, MarketTimeframe } from '../../shared/api/index.ts';
+import type { CoinMarket } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { formatChangePercent, formatPrice, formatUsd } from '../../shared/format/number.ts';
+import { compactMoney, formatChangePercent, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { value, type Rendered } from '../../shared/format/rendered.ts';
 import { CandleIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { TIMEFRAMES, TIMEFRAME_MS, changePctForPoints, chartWindowMs, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
+import { CHART_WINDOW_BARS, candleFromPoint, changePctForPoints, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
+import { VIEWS, fetchTimeframe, periodMs, tradesToCandles, viewLabel, type ChartView } from './chart-view.ts';
 import { chartNote, clock, movePercent } from './chart-format.ts';
 import { readChartStyle, writeChartStyle } from './chart-style.ts';
 import { PRICE_CHART } from '../../shared/preload.ts';
@@ -33,13 +34,17 @@ import styles from './token.module.css';
    saying the same empty line, so nothing moves when the lines draw in. */
 const PriceChart = PRICE_CHART.Component;
 /** PriceChart's own height (PriceChart.tsx HEIGHT). */
-const CHART_HEIGHT = 190;
+const CHART_HEIGHT = 230;
 
-export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liquidity }: {
+export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
-  tf: MarketTimeframe;
-  onTf: (tf: MarketTimeframe) => void;
+  view: ChartView;
+  onView: (view: ChartView) => void;
+  /** How long ago the coin launched; null when unknown. Picks All's candle size (chart-view.ts). */
+  ageMs: number | null;
+  /** When we first pushed this coin to phones, and the market cap the push carried: our bubble goes there. Null: none. */
+  notified: { readonly at: number; readonly marketCapUsd: number | null } | null;
   /** The coin's own price and 24-hour change, shown when there are no candles to read. */
   price: Measured;
   change24h: Measured;
@@ -52,9 +57,12 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
   const read = market?.kind === 'read' ? market : null;
 
+  const period = periodMs(view, ageMs);
+  const tf = fetchTimeframe(view, ageMs);
+  /* 1s is built from the trades alone; every other view is the source's candles with the newest trades folded in. */
   const points = useMemo(
-    () => mergeTradesIntoChart(pointsOf(read?.candles ?? []), read?.trades ?? [], TIMEFRAME_MS[tf]),
-    [read, tf],
+    () => (view === '1s' ? tradesToCandles(read?.trades ?? [], period) : mergeTradesIntoChart(pointsOf(read?.candles ?? []), read?.trades ?? [], period)),
+    [read, view, period],
   );
   const latest = points[points.length - 1]?.price ?? null;
   const windowMove = changePctForPoints(points);
@@ -66,7 +74,11 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
   const fallback = formatChangePercent(change24h);
   const direction = move !== null ? (move > 0 ? 'up' : move < 0 ? 'down' : 'flat') : fallback.direction;
   const moveText: Rendered = move !== null ? value(movePercent(move)) : fallback.text;
-  const label = scrubbed !== null ? clock(scrubbed.t) : move !== null ? tf : '24H';
+  const label = scrubbed !== null ? clock(scrubbed.t) : move !== null ? viewLabel(view) : '24H';
+  /* ★ THE AXIS IN MARKET CAP (the owner, 2026-10-27): every price times the supply the cap was read at
+     (cap over the latest price). Unknown cap: the axis stays in price, never a guessed supply. */
+  const supply = cap !== 'loading' && cap.known && latest !== null && latest > 0 ? cap.amount / latest : null;
+  const ohlc = scrubbed !== null && supply !== null ? candleFromPoint(scrubbed, points[points.findIndex((p) => p.t === scrubbed.t) - 1]?.price) : null;
   const shownCap: Measured | 'loading' = cap !== 'loading' && cap.known && shown !== null && latest !== null && latest > 0 ? { known: true, amount: cap.amount * (shown / latest) } : cap;
 
   const pick = (next: ChartStyle) => {
@@ -91,6 +103,13 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
         </div>
       </div>
 
+      {/* While the finger is on a candle: its open, high, low and close, in market cap. */}
+      <div className={styles['ohlc']} aria-live="polite">
+        {ohlc !== null && supply !== null ? (
+          <>O <b>{compactMoney(ohlc.open * supply)}</b> H <b>{compactMoney(ohlc.high * supply)}</b> L <b>{compactMoney(ohlc.low * supply)}</b> C <b>{compactMoney(ohlc.close * supply)}</b></>
+        ) : null}
+      </div>
+
       <Suspense
         fallback={
           <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
@@ -98,23 +117,23 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
           </div>
         }
       >
-        <PriceChart points={points} rising={rising} windowMs={chartWindowMs(tf)} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={setScrubbed} />
+        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={setScrubbed} />
       </Suspense>
 
       <div className={styles['tfRow']}>
         <div className={styles['tfs']} role="group" aria-label="Chart timeframe">
-          {TIMEFRAMES.map((t) => (
+          {VIEWS.map((v) => (
             <button
-              key={t}
+              key={v}
               type="button"
-              aria-pressed={t === tf}
-              className={`${styles['tfButton']} ${t === tf ? (rising ? styles['tfOn'] : styles['tfOnDown']) : ''}`}
+              aria-pressed={v === view}
+              className={`${styles['tfButton']} ${v === view ? (rising ? styles['tfOn'] : styles['tfOnDown']) : ''}`}
               onClick={() => {
                 setScrubbed(null);
-                onTf(t);
+                onView(v);
               }}
             >
-              {t}
+              {viewLabel(v)}
             </button>
           ))}
         </div>

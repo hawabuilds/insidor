@@ -286,7 +286,7 @@
   position: relative;
   display: block;
   width: 100%;
-  height: 220px;
+  height: 230px;
   margin-top: 12px;
   touch-action: pan-y;
   user-select: none;
@@ -647,4 +647,36 @@
 
 .copied button {
   color: var(--up);
+}
+
+/* Our mark on the candle where Insidor caught the coin's post (PriceChart): the logo in a ringed
+   circle sitting on the candle, as pump.fun draws a trader's bubble — no line, no words. */
+.caught {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  display: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--up), 0 0 0 4px var(--bg);
+  pointer-events: none;
+}
+
+/* The candle under the finger, in market cap: open, high, low, close. Its line is held so nothing jumps. */
+.ohlc {
+  min-height: 16px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ohlc b {
+  font-weight: 500;
+  color: var(--text-2);
+  margin-right: 6px;
 }

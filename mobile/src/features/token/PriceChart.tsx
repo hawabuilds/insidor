@@ -22,6 +22,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  TrackingModeExitMode,
   createChart,
   type IChartApi,
   type ISeriesApi,
@@ -42,15 +43,23 @@ import {
   toCandleData,
   toLineData,
   toUtcSeconds,
-  visibleTimeRange,
   withCompressedBreaks,
   type ChartPoint,
   type ChartStyle,
 } from './chart-data.ts';
 import { chartPrice } from './chart-format.ts';
+import { compactMoney } from '../../shared/format/number.ts';
 import styles from './token.module.css';
 
-const HEIGHT = 190;
+const HEIGHT = 230;
+/** A candle's width in px on every view but All, which fits the whole life: thin, as pump.fun's, never stretched. */
+const BAR_PX = 7;
+/** All's narrowest and widest candle. */
+const ALL_MIN_PX = 1.5;
+const ALL_MAX_PX = 7;
+/** Room kept for the price axis when All works out how many candles fit. */
+const AXIS_PX = 64;
+const MARK_PX = 26;
 const DOUBLE_TAP_MS = 280;
 
 interface Colours {
@@ -74,14 +83,23 @@ const candleOptions = (c: Colours) => ({
   borderDownColor: c.down,
   wickUpColor: c.up,
   wickDownColor: c.down,
-  priceLineVisible: false,
-  lastValueVisible: false,
+  /* ★ The live value as a pill on the axis, with a dotted line across: it moves with every trade. */
+  priceLineVisible: true,
+  priceLineStyle: LineStyle.Dotted,
+  priceLineWidth: 1 as const,
+  lastValueVisible: true,
 });
 
 type Series = ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>;
 
-export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScrub }: {
+export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, style, emptyLabel, onScrub }: {
   points: readonly ChartPoint[];
+  /** All: the whole life is fitted, candles as thin as it takes. Otherwise candles keep BAR_PX and the newest sit at the right. */
+  wholeLife?: boolean;
+  /** The supply: every price times this is a market cap, and the axis reads in caps. Null: the axis is in price. */
+  scale?: number | null;
+  /** When we first pushed this coin to phones, and the market cap that push carried: our bubble sits there. */
+  notified?: { readonly at: number; readonly marketCapUsd: number | null } | null;
   /** Colours the line: green when the view ended above where it began. */
   rising: boolean;
   windowMs: number;
@@ -98,6 +116,11 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
   const fittedKeyRef = useRef('');
   const lastTapRef = useRef(0);
   const onScrubRef = useRef(onScrub);
+  const markRef = useRef<HTMLImageElement>(null);
+  const wholeLifeRef = useRef(wholeLife);
+  wholeLifeRef.current = wholeLife;
+  const placeMarkRef = useRef<() => void>(() => undefined);
+  const lastScrubRef = useRef<number | null>(null);
   pointsRef.current = points;
   onScrubRef.current = onScrub;
 
@@ -106,16 +129,25 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
   const data = useMemo(() => {
     const times = points.map((p) => p.t);
     const gapMs = gapBreakMsForWindow(windowMs);
-    return style === 'candles' ? withCompressedBreaks(toCandleData(points), times, gapMs) : withCompressedBreaks(toLineData(points), times, gapMs);
-  }, [points, style, windowMs]);
+    const k = scale !== null && scale > 0 ? scale : 1;
+    const shown = k === 1 ? points : points.map((p) => ({ ...p, price: p.price * k, ...(p.open === undefined ? {} : { open: p.open * k }), ...(p.high === undefined ? {} : { high: p.high * k }), ...(p.low === undefined ? {} : { low: p.low * k }) }));
+    return style === 'candles' ? withCompressedBreaks(toCandleData(shown), times, gapMs) : withCompressedBreaks(toLineData(shown), times, gapMs);
+  }, [points, style, windowMs, scale]);
 
+  /* ★ NEVER STRETCHED (the owner, 2026-10-27: "our chart is zoomed in, especially for new tokens"). The
+     view no longer spreads the first candle to the last across the width, which drew eight 1m
+     candles as eight blocks: candles keep their width and the newest sit at the right, the empty
+     left left empty. All fits the whole life, as thin as it takes, never wider than BAR_PX. */
   const fit = useCallback(() => {
     const chart = chartRef.current;
-    if (chart === null || pointsRef.current.length < 2) return;
-    chart.timeScale().applyOptions(timeScaleOptions({ intraday, barCount: pointsRef.current.length }));
-    const range = visibleTimeRange(pointsRef.current);
-    if (range !== null) chart.timeScale().setVisibleRange({ from: range.from as UTCTimestamp, to: range.to as UTCTimestamp });
-    else chart.timeScale().fitContent();
+    const host = hostRef.current;
+    if (chart === null || host === null || pointsRef.current.length < 1) return;
+    const n = pointsRef.current.length;
+    const room = Math.max(60, host.clientWidth - AXIS_PX);
+    const spacing = wholeLifeRef.current ? Math.min(ALL_MAX_PX, Math.max(ALL_MIN_PX, room / (n + 4))) : BAR_PX;
+    chart.timeScale().applyOptions({ ...timeScaleOptions({ intraday, barCount: n }), barSpacing: spacing, minBarSpacing: Math.min(spacing, ALL_MIN_PX), fixLeftEdge: false, rightOffset: 4 });
+    chart.timeScale().scrollToRealTime();
+    placeMarkRef.current();
   }, [intraday]);
 
   /* The chart, made once per mount. */
@@ -127,14 +159,16 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
       autoSize: true,
       height: HEIGHT,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: c.faint, fontFamily: 'inherit', attributionLogo: false },
-      grid: { vertLines: { visible: false }, horzLines: { color: c.hairline, style: LineStyle.SparseDotted } },
+      grid: { vertLines: { color: c.hairline, style: LineStyle.SparseDotted }, horzLines: { color: c.hairline, style: LineStyle.SparseDotted } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.06 } },
       timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, ...timeScaleOptions({ intraday, barCount: pointsRef.current.length }) },
       crosshair: {
         mode: CrosshairMode.Magnet,
-        vertLine: { color: c.hairline, width: 1, style: LineStyle.Solid, labelVisible: false },
-        horzLine: { visible: false, labelVisible: false },
+        vertLine: { color: c.faint, width: 1, style: LineStyle.Solid, labelVisible: false },
+        horzLine: { color: c.faint, width: 1, style: LineStyle.Dashed, labelVisible: true },
       },
+      /* ★ Press and hold to read a candle; lift the finger and the chart is the chart again. A drag pans. */
+      trackingMode: { exitMode: TrackingModeExitMode.OnTouchEnd },
       handleScroll: { vertTouchDrag: false, horzTouchDrag: true, mouseWheel: true, pressedMouseMove: true },
       handleScale: { axisPressedMouseMove: true, pinch: true, mouseWheel: true, axisDoubleClickReset: true },
       localization: { priceFormatter: chartPrice },
@@ -142,10 +176,20 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
     chartRef.current = chart;
     const onCrosshair = (param: { time?: Time }) => {
       const time = param.time;
-      onScrubRef.current(typeof time === 'number' ? (pointsRef.current.find((p) => toUtcSeconds(p.t) === time) ?? null) : null);
+      const t = typeof time === 'number' ? time : null;
+      /* A light tick on each new candle under the finger, where the phone allows it (not iPhone Safari). */
+      if (t !== null && lastScrubRef.current !== null && t !== lastScrubRef.current) navigator.vibrate?.(3);
+      lastScrubRef.current = t;
+      onScrubRef.current(t !== null ? (pointsRef.current.find((p) => toUtcSeconds(p.t) === t) ?? null) : null);
     };
     chart.subscribeCrosshairMove(onCrosshair);
+    const moved = () => placeMarkRef.current();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(moved);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(moved);
+    ro?.observe(host);
     return () => {
+      ro?.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(moved);
       chart.unsubscribeCrosshairMove(onCrosshair);
       chart.remove();
       chartRef.current = null;
@@ -162,7 +206,11 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
     if (chart === null || host === null) return;
     const c = readColours(host);
     const lineColour = rising ? c.up : c.down;
-    const floor = pointsRef.current[0]?.price;
+    const k = scale !== null && scale > 0 ? scale : 1;
+    const first = pointsRef.current[0]?.price;
+    const floor = first === undefined ? undefined : first * k;
+    /* The axis reads in market cap when there is a supply to read it by ("38.7K"), else in price. */
+    chart.applyOptions({ localization: { priceFormatter: k === 1 ? chartPrice : (v: number) => compactMoney(v) } });
     const autoscaleInfoProvider = (original: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
       const res = original();
       if (res?.priceRange == null || floor === undefined || !(floor > 0) || !launchInView(chart.timeScale().getVisibleLogicalRange())) return res;
@@ -176,7 +224,7 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
         ? chart.addSeries(CandlestickSeries, { ...candleOptions(c), autoscaleInfoProvider })
         : chart.addSeries(AreaSeries, {
             lineColor: lineColour, topColor: `${lineColour}33`, bottomColor: 'transparent', lineWidth: 2,
-            priceLineVisible: false, lastValueVisible: false, crosshairMarkerRadius: 4, autoscaleInfoProvider,
+            priceLineVisible: true, priceLineStyle: LineStyle.Dotted, priceLineWidth: 1, lastValueVisible: true, crosshairMarkerRadius: 4, autoscaleInfoProvider,
           });
       prevPointsRef.current = [];
     } else if (style === 'line') {
@@ -185,13 +233,63 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
       seriesRef.current?.applyOptions({ ...candleOptions(c), autoscaleInfoProvider });
     }
     const series = seriesRef.current;
-    if (series === null || data.length === 0) return;
+    /* ★ OUR MARK, AND NOTHING ELSE ON THE CHART (the owner, 2026-10-27: "just show our logo without
+       words at the mc we caught it"): under the candle that holds the moment we caught the post;
+       the first candle when we had it before the coin launched; none after the newest candle. */
+    placeMarkRef.current = () => {
+      const img = markRef.current;
+      const ch = chartRef.current;
+      const ser = seriesRef.current;
+      const pts = pointsRef.current;
+      if (img === null) return;
+      const hide = () => {
+        img.style.display = 'none';
+      };
+      const lastPt = pts[pts.length - 1];
+      const caughtAt = notified?.at ?? null;
+      const firstPt = pts[0];
+      /* Only where the moment is on the chart: before its first candle only All shows it, on the first candle. */
+      if (ch === null || ser === null || caughtAt === null || lastPt === undefined || firstPt === undefined || caughtAt > lastPt.t + windowMs || (caughtAt < firstPt.t && !wholeLifeRef.current)) {
+        hide();
+        return;
+      }
+      let at = pts[0] as ChartPoint;
+      for (const q of pts) {
+        if (q.t <= caughtAt) at = q;
+        else break;
+      }
+      const x = ch.timeScale().timeToCoordinate(toUtcSeconds(at.t) as UTCTimestamp);
+      /* At the cap the push itself said, when the axis is in caps; else at the candle's close. */
+      const y = ser.priceToCoordinate(k !== 1 && notified?.marketCapUsd != null ? notified.marketCapUsd : at.price * k);
+      if (x === null || y === null) {
+        hide();
+        return;
+      }
+      /* ★ WHERE WE TOLD PEOPLE, AS PUMP.FUN'S TRADER BUBBLES (the owner, 2026-10-27: "when we notified
+         users of the coin"): our logo in a ringed circle on the candle of our first push, at the
+         market cap that push carried — no line, no words. */
+      img.style.display = 'block';
+      img.style.transform = `translate(${Math.round(x - MARK_PX / 2)}px, ${Math.round(Math.max(0, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX / 2)))}px)`;
+    };
+    if (series === null || data.length === 0) {
+      placeMarkRef.current();
+      return;
+    }
 
-    const prev = prevPointsRef.current;
-    const liveEdge = !changed && isLiveEdgeUpdate(prev, points);
-    const prepend = !changed && isHistoryPrepend(prev, points);
+    /* A new view (1s to All, say) is new data, never older history arriving in front of the old view's. */
+    /* The candle size the data really has: right after a switch the last view's candles are drawn while
+       the new view's load, and the fit must follow the new ones when they land. */
+    let step = 0;
+    for (let i = 1; i < points.length; i += 1) {
+      const d = (points[i]?.t ?? 0) - (points[i - 1]?.t ?? 0);
+      if (d > 0 && (step === 0 || d < step)) step = d;
+    }
+    const key = `${style}:${windowMs}:${step}`;
+    const newView = fittedKeyRef.current !== '' && fittedKeyRef.current !== key;
+    const prev = newView ? [] : prevPointsRef.current;
+    const liveEdge = !changed && !newView && isLiveEdgeUpdate(prev, points);
+    const prepend = !changed && !newView && isHistoryPrepend(prev, points);
     const visible = prepend ? chart.timeScale().getVisibleLogicalRange() : null;
-    const key = `${style}:${windowMs}`;
     const fitNow = shouldAutoFit({ hasFitted: fittedKeyRef.current === key, liveEdge, prepend, identityChanged: fittedKeyRef.current !== '' && fittedKeyRef.current !== key });
     const last = data[data.length - 1];
     if (liveEdge && last !== undefined && !isWhitespace(last)) {
@@ -208,7 +306,8 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
       fittedKeyRef.current = key;
       fit();
     }
-  }, [data, fit, points, rising, style, windowMs]);
+    placeMarkRef.current();
+  }, [data, fit, points, rising, style, windowMs, scale, notified]);
 
   const reset = useCallback(() => {
     fit();
@@ -227,6 +326,7 @@ export function PriceChart({ points, rising, windowMs, style, emptyLabel, onScru
         lastTapRef.current = now;
       }}
     >
+      <img ref={markRef} className={styles['caught']} src="/icons/favicon-64.png?v=keyhole" alt="" aria-hidden="true" draggable={false} />
       {points.length < 2 ? <div className={styles['chartEmpty']}>{emptyLabel}</div> : null}
     </div>
   );
