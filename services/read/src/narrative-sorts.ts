@@ -250,7 +250,7 @@ export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | '
  * Each field cut is one the phone's decoder accepts as absent (a series or a map read as null) or
  * keeps as a list; nothing is renamed, and the payload's own `postCount` carries the count.
  */
-const CARD_DROPS = ['viewsGained', 'viewsGainedAll', 'postViews'] as const;
+const CARD_DROPS = ['viewsGained', 'viewsGainedAll', 'viewsTotals', 'viewsTotalsAll', 'postViews'] as const;
 
 export function cardOf(page: unknown): unknown {
   if (typeof page !== 'object' || page === null || Array.isArray(page)) return page;
