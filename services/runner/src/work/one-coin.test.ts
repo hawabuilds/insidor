@@ -246,3 +246,34 @@ test('★ the trades\' caps get dollars from the median price, so a frozen readi
   /* Too few coins read both ways: nothing is guessed. */
   assert.equal(withDollarCaps(new Map([['rug', t(20)]]), market).get('rug')?.capUsd, null);
 });
+
+test('★ a post left waiting at its hour\'s end gets the coin that ran later, judged on fresh readings ("paws at you", 2026-10-27)', async () => {
+  const PAWS = 'x:paws';
+  const cand = (address: string, launchedAgoMin: number): CandidateRow => ({ itemId: PAWS, address, path: 'launch', evidence: { ties: ['link', 'picture'] }, launchedAtMs: NOW - launchedAgoMin * MIN, foundAtMs: NOW - launchedAgoMin * MIN });
+  const waiting: StoredPick = { subjectId: PAWS, address: null, outcome: 'waiting', decidedAtMs: NOW - 9 * 60 * MIN, evidence: { reason: 'under_bars' } };
+  const w = world({
+    candidates: [cand('DUMPED', 10 * 60), cand('RAN', 10 * 60)],
+    picks: new Map([[PAWS, waiting]]),
+    market: new Map([['DUMPED', { capUsd: 2_700, peakCapUsd: 41_000, readAtMs: NOW - 5 * MIN }], ['RAN', { capUsd: 44_000, peakCapUsd: 44_000, readAtMs: NOW - 5 * MIN }]]),
+  });
+  const d = deps(w);
+  /* Past its hour: the open pass no longer holds the post, only the sweep can judge it. */
+  const repo = { ...d.repo, openCandidates: async () => [], waitingPostPicks: async () => [waiting] };
+  await oneCoinPass({ ...d, repo }, newOneCoinState());
+  assert.equal(w.picks.get(PAWS)?.outcome, 'picked');
+  assert.equal(w.picks.get(PAWS)?.address, 'RAN');
+});
+
+test('a post still waiting after the sweep is left as it was: nothing written, its decided time unmoved', async () => {
+  const P2 = 'x:dust';
+  const waiting: StoredPick = { subjectId: P2, address: null, outcome: 'waiting', decidedAtMs: NOW - 9 * 60 * MIN, evidence: { reason: 'under_bars' } };
+  const w = world({
+    candidates: [{ itemId: P2, address: 'DUST', path: 'launch', evidence: { ties: ['link'] }, launchedAtMs: NOW - 600 * MIN, foundAtMs: NOW - 600 * MIN }],
+    picks: new Map([[P2, waiting]]),
+    market: new Map([['DUST', { capUsd: 2_800, peakCapUsd: 3_000, readAtMs: NOW - 5 * MIN }]]),
+  });
+  const d = deps(w);
+  await oneCoinPass({ ...d, repo: { ...d.repo, openCandidates: async () => [], waitingPostPicks: async () => [waiting] } }, newOneCoinState());
+  assert.equal(w.writes.length, 0);
+  assert.equal(w.picks.get(P2)?.decidedAtMs, NOW - 9 * 60 * MIN);
+});
