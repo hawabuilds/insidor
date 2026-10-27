@@ -367,7 +367,15 @@ export async function loadCandidates(
        from (select fb.item_id, true as credited from internal.item_found_by fb
              union all
              select u.item_id, false from unnest($4::text[]) as u(item_id)
-              where not exists (select 1 from internal.item_found_by g where g.item_id = u.item_id)) f
+              where not exists (select 1 from internal.item_found_by g where g.item_id = u.item_id)
+             /* ★ The owner's "meme" call makes a post a candidate whether or not a lane found it (the
+                owner, 2026-10-27: a post he pasted and called a meme never reached For You, because
+                only found posts were ever asked). Inside the frame's window, like every other. */
+             union all
+             select distinct o.item_id, false from internal.owner_feedback o
+              where o.subject_kind = 'post' and o.verdict = 'meme' and o.created_at >= $1
+                and not exists (select 1 from internal.item_found_by g where g.item_id = o.item_id)
+                and not exists (select 1 from unnest($4::text[]) as u(item_id) where u.item_id = o.item_id)) f
        join public.item i on i.item_id = f.item_id
        join public.author a on a.author_key = i.author_key
        /* ★ The first question's newest answer, never a kind answer: a kind label is not a name, and
