@@ -21,7 +21,9 @@ import type { MarketData, Timeframe } from '@insidor/market-geckoterminal';
 import type { Db } from './queries.ts';
 import type { Logger } from './log.ts';
 
-const EVERY_MS = 90_000;
+/* Five minutes from 2026-10-28 (was 90 s): the coin list itself cost ~18 s of database time a round on a
+   disk-bound morning, 6% of all of it, while a kept answer is served at once and refreshed behind anyway. */
+const EVERY_MS = 300_000;
 const MAX_COINS = 40;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
