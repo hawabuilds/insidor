@@ -13,7 +13,8 @@ import { climbingNoPace, fastestClimbers, judgedYesUnshown, mayClimb, offFeedToo
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
-const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
+const DEFAULT_POLICY = { ...LIVE_POLICY, judge: { ...LIVE_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] }, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
+/* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
 
 const P = DEFAULT_POLICY;
 const r = P.rising;
