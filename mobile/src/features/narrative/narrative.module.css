@@ -563,3 +563,14 @@
   color: var(--text-1);
   font-weight: 700;
 }
+
+/* "See N coins" left of Buy or Create in the coin bar, as on a Narratives card. */
+.seeCoins {
+  flex: none;
+  height: 34px;
+  padding: 0 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
