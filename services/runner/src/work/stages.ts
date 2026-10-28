@@ -556,8 +556,11 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
             !offFeedTooOld(i.itemId, String(i.source), i.postedAt, now, facts, policy) &&
             (yes.has(i.itemId) || !offForYouPerPostTooOld(i.itemId, billedPerPost(String(i.source)), i.postedAt, now, facts, policy)),
         )
-        /* Stable: the store's order otherwise. TRACK's per-pass reads go in queue order (`readsAvailable`). */
-        .sort((a, b) => tierFor(String(a.itemId)) - tierFor(String(b.itemId)));
+        /* Stable: the store's order otherwise. TRACK's per-pass reads go in queue order (`readsAvailable`).
+           ★ Within a tier, the posts in a feed's live frame first (2026-10-28): tier 1 also holds every found
+           post waiting on its answer, thousands, newest first, and the pass takes only `limit` of the queue —
+           so Popular's posts and @Theveripost's marsupial on it fell off the end and were not even considered. */
+        .sort((a, b) => tierFor(String(a.itemId)) - tierFor(String(b.itemId)) || Number(facts.onFeed.has(b.itemId)) - Number(facts.onFeed.has(a.itemId)));
       /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one run at most every
          `track.paidRunEveryMinutes`, of at most `track.paidReadMaxPosts` posts: its young posts
          growing fast on every run, the rest once their reading is `track.paidReadMinMinutes`
@@ -593,7 +596,9 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          post with no measured rate goes after those that have one. */
       const rateOf = new Map(undecidedItems.map((i) => [String(i.itemId), latestViewRate(series.get(i.itemId) ?? []) ?? Number.NEGATIVE_INFINITY] as const));
       const items = [...undecidedItems].sort((a, b) =>
-        tierFor(String(a.itemId)) - tierFor(String(b.itemId)) || (rateOf.get(String(b.itemId)) ?? Number.NEGATIVE_INFINITY) - (rateOf.get(String(a.itemId)) ?? Number.NEGATIVE_INFINITY));
+        tierFor(String(a.itemId)) - tierFor(String(b.itemId)) ||
+        Number(facts.onFeed.has(b.itemId)) - Number(facts.onFeed.has(a.itemId)) ||
+        (rateOf.get(String(b.itemId)) ?? Number.NEGATIVE_INFINITY) - (rateOf.get(String(a.itemId)) ?? Number.NEGATIVE_INFINITY));
       const ids = items.map((i) => i.itemId);
 
       /* ★ THE STAGE RECOVERS ITS OWN STATE FROM ITS OWN LOG, and that is deliberate.
