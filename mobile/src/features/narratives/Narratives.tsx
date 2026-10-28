@@ -21,7 +21,8 @@
  * and Buy, a top coin said as "Top coin, not checked" with Buy, or "No coin yet" with Create — and,
  * left of Create, "See N coins" when coins were made after its oldest post (the server's
  * `coinsMade`, the count its page's Choose coin lists), which opens the page on that pop-up. Buy
- * opens the existing Buy pop-up.
+ * opens the existing Buy pop-up. A coin with Buy keeps its logo, name and Buy, and gets the same "See N
+ * coins" left of Buy when more than one coin was made.
  *
  * ★ FACTS ONLY. The order is the server's; the number behind it is never sent. A card shows only
  * what a reader can check: views, views gained, views a minute, posts, age.
@@ -361,6 +362,14 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
             <span className={styles['coinSub']}>
               {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} story={story} />}
             </span>
+            {/* More than one coin made after its oldest post (the owner, 2026-10-28): "See N coins" left of Buy,
+                as it sits left of Create; the coin, its name and Buy stay as they are. */}
+            {seeCoins !== null && (story.coinsMade ?? 0) > 1 ? (
+              <button type="button" className={styles['seeCoins']} onClick={(e) => {
+                e.stopPropagation();
+                window.location.hash = hrefFor({ screen: 'story', storyId: story.id, coins: true });
+              }}>{seeCoins}</button>
+            ) : null}
             <button type="button" className={styles['buy']} onClick={(e) => {
               e.stopPropagation();
               onBuy(coin.coin);
