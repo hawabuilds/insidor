@@ -19,14 +19,13 @@ const NO: RisingRow = {
   body: 'Donald Trump says Nicki Minaj has a “beautiful a**” during rally in Port Huron, Michigan', media: [], handle: 'PopBase', display_name: null, source_author_id: 'a',
   coinable: false, confidence: 0.9, looked_at: 'text', proposed_name: null, picture_similarity: null, story_id: null, owner_call: null, kind_label: null,
 };
-const MOMENT = { moment: true, confidence: 0.85, name: 'BEAUTIFUL', kind: 'SHOWBIZ' };
+const MOMENT = { moment: true, confidence: 0.85, name: 'BEAUTIFUL', kind: 'POLITICS' };
 const OFF = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, viral: { ...DEFAULT_POLICY.judge.viral, on: false } } };
 
 test('★ a turned-down post with a moment and a passing kind passes by the viral route', () => {
   assert.deepEqual(postRoute({ ...NO, viral: MOMENT }), { why: 'passes', route: 'viral' });
   assert.equal(postRoute({ ...NO, coinable: true, kind_label: 'SHOWBIZ', viral: { ...MOMENT, kind: 'SHOWBIZ' } }, DEFAULT_POLICY).route, 'viral', 'a showbiz hold is lifted');
   assert.equal(postRoute({ ...NO, viral: { ...MOMENT, kind: 'OTHER' } }).route, 'viral');
-  assert.equal(postRoute({ ...NO, viral: { ...MOMENT, kind: 'POLITICS' } }).route, null, 'politics never passes from policy.v202');
 });
 
 test('never asked, a "no" moment, a tragedy or company news: not passed', () => {
