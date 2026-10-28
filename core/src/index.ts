@@ -195,7 +195,7 @@ export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';
 /* One post, one coin: the launch-time matcher and the pick by who is buying (match/one-coin.ts),
    and the same rule replayed over stored trade minutes for the replay tool and the weekly refit. */
-export { biggestOfName, hashGap, launchMatches, namedInText, oneCoinBars, pickOneCoin, priorCoins, statedNamesOf } from './match/one-coin.ts';
+export { biggestOfName, guessBacked, hashGap, launchMatches, namedInText, oneCoinBars, pickOneCoin, priorCoins, statedNamesOf } from './match/one-coin.ts';
 export { statedInText, statesName, type StatedBars } from './match/stated-name.ts';
 export { rankRunnerPosts, runnerTies, type RunnerBars, type RunnerCoin, type RunnerMatch, type RunnerPost } from './match/missed-runner.ts';
 export { runnerHandover, runsAt, type CoinHour, type HandoverBars, type HandoverCoin, type HandoverHeld, type HandoverOutcome } from './match/runner-handover.ts';

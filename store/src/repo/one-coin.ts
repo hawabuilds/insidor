@@ -103,12 +103,29 @@ export interface ExistingCoinRow {
   readonly launchedAtMs: number | null;
   readonly capUsd: number | null;
   readonly readAtMs: number | null;
+  /** The coin's promotion (`PROMO_OF`): its description and the post its link names; null when none is on file. */
+  readonly promo?: string | null;
 }
 
 export interface PriorCoinRow extends ExistingCoinRow {
   /** The newest reading's pool liquidity; null when the reading had none (a coin on its curve) or there is no reading. */
   readonly liquidityUsd: number | null;
 }
+
+/**
+ * A coin's promotion, read after the pool is cut to its limit: its metadata description and the post its
+ * social link or website names (by the post's primary key — a link we hold no post for adds nothing).
+ * Core's `guessBacked` compares it with the post a guess named the coin for (the owner, 2026-10-28).
+ */
+const PROMO_OF = (alias: string): string => `
+  left join lateral (
+    select nullif(concat_ws(' ', md.description,
+             (select i.body from public.item i
+               where i.item_id = 'x:' || coalesce(substring(md.social_link from '/status/([0-9]+)'), substring(md.website from '/status/([0-9]+)'))
+               limit 1)), '') as promo
+      from internal.coin_metadata md
+     where md.asset_key = ${alias}.asset_key
+     limit 1) pr on true`;
 
 const ms = (v: unknown): number | null => (v === null || v === undefined ? null : new Date(v as string).getTime());
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
@@ -714,18 +731,21 @@ export class PgOneCoinRepo {
     const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
     const compact = [...new Set(names.map((n) => n.replace(/[^\p{L}\p{N}]+/gu, '').toUpperCase()).filter((n) => n !== ''))];
     if (lower.length === 0 && compact.length === 0) return [];
-    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; at: string | null }>(
-      `select n.address, n.name, n.ticker, n.launched_at, r.cap, r.at
-         from public.coin_name n
-         join public.asset a on a.address = n.address
-         left join lateral (select market_cap_usd as cap, taken_at as at from public.market_reading m
-                             where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
-        where lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[])
-        order by r.cap desc nulls last
-        limit $3`,
+    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; at: string | null; promo: string | null }>(
+      `select x.address, x.name, x.ticker, x.launched_at, x.cap, x.at, pr.promo
+         from (select n.address, n.name, n.ticker, n.launched_at, r.cap, r.at, a.asset_key
+                 from public.coin_name n
+                 join public.asset a on a.address = n.address
+                 left join lateral (select market_cap_usd as cap, taken_at as at from public.market_reading m
+                                     where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
+                where lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[])
+                order by r.cap desc nulls last
+                limit $3) x
+         ${PROMO_OF('x')}
+        order by x.cap desc nulls last`,
       [lower, compact, limit],
     );
-    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), readAtMs: ms(r.at) }));
+    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), readAtMs: ms(r.at), promo: r.promo }));
   }
 
   /**
@@ -737,19 +757,22 @@ export class PgOneCoinRepo {
     const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
     const upper = [...new Set([...names, ...words].map((n) => n.replace(/[^\p{L}\p{N}]+/gu, '').toUpperCase()).filter((n) => n !== ''))];
     if (lower.length === 0 && upper.length === 0) return [];
-    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; liq: number | null; at: string | null }>(
-      `select n.address, n.name, n.ticker, n.launched_at, r.cap, r.liq, r.at
-         from public.coin_name n
-         join public.asset a on a.address = n.address
-         left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
-                             where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
-        where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
-          and n.launched_at >= $3 and n.launched_at < $4
-        order by r.cap desc nulls last
-        limit $5`,
+    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; liq: number | null; at: string | null; promo: string | null }>(
+      `select x.address, x.name, x.ticker, x.launched_at, x.cap, x.liq, x.at, pr.promo
+         from (select n.address, n.name, n.ticker, n.launched_at, r.cap, r.liq, r.at, a.asset_key
+                 from public.coin_name n
+                 join public.asset a on a.address = n.address
+                 left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
+                                     where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
+                where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
+                  and n.launched_at >= $3 and n.launched_at < $4
+                order by r.cap desc nulls last
+                limit $5) x
+         ${PROMO_OF('x')}
+        order by x.cap desc nulls last`,
       [lower, upper, new Date(fromMs).toISOString(), new Date(toMs).toISOString(), limit],
     );
-    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), liquidityUsd: num(r.liq), readAtMs: ms(r.at) }));
+    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), liquidityUsd: num(r.liq), readAtMs: ms(r.at), promo: r.promo }));
   }
 
   /** The stored picks of these subjects. */

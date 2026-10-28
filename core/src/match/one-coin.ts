@@ -200,6 +200,37 @@ export function namedInText(p: MatchPost, coin: { readonly name: string | null; 
   return said && nameMatch(names, { name: coin.name, ticker: null }, bars) !== 'none';
 }
 
+/**
+ * Words that say nothing of a subject: a coin name's filler, a promotion's trading talk, and the common
+ * words a headline and a launch blurb share whatever they are about. Lower case, accents folded.
+ */
+const EMPTY_WORDS: ReadonlySet<string> = new Set((
+  'coin token official the this that with from have just will what when they their there about your been were would could should which into than then them only also more most some very like dont doesnt cant https http even make made being over after before because still while where here these those first going want need know does said says other every really much many ever time today people news breaking update '
+  + 'paired pair holders holder runner runners pump pumping launch launched ticker chart send sending moon community dev devs buy buying sell market cap supply wallet created deployed using'
+).split(' '));
+
+/** Each word of `text` worth comparing: `minVariantLength` letters or more, or a run of Han or kana; never an empty word. */
+function subjectWords(text: string, bars: Pick<LaunchMatchBars, 'minVariantLength'>): ReadonlySet<string> {
+  return new Set(nameKey(text).split(' ').filter((w) => (w.length >= bars.minVariantLength || /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(w)) && !EMPTY_WORDS.has(w)));
+}
+
+/**
+ * Whether the coin's own side backs a namer's guess on a post (the owner, 2026-10-28: "what if promotion
+ * post mentions words similar to post"). With a promotion on file — the posts its metadata links and its
+ * description, `promo` — it must share a subject word with the post: the Mbappe Zedong blurb and every
+ * Mbappé headline share "kylian, mbappe", SI's "if its a shiba inu it should be paired" and the Akita
+ * post share nothing. With none on file, a word of the coin's own name must stand in the post's words.
+ */
+export function guessBacked(p: Pick<MatchPost, 'text'>, coin: { readonly name: string | null; readonly promo?: string | null }, bars: Pick<LaunchMatchBars, 'minVariantLength'>): boolean {
+  if (p.text === undefined || p.text === null) return false;
+  const post = subjectWords(p.text, bars);
+  if (coin.promo !== undefined && coin.promo !== null && coin.promo.trim() !== '') {
+    for (const w of subjectWords(coin.promo, bars)) if (post.has(w)) return true;
+    return false;
+  }
+  return coin.name !== null && [...subjectWords(coin.name, bars)].some((w) => post.has(w));
+}
+
 /** Every name the post states: the judge's, the namer's, and what its own words call it (stated-name.ts). */
 export function statedNamesOf(p: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'text'>): readonly string[] {
   return [...p.judgeNames, ...p.guessNames, ...statedInText(p.text)];
@@ -244,24 +275,31 @@ export interface ExistingCoin {
   readonly ticker: string | null;
   readonly capUsd: number | null;
   readonly readAtMs: number | null;
+  /** The coin's promotion: the posts its metadata links and its description, joined; null or absent when none is on file. */
+  readonly promo?: string | null;
 }
 
 export function biggestOfName<C extends ExistingCoin>(
-  post: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'postedAtMs'>,
+  post: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'postedAtMs' | 'text'>,
   coins: readonly C[],
   bars: Pick<LaunchMatchBars, 'minVariantLength'> & { readonly readingWithinMs: number; readonly minCapUsd: number },
   nowMs: number,
 ): C | null {
   const names = [...post.judgeNames, ...post.guessNames];
   if (names.length === 0) return null;
-  const live = coins.filter((c) => c.capUsd !== null && c.capUsd >= bars.minCapUsd && c.readAtMs !== null && nowMs - c.readAtMs <= bars.readingWithinMs && nameMatch(names, c, bars) === 'exact');
+  /* A guess alone names an older coin only when the coin's promotion backs it (`guessBacked`). */
+  const named = (c: C): boolean =>
+    (post.judgeNames.length > 0 && nameMatch(post.judgeNames, c, bars) === 'exact') ||
+    (post.guessNames.length > 0 && nameMatch(post.guessNames, c, bars) === 'exact' && guessBacked(post, c, bars));
+  const live = coins.filter((c) => c.capUsd !== null && c.capUsd >= bars.minCapUsd && c.readAtMs !== null && nowMs - c.readAtMs <= bars.readingWithinMs && named(c));
   return live.sort((a, b) => (b.capUsd ?? 0) - (a.capUsd ?? 0) || a.address.localeCompare(b.address))[0] ?? null;
 }
 
 /**
  * The second path's lookback: coins launched up to `lookbackMs` before the post (and more than
- * `launchLeadMs`, where the launch path takes over) that its names tie exactly or its own words tie
- * (`namedInText`), the `lookbackCoins` most traded first. No reading bar: a coin read sixteen hours
+ * `launchLeadMs`, where the launch path takes over) that the judge's names tie exactly or its own words
+ * tie (`namedInText`) — a namer's guess counts only beside one of those — the `lookbackCoins` most
+ * traded first. No reading bar: a coin read sixteen hours
  * ago under the cap bar is still the coin the post is about, and the rule judges its trading from
  * now on. Traded is the newest reading's cap; a reading on a pool under `minLiquidityUsd` is a
  * frozen quote and counts as none; a coin never read ranks after every read one, never as zero.
@@ -283,9 +321,19 @@ export function priorCoins<C extends PriorCoin>(post: MatchPost, coins: readonly
   const tied = coins.flatMap((c) => {
     if (c.launchedAtMs === null || c.launchedAtMs < post.postedAtMs - bars.lookbackMs || c.launchedAtMs >= post.postedAtMs - bars.launchLeadMs) return [];
     const ties: MatchEvidence[] = [];
-    if (post.judgeNames.length > 0 && nameMatch(post.judgeNames, c, bars) === 'exact') ties.push('name_judge');
-    if (post.guessNames.length > 0 && nameMatch(post.guessNames, c, bars) === 'exact') ties.push('name_guess');
-    if (ties.length === 0 && namedInText(post, c, bars)) ties.push('name_text');
+    const byJudge = post.judgeNames.length > 0 && nameMatch(post.judgeNames, c, bars) === 'exact';
+    const byGuess = post.guessNames.length > 0 && nameMatch(post.guessNames, c, bars) === 'exact';
+    const inText = !byJudge && namedInText(post, c, bars);
+    if (byJudge) ties.push('name_judge');
+    /* ★ A GUESS ALONE NEVER TIES AN OLDER COIN (the owner, 2026-10-28). The namer guessed "Shiba Inu" for
+       "The Akita dog just switched into filming mode!", and SI, launched eighteen hours before the post
+       from a trader's "Shiba Inu = SI" plan, was picked as its coin. A coin older than the post was not
+       made from it: a guess ties one only beside the judge's own name, or when the coin's own promotion
+       backs it (`guessBacked`). Replayed over 14-28 Oct: 45 older-coin picks stood on a guess alone; the
+       Akita, CATECOIN, McDouble and G.O.A.T mismatches drop, the Mbappé, moustache-baby, Kim Jong Un and
+       toddler-soccer stories keep their coin. */
+    if (byGuess && (byJudge || inText || guessBacked(post, c, bars))) ties.push('name_guess');
+    else if (!byJudge && inText) ties.push('name_text');
     return ties.length === 0 ? [] : [{ coin: c, ties }];
   });
   const traded = (c: PriorCoin): number | null => (c.capUsd === null ? null : c.liquidityUsd !== null && c.liquidityUsd < bars.minLiquidityUsd ? 0 : c.capUsd);

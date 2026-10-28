@@ -90,6 +90,21 @@ test('★ lookback: older coins the post names, launched within two days, the mo
   assert.deepEqual(picked.map((x) => x.coin.address), ['ESAB', 'FROZEN']);
   assert.deepEqual(picked[0]?.ties, ['name_guess']);
   assert.deepEqual(priorCoins(kim, [at('UNREAD', 30, {}), at('ESAB', 17, { capUsd: 14_100 })], { ...bars, lookbackCoins: 5 }).map((x) => x.coin.address), ['ESAB', 'UNREAD']);
+  /* ★ A guess alone never ties an older coin: the Akita post and SI, 2026-10-28. */
+  const akita = post({ postedAtMs: 2_000 * H, judgeNames: ['AKITA', 'AKITAFILMING', 'AKITAMODE', 'AKITADOG'], guessNames: ['Akita', 'AKITA', 'Shiba Inu', 'SHIBA', 'Akita Inu'], text: '秋田犬、撮影モードに入った！🐶 The Akita dog just switched into filming mode! 🐕🎬' });
+  assert.equal(priorCoins(akita, [at('SI', 18, { name: 'Shiba Inu', ticker: 'SI', capUsd: 23_515, liquidityUsd: 16_000 })], bars).length, 0);
+  assert.deepEqual(priorCoins(akita, [at('AK', 18, { name: 'Akita', ticker: 'AKITA', capUsd: 23_515, liquidityUsd: 16_000 })], bars)[0]?.ties, ['name_judge', 'name_guess']);
+  /* …but a guess with a word of the coin's name in the post's own words still ties: the Mbappé story's coin. */
+  const mbappe = post({ postedAtMs: 2_000 * H, judgeNames: ['MAO', 'MAOMEME', 'MAOZEDONG'], guessNames: ['Mbappe Zedong', 'DICTATOR'], text: 'Kylian Mbappé pide disculpas a China luego de llamar a Mao' });
+  assert.deepEqual(priorCoins(mbappe, [at('MZ', 18, { name: 'Mbappe Zedong', ticker: 'DICTATOR', capUsd: 90_000, liquidityUsd: 20_000 })], bars)[0]?.ties, ['name_guess']);
+  /* ★ The coin's own promotion decides when it is on file: SI's blurb shares nothing with the Akita post,
+     the Mbappe Zedong blurb shares "kylian, mbappe" with an Mbappé headline, and trading talk is no subject. */
+  const siPromo = 'if its a shiba inu it should be paired to any stock? its not artificial, its a natural Shiba Inu';
+  assert.equal(priorCoins(akita, [{ ...at('SI', 18, { name: 'Shiba Inu', ticker: 'SI', capUsd: 23_515, liquidityUsd: 16_000 }), promo: siPromo }], bars).length, 0);
+  const mzPromo = 'Two major Chinese brands have dropped Kylian Mbappé after a video of him calling Mao Zedong his favourite meme';
+  assert.equal(priorCoins(mbappe, [{ ...at('MZ', 18, { name: 'Mbappe Zedong', ticker: 'DICTATOR', capUsd: 90_000, liquidityUsd: 20_000 }), promo: mzPromo }], bars).length, 1);
+  const titty = post({ postedAtMs: 2_000 * H, judgeNames: ['SLINGOORIO'], guessNames: ['Big Testicle Coin', 'BTC'], text: 'Big Titty Coin is at 20m and it was paired with the runner' });
+  assert.equal(priorCoins(titty, [{ ...at('BT', 18, { name: 'Big Testicle Coin', ticker: 'BTC', capUsd: 90_000, liquidityUsd: 20_000 }), promo: 'BTC paired, rewards for HOLDERS' }], bars).length, 0, 'trading talk shares no subject');
   /* No name tie and no ticker in the words: nothing. */
   assert.equal(priorCoins(post({ postedAtMs: 2_000 * H, text: 'Kim Jong Un' }), [at('NONAME', 3, { name: null, capUsd: 30_000 })], bars).length, 0);
 });
