@@ -953,16 +953,31 @@ export function narrativeReach(members: readonly MemberReach[], nowMs: number, p
  * being read in the span at all — an outage, or before anything was read — never a zero. `counted`
  * posts were being read in it. The trending order's windows and the "All" line use this.
  */
-export function reachGained(members: readonly MemberReach[], fromMs: number, toMs: number): { readonly value: number | null; readonly counted: number } {
+export function reachGained(members: readonly MemberReach[], fromMs: number, toMs: number, opts: { readonly fromPost?: boolean } = {}): { readonly value: number | null; readonly counted: number } {
   let sum = 0;
   let counted = 0;
   for (const m of members) {
     const g = gainRuns(m.points);
-    if (g.first === null || g.last === null || g.last < fromMs || g.first >= toMs) continue;
+    if (g.first === null || g.last === null) continue;
+    /* ★ `fromPost` (the owner, 2026-10-28: "for posts less than 24 hrs why is the + view count not the same as
+       the post views"): the views a post had when first read are brought in as a straight rise from 0 at
+       its going up, as `totalReachSeries` draws them — so a day-old post's day gain is its whole count. Most
+       viewed's Today and Week read it this way; the trending speeds keep the no-spike rule above. */
+    const lead = opts.fromPost === true ? leadIn(m) : null;
+    const startMs = lead === null ? g.first : lead[0];
+    if (g.last < fromMs || startMs >= toMs) continue;
     counted += 1;
+    if (lead !== null) sum += gainIn(lead, fromMs, toMs);
     for (const run of g.runs) sum += gainIn(run, fromMs, toMs);
   }
   return { value: counted === 0 ? null : Math.round(sum), counted };
+}
+
+/** A post's views before our first reading, as one run from its going up (0) to that reading; null when its time or a count is unknown. */
+function leadIn(m: MemberReach): readonly [number, number, number] | null {
+  const first = m.points.filter((x): x is { atMs: number; reach: number } => x.reach !== null).sort((a, b) => a.atMs - b.atMs)[0];
+  if (first === undefined || m.postedAtMs === null || m.postedAtMs >= first.atMs) return null;
+  return [m.postedAtMs, first.atMs, first.reach];
 }
 
 /**
