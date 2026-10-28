@@ -183,10 +183,17 @@ export class PgNameExampleRepo {
     );
     const linked = !opts.linked ? [] : await this.#soft(() =>
       this.#db.query<Row>(
+        /* ★ THE WINDOW FIRST (2026-10-28): the coins launched inside `linkedDays` (a day's slack on the mint
+           time) are read from public.coin_link before any link is parsed. It parsed all 365k links on every
+           pass and kept the last day's at the end: one read ran 18 minutes on a disk-bound morning, past every
+           statement timeout, and starved For You's rebuild. With no window (null), every link, as before. */
         `with l as (
-           select split_part(asset_key, ':', 2) as address,
-                  substring(coalesce(social_link, '') || ' ' || coalesce(website, '') from '/status(?:es)?/([0-9]{15,20})') as sid
-             from public.coin_link where asset_key like 'solana:%'),
+           select split_part(cl.asset_key, ':', 2) as address,
+                  substring(coalesce(cl.social_link, '') || ' ' || coalesce(cl.website, '') from '/status(?:es)?/([0-9]{15,20})') as sid
+             from public.coin_link cl
+            where cl.asset_key like 'solana:%'
+              and ($1::int is null or cl.asset_key in (select a.asset_key from public.asset a
+                                                        where a.minted_at > now() - make_interval(days => $1::int + 1)))),
          addrs as (select address from l where sid is not null), names as (${COIN_NAMES}),
          yes as (
            select distinct on (item_id) item_id, coinable from internal.post_judgement
