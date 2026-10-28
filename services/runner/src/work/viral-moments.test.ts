@@ -76,7 +76,7 @@ const DUE: ViralDue[] = [
 
 function setup(over: { viral?: ReturnType<typeof fakeJudge>; kind?: ReturnType<typeof fakeJudge> | null; ledger?: ReturnType<typeof memoryLaneLedger>; closestNot?: (id: string) => number | null } = {}) {
   const viral = over.viral ?? fakeJudge('viral', (s) => (s.texts[0]?.includes('Nicki') ? judgement({ coinable: true, confidence: 0.85, proposedName: 'BEAUTIFUL' }) : judgement({ coinable: true, confidence: 0.8, proposedName: 'KOMANCHE' })));
-  const kind = over.kind === undefined ? fakeJudge('kind', (s) => judgement({ proposedName: s.texts[0]?.includes('dead') ? 'TRAGEDY' : 'POLITICS' })) : over.kind;
+  const kind = over.kind === undefined ? fakeJudge('kind', (s) => judgement({ proposedName: s.texts[0]?.includes('dead') ? 'TRAGEDY' : 'SHOWBIZ' })) : over.kind;
   const written: ViralRecord[] = [];
   const ledger = over.ledger ?? memoryLaneLedger();
   const run = viralMoments({
@@ -104,7 +104,7 @@ test('★ only the huge, fast, turned-down posts are asked; a moment meets the k
   assert.deepEqual(s.viral.sent, [['Trump says Nicki Minaj has a beautiful a**', 'influencer found dead in Monterrey']], 'not the slow post, not the sport hold');
   assert.equal(s.kind?.sent.length, 1);
   const byId = new Map(s.written.map((w) => [w.itemId, w] as const));
-  assert.deepEqual([byId.get('x:1')?.moment, byId.get('x:1')?.name, byId.get('x:1')?.kind], [true, 'BEAUTIFUL', 'POLITICS']);
+  assert.deepEqual([byId.get('x:1')?.moment, byId.get('x:1')?.name, byId.get('x:1')?.kind], [true, 'BEAUTIFUL', 'SHOWBIZ']);
   assert.deepEqual([byId.get('x:2')?.moment, byId.get('x:2')?.kind], [true, 'TRAGEDY'], 'written as the kind said: the projector keeps a tragedy off');
   assert.equal(r.moments, 1, 'only the passing kind counts as a moment let through');
   assert.ok(r.spentUsd > 0);

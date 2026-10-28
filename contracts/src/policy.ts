@@ -5922,8 +5922,10 @@ const POLICY_V1: Policy = {
      $0.17 alone.
      v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day.
      v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database.
-     v201 (2026-10-28, the owner) lowers the viral exception's bar `judge.viral.minReach` to 100k. */
-  version: 'policy.v201',
+     v201 (2026-10-28, the owner) lowers the viral exception's bar `judge.viral.minReach` to 100k.
+     v202 (2026-10-28, the owner) holds POLITICS again (`judge.heldKinds`), and the viral exception no longer
+     lifts or passes it. */
+  version: 'policy.v202',
 
   admit: {
     maxAgeMin: 240,
@@ -6187,8 +6189,11 @@ const POLICY_V1: Policy = {
        missed posts, posts coined after For You showed them, his "Not a meme" taps): holding AD, FANDOM,
        SHOWBIZ, POLITICS and NOT_MEME_MATCH turned away as many memes as junk ("how is this not a meme
        yet", a star's quote about being memed, "Vegeta is not Algerian"). The rules' recall-first section
-       and `cutoffs.primary` 0.80 keep junk down instead. */
-    heldKinds: ['SPORT'],
+       and `cutoffs.primary` 0.80 keep junk down instead.
+       POLITICS held again from policy.v202 (the owner, 2026-10-28: "the brazilian election has happened dont
+       need these political exception posts on our tl"): a defeated candidate landing in Miami, a Cuban
+       official's scuffle at the UN and Putin on Musk were judged yes and sat on For You. */
+    heldKinds: ['SPORT', 'POLITICS'],
     pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */
@@ -6358,8 +6363,10 @@ const POLICY_V1: Policy = {
       minReach: 100_000,
       minReachPerMinute: 8_000,
       maxAgeMs: 21_600_000, // six hours, For You's own
-      liftsKinds: ['POLITICS', 'SHOWBIZ'],
-      passKinds: ['POLITICS', 'SHOWBIZ', 'OTHER'],
+      /* POLITICS out of both from policy.v202 (the owner, 2026-10-28): no political post reaches For You by
+         the viral exception either. */
+      liftsKinds: ['SHOWBIZ'],
+      passKinds: ['SHOWBIZ', 'OTHER'],
       minConfidence: 0.7,
       maxPerPass: 10,
       /* Three: on 2026-10-26 the kind question's reply about the Nicki Minaj post ran on inside its

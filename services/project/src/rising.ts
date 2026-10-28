@@ -382,20 +382,28 @@ export async function loadCandidates(
           its yes/no is not the judge's verdict on the post (two OTHER answers filed as "no" hid two
           posts on 2026-10-13). The kind is read beside it, below. */
        left join lateral (
-              select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name, pj.judge_id
+              select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name, pj.judge_id, pj.judged_at
                 from internal.post_judgement pj
                where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
                order by pj.judged_at desc, pj.id desc
                limit 1
             ) j on true
        /* The kind label, only when the newest answer of all is a kind answer: a re-score after it
-          (a new prompt) asks the kind again, and until then the old label no longer holds. */
+          (a new prompt) asks the kind again, and until then the old label no longer holds.
+          ★ Or, with no kind row, the kind the question named for that very answer (internal.kind_asked,
+          0095): the runner files a row only for a kind held when it asked, so a kind held later
+          (POLITICS from policy.v202, the owner 2026-10-28) holds the posts already asked as well. */
        left join lateral (
-              select case when pj.prompt_id like 'post-kind%' then pj.proposed_name end as kind_label
-                from internal.post_judgement pj
-               where pj.item_id = i.item_id
-               order by pj.judged_at desc, pj.id desc
-               limit 1
+              select coalesce(
+                       (select case when pj.prompt_id like 'post-kind%' then pj.proposed_name end
+                          from internal.post_judgement pj
+                         where pj.item_id = i.item_id
+                         order by pj.judged_at desc, pj.id desc
+                         limit 1),
+                       (select ka.kind from internal.kind_asked ka
+                         where ka.item_id = i.item_id and ka.answer_judged_at = j.judged_at
+                         order by ka.asked_at desc
+                         limit 1)) as kind_label
             ) k on true
        /* The owner's newest call (0054): it outranks the judge's answer, either way. */
        left join lateral (
