@@ -82,10 +82,14 @@ const budgetOf = (meter: Meter, at: Millis, timeoutMs: number) => {
   return { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (at + timeoutMs) as Millis };
 };
 
+/** How often the examples are brought up to date from the database (see `pass`). */
+const SYNC_EVERY_MS = 900_000;
+
 /** The step the runner holds for the life of the process: example vectors read again only when they change. */
 export function nameGuesser(deps: NameGuessDeps) {
   let cached: readonly StoredExample[] = [];
   let seen: string | null = null;
+  let syncedAt = Number.NEGATIVE_INFINITY;
   const none = (skipped: string): NameGuessResult => ({ skipped, examplesAdded: 0, vectorsAdded: 0, guessed: 0, absent: 0, usd: 0 });
 
   async function syncExamples(space: string): Promise<{ added: number; vectors: number }> {
@@ -131,9 +135,16 @@ export function nameGuesser(deps: NameGuessDeps) {
     let examplesAdded = 0;
     let vectorsAdded = 0;
     try {
-      const s = await syncExamples(space);
-      examplesAdded = s.added;
-      vectorsAdded = s.vectors;
+      /* ★ AT MOST EVERY `SYNC_EVERY_MS` (2026-10-28): the examples' read parses coin links and joins a day of
+         them to judgements and names, about a minute of database time on a disk-bound morning, and ran on
+         every scoring pass; the examples change only as coins are linked. Between syncs, the stored ones. */
+      const at: number = deps.now();
+      if (at - syncedAt >= SYNC_EVERY_MS) {
+        const s = await syncExamples(space);
+        syncedAt = at;
+        examplesAdded = s.added;
+        vectorsAdded = s.vectors;
+      }
     } catch (e) {
       deps.log.warn('examples not brought up to date this pass; guessing with the ones stored', { err: errorText(e) });
     }
