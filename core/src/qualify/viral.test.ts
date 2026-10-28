@@ -41,7 +41,9 @@ test("★ the owner's two misses clear the bar on the readings we had", () => {
     { atMs: at('2026-10-26T07:49:43Z'), reach: 589_719 },
   ];
   assert.equal(clearsViralBar(elon, elonPosted, P), true);
-  assert.equal(clearsViralBar(elon.slice(0, 2), elonPosted, P), false, 'under 500k it is not huge yet');
+  /* From policy.v201 the bar is 100k: 357k on its second reading already clears it (it waited for 500k before). */
+  assert.equal(clearsViralBar(elon.slice(0, 2), elonPosted, P), true, 'over the 100k bar on its second reading');
+  assert.equal(clearsViralBar([{ atMs: at('2026-10-26T09:58:14Z'), reach: 99_000 }], elonPosted, P), false, 'under 100k, three hours in, it is not huge yet');
 });
 
 test('slow, late, unread or undated is not huge and fast', () => {
