@@ -83,7 +83,7 @@ import { checkedCoinOf, loadTrendCoins, trendWindows, type TrendSubject } from '
 import { permalinkFor } from './permalinks.ts';
 import { projectBoard, projectCoin, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
 import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
-import { instant, measured, WireLeakError, assertNoInternalVocabulary, type WireStory } from './wire.ts';
+import { FORBIDDEN_SUBSTRINGS, instant, measured, WireLeakError, assertNoInternalVocabulary, type WireStory } from './wire.ts';
 
 /** At most this many narratives on the board, as the old board's limit. */
 const BOARD_LIMIT = 200;
@@ -428,6 +428,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       const r = rowOf.get(m);
       const link = r === undefined ? null : permalinkFor(r.source, r.handle, r.source_item_id);
       if (r === undefined || link === null || !link.startsWith('https://')) return [];
+      /* ★ A post whose words name a vendor the wire never carries (wire.ts FORBIDDEN_SUBSTRINGS, e.g. AI news
+         naming "Anthropic") is left out of its narrative's cited posts, not the narrative with it (2026-10-28:
+         five narratives were dropped on every pass for one such post each). The guard below stays as strict. */
+      const words = `${r.body ?? ''} ${authorLabelOf(r) ?? ''}`.toLowerCase();
+      if (FORBIDDEN_SUBSTRINGS.some((bad) => words.includes(bad))) return [];
       return [{
         itemId: m,
         sourceLabel: sourceLabel(r.source),
