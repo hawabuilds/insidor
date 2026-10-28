@@ -190,8 +190,13 @@ export type RereadTier = 0 | 1 | 2 | 3;
 export const REST_TIER: RereadTier = 3;
 
 export function rereadTier(itemId: string, yesUnshown: boolean, followers: number | null, facts: TrackingFacts, policy: Policy, climbing = false): RereadTier {
-  if (yesUnshown) return 0;
+  /* ★ A yes only the judge's own lane credited (0142) is read beside the climbers, not first (2026-10-28):
+     about 195 such yeses in six hours went ahead of every feed post and Popular's readings went stale —
+     the new marsupial's last at 998k, three hours old. The schedule still reads a climbing one often. */
+  const judgedOnly = facts.judgedOnly?.has(itemId) === true;
+  if (yesUnshown && !judgedOnly) return 0;
   if (facts.onFeed.has(itemId) || facts.onForYou.has(itemId)) return 1;
+  if (yesUnshown) return 2;
   if (facts.catchAll.has(itemId) && answerCanShow(itemId, facts, policy) === null) return 1;
   if (climbing) return 2;
   if (followers !== null && followers >= policy.track.rereadOrder.bigAccountFollowers) return 2;

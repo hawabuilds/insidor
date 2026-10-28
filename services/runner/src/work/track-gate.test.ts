@@ -156,6 +156,9 @@ test('★ the tiers: a found yes, then a feed or a found post waiting on its ans
   assert.equal(rereadTier('a', false, null, facts({ onFeed: new Set(['a']) }), P), 1);
   assert.equal(rereadTier('a', false, null, facts({ onForYou: new Set(['a']) }), P), 1);
   assert.equal(rereadTier('a', false, null, facts({ catchAll: new Set(['a']) }), P), 1, 'found, no answer yet');
+  /* ★ A yes only the judge's lane credited waits behind the feeds, beside the climbers. */
+  assert.equal(rereadTier('a', true, null, facts({ catchAll: new Set(['a']), judgedOnly: new Set(['a']) }), P), 2);
+  assert.equal(rereadTier('a', true, null, facts({ catchAll: new Set(['a']) }), P), 0, 'found by a search: first, as before');
   assert.equal(rereadTier('a', false, big, facts({ catchAll: new Set(['a']), judged: new Map([['a', nearYes]]) }), P), 2, 'answered: not waiting any more');
   assert.equal(rereadTier('a', false, big, facts(), P), 2, 'a narrative member by a big account');
   assert.equal(rereadTier('a', false, big - 1, facts(), P), 3);
