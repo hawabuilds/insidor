@@ -16,5 +16,13 @@
 -- What breaks if changed carelessly: lowering it under the slowest legitimate job's statement fails
 -- that job every run. Check pg_stat_statements' max_exec_time before lowering.
 
-alter role postgres set statement_timeout = '300s';
-alter role insidor_app_user set statement_timeout = '60s';
+-- Each role only where it exists: a fresh or test database (e2e's) has neither of the hosted roles.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'postgres') then
+    execute 'alter role postgres set statement_timeout = ''300s''';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'insidor_app_user') then
+    execute 'alter role insidor_app_user set statement_timeout = ''60s''';
+  end if;
+end $$;
