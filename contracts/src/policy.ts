@@ -5921,8 +5921,9 @@ const POLICY_V1: Policy = {
      v198 (2026-10-28) gives `band_6` back its $1.55 (freshness first) and funds `late_480` with fight words'
      $0.17 alone.
      v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day.
-     v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database. */
-  version: 'policy.v200',
+     v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database.
+     v201 (2026-10-28, the owner) lowers the viral exception's bar `judge.viral.minReach` to 100k. */
+  version: 'policy.v201',
 
   admit: {
     maxAgeMin: 240,
@@ -6351,7 +6352,10 @@ const POLICY_V1: Policy = {
        day's two questions, so it holds only a runaway. */
     viral: {
       on: true,
-      minReach: 500_000,
+      /* 500k → 100k from policy.v201 (the owner, 2026-10-28: "we are trying to get the posts before they go
+         viral … make the second bar 100k"). Still one ask a post under its own moment question and the same
+         $0.30 a day, so a lower bar asks about more posts, never spends more. */
+      minReach: 100_000,
       minReachPerMinute: 8_000,
       maxAgeMs: 21_600_000, // six hours, For You's own
       liftsKinds: ['POLITICS', 'SHOWBIZ'],
