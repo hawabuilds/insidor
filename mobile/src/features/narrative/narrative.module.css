@@ -564,13 +564,17 @@
   font-weight: 700;
 }
 
-/* "See N coins" left of Buy or Create in the coin bar, as on a Narratives card. */
+/* "See N coins" left of Buy or Create in the coin bar: a button as tall as Buy, drawn as Create is
+   on a Narratives card (the owner, 2026-10-28). */
 .seeCoins {
   flex: none;
-  height: 34px;
-  padding: 0 4px;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
+  height: var(--button-h);
+  padding: 0 16px;
+  border-radius: var(--r-button);
+  background: var(--hover);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 700;
   white-space: nowrap;
 }
