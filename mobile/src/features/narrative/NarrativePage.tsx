@@ -395,8 +395,8 @@ function useEndInView(onEnd: () => void): (el: HTMLDivElement | null) => void {
 
 /**
  * The coin bar, where the token page's Buy and Sell panel sits: logo, ticker and the day's move,
- * "MC   All N coins" (or "Top coin, not checked"), and Buy; "No coin yet" with Create; or the
- * narrative's own line with no button.
+ * "MC" (or "Top coin, not checked"), "See N coins" when it made more than one, and Buy; "No coin yet"
+ * with "See N coins" and Create; or the narrative's own line.
  */
 function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
   /* `unclear`: coins exist but none is the narrative's; they are listed on the page, and the bar offers Create. */
@@ -409,11 +409,19 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
 }) {
   const face = state.kind === 'checked' || state.kind === 'top' ? state.coin : null;
   const cap = useCoinCap(face?.address ?? '', face?.marketCapUsd ?? { known: false, pending: 'not_read_yet' }, face !== null);
-  const all = coins > 0 ? (
+  /* "See N coins" sits left of Buy (more than one coin) and left of Create (any), as on a Narratives
+     card; with the button there, the panel's own "All N coins" line is not repeated. */
+  const see = (
+    <button type="button" className={styles['seeCoins']} onClick={(e) => {
+      e.stopPropagation();
+      onAll();
+    }}>{coins === 1 ? 'See 1 coin' : `See ${coins} coins`}</button>
+  );
+  const all = coins === 1 ? (
     <button type="button" className={styles['allCoins']} onClick={(e) => {
       e.stopPropagation();
       onAll();
-    }}>{coins === 1 ? 'All 1 coin' : `All ${coins} coins`}</button>
+    }}>All 1 coin</button>
   ) : null;
   return (
     <div className={styles['bar']}>
@@ -435,29 +443,32 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
                 </span>
               </span>
             </div>
+            {coins > 1 ? see : null}
             <button type="button" className={styles['buy']} onClick={() => onBuy(face)}>Buy</button>
           </>
         ) : state.kind === 'unclear' ? (
           <>
             <span className={styles['barNone']}>
               <b>No clear runner yet</b>
-              {all}
             </span>
+            {coins > 0 ? see : null}
             <button type="button" className={styles['buy']} onClick={onCreate}>Create</button>
           </>
         ) : state.kind === 'none' ? (
           <>
             <span className={styles['barNone']}>
               <b>No coin yet</b>
-              {all}
             </span>
+            {coins > 0 ? see : null}
             <button type="button" className={styles['buy']} onClick={onCreate}>Create</button>
           </>
         ) : (
-          <span className={styles['barNone']}>
-            <span>{state.kind === 'line' ? state.line : ''}</span>
-            {all}
-          </span>
+          <>
+            <span className={styles['barNone']}>
+              <span>{state.kind === 'line' ? state.line : ''}</span>
+            </span>
+            {coins > 0 ? see : null}
+          </>
         )}
       </div>
     </div>
