@@ -107,6 +107,9 @@ async function main(): Promise<void> {
      `session: true`; withAdvisoryLock refuses a transaction-mode pool either way. */
   const pool = createPool(DB_ROLE.service, {
     applicationName: 'insidor-project',
+    /* Two minutes a statement (2026-10-28): the full frame's reads over a day of posts and readings
+       outgrew the service role's 30 s on a busy database, and every frame failed from 10:12 UTC. */
+    statementTimeoutMs: 120_000,
     env: { DATABASE_URL_SERVICE: connectionUrl(process.env) },
   });
 
