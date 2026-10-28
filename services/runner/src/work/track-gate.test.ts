@@ -211,8 +211,8 @@ test('★ a "no" climbing fast in its first half hour is read on, as tier 2, to 
   const old = now - 3 * 60 * M;
   assert.equal(climbingNoPace('a', old, [{ atMs: old + 3.4 * M, reach: 18_752 }], now, no, P), null, 'past two hours: done');
   assert.equal(climbingNoPace('a', null, fast, now, no, P), null, 'no post time');
-  /* Politics or showbiz holds are the exception's too; other holds, the owner's not and unfound posts are not. */
-  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), kindOf: new Map([['a', 'POLITICS']]) }), P), true);
+  /* A showbiz hold is the exception's too (politics no longer, policy.v202); other holds, the owner's not and unfound posts are not. */
+  assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]), kindOf: new Map([['a', 'SHOWBIZ']]) }), P), true);
   assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]), kindOf: new Map([['a', 'SPORT']]) }), P), false);
   assert.equal(mayClimb('a', posted, now, facts({ catchAll: new Set(['a']), judged: new Map([['a', firmNo]]), ownerCall: new Map([['a', 'not' as const]]) }), P), false);
   assert.equal(mayClimb('a', posted, now, facts({ judged: new Map([['a', firmNo]]) }), P), false, 'not found by a lane');
