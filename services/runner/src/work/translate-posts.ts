@@ -63,6 +63,19 @@ export function wordsToTranslate(body: string, maxChars: number): string {
   return Array.from(text).slice(0, maxChars).join('');
 }
 
+/**
+ * ★ A POST THAT KEEPS FAILING WAITS (2026-10-28): a batch the model could not answer — one post can sink
+ * all ten — was asked again every half minute with no end, about $4 a day for three narrative posts. A post
+ * whose answer was absent is asked ALONE next time, so it can no longer sink the others, and waits longer
+ * after each failure (`retryAfterMs`), up to six hours. Kept in the process only: a restart forgets it and
+ * asks once more, and nothing is ever stored as "nothing to translate" for a failure.
+ */
+const failures = new Map<string, { readonly fails: number; readonly untilMs: number }>();
+const MAX_WAIT_MS = 21_600_000;
+export const retryAfterMs = (fails: number): number => Math.min(MAX_WAIT_MS, 120_000 * 2 ** Math.max(0, fails - 1));
+/** For tests: forget every failure. */
+export const forgetTranslateFailures = (): void => failures.clear();
+
 export async function translatePosts(deps: TranslateDeps): Promise<TranslateResult> {
   const p = deps.policy.translate;
   const none = (skipped: string): TranslateResult => ({ skipped, due: 0, translated: 0, kept: 0, absent: 0, usd: 0 });
@@ -71,7 +84,9 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
   if (translator === null) return none('no translator: the judge is not configured');
   if (deps.mode !== 'live') return none('dry run');
 
-  const due = await deps.translations.candidates(p.windowMs, p.perPass, p.narrativesWindowMs > 0 ? { windowMs: p.narrativesWindowMs, skip: [...p.englishCodes, ...p.noWordsCodes] } : undefined);
+  const nowMs = deps.now();
+  const due = (await deps.translations.candidates(p.windowMs, p.perPass, p.narrativesWindowMs > 0 ? { windowMs: p.narrativesWindowMs, skip: [...p.englishCodes, ...p.noWordsCodes] } : undefined))
+    .filter((c) => (failures.get(c.itemId)?.untilMs ?? 0) <= nowMs);
   if (due.length === 0) return { skipped: null, due: 0, translated: 0, kept: 0, absent: 0, usd: 0 };
 
   const rows: TranslationRow[] = [];
@@ -89,13 +104,25 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
   let usd = 0;
   if (subjects.length > 0) {
     try {
-      const line = deps.meter.line();
-      const r = await translator.translate(subjects, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + deps.policy.judge.timeoutMs) as Millis });
-      usd = r.spend.usd;
-      for (const o of r.value) {
+      /* A post that failed before is asked on its own call; the rest together, as before. */
+      const together = subjects.filter((x) => !failures.has(x.ref));
+      const groups = [...(together.length > 0 ? [together] : []), ...subjects.filter((x) => failures.has(x.ref)).map((x) => [x])];
+      const outcomes = [];
+      for (const group of groups) {
+        const line = deps.meter.line();
+        const r = await translator.translate(group, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + deps.policy.judge.timeoutMs) as Millis });
+        usd += r.spend.usd;
+        outcomes.push(...r.value);
+      }
+      for (const o of outcomes) {
         if (o.kind === 'absent') {
           absent += 1;
-        } else if (o.kind === 'kept') {
+          const fails = (failures.get(o.ref)?.fails ?? 0) + 1;
+          failures.set(o.ref, { fails, untilMs: nowMs + retryAfterMs(fails) });
+          continue;
+        }
+        failures.delete(o.ref);
+        if (o.kind === 'kept') {
           kept += 1;
           rows.push({ itemId: o.ref, from: o.from, textEn: null, model: o.model ?? translator.model, promptId: translator.promptId });
         } else {
