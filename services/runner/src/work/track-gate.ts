@@ -195,6 +195,12 @@ export function rereadTier(itemId: string, yesUnshown: boolean, followers: numbe
   if (facts.catchAll.has(itemId) && answerCanShow(itemId, facts, policy) === null) return 1;
   if (climbing) return 2;
   if (followers !== null && followers >= policy.track.rereadOrder.bigAccountFollowers) return 2;
+  /* ★ A YES NO LANE FOUND (2026-10-28): held through a coin's link, a quote or a narrative, judged yes and not
+     on For You — read beside the climbers, above the narrative pages, so its views can reach the bar
+     (@Theveripost's new marsupial: one reading at 5,136 views, then 362k unseen). How often is the schedule's
+     own (core track/schedule.ts): a post that keeps climbing is read every few minutes, a flat one slides
+     down to the slowest tier, so a dud costs little; past the age cuts above it is not read at all. */
+  if (!facts.catchAll.has(itemId) && answerCanShow(itemId, facts, policy) === true) return 2;
   return REST_TIER;
 }
 
