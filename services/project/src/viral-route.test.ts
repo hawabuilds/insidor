@@ -7,7 +7,9 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
+/* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
+const DEFAULT_POLICY = { ...LIVE_POLICY, judge: { ...LIVE_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } };
 
 import { postRoute, type RisingRow } from './rising.ts';
 
@@ -22,7 +24,7 @@ const OFF = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, viral: { ...D
 
 test('★ a turned-down post with a moment and a passing kind passes by the viral route', () => {
   assert.deepEqual(postRoute({ ...NO, viral: MOMENT }), { why: 'passes', route: 'viral' });
-  assert.equal(postRoute({ ...NO, coinable: true, kind_label: 'SHOWBIZ', viral: { ...MOMENT, kind: 'SHOWBIZ' } }).route, 'viral', 'a showbiz hold is lifted');
+  assert.equal(postRoute({ ...NO, coinable: true, kind_label: 'SHOWBIZ', viral: { ...MOMENT, kind: 'SHOWBIZ' } }, DEFAULT_POLICY).route, 'viral', 'a showbiz hold is lifted');
   assert.equal(postRoute({ ...NO, viral: { ...MOMENT, kind: 'OTHER' } }).route, 'viral');
 });
 
@@ -37,7 +39,7 @@ test('never asked, a "no" moment, a tragedy or company news: not passed', () => 
 test("★ the owner's Not a meme, a shill and every other held kind still hold", () => {
   assert.equal(postRoute({ ...NO, owner_call: 'not', viral: MOMENT }).why, 'owner_not_meme');
   assert.equal(postRoute({ ...NO, viral: MOMENT }, undefined, { others: false, shill: true }).route, null);
-  for (const kind_label of ['AD', 'SPORT', 'FANDOM', 'NOT_MEME_MATCH']) assert.equal(postRoute({ ...NO, kind_label, viral: MOMENT }).route, null, kind_label);
+  for (const kind_label of ['AD', 'SPORT', 'FANDOM', 'NOT_MEME_MATCH']) assert.equal(postRoute({ ...NO, kind_label, viral: MOMENT }, DEFAULT_POLICY).route, null, kind_label);
 });
 
 test('a post the first route passes keeps its own route', () => {
