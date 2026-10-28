@@ -4,7 +4,7 @@
  */
 
 import { strict as assert } from 'node:assert';
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
@@ -13,7 +13,9 @@ import type { TranslateOutcome, TranslatePort, TranslateSubject } from '@insidor
 import type { TranslateCandidate, TranslationRow } from '@insidor/store';
 
 import { createLogger } from '../log.ts';
-import { NO_WORDS_PROMPT, translatePosts, wordsToTranslate } from './translate-posts.ts';
+import { NO_WORDS_PROMPT, forgetTranslateFailures, retryAfterMs, translatePosts, wordsToTranslate } from './translate-posts.ts';
+
+beforeEach(() => forgetTranslateFailures());
 
 const meter = { line: () => ({ capUsd: 1, spentUsd: 0 }) } as unknown as Meter;
 const log = createLogger({ test: 'translate-posts' });
@@ -71,4 +73,28 @@ test('the words sent drop the trailing short links the card drops, and are cut t
   assert.equal(wordsToTranslate('VAI LOGO! https://t.co/Vnd434AexJ', 600), 'VAI LOGO!');
   assert.equal(wordsToTranslate('ver https://t.co/a no meio', 600), 'ver https://t.co/a no meio');
   assert.equal(wordsToTranslate('ábcdé', 3), 'ábc');
+});
+
+test('★ a post that fails is asked alone next time and waits longer after each failure, and never sinks the others', async () => {
+  let now = 0;
+  const due: TranslateCandidate[] = [{ itemId: 'x:bad', text: 'ㅋㅋㅋㅋㅋㅋ', lang: 'ko' }, { itemId: 'x:ok', text: 'o rato caiu', lang: 'pt' }];
+  const calls: string[][] = [];
+  const s = setup(due, (x) => (x.ref === 'x:bad' ? { kind: 'absent', ref: x.ref, detail: 'length' } : { kind: 'translated', ref: x.ref, from: 'pt', text: 'the rat fell' }));
+  const askedBefore = s.deps.translator.translate.bind(s.deps.translator);
+  const deps = { ...s.deps, now: () => now as Millis, translator: { ...s.deps.translator, translate: async (subjects: readonly TranslateSubject[], b: never) => (calls.push(subjects.map((x) => x.ref)), askedBefore(subjects, b)) } };
+  const first = await translatePosts(deps);
+  assert.equal(first.absent, 1);
+  assert.deepEqual(calls, [['x:bad', 'x:ok']]);
+  /* Within its wait: not asked at all. */
+  now = retryAfterMs(1) - 1;
+  calls.length = 0;
+  await translatePosts(deps);
+  assert.deepEqual(calls, [['x:ok']]);
+  /* After its wait: asked on its own call, and its next wait is longer. */
+  now = retryAfterMs(1);
+  calls.length = 0;
+  await translatePosts(deps);
+  assert.deepEqual(calls, [['x:ok'], ['x:bad']]);
+  assert.ok(retryAfterMs(2) > retryAfterMs(1));
+  assert.equal(retryAfterMs(20), 21_600_000, 'never more than six hours');
 });
