@@ -298,12 +298,20 @@ export interface RisingRow {
   /** A catch-all lane credited the post (internal.item_found_by); false for a late post loaded by id alone. Absent on a row built by hand. */
   credited?: boolean;
   /**
-   * No search found the post: only a coin's link did (the coin_link lane), or nothing credited it and
+   * No search found the post: only a coin's link did (the coin_link lane) or the judge's own credit
+   * (the judged lane, 0142: it re-reads a post, it is no search — a launcher's "we need a runner, this
+   * is LITERALLY JENNY" at 34 views reached the top of For You by its coin the hour 0142 went on), or
+   * nothing credited it and
    * a coin route loaded it by id (`rising.coinListNeedsReach`; a launcher's "could be the next Moo
    * Deng" post with 605 views came in by its running coin alone on 2026-10-27). Absent on a row built
    * by hand: read as found some other way.
    */
   coin_list_only?: boolean | null;
+  /**
+   * The coin-first walk recorded this post only as a `pointer` (0118): a launcher's post that points at
+   * the viral original, never the original itself. Absent on a row built by hand: not a pointer.
+   */
+  pointer_only?: boolean | null;
   /**
    * The view count the source gave when the post was last fetched (public.item.counters), for a post
    * loaded by id that has no series of re-reads: a six-day-old original at 69M views is seen, though
@@ -362,7 +370,9 @@ export async function loadCandidates(
             s.story_id,
             oc.verdict as owner_call,
             f.credited,
-            not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane <> 'coin_link') as coin_list_only,
+            not exists (select 1 from internal.item_found_by c2 where c2.item_id = i.item_id and c2.lane not in ('coin_link', 'judged')) as coin_list_only,
+            (exists (select 1 from internal.coin_first_post cp where cp.item_id = i.item_id and cp.role = 'pointer')
+             and not exists (select 1 from internal.coin_first_post co where co.item_id = i.item_id and co.role = 'original')) as pointer_only,
             i.counters -> 'reach' ->> 'value' as stored_reach
        from (select fb.item_id, true as credited from internal.item_found_by fb
              union all
@@ -1150,7 +1160,11 @@ export async function buildRising(
     /* A post a key account shared (the Dandy route below) is loaded by id with no lane too: the share stands in for its views. */
     const storedReach = row.stored_reach === null || row.stored_reach === undefined ? null : Number(row.stored_reach);
     const seen = clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || (storedReach !== null && Number.isFinite(storedReach) && storedReach >= policy.rising.fypMinReach * scale);
-    const coinListHeld = !shares.has(row.item_id) && coinListHolds(row, seen, policy);
+    /* ★ A POINTER NEVER JOINS (the owner, 2026-10-28: "if post quotes or mentions the link the viral narrative
+       was from push that link to fyp not the promotion post"). A post the coin-first walk recorded only as a
+       pointer is the launcher's promotion; the original it points at is the route's, and no route — views,
+       the coin's vouch, a running coin — puts the pointer on For You. */
+    const coinListHeld = row.pointer_only === true || (!shares.has(row.item_id) && coinListHolds(row, seen, policy));
     const byViews = !coinListHeld && !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
     /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
     const byLate = lateLets({
