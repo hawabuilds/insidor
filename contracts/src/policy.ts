@@ -5923,8 +5923,8 @@ const POLICY_V1: Policy = {
      v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day.
      v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database.
      v201 (2026-10-28, the owner) lowers the viral exception's bar `judge.viral.minReach` to 100k.
-     v202 (2026-10-28, the owner) holds POLITICS again (`judge.heldKinds`), and the viral exception no longer
-     lifts or passes it. */
+     v202 (2026-10-28, the owner) holds POLITICS again (`judge.heldKinds`); the viral exception still lifts a
+     huge, fast one (the Nicki Minaj and Trump post). */
   version: 'policy.v202',
 
   admit: {
@@ -6363,10 +6363,10 @@ const POLICY_V1: Policy = {
       minReach: 100_000,
       minReachPerMinute: 8_000,
       maxAgeMs: 21_600_000, // six hours, For You's own
-      /* POLITICS out of both from policy.v202 (the owner, 2026-10-28): no political post reaches For You by
-         the viral exception either. */
-      liftsKinds: ['SHOWBIZ'],
-      passKinds: ['SHOWBIZ', 'OTHER'],
+      /* POLITICS stays lifted while For You holds it (policy.v202, the owner 2026-10-28: "viral exception for
+         politics should be fine like nicki minaj trump"): a held political post comes back only huge and fast. */
+      liftsKinds: ['POLITICS', 'SHOWBIZ'],
+      passKinds: ['POLITICS', 'SHOWBIZ', 'OTHER'],
       minConfidence: 0.7,
       maxPerPass: 10,
       /* Three: on 2026-10-26 the kind question's reply about the Nicki Minaj post ran on inside its

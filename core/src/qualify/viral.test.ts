@@ -13,10 +13,10 @@ const OFF = { ...P, judge: { ...P.judge, viral: { ...P.judge.viral, on: false } 
 const MIN = 60_000;
 const at = (iso: string): number => Date.parse(iso);
 
-test('a "no", or a showbiz hold, is eligible; a yes, an unjudged post and every other hold are not', () => {
+test('a "no", or a politics or showbiz hold, is eligible; a yes, an unjudged post and every other hold are not', () => {
   assert.equal(viralEligible(false, null, P), true);
+  assert.equal(viralEligible(true, 'POLITICS', P), true);
   assert.equal(viralEligible(true, 'showbiz', P), true, 'the label as the model may case it');
-  assert.equal(viralEligible(true, 'POLITICS', P), false, 'politics is never lifted from policy.v202');
   assert.equal(viralEligible(true, null, P), false, 'a yes needs no exception');
   assert.equal(viralEligible(null, null, P), false, 'never judged');
   for (const k of ['AD', 'SPORT', 'FANDOM', 'NOT_MEME_MATCH']) assert.equal(viralEligible(false, k, P), false, `${k} is never lifted`);
@@ -82,9 +82,8 @@ const YES: ViralAnswer = { moment: true, confidence: 0.85, name: 'BEAUTIFUL', ki
 
 test('a sure moment with a short name and a passing kind passes', () => {
   assert.equal(passesAsViral(YES, P), true);
-  assert.equal(passesAsViral({ ...YES, kind: 'SHOWBIZ' }, P), true);
+  assert.equal(passesAsViral({ ...YES, kind: 'POLITICS' }, P), true);
   assert.equal(passesAsViral({ ...YES, kind: 'other' }, P), true);
-  assert.equal(passesAsViral({ ...YES, kind: 'POLITICS' }, P), false, 'politics never passes from policy.v202');
 });
 
 test('★ a tragedy, company news or any kind outside the list never passes, whatever the moment said', () => {
