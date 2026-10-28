@@ -724,6 +724,11 @@ export class PgItemRepo implements ItemRepo {
                                 where j.item_id = i.item_id and j.prompt_id not like 'post-kind%'
                                 order by j.judged_at desc, j.id desc limit 1), false)
                  and not exists (select 1 from public.rising_row r where r.item_id = i.item_id and r.feed_id = 'fyp')) as yes,
+                /* ★ ON A FEED'S LIVE FRAME, KEPT FIRST (2026-10-28): the pick below is cut at its limit, and every
+                   promoted narrative's members are kept too — thousands a day, newest first — so Popular's posts
+                   (the new marsupial among them, three hours unread at 998k) fell past the cut and TRACK never
+                   saw them. The 120 posts on screen are always in the pick. */
+                exists (select 1 from public.rising_row r where r.item_id = i.item_id) as live,
                 (exists (select 1 from public.story_member m
                            join public.story s on s.story_id = m.story_id
                           where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
@@ -738,7 +743,7 @@ export class PgItemRepo implements ItemRepo {
            from public.item i
           where i.first_seen_at >= $1
        ), picked as (
-         select r.item_id, r.yes, r.kept or r.yes as kept, r.first_seen_at from recent r
+         select r.item_id, r.yes, r.live, r.kept or r.yes as kept, r.first_seen_at from recent r
           where r.kept or r.yes
              or (r.posted_at >= (case when r.source = $8 then $9::timestamptz else $3::timestamptz end)
                  and exists (select 1 from internal.item_found_by f where f.item_id = r.item_id)
@@ -747,7 +752,7 @@ export class PgItemRepo implements ItemRepo {
                        where o.item_id = r.item_id and o.kind = 'reach' and o.value is not null
                        order by o.captured_at desc limit 1)
                      >= (case when r.source = $8 then $10::float8 else $4::float8 end) * greatest(extract(epoch from ($5::timestamptz - r.posted_at)) / 60, 1))
-          order by r.yes desc, (r.kept or r.yes) desc, r.first_seen_at desc
+          order by r.live desc, r.yes desc, (r.kept or r.yes) desc, r.first_seen_at desc
           limit $2
        )
        select item.item_id, item.source, item.source_item_id, item.origin, item.author_key,
@@ -755,7 +760,7 @@ export class PgItemRepo implements ItemRepo {
               item.rebroadcast_of, item.reproduction_of, item.format_ids, item.raw_ref
          from picked p
          join public.item item on item.item_id = p.item_id
-        order by p.yes desc, p.kept desc, p.first_seen_at desc`,
+        order by p.live desc, p.yes desc, p.kept desc, p.first_seen_at desc`,
       [
         toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince), watch.judgedMinReach,
         /* No longer window: a source name nothing has, so every post takes the half-hour one. */
