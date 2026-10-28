@@ -12,6 +12,7 @@ import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
 import {
   totalReachSeries,
+  reachGained,
   climbPerMinute,
   detailOf,
   foldNarrativeCalls,
@@ -218,4 +219,18 @@ test('★ total views over time: a post brings the views it had when found in ov
   assert.equal(s.fromMs, 0);
   assert.deepEqual(s.values, [100, 200, 300 + 500, 300 + 1_000]);
   assert.deepEqual(totalReachSeries([{ postedAtMs: null, points: [] }], 0, H, H, 10).values, []);
+});
+
+test("★ Most viewed's day gain counts a post's views from its going up, so a post under a day old gains its whole count", () => {
+  const H = 3_600_000;
+  const now = 10 * H;
+  /* Found an hour after it went up with 500k, read again now at 600k. */
+  const post: MemberReach = { postedAtMs: now - 2 * H, points: [{ atMs: now - H, reach: 500_000 }, { atMs: now, reach: 600_000 }] };
+  assert.equal(reachGained([post], now - 24 * H, now, { fromPost: true }).value, 600_000);
+  /* The trending speeds keep the rule that a late find adds no spike: only what we saw it gain. */
+  assert.equal(reachGained([post], now - 24 * H, now).value, 100_000);
+  /* An unknown post time brings nothing in: the gain is what was read. */
+  assert.equal(reachGained([{ ...post, postedAtMs: null }], now - 24 * H, now, { fromPost: true }).value, 100_000);
+  /* Its lead-in is spread over its own time: the last hour holds only the hour's share of it. */
+  assert.equal(reachGained([post], now - H, now, { fromPost: true }).value, 100_000);
 });
