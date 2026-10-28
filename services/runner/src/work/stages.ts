@@ -579,14 +579,22 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
         lastPaidBatch.set(source, now);
         page.unshift(...picked);
       }
-      const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
-      if (items.length === 0) return [];
+      const undecidedItems = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
+      if (undecidedItems.length === 0) return [];
 
-      const ids = items.map((i) => i.itemId);
       const series = await repos.observations.seriesForItems(
-        ids,
+        undecidedItems.map((i) => i.itemId),
         now - OBSERVATION_WINDOW_MS,
       );
+      /* ★ WITHIN A TIER, THE FASTEST GROWING FIRST (2026-10-28). The pass's reads (TRACK_READ_BUDGET) and the
+         re-read day are both spent in queue order, and within a tier that order was the store's, newest
+         first: @Theveripost's marsupial, climbing 7,000 views a minute at 998k, was held "T2_budget_shed"
+         for four hours behind newer, flatter posts. Its latest measured rate now orders it in its tier; a
+         post with no measured rate goes after those that have one. */
+      const rateOf = new Map(undecidedItems.map((i) => [String(i.itemId), latestViewRate(series.get(i.itemId) ?? []) ?? Number.NEGATIVE_INFINITY] as const));
+      const items = [...undecidedItems].sort((a, b) =>
+        tierFor(String(a.itemId)) - tierFor(String(b.itemId)) || (rateOf.get(String(b.itemId)) ?? Number.NEGATIVE_INFINITY) - (rateOf.get(String(a.itemId)) ?? Number.NEGATIVE_INFINITY));
+      const ids = items.map((i) => i.itemId);
 
       /* ★ THE STAGE RECOVERS ITS OWN STATE FROM ITS OWN LOG, and that is deliberate.
          The tier an item is on is `scheduledTier` in the vector TRACK logged last
