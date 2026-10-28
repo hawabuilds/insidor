@@ -5919,8 +5919,9 @@ const POLICY_V1: Policy = {
      v197 (2026-10-28) holds only SPORT (`judge.heldKinds`) and raises `judge.cutoffs.primary` to 0.80, with
      the post rules' recall-first section: more of the owner's memes for the same junk.
      v198 (2026-10-28) gives `band_6` back its $1.55 (freshness first) and funds `late_480` with fight words'
-     $0.17 alone. */
-  version: 'policy.v198',
+     $0.17 alone.
+     v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day. */
+  version: 'policy.v199',
 
   admit: {
     maxAgeMin: 240,
@@ -6807,7 +6808,11 @@ const POLICY_V1: Policy = {
         /* Back to $1.55 in policy.v198 (2026-10-28): v196 cut it to $1.05 to pay for `late_480`, but this is the
            lane that finds posts in their first minutes, and For You's freshness had already fallen since 24 Oct
            (median age at first showing 52–71 min on 20–23 Oct, 137–232 min on 24–27 Oct). Early beats late. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55, paced: true },
+        /* $2.20 from policy.v199 (the owner, 2026-10-28: "6-minute search about $2.20 a day … do it", +$0.65 a
+           day): the rate of 20–21 Oct, the freshest days (42% of For You shown within 30 minutes on the 21st),
+           when this band spent $2.20 and $2.00 and lasted almost the whole day. Still paced, so it covers all
+           24 hours rather than running out mid-afternoon as on 22–23 Oct. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 2.2, paced: true },
         /* `paced` from policy.v181 (2026-10-25): unpaced, the 50-minute band spent its $1.20 by 20:55 UTC on
            23 Oct and 19:22 on 24 Oct, and asked nothing for the rest of each day (its ledger, internal.
            lane_spend); 25 Oct 05:00–12:00 it spent at $1.48 a day. The same $1.20, spread; the language
