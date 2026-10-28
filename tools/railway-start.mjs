@@ -95,7 +95,11 @@ if (service in MAIN) {
     /* The judge learns from the owner at 00:00 London (Policy.learning): asked every ten
        minutes whether the latest slot has run; the run itself is detached, like the recall check,
        because a batch of a hundred-odd posts outlasts the board's health bar. */
-    { name: 'retune', everyMs: 600_000, args: ['tools/retune.ts', 'due', '--yes', '--detach'] },
+    /* `offUntil` (the owner, 2026-10-28: "cancel all retunes for rest of week"): the nights to 1 Nov are
+       skipped in internal.judge_retune, but the ten-minute check still refitted a model and spent about a
+       minute of database time each run on a disk-bound database. Asked again from 22:00 UTC on 1 Nov, an hour
+       before the 2 Nov slot. */
+    { name: 'retune', everyMs: 600_000, offUntil: Date.parse('2026-11-01T22:00:00Z'), args: ['tools/retune.ts', 'due', '--yes', '--detach'] },
     /* The namer's first day, watched (tools/name-watch.ts): coins it adds to feed cards, the owner's
        Wrong coin / No coin calls on them, and its veto if wrong coins go up. Free; database only. */
     { name: 'name-watch', everyMs: 600_000, args: ['tools/name-watch.ts', 'run'] },
@@ -113,7 +117,7 @@ if (service in MAIN) {
   const QUICK_KILL_AFTER_MS = 120_000;
   const last = new Map();
   const started = new Map();
-  const due = (job, now) => now - (started.get(job.name) ?? 0) >= job.everyMs;
+  const due = (job, now) => (job.offUntil === undefined || now >= job.offUntil) && now - (started.get(job.name) ?? 0) >= job.everyMs;
   const once = (job, killAfterMs = null) =>
     new Promise((resolve) => {
       const child = run(job.args);
