@@ -79,6 +79,11 @@ export interface TrackingFacts {
    */
   readonly onForYou: ReadonlySet<string>;
   readonly catchAll: ReadonlySet<string>;
+  /**
+   * Credited by the judge's own lane alone (`judged`, 0142): no search found it. TRACK reads such a
+   * yes beside the climbers rather than first (work/track-gate.ts `rereadTier`). Absent: none known.
+   */
+  readonly judgedOnly?: ReadonlySet<string>;
   /** The promoted, unmerged stories each post is in. A post in none is absent. */
   readonly storiesOf: ReadonlyMap<string, readonly string[]>;
   /** Every member of those stories. */
@@ -776,20 +781,23 @@ export class PgItemRepo implements ItemRepo {
     const onFeed = new Set<string>();
     const onForYou = new Set<string>();
     const catchAll = new Set<string>();
+    const judgedOnly = new Set<string>();
     const storiesOf = new Map<string, string[]>();
     const membersOf = new Map<string, string[]>();
     const judged = new Map<string, TrackingJudgement>();
     const kindOf = new Map<string, string>();
     const ownerCall = new Map<string, 'meme' | 'not'>();
-    if (itemIds.length === 0) return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged, kindOf, ownerCall };
+    if (itemIds.length === 0) return { onFeed, onForYou, catchAll, judgedOnly, storiesOf, membersOf, judged, kindOf, ownerCall };
     const ids = [...itemIds];
 
-    const where = await this.#db.query<{ item_id: string; on_feed: boolean; on_for_you: boolean; catch_all: boolean }>(
+    const where = await this.#db.query<{ item_id: string; on_feed: boolean; on_for_you: boolean; catch_all: boolean; judged_only: boolean }>(
       `select i.id as item_id,
               exists (select 1 from public.rising_row r where r.item_id = i.id) as on_feed,
               (exists (select 1 from public.rising_row r where r.item_id = i.id and r.feed_id = 'fyp')
                or exists (select 1 from public.feed_post p where p.item_id = i.id and p.feed_id = 'fyp' and p.withdrawn_at is null)) as on_for_you,
-              exists (select 1 from internal.item_found_by f where f.item_id = i.id) as catch_all
+              exists (select 1 from internal.item_found_by f where f.item_id = i.id) as catch_all,
+              (exists (select 1 from internal.item_found_by f where f.item_id = i.id and f.lane = 'judged')
+               and not exists (select 1 from internal.item_found_by f where f.item_id = i.id and f.lane <> 'judged')) as judged_only
          from unnest($1::text[]) as i(id)`,
       [ids],
     );
@@ -797,6 +805,7 @@ export class PgItemRepo implements ItemRepo {
       if (row.on_feed) onFeed.add(row.item_id);
       if (row.on_for_you) onForYou.add(row.item_id);
       if (row.catch_all) catchAll.add(row.item_id);
+      if (row.judged_only) judgedOnly.add(row.item_id);
     }
 
     /* ★ EACH STORY'S MEMBERS ONCE, NOT ONCE PER ASKED POST IN IT. This was one join of the asked
@@ -870,7 +879,7 @@ export class PgItemRepo implements ItemRepo {
       if (a.kind_label !== null) kindOf.set(a.item_id, a.kind_label);
       if (a.owner_call === 'meme' || a.owner_call === 'not') ownerCall.set(a.item_id, a.owner_call);
     }
-    return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged, kindOf, ownerCall };
+    return { onFeed, onForYou, catchAll, judgedOnly, storiesOf, membersOf, judged, kindOf, ownerCall };
   }
 
   /**
