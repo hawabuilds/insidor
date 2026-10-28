@@ -3,7 +3,9 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE } from '@insidor/contracts/policy.ts';
+/* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
+const P = { ...LIVE, judge: { ...LIVE.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } };
 
 import { postRankScore, postSignals, type RankFacts, type ScoreFit } from './post-rank.ts';
 

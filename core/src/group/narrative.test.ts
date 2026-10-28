@@ -28,7 +28,8 @@ import {
 } from './narrative.ts';
 import type { MemberReach } from './narrative.ts';
 
-const P = withMeasuredBars(DEFAULT_POLICY);
+/* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
+const P = withMeasuredBars({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } });
 const HOUR = 3_600_000;
 const yes = { coinable: true, confidence: 0.99, lookedAt: 'picture' as const, proposedName: 'GTA 6' };
 const NO_CALLS = foldNarrativeCalls([]);
