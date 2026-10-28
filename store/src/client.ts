@@ -151,6 +151,12 @@ export interface PoolOptions {
   readonly session?: boolean;
   /** Fewer clients than the role's default, for a pool that only ever needs one. */
   readonly max?: number;
+  /**
+   * A longer statement limit than the role's, for a batch job whose single statements are legitimately
+   * slow (For You's full rebuild: 2026-10-28 it failed every run for hours at the service role's 30 s on
+   * a busy database). Never shorter than the role's; the database role's own ceiling (0149) still holds.
+   */
+  readonly statementTimeoutMs?: number;
 }
 
 /**
@@ -167,7 +173,8 @@ export function createPool(role: DbRole, options: PoolOptions = {}): Pool {
   if (options.session === true) assertSessionMode(ENV_VAR[role], url);
   const mode = modeOf(ENV_VAR[role], url);
 
-  const tuning = ROLE_TUNING[role];
+  const roleTuning = ROLE_TUNING[role];
+  const tuning = { ...roleTuning, statementTimeoutMs: Math.max(roleTuning.statementTimeoutMs, options.statementTimeoutMs ?? 0) };
   const config: PoolConfig = {
     connectionString: url,
     max: Math.min(options.max ?? tuning.max, tuning.max),

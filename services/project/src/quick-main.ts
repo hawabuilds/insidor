@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const cursor = cursorOf(process.argv.slice(2));
   const url = process.env['DATABASE_URL'];
   if (url === undefined || url === '') throw new Error('DATABASE_URL is not set; refusing to start (see main.ts)');
-  const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-quick', env: { DATABASE_URL_SERVICE: url } });
+  const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-quick', env: { DATABASE_URL_SERVICE: url }, statementTimeoutMs: 60_000 });
   try {
     const started = performance.now();
     const nowMs = Date.now() as Millis;

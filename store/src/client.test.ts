@@ -74,3 +74,14 @@ test('★ loops sharing the lock\'s client never overlap a statement: each waits
   assert.deepEqual(order, ['candles 1', 'trade feed', 'bad', 'candles 2']);
   assert.deepEqual(results.map((r) => r.status), ['fulfilled', 'fulfilled', 'rejected', 'fulfilled']);
 });
+
+test('★ a pool may raise its statement limit above its role\'s, never lower it', async () => {
+  const limit = (pool: { options: { statement_timeout?: number } }) => pool.options.statement_timeout;
+  const raised = createPool(DB_ROLE.service, { env: { DATABASE_URL_SERVICE: SESSION }, statementTimeoutMs: 120_000 });
+  assert.equal(limit(raised as never), 120_000);
+  const lowered = createPool(DB_ROLE.service, { env: { DATABASE_URL_SERVICE: SESSION }, statementTimeoutMs: 1_000 });
+  assert.equal(limit(lowered as never), 30_000, "never under the role's own");
+  const plain = createPool(DB_ROLE.service, { env: { DATABASE_URL_SERVICE: SESSION } });
+  assert.equal(limit(plain as never), 30_000);
+  await Promise.all([raised.end(), lowered.end(), plain.end()]);
+});
