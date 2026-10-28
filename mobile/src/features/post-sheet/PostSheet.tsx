@@ -159,7 +159,15 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   /* Leaving for another screen: the sheet stays open on the page it was opened over, which stays
      drawn behind (App.tsx, shared/ui/dismiss.ts), so Back from that screen finds this sheet as it
      was, on the same view (the owner, 2026-10-21: Back must not reset the page it returns to). */
+  /* ★ Already there (the owner, 2026-10-28: "when i press part of the story nothing happens"): the sheet
+     opened over its own narrative's page, so the address would not change and the tap did nothing.
+     The sheet closes onto that page instead. */
   const go = (href: string) => {
+    const here = (h: string) => decodeURIComponent(h.replace(/^#/, ''));
+    if (here(window.location.hash) === here(href)) {
+      onClose();
+      return;
+    }
     window.location.hash = href;
   };
   /* A coin's page, always (coin-opening.ts): the post's proven coin with its narrative around it,
