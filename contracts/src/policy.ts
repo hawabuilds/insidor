@@ -5920,8 +5920,9 @@ const POLICY_V1: Policy = {
      the post rules' recall-first section: more of the owner's memes for the same junk.
      v198 (2026-10-28) gives `band_6` back its $1.55 (freshness first) and funds `late_480` with fight words'
      $0.17 alone.
-     v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day. */
-  version: 'policy.v199',
+     v199 (2026-10-28, the owner's yes, +$0.65 a day) raises `band_6` to $2.20, still paced over the day.
+     v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database. */
+  version: 'policy.v200',
 
   admit: {
     maxAgeMin: 240,
@@ -7578,7 +7579,10 @@ const POLICY_V1: Policy = {
      every update, the rug floor at 30% of the peak; 15 buyers is provisional, no buyer data existed. */
   oneCoin: {
     mode: 'live',
-    everyMs: 5_000,
+    /* 5 s → 15 s from policy.v200 (2026-10-28): each pass re-reads every candidate coin's market history
+       (store one-coin.ts `marketFacts`), the database's single biggest user of time on a disk-bound
+       morning when For You's rebuilds were timing out; ten seconds later on a pick changes nothing. */
+    everyMs: 15_000,
     postWindowMs: 21_600_000, // six hours
     /* Two days, the owner's word (20 Oct): unbounded, links reopened 16-18 Oct posts a day or two on
        with copycats of the viral post and moved their pick. HI's quote link was 24 h. */
