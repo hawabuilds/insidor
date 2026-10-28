@@ -7,7 +7,8 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { clearsEarlyViralBar, clearsViralBar, earlyPace, passesAsViral, viralEligible, type ViralAnswer } from './viral.ts';
 
-const P = DEFAULT_POLICY;
+/* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
+const P = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } };
 const OFF = { ...P, judge: { ...P.judge, viral: { ...P.judge.viral, on: false } } };
 const MIN = 60_000;
 const at = (iso: string): number => Date.parse(iso);

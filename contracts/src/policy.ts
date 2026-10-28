@@ -5915,8 +5915,10 @@ const POLICY_V1: Policy = {
      the old rule.
      v196 (2026-10-27, the owner: "catch almost every post") adds an 8-hour late band (`fresh.late`, its day
      `paging.searches.late_480`) and the wordless and emoji-only posts to the late searches, paid for by
-     `band_6` $1.55 → $1.05 and `fightWords` off: search spend about the same. */
-  version: 'policy.v196',
+     `band_6` $1.55 → $1.05 and `fightWords` off: search spend about the same.
+     v197 (2026-10-28) holds only SPORT (`judge.heldKinds`) and raises `judge.cutoffs.primary` to 0.80, with
+     the post rules' recall-first section: more of the owner's memes for the same junk. */
+  version: 'policy.v197',
 
   admit: {
     maxAgeMin: 240,
@@ -6175,7 +6177,13 @@ const POLICY_V1: Policy = {
        and were dropped, and live pays to ask those posts again on its next pass. */
     postBatchMaxOutputTokens: 1_200,
     /* NOT_MEME_MATCH (2026-10-13): a post very close to one the owner called "not a meme" (`precedents`). */
-    heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'],
+    /* SPORT only from policy.v197 (2026-10-28, the owner: "catch all of them or close to all … keeping junk
+       below 20%"). Measured on the re-tune bench with precedents (2,326 posts: hand gold, the owner's
+       missed posts, posts coined after For You showed them, his "Not a meme" taps): holding AD, FANDOM,
+       SHOWBIZ, POLITICS and NOT_MEME_MATCH turned away as many memes as junk ("how is this not a meme
+       yet", a star's quote about being memed, "Vegeta is not Algerian"). The rules' recall-first section
+       and `cutoffs.primary` 0.80 keep junk down instead. */
+    heldKinds: ['SPORT'],
     pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */
@@ -6234,7 +6242,10 @@ const POLICY_V1: Policy = {
        a meme" calls; Gemma 3 at the block's 0.90 passes 78, 8, 27 and 24. The fallback's 0.90 is
        that block's cutoff, written here rather than left null: the next re-tune grades with the
        primary and stores a cutoff chosen on its answers, which Gemma's must not inherit. */
-    cutoffs: { primary: 0.7, fallback: 0.9 },
+    /* `primary` 0.70 → 0.80 from policy.v197, with the rules' recall-first section: on the bench, the
+       primary model at 0.80 passed 67% of hand gold and 51% of the owner's missed posts against 55% and
+       49% for the rules before it at 0.70, at the same 17% of his "Not a meme" taps. */
+    cutoffs: { primary: 0.8, fallback: 0.9 },
     /* 90 s: above the open model's slowest tenth of ten-post calls (77 s, 2026-10-15) and far above
        the live judge's (about 8 s), so a slow but working call is not taken for a dead one. Five
        minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for

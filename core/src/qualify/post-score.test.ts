@@ -110,13 +110,14 @@ test('★ the crypto signal: the judge, the judge with the signal, or the signal
   assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, null, others), 'signal', 'a "no" with other accounts coining it passes');
   assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, null, null), null);
   assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, 'SPORT', others), null, 'a held kind is not lifted by the signal');
-  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, 'AD', others), null);
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, 'SPORT', others), null, 'a held kind (SPORT, policy.v197) is held whatever the judge says');
   assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: true, shill: true }), null, 'a shill is held as an ad, whatever the judge says');
   assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: false, shill: true }), null);
 });
 
 test("★ an applied block's cutoff raises each bar to it and never lowers one; null is the policy as is", () => {
-  const P = DEFAULT_POLICY;
+  /* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
+  const P = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } };
   assert.equal(withJudgeCutoff(P, null), P);
   const bars = P.qualify.minJudgeConfidence;
   const above = bars.text + P.learning.cutoffStep * 5;
