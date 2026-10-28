@@ -5917,8 +5917,10 @@ const POLICY_V1: Policy = {
      `paging.searches.late_480`) and the wordless and emoji-only posts to the late searches, paid for by
      `band_6` $1.55 → $1.05 and `fightWords` off: search spend about the same.
      v197 (2026-10-28) holds only SPORT (`judge.heldKinds`) and raises `judge.cutoffs.primary` to 0.80, with
-     the post rules' recall-first section: more of the owner's memes for the same junk. */
-  version: 'policy.v197',
+     the post rules' recall-first section: more of the owner's memes for the same junk.
+     v198 (2026-10-28) gives `band_6` back its $1.55 (freshness first) and funds `late_480` with fight words'
+     $0.17 alone. */
+  version: 'policy.v198',
 
   admit: {
     maxAgeMin: 240,
@@ -6802,9 +6804,10 @@ const POLICY_V1: Policy = {
            1.4 → 1.2), the late band and slow lane take it (1.05 → 1.3, 0.9 → 1.05). Still $5.10 together. */
         /* `paced` from policy.v158 (the owner, 2026-10-24: "spread it"): the same $1.55, spread over the
            whole UTC day instead of spent by mid-afternoon. */
-        /* $1.55 → $1.05 from policy.v196, paying for `late_480`: in the week to 27 Oct the 6-minute band found
-           64,027 posts, 0.34% of them reached For You and none was an owner's meme or missed post. */
-        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.05, paced: true },
+        /* Back to $1.55 in policy.v198 (2026-10-28): v196 cut it to $1.05 to pay for `late_480`, but this is the
+           lane that finds posts in their first minutes, and For You's freshness had already fallen since 24 Oct
+           (median age at first showing 52–71 min on 20–23 Oct, 137–232 min on 24–27 Oct). Early beats late. */
+        band_6: { full: true, maxPages: 15, passDeadlineMs: 60_000, dailyUsd: 1.55, paced: true },
         /* `paced` from policy.v181 (2026-10-25): unpaced, the 50-minute band spent its $1.20 by 20:55 UTC on
            23 Oct and 19:22 on 24 Oct, and asked nothing for the rest of each day (its ledger, internal.
            lane_spend); 25 Oct 05:00–12:00 it spent at $1.48 a day. The same $1.20, spread; the language
@@ -6814,8 +6817,9 @@ const POLICY_V1: Policy = {
            (20:57 UTC on 25 Oct), now that a held-back ask is bought on the next one (`fresh.late.everyMs`)
            and a pace no longer ends an ask between its pages (`paceBeforeAskOnly`). */
         late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3, paced: true },
-        /* The 8-hour band (policy.v196, `fresh.late`): paid for by the cut to `band_6` and fight words off. */
-        late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.7, paced: true },
+        /* The 8-hour band (policy.v196, `fresh.late`): $0.17 a day from policy.v198, exactly what fight words off
+           saves, so search spend is unchanged; `band_6` keeps its full day. */
+        late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.17, paced: true },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
       },
     },
