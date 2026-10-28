@@ -339,6 +339,30 @@ export class PgLearningRepo {
     return rows.flatMap((r) => (r.body === null || r.body.trim() === '' ? [] : [{ itemId: r.item_id, body: r.body, media: r.media }]));
   }
 
+  /**
+   * ★ POSTS COINED FROM OUR FEED (the owner, 2026-10-28: "add every single one that was coined from our
+   * feed"): every post For You showed (internal.feed_history, 0063) whose first coin came AFTER we first
+   * showed it (internal.coined_post_lead), as we hold it. The re-tune tests them as hand gold, so a judge
+   * that would turn them away cannot pass its gate. A post the owner's newest call says is not a meme is
+   * left out: his call outranks a coin. Kept 14 days with the feed's history, so the set is the
+   * recent feed's, not every post since the start.
+   */
+  async coinedFromFeed(feedId: string): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown }[]> {
+    const rows = await orNoTable(() => this.#db.query<{ item_id: string; body: string | null; media: unknown }>(
+      `with shown as (select item_id, min(first_seen_at) as first_shown from internal.feed_history where feed_id = $1 group by item_id)
+       select i.item_id, i.body, i.media
+         from shown s
+         join internal.coined_post_lead l on l.item_id = s.item_id and l.first_coin_at > s.first_shown
+         join public.item i on i.item_id = s.item_id
+        where coalesce((select o.verdict from internal.owner_feedback o
+                         where o.subject_kind = 'post' and o.item_id = s.item_id
+                         order by o.created_at desc, o.id desc limit 1), '') <> 'not'
+        order by i.item_id`,
+      [feedId],
+    ));
+    return rows.flatMap((r) => (r.body === null || r.body.trim() === '' ? [] : [{ itemId: r.item_id, body: r.body, media: r.media }]));
+  }
+
   /* ── the owner's input (0054 owner_feedback, 0055 missed_post) ───────────────────────────────── */
 
   /**

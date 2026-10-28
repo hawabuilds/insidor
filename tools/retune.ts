@@ -373,7 +373,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
 
-type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught' | 'tt-coined' | 'untapped';
+type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught' | 'tt-coined' | 'untapped' | 'kept';
 
 /* ── the TikTok side of the judge's test ─────────────────────────────────────────────────────── */
 
@@ -446,8 +446,10 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          a post the owner called or one this run can test as hand gold: taught, it would leave the
          gate's test. A post the owner confirmed a coin for is hand gold, so it stays tested — the
          owner's coins count toward a post's coins, but such a post is never taught this way. */
+      /* ★ POSTS COINED FROM FOR YOU (store learning.ts `coinedFromFeed`): hand gold, so never taught. */
+      const feedCoined = await soft(repo.coinedFromFeed('fyp'), []);
       const handGoldIdsNow = new Set([
-        ...origins.map((o) => o.id), ...listed, ...coinRight.map((m) => m.itemId),
+        ...origins.map((o) => o.id), ...listed, ...coinRight.map((m) => m.itemId), ...feedCoined.map((h) => h.itemId),
         ...additions.filter((g) => !(g.source === 'recall' && !listed.has(g.itemId))).map((g) => g.itemId),
       ]);
       const C = L.coinedYes;
@@ -527,6 +529,20 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const coinGold = await soft(repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh)), []);
       for (const h of coinGold) posts.push({ group: 'gold', id: h.itemId, kind: "the owner's coin call: this is the coin", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null, coinRef: coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId });
       for (const h of coinGold) inTest.add(h.itemId);
+      for (const h of feedCoined.filter((h) => fresh(h.itemId))) {
+        posts.push({ group: 'gold', id: h.itemId, kind: 'coined after For You showed it', text: h.body, imageUri: pictureOf(h.media)?.uri ?? null });
+        inTest.add(h.itemId);
+      }
+      /* ★ THE POSTS THE OWNER LEFT ON THE FEED (the owner, 2026-10-28: "should we also include the posts we
+         leave on the feed"): the newest `KEPT_TESTED` he saw and kept that the block did not teach, graded
+         and reported as their own group so a change that would throw out what he keeps is seen. Never a
+         gate and never hand gold: each is there because today's judge said yes, so gating on them would
+         only reward judging as today. */
+      const KEPT_TESTED = 400;
+      for (const k of [...keptRows].filter((k) => fresh(k.itemId)).sort((a, b) => b.firstSeenAt - a.firstSeenAt).slice(0, KEPT_TESTED)) {
+        posts.push({ group: 'kept', id: k.itemId, kind: 'left on the feed by the owner', text: k.text, imageUri: k.imageUri });
+        inTest.add(k.itemId);
+      }
       /* The TikTok training set's coined videos with words (Policy.learning.shortVideo.gateOn): graded
          beside the test for the TikTok gate, never in X's rates. Words only: a re-fetched video's
          still is not kept. */
