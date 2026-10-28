@@ -230,3 +230,14 @@ test('★ a "no" climbing fast in its first half hour is read on, as tier 2, to 
   assert.equal(kept.has(`p${P.track.fastClimb.maxPosts + 4}`), true);
   assert.equal(kept.has('p0'), false);
 });
+
+test('★ a yes no lane found is read beside the climbers, above the narrative pages; a found yes keeps the first tier', () => {
+  const uncredited = facts({ judged: new Map([['a', yes]]) });
+  assert.equal(rereadTier('a', false, null, uncredited, P), 2);
+  /* A "no" no lane found stays with the rest. */
+  assert.equal(rereadTier('a', false, null, facts({ judged: new Map([['a', firmNo]]) }), P), 3);
+  /* The owner's "not a meme" is never lifted. */
+  assert.equal(rereadTier('a', false, null, facts({ judged: new Map([['a', yes]]), ownerCall: new Map([['a', 'not' as const]]) }), P), 3);
+  /* A found yes not yet shown is still read first. */
+  assert.equal(rereadTier('a', true, null, facts({ catchAll: new Set(['a']), judged: new Map([['a', yes]]) }), P), 0);
+});

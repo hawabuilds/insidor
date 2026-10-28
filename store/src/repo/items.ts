@@ -710,8 +710,11 @@ export class PgItemRepo implements ItemRepo {
     const rows = await this.#db.query<ItemRow>(
       `with recent as (
          select i.item_id, i.source, i.posted_at, i.first_seen_at,
+                /* ★ ANY JUDGED YES, HOWEVER IT CAME (2026-10-28): a post held without a lane's credit (a coin's link
+                   read it, a quote pulled it in) and judged yes was never re-read, so its views stayed at the
+                   first count and it could never clear For You's bar however big it grew (@Theveripost's new
+                   marsupial: 5,136 views at its one reading, a yes, never read again). */
                 (i.posted_at >= $11
-                 and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
                  and coalesce((select j.coinable from internal.post_judgement j
                                 where j.item_id = i.item_id and j.prompt_id not like 'post-kind%'
                                 order by j.judged_at desc, j.id desc limit 1), false)
