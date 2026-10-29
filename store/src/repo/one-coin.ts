@@ -182,6 +182,15 @@ const MIRROR_OVERLAP_MS = 2 * 60_000;
  */
 const MIRROR_KEEP_MS = 24 * 3_600_000;
 const MIRROR_PRUNE_EVERY_MS = 10 * 60_000;
+/**
+ * ★ A POST ASKED ABOUT STAYS HELD, HOWEVER OLD. The sweeps (held and waiting picks, a narrative's
+ * older members) ask `candidatesOf` for posts days old on every pass; read from the table each
+ * time, evidence and all, that was ~4,700 rows every ten seconds and on 29 Oct 2026 the second
+ * largest share of the database's egress. A pruned post asked about is read once and held again
+ * (a later write reaches it through the catch-up read, as for any held post), and it is pruned
+ * only once it has been neither written for `MIRROR_KEEP_MS` nor asked about for this long.
+ */
+const MIRROR_KEEP_ASKED_MS = 3_600_000;
 
 type CandidateDbRow = { item_id: string; address: string; path: 'launch' | 'existing'; evidence: Record<string, unknown>; launched_at: string | null; found_at: string };
 /** The mirror's state: the held posts' candidates by post then coin, each post's newest `updated_at`, and the newest read (epoch ms). */
@@ -190,6 +199,8 @@ interface CandidateMirror {
   readonly itemNewestMs: Map<string, number>;
   /** Posts set aside by the prune: not held, read from the table when asked about. */
   readonly pruned: Set<string>;
+  /** When each post was last asked about by `candidatesOf`, on the table's clock (`newestMs`): see MIRROR_KEEP_ASKED_MS. */
+  readonly askedMs: Map<string, number>;
   /** Every post whose candidates were all written before this is pruned; `openCandidates` asked for older falls back to the table. */
   prunedBelowMs: number | null;
   prunedAt: number | null;
@@ -212,7 +223,7 @@ export class PgOneCoinRepo {
 
   constructor(db: Db, opts: { readonly mirrorCandidates?: boolean } = {}) {
     this.#db = db;
-    this.#mirror = opts.mirrorCandidates === true ? { byItem: new Map(), itemNewestMs: new Map(), pruned: new Set(), prunedBelowMs: null, prunedAt: null, newestMs: null } : null;
+    this.#mirror = opts.mirrorCandidates === true ? { byItem: new Map(), itemNewestMs: new Map(), pruned: new Set(), askedMs: new Map(), prunedBelowMs: null, prunedAt: null, newestMs: null } : null;
   }
 
   /** Brings the mirror up to date; false when 0113 is not applied (every read then answers nothing). */
@@ -264,7 +275,8 @@ export class PgOneCoinRepo {
       mirror.prunedAt = now;
       const below = now - MIRROR_KEEP_MS;
       for (const [id, newest] of mirror.itemNewestMs) {
-        if (newest >= below) continue;
+        if (newest >= below || (mirror.askedMs.get(id) ?? -Infinity) >= now - MIRROR_KEEP_ASKED_MS) continue;
+        mirror.askedMs.delete(id);
         mirror.byItem.delete(id);
         mirror.itemNewestMs.delete(id);
         mirror.pruned.add(id);
@@ -536,14 +548,22 @@ export class PgOneCoinRepo {
     if (mirror !== null) {
       if (!(await this.#syncMirror(mirror))) return [];
       const ids = [...new Set(itemIds)];
-      const held = ids.filter((id) => !mirror.pruned.has(id)).flatMap((id) => [...(mirror.byItem.get(id)?.values() ?? [])]);
+      for (const id of ids) mirror.askedMs.set(id, mirror.newestMs ?? 0);
       const asideIds = ids.filter((id) => mirror.pruned.has(id));
-      if (asideIds.length === 0) return held;
-      const aside = await this.#db.query<CandidateDbRow>(
-        `select item_id, address, path, evidence, launched_at, found_at from internal.one_coin_candidate where item_id = any($1::text[])`,
-        [asideIds],
-      );
-      return [...held, ...aside.map(toCandidate)];
+      if (asideIds.length > 0) {
+        /* Read once and held again (MIRROR_KEEP_ASKED_MS). */
+        const aside = await this.#db.query<CandidateDbRow & { u: number }>(
+          `select item_id, address, path, evidence, launched_at, found_at, extract(epoch from updated_at)::float8 * 1000 as u
+             from internal.one_coin_candidate where item_id = any($1::text[])`,
+          [asideIds],
+        );
+        for (const r of aside) {
+          if (mirror.pruned.delete(r.item_id)) mirror.byItem.set(r.item_id, new Map());
+          mirror.byItem.get(r.item_id)?.set(r.address, toCandidate(r));
+          mirror.itemNewestMs.set(r.item_id, Math.max(Number(r.u), mirror.itemNewestMs.get(r.item_id) ?? 0));
+        }
+      }
+      return ids.flatMap((id) => [...(mirror.byItem.get(id)?.values() ?? [])]);
     }
     try {
       const rows = await this.#db.query<{ item_id: string; address: string; path: 'launch' | 'existing'; evidence: Record<string, unknown>; launched_at: string | null; found_at: string }>(
