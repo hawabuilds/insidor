@@ -309,28 +309,32 @@ test("the creator's opening buy is written once, and a missing field stays missi
   assert.equal(sql, '', 'an empty page writes nothing');
 });
 
-test('mintedBetween reads the selection every time and a coin whole only when its row changed', async () => {
-  /* Two coins in the window; B is corrected between the reads (a new row version). Checked
-     against the live store, read only: the same coins in the same order for 40 stories, and
-     ~17% of the bytes once held. */
+test('mintedBetween sends what it holds and gets back only the coins that changed', async () => {
+  /* Coins in the window by mint time; B is corrected between the reads (a new row version). */
   const table = new Map([
-    ['A', { v: '100', name: 'Alpha' }],
-    ['B', { v: '101', name: 'Beta' }],
+    ['A', { v: '100', name: 'Alpha', at: 1000 }],
+    ['B', { v: '101', name: 'Beta', at: 1100 }],
   ]);
   const whole: string[][] = [];
-  let selections = 0;
+  const returned: string[][] = [];
   const db: Db = {
     query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
-      if (s.includes('md5(string_agg')) return [{ d: [...table].map(([a, r]) => `${a}:${r.v}`).join(','), n: table.size } as R];
-      if (s.includes('xmin::text as v') && s.includes('limit $4')) {
-        selections += 1;
-        return [...table].map(([address, r]) => ({ address, v: r.v }) as R);
+      if (s.includes('unnest($6::text[], $7::text[])')) {
+        const limit = p?.[3] as number;
+        const sel = [...table].sort(([a, x], [b, y]) => x.at - y.at || (a < b ? -1 : 1)).slice(0, limit).map(([address, r]) => ({ address, v: r.v }));
+        const sent = ((p?.[5] ?? []) as string[]).map((address, i) => ({ address, v: ((p?.[6] ?? []) as string[])[i] }));
+        const rows = [
+          ...sel.filter((x) => !sent.some((h) => h.address === x.address && h.v === x.v)),
+          ...sent.filter((h) => !sel.some((x) => x.address === h.address && x.v === h.v)).map((h) => ({ address: h.address, v: null })),
+        ];
+        returned.push(rows.map((r) => `${r.address}${r.v === null ? '-' : ''}`));
+        return rows as R[];
       }
       if (s.includes('address = any($2::text[])')) {
         const asked = (p?.[1] ?? []) as string[];
         whole.push(asked);
         return asked.map((address) => ({
-          chain: 'solana', address, asset_key: `solana:${address}`, venue_id: 'v', origin: 'live_stream', minted_at: new Date(1000),
+          chain: 'solana', address, asset_key: `solana:${address}`, venue_id: 'v', origin: 'live_stream', minted_at: new Date(table.get(address)?.at ?? 0),
           minted_at_source: 'stream', minted_at_conf: 'exact', minted_at_bound_s: null, symbol: address, name: table.get(address)?.name ?? null,
           image_uri: null, decimals: 6, creator: null, declared_social: null, first_seen_at: new Date(1000), v: table.get(address)?.v,
         }) as R);
@@ -339,19 +343,24 @@ test('mintedBetween reads the selection every time and a coin whole only when it
     },
   };
   const repo = new PgAssetRepo(db);
-  const read = () => repo.mintedBetween(chainId('solana'), 0 as Millis, 2000 as Millis, 10, 'observed');
+  const read = (limit = 10) => repo.mintedBetween(chainId('solana'), 0 as Millis, 2000 as Millis, limit, 'observed');
 
   assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta']);
   assert.deepEqual(whole, [['A', 'B']]);
   assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta']);
-  assert.equal(whole.length, 1, 'nothing changed, nothing read whole');
-  assert.equal(selections, 1, 'an unchanged window is answered from its digest alone');
-  table.set('B', { v: '205', name: 'Beta (corrected)' });
+  assert.deepEqual(returned[1], [], 'nothing changed, nothing crosses');
+  assert.equal(whole.length, 1);
+  table.set('B', { v: '205', name: 'Beta (corrected)', at: 1100 });
   assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta (corrected)']);
+  assert.deepEqual(returned[2], ['B', 'B-']);
   assert.deepEqual(whole[1], ['B']);
-  assert.equal(selections, 2);
-  /* A new coin in the window: the digest moves, the selection is read, only the new coin whole. */
-  table.set('C', { v: '300', name: 'Gamma' });
-  assert.deepEqual((await read()).map((a) => a.name), ['Alpha', 'Beta (corrected)', 'Gamma']);
+  /* A coin launched earlier in the window: only it crosses, and it is first. */
+  table.set('C', { v: '300', name: 'Gamma', at: 900 });
+  assert.deepEqual((await read()).map((a) => a.name), ['Gamma', 'Alpha', 'Beta (corrected)']);
+  assert.deepEqual(returned[3], ['C']);
   assert.deepEqual(whole[2], ['C']);
+  /* A new window over the same coins with a tighter limit starts from what is held: B leaves it. */
+  assert.deepEqual((await read(2)).map((a) => a.name), ['Gamma', 'Alpha']);
+  assert.deepEqual(returned[4], []);
+  assert.equal(whole.length, 3);
 });

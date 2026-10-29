@@ -102,6 +102,9 @@ const OBSERVED_ORIGINS: readonly string[] = [...OBSERVED_ASSET_ORIGINS];
 /** A held row unused this long is dropped (`mintedBetween`'s cache): a story's window stops being asked about once it is decided. */
 const HELD_ASSET_IDLE_MS = 60 * 60_000;
 
+/** `mintedBetween`'s order: mint time, then address (the statement's own order). */
+const byMint = (a: Asset, b: Asset): number => (a.mintedAt.at ?? 0) - (b.mintedAt.at ?? 0) || (a.ref.address < b.ref.address ? -1 : a.ref.address > b.ref.address ? 1 : 0);
+
 export class PgAssetRepo implements AssetRepo {
   readonly #db: Db;
   /**
@@ -109,8 +112,8 @@ export class PgAssetRepo implements AssetRepo {
    * read at. See `mintedBetween`.
    */
   readonly #held = new Map<string, { readonly version: string; readonly asset: Asset; usedAt: number }>();
-  /** Each window `mintedBetween` answered, under the digest of its selection. See there. */
-  readonly #windows = new Map<string, { readonly digest: string; readonly assets: readonly Asset[]; usedAt: number }>();
+  /** Each window `mintedBetween` answered, as it answered it. See there. */
+  readonly #windows = new Map<string, { readonly assets: readonly Asset[]; usedAt: number }>();
   #sweptAt = 0;
 
   constructor(db: Db) {
@@ -463,14 +466,17 @@ export class PgAssetRepo implements AssetRepo {
    * itself: a caller that has not decided must fail rather than be handed the answer that
    * quietly deletes a story's coins.
    *
-   * ★ THE SELECTION IS READ EVERY TIME; THE ROWS ONLY WHEN THEY CHANGED. RESOLVE asks this for
-   * every open story every minute and gets the same few hundred coins back, sixteen columns
-   * each — 600k reads in nine days and the third-largest share of the database's egress. So the
-   * statement below now returns each selected coin's address and row version (`xmin`, which
-   * Postgres changes on every update), in the same order and under the same limit, and only the
-   * coins this repo does not hold at that version are read whole. The answer is the one the
-   * single statement gave, a moment later. What breaks if changed carelessly: dropping the
-   * version from the key — a coin whose mint time or name was corrected would be served stale.
+   * ★ ONLY WHAT CHANGED SINCE THE LAST ANSWER CROSSES. RESOLVE asks this for every open story every
+   * minute and gets nearly the same few hundred coins back — 600k reads in nine days, then ~1 GB a
+   * day of addresses and row versions (2026-10-29) once the rows themselves were held, because a
+   * window's digest of them moved with every coin updated or launched in it. Now the coins this repo
+   * holds for the window go in with the question, with the row version (`xmin`, which Postgres
+   * changes on every update) each was read at, and the statement returns only the selected coins not
+   * held at their version and the held ones no longer selected at it. The selection is the same
+   * statement under the same limit, so the answer is the one a full read gives now; it is ordered by
+   * mint time, then address, so the order is the same both ways. Coins it names that are not held at
+   * that version are read whole. What breaks if changed carelessly: dropping the version from either
+   * side — a coin whose mint time or name was corrected would be served stale.
    */
   async mintedBetween(
     chain: ChainId,
@@ -479,43 +485,49 @@ export class PgAssetRepo implements AssetRepo {
     limit: number,
     storyOrigin: StoryOrigin,
   ): Promise<readonly Asset[]> {
-    const SELECTION = `select address, xmin::text as v
-         from public.asset
-        where chain = $1
-          and minted_at between $2 and $3
-          and minted_at_conf <> 'unknown'
-          and origin = any($5::text[])
-        order by minted_at asc
-        limit $4`;
     /* Spread into a mutable array because it is about to be a bound parameter and
        nothing here interpolates a value into SQL — the same rule the constant above
        is written to obey, applied to a list that is now computed per call. */
-    const params = [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, [...coinOriginsVisibleTo(storyOrigin)]];
+    const origins = [...coinOriginsVisibleTo(storyOrigin)];
     const now = Date.now();
-
-    /* ★ AN UNCHANGED WINDOW COSTS ONE ROW. A story's window is asked about every minute and,
-       once it holds `limit` coins, its selection rarely moves. So the selection is first asked
-       for as one digest of its coins and their row versions; equal to the digest this window was
-       last answered under, the held answer is the answer. Any coin added, dropped or updated
-       changes the digest and the window is read as below. */
-    const windowKey = JSON.stringify([chain, fromMs, toMs, limit, params[4]]);
-    const [digest] = await this.#db.query<{ d: string | null; n: number }>(
-      `select md5(string_agg(s.address || ':' || s.v, ',' order by s.address)) as d, count(*)::int as n from (${SELECTION}) s`,
-      params,
-    );
-    const known = this.#windows.get(windowKey);
-    if (known !== undefined && digest !== undefined && known.digest === `${digest.n}/${digest.d ?? ''}`) {
-      known.usedAt = now;
-      for (const a of known.assets) {
-        const held = this.#held.get(`${chain}\u0000${a.ref.address}`);
-        if (held !== undefined) held.usedAt = now;
-      }
-      return known.assets;
-    }
-
-    const picked = await this.#db.query<{ address: string; v: string }>(SELECTION, params);
     const keyOf = (address: string): string => `${chain}\u0000${address}`;
-    const stale = picked.filter((p) => this.#held.get(keyOf(p.address))?.version !== p.v).map((p) => p.address);
+    const windowKey = JSON.stringify([chain, fromMs, toMs, limit, origins]);
+
+    /* What goes in: this window's last answer, or, for a window not asked before (a story's window
+       moves when an earlier post joins it), the first `limit` coins held that it would select. A
+       selected coin left out of it is returned as new, so the list never has to be complete. */
+    const known = this.#windows.get(windowKey)?.assets;
+    const sent = (
+      known ??
+      [...this.#held.values()]
+        .map((h) => h.asset)
+        .filter((a) => a.ref.chain === chain && a.mintedAt.at !== null && a.mintedAt.at >= fromMs && a.mintedAt.at <= toMs && a.mintedAt.confidence !== 'unknown' && origins.includes(a.origin))
+        .sort(byMint)
+        .slice(0, limit)
+    ).flatMap((a) => {
+      const held = this.#held.get(keyOf(a.ref.address));
+      return held === undefined ? [] : [{ address: a.ref.address, v: held.version }];
+    });
+
+    const changed = await this.#db.query<{ address: string; v: string | null }>(
+      `with s as (
+         select address, xmin::text as v
+           from public.asset
+          where chain = $1
+            and minted_at between $2 and $3
+            and minted_at_conf <> 'unknown'
+            and origin = any($5::text[])
+          order by minted_at asc, address asc
+          limit $4
+       ), h as (select * from unnest($6::text[], $7::text[]) as h(address, v))
+       select s.address, s.v from s where not exists (select 1 from h where h.address = s.address and h.v = s.v)
+       union all
+       select h.address, null from h where not exists (select 1 from s where s.address = h.address and s.v = h.v)`,
+      [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, origins, sent.map((x) => x.address), sent.map((x) => x.v)],
+    );
+    const left = new Set(changed.filter((c) => c.v === null).map((c) => c.address));
+    const fresh = changed.filter((c): c is { address: string; v: string } => c.v !== null);
+    const stale = fresh.filter((p) => this.#held.get(keyOf(p.address))?.version !== p.v).map((p) => p.address);
     if (stale.length > 0) {
       const rows = await this.#db.query<AssetRow & { v: string }>(
         `select chain, address, asset_key, venue_id, origin, minted_at, minted_at_source,
@@ -527,16 +539,22 @@ export class PgAssetRepo implements AssetRepo {
       );
       for (const row of rows) this.#held.set(keyOf(row.address), { version: row.v, asset: toAsset(row), usedAt: now });
     }
+    const picked = new Set([...sent.filter((x) => !left.has(x.address)).map((x) => x.address), ...fresh.map((p) => p.address)]);
     const out: Asset[] = [];
-    for (const p of picked) {
-      const held = this.#held.get(keyOf(p.address));
+    let whole = true;
+    for (const address of picked) {
+      const held = this.#held.get(keyOf(address));
       /* Deleted between the two reads: gone, as a read a moment later would say. */
-      if (held === undefined) continue;
+      if (held === undefined) {
+        whole = false;
+        continue;
+      }
       held.usedAt = now;
       out.push(held.asset);
     }
-    /* Held under the digest read first: a change between the two reads is caught next time. */
-    if (digest !== undefined && out.length === picked.length) this.#windows.set(windowKey, { digest: `${digest.n}/${digest.d ?? ''}`, assets: out, usedAt: now });
+    out.sort(byMint);
+    /* A change between the two reads is caught next time: the versions sent are the ones held. */
+    if (whole) this.#windows.set(windowKey, { assets: out, usedAt: now });
     else this.#windows.delete(windowKey);
     if (now - this.#sweptAt >= HELD_ASSET_IDLE_MS) {
       this.#sweptAt = now;
