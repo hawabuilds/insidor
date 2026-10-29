@@ -97,8 +97,35 @@ export function handedOver(rows: readonly NarrativeCoin[], seen: ReadonlySet<str
   return out;
 }
 
-const COINS_SQL = `select story_id as "storyId", coalesce(payload ->> 'title', '') as title, payload -> 'coins' as coins
+/*
+ * ★ EVERY OBSERVED NARRATIVE'S TITLE AND COINS, HELD BY THEIR DIGEST. Each pass needs every observed
+ * page's coins (one not starred is remembered as seen), and nearly every page is the one the pass
+ * before was sent (with the Blowing up read of the same pages, ~0.9 GB a day of database egress,
+ * 2026-10-29). So the pass asks for each page's digest of the two, and reads the title and coins
+ * only of a page not held at its digest. The rows are the ones the single statement gave, in its
+ * order. Held in the process; a page that leaves the read is dropped from what is held.
+ */
+const DIGEST = `md5(coalesce(payload ->> 'title', '') || '|' || coalesce((payload -> 'coins')::text, ''))`;
+const VERSIONS_SQL = `select story_id as "storyId", ${DIGEST} as v
   from public.story_view where payload #>> '{provenance,kind}' = 'observed' order by story_id`;
+const COINS_SQL = `select story_id as "storyId", ${DIGEST} as v, coalesce(payload ->> 'title', '') as title, payload -> 'coins' as coins
+  from public.story_view where story_id = any($1::text[])`;
+const HELD_PAGES = new Map<string, { readonly v: string; readonly title: string; readonly coins: unknown }>();
+
+/** Every observed page's title and coins, by story, from what is held or read now. */
+export async function pageCoins(db: Db): Promise<readonly { readonly storyId: string; readonly title: string; readonly coins: unknown }[]> {
+  const versions = await db.query<{ storyId: string; v: string }>(VERSIONS_SQL);
+  const stale = versions.filter((r) => HELD_PAGES.get(r.storyId)?.v !== r.v).map((r) => r.storyId);
+  if (stale.length > 0) {
+    for (const r of await db.query<{ storyId: string; v: string; title: string; coins: unknown }>(COINS_SQL, [stale])) HELD_PAGES.set(r.storyId, { v: r.v, title: r.title, coins: r.coins });
+  }
+  const asked = new Set(versions.map((r) => r.storyId));
+  for (const k of [...HELD_PAGES.keys()]) if (!asked.has(k)) HELD_PAGES.delete(k);
+  return versions.flatMap((r) => {
+    const held = HELD_PAGES.get(r.storyId);
+    return held === undefined ? [] : [{ storyId: r.storyId, title: held.title, coins: held.coins }];
+  });
+}
 
 export interface FirstCoinPorts {
   readonly policy: NotifyPolicy;
@@ -114,7 +141,7 @@ const storyHref = (id: string) => `/#/story/${encodeURIComponent(id)}`;
  * own coin alerts for that narrative leave those people out (pipeline.ts), so one coin is one push.
  */
 export async function checkFirstCoins(db: Db, ports: FirstCoinPorts): Promise<{ readonly queued: number; readonly told: ReadonlyMap<string, ReadonlySet<string>> }> {
-  const rows = (await db.query<{ storyId: string; title: string; coins: unknown }>(COINS_SQL)).map((r): NarrativeCoin => ({ storyId: r.storyId, title: r.title, coin: settledCoin(r.coins) }));
+  const rows = (await pageCoins(db)).map((r): NarrativeCoin => ({ storyId: r.storyId, title: r.title, coin: settledCoin(r.coins) }));
   const seen = await seenKeys(db, FIRST_COIN_STREAM);
   const seeded = seen.delete(SEEDED);
   const watches = await db.query<{ userId: string; storyId: string }>('select user_id as "userId", story_id as "storyId" from people.watch');
