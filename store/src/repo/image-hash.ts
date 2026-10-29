@@ -53,6 +53,20 @@ export function fromBits(bits: string | number | bigint): string {
   return (s < 0n ? s + TWO_64 : s).toString(16).padStart(16, '0');
 }
 
+const HOUR_MS = 3_600_000;
+interface Logo {
+  readonly address: string;
+  readonly at: number;
+  readonly hi: number;
+  readonly lo: number;
+}
+interface HeldHour {
+  readonly digest: string;
+  readonly logos: readonly Logo[];
+}
+/** The picture search's logos, by hash version then mint hour (UTC): see `#logosBetween`. */
+const HELD_LOGOS = new Map<string, Map<number, HeldHour>>();
+
 export class PgImageHashRepo {
   readonly #db: Db;
 
@@ -146,17 +160,7 @@ export class PgImageHashRepo {
       if (asked.length === 0) return [];
       const from = Math.min(...asked.map((p) => p.postedAt)) - allowanceMs;
       const to = Math.max(...asked.map((p) => p.postedAt)) + windowMs;
-      const rows = await this.#db.query<{ address: string; minted_at: string | Date; bits: string }>(
-        `select a.address, a.minted_at, ch.bits::text as bits
-           from public.asset a
-           left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-           join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
-          where a.minted_at between $1 and $2`,
-        [new Date(from).toISOString(), new Date(to).toISOString(), version],
-      );
-      const logos = rows
-        .map((r) => ({ address: r.address, at: new Date(r.minted_at).getTime(), ...halves(fromBits(r.bits)) }))
-        .sort((a, b) => a.at - b.at || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0));
+      const logos = (await this.#logosBetween(from, to, version)).filter((l) => l.at >= from && l.at <= to);
       const out: PictureNeighbour[] = [];
       for (const p of asked) {
         const lo = p.postedAt - allowanceMs;
@@ -175,6 +179,66 @@ export class PgImageHashRepo {
       if (missingTable(e)) return [];
       throw e;
     }
+  }
+
+  /**
+   * Every coin logo minted in the whole UTC hours covering [fromMs, toMs], sorted by mint time.
+   *
+   * ★ HELD BY THE HOUR, RE-READ ONLY WHERE AN HOUR CHANGED. The picture search asks for three days
+   * of logos each frame: ~450,000 rows a read, about 20 GB a day on 29 Oct 2026 and the largest
+   * share of the database's egress, nearly all of it the rows the frame before was sent. Now each
+   * hour's rows are first asked for as one digest (count and md5 of every address, mint time and
+   * hash in it); an hour whose digest is the one held is served from memory, and only the hours
+   * that differ (new launches, a logo hashed or re-read since) are read whole. The answer is the
+   * one the single statement gave, a moment later. Held per process across repos (post-match makes
+   * a repo per frame), by hash version; hours outside the asked window are dropped.
+   *
+   * What breaks if changed carelessly: a digest that leaves out a field the search uses (address,
+   * mint time, bits) serves a stale logo for as long as the hour is asked about.
+   */
+  async #logosBetween(fromMs: number, toMs: number, version: string): Promise<readonly Logo[]> {
+    const firstHour = Math.floor(fromMs / HOUR_MS);
+    const lastHour = Math.floor(toMs / HOUR_MS);
+    const range = [new Date(firstHour * HOUR_MS).toISOString(), new Date((lastHour + 1) * HOUR_MS).toISOString(), version];
+    const digests = await this.#db.query<{ h: string; d: string }>(
+      `select floor(extract(epoch from a.minted_at) / 3600)::bigint::text as h,
+              count(*)::text || '/' || md5(string_agg(a.address || ' ' || a.minted_at::text || ' ' || ch.bits::text, ',' order by a.address, a.minted_at, ch.bits)) as d
+         from public.asset a
+         left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
+         join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
+        where a.minted_at >= $1 and a.minted_at < $2
+        group by 1`,
+      range,
+    );
+    const held = HELD_LOGOS.get(version) ?? new Map<number, HeldHour>();
+    HELD_LOGOS.set(version, held);
+    for (const h of [...held.keys()]) if (h < firstHour || h > lastHour) held.delete(h);
+    const now = new Map(digests.map((r) => [Number(r.h), r.d] as const));
+    /* An hour with no logos now has no digest row: it holds nothing. */
+    for (const h of [...held.keys()]) if (!now.has(h)) held.delete(h);
+    const stale = [...now].filter(([h, d]) => held.get(h)?.digest !== d).map(([h]) => h);
+    if (stale.length > 0) {
+      const lo = Math.min(...stale);
+      const hi = Math.max(...stale);
+      const rows = await this.#db.query<{ address: string; minted_at: string | Date; bits: string }>(
+        `select a.address, a.minted_at, ch.bits::text as bits
+           from public.asset a
+           left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
+           join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
+          where a.minted_at >= $1 and a.minted_at < $2 and floor(extract(epoch from a.minted_at) / 3600)::bigint = any($4::bigint[])`,
+        [new Date(lo * HOUR_MS).toISOString(), new Date((hi + 1) * HOUR_MS).toISOString(), version, stale.map(String)],
+      );
+      const fresh = new Map<number, Logo[]>(stale.map((h) => [h, []] as const));
+      for (const r of rows) {
+        const at = new Date(r.minted_at).getTime();
+        fresh.get(Math.floor(at / HOUR_MS))?.push({ address: r.address, at, ...halves(fromBits(r.bits)) });
+      }
+      /* Held under the digest read first: a change between the two reads differs next time and is read again. */
+      for (const [h, list] of fresh) held.set(h, { digest: now.get(h) ?? '', logos: list });
+    }
+    return [...held.values()]
+      .flatMap((x) => x.logos)
+      .sort((a, b) => a.at - b.at || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0));
   }
 }
 
