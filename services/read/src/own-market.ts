@@ -96,6 +96,12 @@ export interface OwnMarket {
   readonly candles: readonly Candle[];
   /** Null: ours are not enough, ask the market source for the trades. */
   readonly trades: readonly Trade[] | null;
+  /**
+   * When our recording of the coin began, for a chart that does not reach back to its launch; null when it
+   * covers the view (`covers`). A chart drawn from a mid-life recording says where it starts, never that the
+   * coin was born there (the owner, 2026-10-29: old coins' charts and trades from our own data, labelled).
+   */
+  readonly fromMs: number | null;
 }
 
 /** Whether our recording holds enough of the coin's life for this view. Pure. */
@@ -134,7 +140,7 @@ export async function ownMarket(mint: string, tf: Timeframe, deps: OwnMarketDeps
   const row = rows[0];
   const recordedFromMs = finite(row?.['recorded_from']);
   if (row === undefined || recordedFromMs === null) return null;
-  if (!covers({ recordedFromMs, fromLaunch: row['from_launch'] === true }, tf, now)) return null;
+  const covered = covers({ recordedFromMs, fromLaunch: row['from_launch'] === true }, tf, now);
   const minute: Candle[] = [];
   for (const r of raw) {
     const t = finite(r['t']);
@@ -147,7 +153,8 @@ export async function ownMarket(mint: string, tf: Timeframe, deps: OwnMarketDeps
   if (minute.length === 0) return null;
   const trades = await held;
   if (trades === null) return null;
-  const ownTrades = trades.held && (trades.whole || trades.trades.length >= MIN_TRADES) ? trades.trades : null;
+  /* Covered, our trades stand only when they are the coin's; a mid-life chart takes whatever latest trades we hold. */
+  const ownTrades = trades.held && (!covered || trades.whole || trades.trades.length >= MIN_TRADES) ? trades.trades : null;
   const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
   const fromStream = streamPool(mint, { pool: str(row['pool']), poolAddress: str(row['pool_address']), quoteMint: str(row['quote_mint']), symbol: str(row['symbol']), name: str(row['name']), imageUrl: str(row['image_uri']) });
   const market = deps.pool(mint).catch(() => null);
@@ -156,6 +163,7 @@ export async function ownMarket(mint: string, tf: Timeframe, deps: OwnMarketDeps
     pool: pool ?? fromStream,
     candles: view.ms === view.rows * MINUTE ? minute : aggregate(minute, view.ms),
     trades: ownTrades,
+    fromMs: covered ? null : recordedFromMs,
   };
 }
 

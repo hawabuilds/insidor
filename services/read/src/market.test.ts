@@ -75,7 +75,8 @@ test('★ served from our own data, the reply has the same shape, and the market
   });
   assert.equal(asked, 0);
   const body = JSON.parse(r!.body);
-  assert.deepEqual(Object.keys(body), ['kind', 'timeframe', 'venue', 'candles', 'trades', 'curveProgress', 'pair', 'coin']);
+  assert.deepEqual(Object.keys(body), ['kind', 'timeframe', 'venue', 'candles', 'chartFrom', 'trades', 'curveProgress', 'pair', 'coin']);
+  assert.equal(body.chartFrom, null, 'recorded from launch: the chart says nothing about where it starts');
   assert.equal(body.venue, 'curve');
   assert.deepEqual(body.curveProgress, { v: 0.42 });
   assert.deepEqual(body.trades[0], { tx: 's1', side: 'buy', tokenAmount: { v: 10 }, usd: { v: null, why: 'not_reported' }, priceUsd: { v: 0.1 }, at: { at: NOW - 1000 }, maker: 'w1' });
@@ -104,4 +105,32 @@ test('★ an older coin our candles do not cover is drawn by `olderCoins` (the f
     heldTrades: async () => ({ held: false, whole: false, trades: [] }),
   });
   assert.deepEqual(asked, ['free']);
+});
+
+test('★ an older coin our recording joined mid-life: our chart, labelled where it starts, when the source is slow or fails', async () => {
+  const NOW = Date.now();
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL, CANDLES_SQL } = await import('./own-market.ts');
+  const from = NOW - 2 * 3_600_000;
+  const db = {
+    query: async (sql: string) => {
+      if (sql === ASSET_SQL) return [{ chain: 'solana', address: LAURA }];
+      if (sql === CHART_SQL) return [{ recorded_from: from, from_launch: false, pool: 'pump-amm', pool_address: 'pool1', quote_mint: SOL.address, symbol: 'Laura', name: 'Forever Laura', image_uri: null }];
+      if (sql === CANDLES_SQL) return [{ t: NOW - 120_000, o: 1, h: 2, l: 0.5, c: 1.5 }];
+      throw new Error('unexpected');
+    },
+  };
+  const trade = { tx: 's1', side: 'buy' as const, tokenAmount: 10, usd: null, priceUsd: 0.1, at: NOW - 1000, maker: 'w1' };
+  const r = await coinMarket(`solana:${LAURA}`, '1D', {
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => { throw new Error('refused'); }, pool: async () => null },
+    curveProgress: null,
+    heldTrades: async () => ({ held: true, whole: false, trades: [trade] }),
+  });
+  const body = JSON.parse(r!.body);
+  assert.equal(body.kind, 'read');
+  assert.ok(body.candles.length > 0);
+  assert.deepEqual(body.chartFrom, { at: from });
+  assert.equal(body.trades.length, 1, 'the latest trades we hold, though not the whole list');
 });

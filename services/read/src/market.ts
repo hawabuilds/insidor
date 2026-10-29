@@ -131,7 +131,10 @@ export function coinOf(pool: Pool | null, mint: string): { ticker: string | null
  * Our candles with the source's trades when only the trades fall short; a source that fails then is
  * trades not read (null), never the whole page unavailable over a chart we could draw.
  */
-async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): Promise<CoinMarket> {
+/** How long a coin our recording joined mid-life waits on the market source for its full history before ours answers. */
+const PARTIAL_WAIT_MS = 1_500;
+
+async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): Promise<CoinMarket & { readonly chartFromMs?: number | null }> {
   const heldTrades = deps.heldTrades ?? null;
   let own: Awaited<ReturnType<typeof ownMarket>> = null;
   if (heldTrades !== null) {
@@ -143,6 +146,14 @@ async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): P
   }
   const older = deps.olderCoins ?? deps.market;
   if (own === null) return older.coin(mint, timeframe);
+  /* ★ RECORDED MID-LIFE (an older coin): the market source's whole history if it answers within
+     PARTIAL_WAIT_MS, else our own chart, labelled with where it starts (`fromMs`), and our latest trades. */
+  if (own.fromMs !== null) {
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), PARTIAL_WAIT_MS).unref());
+    const source = await Promise.race([older.coin(mint, timeframe).catch(() => null), timeout]);
+    if (source !== null && source.candles !== null && source.candles.length > 0) return source;
+    return { pool: source?.pool ?? own.pool, candles: own.candles, trades: own.trades ?? source?.trades ?? null, chartFromMs: own.fromMs };
+  }
   if (own.trades !== null) return { pool: own.pool, candles: own.candles, trades: own.trades };
   const source = await older.coin(mint, timeframe).catch(() => null);
   return { pool: source?.pool ?? own.pool, candles: own.candles, trades: source?.trades ?? null };
@@ -176,6 +187,8 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
       venue: market.pool === null ? null : onCurve ? 'curve' : 'pool',
       /* Null is "could not be read", an empty list is "no trades yet": two different facts. */
       candles: market.candles,
+      /* Where our chart starts when it does not reach the coin's launch (own-market.ts `fromMs`); null otherwise. */
+      chartFrom: market.chartFromMs === null || market.chartFromMs === undefined ? null : { at: market.chartFromMs },
       trades: market.trades === null ? null : market.trades.map((t) => ({
         tx: t.tx,
         side: t.side,
