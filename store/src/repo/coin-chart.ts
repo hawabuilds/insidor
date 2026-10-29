@@ -49,9 +49,25 @@ const iso = (ms: number): string => new Date(ms).toISOString();
 
 /** How long a watched coin, or a picked one, stays charted on its first trade. */
 const LISTED_DAYS = 2;
+const LISTED_MS = LISTED_DAYS * 86_400_000;
+/**
+ * How far behind the newest `since` / `updated_at` held each catch-up of `listed` reaches. Both are
+ * stamped from their writer's clock (the runner's), so a row written just after a read can carry an
+ * instant just before it; the overlap re-reads those few rows rather than missing one.
+ */
+const LISTED_OVERLAP_MS = 5 * 60_000;
+
+/** `listed`'s held rows: see there. */
+interface ListedState {
+  readonly watchSince: Map<string, number>;
+  readonly picks: Map<string, { readonly address: string | null; readonly picked: boolean; readonly atMs: number }>;
+  watchNewestMs: number | null;
+  pickNewestMs: number | null;
+}
 
 export class PgChartRepo {
   readonly #db: Db;
+  readonly #listed: ListedState = { watchSince: new Map(), picks: new Map(), watchNewestMs: null, pickNewestMs: null };
 
   constructor(db: Db) {
     this.#db = db;
@@ -65,14 +81,44 @@ export class PgChartRepo {
     return rows.map((r) => ({ address: r.address, lastTradeMs: new Date(r.last_trade_at).getTime() }));
   }
 
+  /**
+   * The coins watched since, or picked for a post written since, `LISTED_DAYS` before `nowMs`.
+   *
+   * ★ HELD AND CAUGHT UP, NOT READ WHOLE EACH MINUTE. Every minute's read returned ~15,000 addresses,
+   * ~1 GB a day of the database's egress on 29 Oct 2026, nearly all of them the minute before's. Now
+   * the watch rows and the pick rows of the window are read once, then only those whose `since` or
+   * `updated_at` is at or after the newest held (less the overlap). A watch row's `since` is set once
+   * (0114: a re-watch moves only `until`), and every pick write stamps `updated_at` — a pick that
+   * stops being "picked" comes back with its new outcome and leaves the set — so the held rows are the
+   * table's; rows that age out of the window are dropped here. Nothing deletes from either table.
+   */
   async listed(nowMs: number): Promise<ReadonlySet<string>> {
-    const rows = await this.#db.query<{ address: string }>(
-      `select address from internal.coin_watch where since >= $1::timestamptz - make_interval(days => $2)
-       union
-       select address from internal.post_coin_pick where outcome = 'picked' and updated_at >= $1::timestamptz - make_interval(days => $2)`,
-      [iso(nowMs), LISTED_DAYS],
+    const st = this.#listed;
+    const from = nowMs - LISTED_MS;
+    const after = (newest: number | null) => iso(Math.max(from, newest === null ? from : newest - LISTED_OVERLAP_MS));
+    const watch = await this.#db.query<{ address: string; at: number | string }>(
+      `select address, extract(epoch from since)::float8 * 1000 as at from internal.coin_watch where since >= $1`,
+      [after(st.watchNewestMs)],
     );
-    return new Set(rows.map((r) => r.address));
+    const picks = await this.#db.query<{ item_id: string; address: string | null; picked: boolean; at: number | string }>(
+      `select item_id, address, outcome = 'picked' as picked, extract(epoch from updated_at)::float8 * 1000 as at from internal.post_coin_pick where updated_at >= $1`,
+      [after(st.pickNewestMs)],
+    );
+    for (const r of watch) {
+      const at = Number(r.at);
+      st.watchSince.set(r.address, at);
+      if (st.watchNewestMs === null || at > st.watchNewestMs) st.watchNewestMs = at;
+    }
+    for (const r of picks) {
+      const at = Number(r.at);
+      st.picks.set(r.item_id, { address: r.address, picked: r.picked, atMs: at });
+      if (st.pickNewestMs === null || at > st.pickNewestMs) st.pickNewestMs = at;
+    }
+    for (const [a, at] of st.watchSince) if (at < from) st.watchSince.delete(a);
+    for (const [id, p] of st.picks) if (p.atMs < from) st.picks.delete(id);
+    const out = new Set<string>(st.watchSince.keys());
+    for (const p of st.picks.values()) if (p.picked) out.add(p.address as string);
+    return out;
   }
 
   async write(w: ChartWrite): Promise<void> {
