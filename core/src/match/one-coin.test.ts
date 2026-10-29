@@ -328,6 +328,20 @@ test('★ an unmeasured rival is weighed before the held coin: a runner the trad
   assert.equal(kept.kind === 'picked' && kept.address, 'DUD');
 });
 
+test('★ a reading whose cap is over `maxCapToPool` times its pool is a frozen quote (policy.v208, HPpMiM)', () => {
+  /* Off the curve: $8.9B on a $105k pool, against a $160k coin in a $30k pool. */
+  const fake = c('FAKE', 1_005, null, { market: { capUsd: 8_934_324_742, peakCapUsd: 8_934_324_742, liquidityUsd: 105_379 } });
+  const real = c('REAL', 1_006, null, { market: { capUsd: 160_000, peakCapUsd: 160_000, liquidityUsd: 30_000 } });
+  const o = pickOneCoin([fake, real], null, NOW, false, BARS);
+  assert.equal(o.kind === 'picked' && o.address, 'REAL');
+  assert.equal(o.kind === 'picked' && o.standings.find((s) => s.address === 'FAKE')?.strength, 0);
+  /* A launchpad coin a few times its pool, and one with no pool figure, are judged on their cap as before. */
+  const pool = pickOneCoin([c('A', 1_005, null, { market: { capUsd: 60_000, peakCapUsd: 60_000, liquidityUsd: 13_000 } })], null, NOW, false, BARS);
+  assert.equal(pool.kind === 'picked' && pool.address, 'A');
+  const curve = pickOneCoin([c('A', 1_005, null, { market: { capUsd: 60_000, peakCapUsd: 60_000, liquidityUsd: null } })], null, NOW, false, BARS);
+  assert.equal(curve.kind === 'picked' && curve.address, 'A');
+});
+
 test('★ the crash switch: under the share, a coin made for the post worth twice the held one takes it, on trades too', () => {
   /* 25 Oct 02:20: the wrong Marvin fell from $177k to $42k; the real one, linking the post, stood at $147k; net buying flat on both. */
   const holder = { address: 'WRONG', sinceMs: 1_006 * MIN };

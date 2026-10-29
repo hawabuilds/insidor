@@ -2651,6 +2651,12 @@ export interface OneCoinPolicy {
    * A reading with no liquidity figure (a coin still on its curve) is unknown and passes.
    */
   readonly minLiquidityUsd: number;
+  /**
+   * A reading whose cap is more than this many times its pool is no price either: a coin off the
+   * launchpad's curve read as its own supply times a quote. Such a reading is judged as a frozen
+   * quote (`minLiquidityUsd`). A reading with no pool figure is unknown and passes, as there.
+   */
+  readonly maxCapToPool: number;
   /** The trade feed counts as running when any watched coin's trades were updated this recently. */
   readonly tradeFeedFreshMs: number;
   /** Picture evidence: hashes this close are the same picture; an embedding this similar is too. */
@@ -5972,7 +5978,8 @@ const POLICY_V1: Policy = {
      v207 (2026-10-29) tells the owner when the month's database transfer is projected past 70% of the
      plan's 250 GB (`store.transfer`), estimated from the rows read each hour.
      v208 (2026-10-29, the owner: "beat the runner") judges a post on readings before its held coin when a
-     candidate is unmeasured on trades, so a held coin can be handed to a runner the trades cannot read. */
+     candidate is unmeasured on trades, so a held coin can be handed to a runner the trades cannot read,
+     and counts a reading whose cap is over `oneCoin.maxCapToPool` times its pool as a frozen quote. */
   version: 'policy.v208',
 
   admit: {
@@ -7688,6 +7695,12 @@ const POLICY_V1: Policy = {
     /* 17-19 Oct, readings at $15k or more: 469 readings of 213 coins had a pool under $1 (the most
        $0.27; "Kim" 5pwu…ZAV6 held $381,537 on $0.01 for three hours), and the next lowest was $473. */
     minLiquidityUsd: 100,
+    /* policy.v208. 22-29 Oct, readings of $15k or more on a pool of $100 or more: launchpad coins stood a
+       median 4.6 times their pool and two of 17,647 passed 100 times; coins off the curve stood near 31
+       times, and 103 readings at 1,000 times or more (HPpMiM read $8.9B on a $105k pool; up to six million
+       times), each holding a post's pick over its real runner ($8TJ1uh, $160M on our candles). Replayed on
+       186 runner posts: three more runners picked, no dud more. */
+    maxCapToPool: 1_000,
     tradeFeedFreshMs: 120_000,
     /* 10 bits is postCoin's same picture; 0.82 is the replay's "likely" picture. */
     picture: { maxHashDistance: 10, minSimilarity: 0.86 },
