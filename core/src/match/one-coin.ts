@@ -533,6 +533,20 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
     return { kind: 'picked', address, sinceMs, confirmed: nowMs >= confirmAt, handedOverFrom: from, underShareSinceMs, basis, standings };
   };
 
+  /* ★ A coin the trades already put out stays out on the readings fallback (2026-10-26, $DOUPI): a
+     curve's reading can stand still for an hour after the curve is emptied, and $41,293 on readings
+     picked again — fresh, as the leader — a coin the trades read at $1,985. Only the coins the
+     trades could not read are judged on readings; the ones they ruled out are not judged at all.
+     ★ BEFORE THE HELD COIN, NOT AFTER IT (policy.v208, 29 Oct). Judged after, a held coin measured on
+     trades met only the measured rivals: an unmeasured one has no net buying to lead it by, so the
+     held coin was never handed over, however far the unmeasured one ran. Replayed over 22-29 Oct on
+     186 posts whose launchpad coin passed $25k, 19 runners sat behind a held coin this way; judged
+     first, the post is weighed on readings, held coin included, and the pick moves at the hand-over
+     bar. A held coin the trades put out is dropped here, as it always was on this path. */
+  if (basis === 'trades' && unmeasured) {
+    const outOnTrades = new Set(standings.filter((s) => s.measured && s.out !== null).map((s) => s.address));
+    return pickOneCoin(contenders.filter((c) => !outOnTrades.has(c.address)), holder !== null && outOnTrades.has(holder.address) ? null : holder, nowMs, false, bars);
+  }
   const held = holder === null ? null : standings.find((s) => s.address === holder.address) ?? null;
   /* A held coin under the share stays on grace: not under the floor, not under for `rugGraceMs`. */
   const under = held?.out === 'fell_from_peak' ? holder?.underShareSinceMs ?? nowMs : null;
@@ -564,14 +578,6 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
   const wait = (reason: WaitingReason): OneCoinOutcome => ({ kind: 'waiting', reason, droppedHolder: dropped, basis, standings });
   if (standings.every((s) => !s.visible)) return wait('too_early');
   if (live.length === 0) return wait('all_out');
-  /* ★ A coin the trades already put out stays out on the readings fallback (2026-10-26, $DOUPI): a
-     curve's reading can stand still for an hour after the curve is emptied, and $41,293 on readings
-     picked again — fresh, as the leader — a coin the trades read at $1,985. Only the coins the
-     trades could not read are judged on readings; the ones they ruled out are not judged at all. */
-  if (basis === 'trades' && unmeasured) {
-    const outOnTrades = new Set(standings.filter((s) => s.measured && s.out !== null).map((s) => s.address));
-    return pickOneCoin(contenders.filter((c) => !outOnTrades.has(c.address)), holder !== null && outOnTrades.has(holder.address) ? null : holder, nowMs, false, bars);
-  }
   const top = ranked[0];
   if (top === undefined) return wait('too_early');
   if (!top.clears) return wait('under_bars');

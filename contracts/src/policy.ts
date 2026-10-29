@@ -5970,8 +5970,10 @@ const POLICY_V1: Policy = {
      a coin tied to a post by its name alone is about it, on both sides' words and pictures
      (`oneCoin.postCheck`); a "no" drops the coin from the pick and from "See N coins".
      v207 (2026-10-29) tells the owner when the month's database transfer is projected past 70% of the
-     plan's 250 GB (`store.transfer`), estimated from the rows read each hour. */
-  version: 'policy.v207',
+     plan's 250 GB (`store.transfer`), estimated from the rows read each hour.
+     v208 (2026-10-29, the owner: "beat the runner") judges a post on readings before its held coin when a
+     candidate is unmeasured on trades, so a held coin can be handed to a runner the trades cannot read. */
+  version: 'policy.v208',
 
   admit: {
     maxAgeMin: 240,
