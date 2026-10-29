@@ -189,6 +189,11 @@ export class PgCoinFirstRepo {
                              where r.asset_key = c.asset_key and r.taken_at >= c.launched_at), 0) >= $3
                or coalesce((select max(m.last_mcap_usd) from internal.coin_trade_minute m
                              where m.address = c.address and m.minute >= date_trunc('minute', c.launched_at)), 0) >= $3
+               /* ★ Our own candles (chainwatch, every coin the trade stream sees, 0144): a coin no market read
+                  and no watch covered still shows it ran (2026-10-29: PODCAT reached ~$371k with neither). The
+                  launchpad's coins are minted at a billion, so the cap is the candle's dollar price × 10^9. */
+               or coalesce((select max(k.h) from public.coin_candle k
+                             where k.address = c.address and k.minutes = 1 and k.bucket >= date_trunc('minute', c.launched_at)), 0) * 1e9 >= $3
          ), links as (
            select r.address, r.launched_at, l.source, l.source_item_id, l.link, l.source || ':' || l.source_item_id as linked_id
              from running r join internal.coin_post_link l on l.asset_key = r.asset_key
