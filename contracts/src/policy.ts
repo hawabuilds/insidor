@@ -5466,6 +5466,25 @@ export interface StorePolicy {
     /** The owner is told once a month when the month's projected bill first passes this. */
     readonly alertOverUsd: number;
   };
+  /**
+   * ★ THE MONTH'S DATABASE TRANSFER (the owner, 2026-10-29: the host restricted the project for
+   * passing the plan's egress, and the spend cap stays on). The host's own count needs a management
+   * token we do not hold, so it is ESTIMATED: each hour the runner sums the rows its database's read
+   * statements returned (pg_stat_statements, per statement, so an evicted entry or a reset is never a
+   * negative hour) into internal.disk_sample.read_rows (0153), and a row is `bytesPerRow` on the wire.
+   * The month is the calendar month in UTC; the owner is told once a month when it is projected past
+   * `alertShare` of `includedGb`.
+   */
+  readonly transfer: {
+    readonly on: boolean;
+    /** The plan's transfer a month, in GB of 10⁹ bytes (the host's unit). */
+    readonly includedGb: number;
+    readonly alertShare: number;
+    /** Measured 29 Oct 2026: ~45 GB a day estimated from the columns' widths over ~437M rows read. */
+    readonly bytesPerRow: number;
+    /** The rest of the month is projected at the average of this many recent hours. */
+    readonly recentHours: number;
+  };
 }
 
 export interface Policy {
@@ -5949,8 +5968,10 @@ const POLICY_V1: Policy = {
      `paging.searches.late_120` $0.45 taken from the slow lane's $1.05): the search day does not move.
      v206 (2026-10-29, the owner: coins whose "linked x post or image is unrelated") asks the judge whether
      a coin tied to a post by its name alone is about it, on both sides' words and pictures
-     (`oneCoin.postCheck`); a "no" drops the coin from the pick and from "See N coins". */
-  version: 'policy.v206',
+     (`oneCoin.postCheck`); a "no" drops the coin from the pick and from "See N coins".
+     v207 (2026-10-29) tells the owner when the month's database transfer is projected past 70% of the
+     plan's 250 GB (`store.transfer`), estimated from the rows read each hour. */
+  version: 'policy.v207',
 
   admit: {
     maxAgeMin: 240,
@@ -8598,6 +8619,13 @@ const POLICY_V1: Policy = {
       storageIncludedGb: 100,
       storageUsdPerGbMonth: 0.0213,
       alertOverUsd: 90,
+    },
+    transfer: {
+      on: true,
+      includedGb: 250,
+      alertShare: 0.7,
+      bytesPerRow: 100,
+      recentHours: 24,
     },
   },
 

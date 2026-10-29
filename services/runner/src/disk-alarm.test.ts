@@ -13,6 +13,7 @@ import type { OwnerAlert } from '@insidor/store';
 
 import { diskAlarm } from './disk-alarm.ts';
 import { GB, growthOf, projectBill, replayDisk, type SizeSample } from './disk-model.ts';
+import { projectTransfer } from './transfer-model.ts';
 import type { Logger } from './log.ts';
 
 const P = DEFAULT_POLICY.store;
@@ -79,4 +80,43 @@ test('the alarm queues a recent crossing, a grow and the month bill once each, a
   const at = (h: number) => new Date(START + h * H).toISOString();
   assert.deepEqual(queued.map((a) => a.subject), ['bill|2026-10', `disk|over|18|${at(7)}`, `disk|grew|18|${at(6)}`]);
   assert.ok(queued.every((a) => a.kind === 'outage'));
+});
+
+test('the transfer is projected from the recent hours, unknown hours filled with the month\'s average, and alarmed once a month at 70%', async () => {
+  const T = P.transfer;
+  /* 10 days of hours at 3M rows (300 MB an hour at 100 bytes a row: 7.2 GB a day), the first hour after a start unknown. */
+  const rows: SizeSample[] = hourly(START, 240, () => 4).map((s, i) => ({ ...s, readRows: i === 5 ? null : 3_000_000 }));
+  const now = START + 239 * H;
+  const t = projectTransfer(rows, now, T);
+  assert.ok(t !== null);
+  assert.equal(t.knownHours, 239);
+  assert.ok(Math.abs(t.gbSoFar - 240 * 0.3) < 1e-6, `so far ${t.gbSoFar}`);
+  assert.ok(Math.abs(t.gbPerDay - 7.2) < 1e-6);
+  /* 31 days of October at 7.2 GB a day. */
+  assert.ok(Math.abs(t.projectedGb - 31 * 7.2) < 1e-6, `projected ${t.projectedGb}`);
+  /* A cut: the last day at a tenth. The projection follows the recent hours, not the month's average. */
+  const cut = rows.map((s, i) => (i >= 216 ? { ...s, readRows: 300_000 } : s));
+  const after = projectTransfer(cut, now, T);
+  assert.ok(after !== null && after.projectedGb < 100, `after the cut ${after?.projectedGb}`);
+  /* No known hour: nothing to say. */
+  assert.equal(projectTransfer(hourly(START, 10, () => 4), START + 9 * H, T), null);
+
+  const queued: OwnerAlert[] = [];
+  const alarm = diskAlarm({
+    policy: { ...P, bill: { ...P.bill, on: false }, disk: { ...P.disk, on: false } },
+    sample: async () => undefined,
+    samples: async () => rows,
+    ownerWallets: ['w'],
+    owner: { ownerIds: async () => ['owner'], queue: async (_u, a) => void queued.push(a) },
+    log: quiet,
+    now: () => now,
+  });
+  await alarm.check();
+  await alarm.check();
+  assert.deepEqual(queued.map((a) => [a.subject, a.facts['percent']]), [['transfer|2026-10', 89]]);
+  /* Under the line: nothing. */
+  const quietRows = cut;
+  const none: OwnerAlert[] = [];
+  await diskAlarm({ policy: { ...P, bill: { ...P.bill, on: false } }, sample: async () => undefined, samples: async () => quietRows, ownerWallets: ['w'], owner: { ownerIds: async () => ['owner'], queue: async (_u, a) => void none.push(a) }, log: quiet, now: () => now }).check();
+  assert.deepEqual(none.filter((a) => a.subject.startsWith('transfer')), []);
 });

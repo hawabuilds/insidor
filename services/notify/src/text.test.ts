@@ -200,6 +200,10 @@ test('the disk alerts say the size against the inferred disk; the bill says its 
     title: 'Database bill heading for $75.00 this month',
     body: 'Over your $40 line. Plan $25.00, compute $50.00 (assumed, please confirm), disk $0.00, files unknown. Egress is not counted.',
   });
+  assert.deepEqual(alertText('outage', { what: 'transfer', projectedGb: 212.4, includedGb: 250, percent: 85, gbPerDay: 6.1 }), {
+    title: 'Database transfer heading for about 212.4 GB this month',
+    body: "That is 85% of the plan's 250 GB, at about 6.1 GB a day now. The host restricts the project when it runs out and the spend cap is on. Estimated from the rows read, not the host's own count.",
+  });
 });
 
 test('the judge cost alert says the hour\'s cost a call against the median, from the ledger', () => {
