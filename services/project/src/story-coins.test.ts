@@ -8,7 +8,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { foldCoinCalls } from '@insidor/core';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { foldCoinCalls, storyCoins } from '@insidor/core';
 
 import { coinChecks, lookupWithoutWrong, postCoins, withoutWrong, type PostLookup } from './rising.ts';
 import { anchorsOf } from './story-coins.ts';
@@ -67,4 +68,27 @@ test('★ a board story drops a coin the owner called wrong on any of its posts'
   const wrong = storyWrongCoins([{ story_id: 's1', item_id: 'x:karl' }, { story_id: 's1', item_id: 'x:other' }, { story_id: 's2', item_id: 'x:other' }], calls);
   assert.deepEqual([...(wrong.get('s1') ?? [])], ['KARL']);
   assert.equal(wrong.has('s2'), false);
+});
+
+test('the story coin answers the same with only the pairs at the lowest bar or over (the read story-coins.ts asks for)', () => {
+  const bars = DEFAULT_POLICY.postCoin.storyCoin;
+  const lowest = Math.min(bars.alone, bars.together, bars.near);
+  /* A small fixed generator, so the case is the same every run. */
+  let seed = 7;
+  const rand = () => ((seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648);
+  const words = ['tiger', 'altai', 'rocket', 'moon', 'frog', 'cat'];
+  const text = () => Array.from({ length: 4 }, () => words[Math.floor(rand() * words.length)]).join(' ');
+  let matched = 0;
+  for (let round = 0; round < 50; round += 1) {
+    const posts = Array.from({ length: 12 }, (_, i) => ({ itemId: `p${i}`, name: rand() < 0.3 ? 'ALTAI' : null, stories: [`s${i % 3}`], text: text() }));
+    const anchors = Array.from({ length: 5 }, (_, i) => ({ itemId: `p${i * 2}`, coin: `C${i % 3}`, atMs: i, kind: (rand() < 0.7 ? 'right' : 'wrong') as 'right' | 'wrong', names: rand() < 0.5 ? ['ALTAI'] : ['other'], stories: [`s${i % 3}`] }));
+    const all = new Map<string, number>();
+    for (const p of posts) for (const a of anchors) if (p.itemId !== a.itemId) all.set(`${p.itemId}|${a.itemId}`, 0.7 + rand() * 0.25);
+    const kept = new Map([...all].filter(([, v]) => v >= lowest));
+    const run = (sims: ReadonlyMap<string, number>) =>
+      [...storyCoins(posts, anchors, (p, a) => sims.get(`${p}|${a}`), bars, (a) => posts.find((p) => p.itemId === a)?.text ?? null)].map(([id, c]) => [id, c.coin, [...c.wrong].sort()]);
+    assert.deepEqual(run(kept), run(all));
+    matched += run(all).length;
+  }
+  assert.ok(matched > 20, `only ${matched} posts matched: the case tests nothing`);
 });

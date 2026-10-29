@@ -67,13 +67,22 @@ const vectors = (withKept: boolean, param: string, labelFirst: boolean, spacePar
   return `select distinct on (item_id, space) item_id, space, embedding from (${withKept ? `${label} union all ${kept}` : label}) v order by item_id, space, pref`;
 };
 
-async function similarities(db: Db, postIds: readonly string[], anchorIds: readonly string[], space: string): Promise<ReadonlyMap<string, number>> {
+/**
+ * Each (post, anchor) pair's similarity, for the pairs at `atLeast` or over.
+ *
+ * ★ ONLY THE PAIRS A BAR CAN PASS. Every post against every anchor was ~35,000 rows a frame (~2 GB a
+ * day of the database's egress on 29 Oct 2026), and core `storyCoins` reads a similarity only to
+ * compare it with one of its bars, so a pair under the lowest of them (`near`) answers exactly as an
+ * absent one does. The caller passes the lowest bar; raising it above any bar changes the answer.
+ */
+async function similarities(db: Db, postIds: readonly string[], anchorIds: readonly string[], space: string, atLeast: number): Promise<ReadonlyMap<string, number>> {
   const run = (withKept: boolean) =>
     db.query<{ item_id: string; anchor: string; similarity: number | string }>(
       `with p as (${vectors(withKept, '$1', false, '$3')}), a as (${vectors(withKept, '$2', true, '$3')})
        select p.item_id, a.item_id as anchor, 1 - (p.embedding <=> a.embedding) as similarity
-         from p join a on a.space = p.space and a.item_id <> p.item_id`,
-      [[...postIds], [...anchorIds], space],
+         from p join a on a.space = p.space and a.item_id <> p.item_id
+        where 1 - (p.embedding <=> a.embedding) >= $4`,
+      [[...postIds], [...anchorIds], space, atLeast],
     );
   /* Asked first, never caught: inside the projector's transaction a failed statement aborts the rest. */
   const [have] = await db.query<{ kept: boolean; labels: boolean }>(
@@ -122,7 +131,8 @@ export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: 
   const bare = [...anchorsOf(calls), ...narrativeAnchors(await new PgNarrativeRepo(db).calls())];
   if (postIds.length === 0 || bare.length === 0) return new Map();
   const anchorIds = [...new Set(bare.map((a) => a.itemId))];
-  const sims = await similarities(db, postIds, anchorIds, policy.group.image.postSpace);
+  const bars = policy.postCoin.storyCoin;
+  const sims = await similarities(db, postIds, anchorIds, policy.group.image.postSpace, Math.min(bars.alone, bars.together, bars.near));
   if (sims.size === 0) return new Map();
   const meta = await namesAndStories(db, [...new Set([...postIds, ...anchorIds])]);
   const coinNames = await namesOfCoins(db, [...new Set(bare.map((a) => a.coin))]);
