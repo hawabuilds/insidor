@@ -207,7 +207,21 @@ async function loadPosts(db: Db, itemIds: readonly string[]): Promise<ReadonlyMa
  * the metadata document's links, the picture similarity on the coin's current picture, and
  * the judge's answer on that pair.
  */
+/**
+ * ★ IN BATCHES OF `COIN_PAIRS_PER_READ` (2026-10-29): one statement over every pair took 135 s for 8,313
+ * pairs once the late route's four hours (policy.v203) added late posts, and the full frame failed on the
+ * statement limit — For You froze for hours. Same rows, same order within each batch; only each statement is
+ * short.
+ */
+const COIN_PAIRS_PER_READ = 1_000;
+
 async function loadCoins(db: Db, pairs: readonly { itemId: string; address: string }[], space: string): Promise<readonly CoinRow[]> {
+  const out: CoinRow[] = [];
+  for (let i = 0; i < pairs.length; i += COIN_PAIRS_PER_READ) out.push(...(await loadCoinsBatch(db, pairs.slice(i, i + COIN_PAIRS_PER_READ), space)));
+  return out;
+}
+
+async function loadCoinsBatch(db: Db, pairs: readonly { itemId: string; address: string }[], space: string): Promise<readonly CoinRow[]> {
   if (pairs.length === 0) return [];
   return db.query<CoinRow>(
     `select p.item_id, p.address, coalesce(n.name, a.name) as name, coalesce(n.ticker, a.symbol) as ticker,
