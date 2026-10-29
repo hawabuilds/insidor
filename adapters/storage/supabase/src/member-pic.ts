@@ -20,12 +20,9 @@
  * would let one upload replace another member's photo, or a coin's logo.
  */
 
-import { VendorUnavailable } from '@insidor/vendor-kit';
+import { LogoRefused, pictureUrl, sniffPicture, writePicture } from './coin-logo.ts';
+import type { R2Config } from './r2.ts';
 
-import { LogoRefused, sniffPicture } from './coin-logo.ts';
-
-const VENDOR = 'supabase-storage';
-const BUCKET = 'launch-metadata';
 export const MEMBER_PIC_FOLDER = 'member-pics';
 export const MEMBER_PIC_FILE = /^[0-9a-f]{32}$/;
 const TAKEN = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -39,6 +36,8 @@ export interface MemberPicConfig {
   readonly timeoutMs: number;
   /** The largest photo written, in bytes. */
   readonly maxBytes: number;
+  /** When set, photos are written to R2 at the same path (r2.ts); absent or null: Supabase Storage. */
+  readonly r2?: R2Config | null;
 }
 
 /** The photo's type by its bytes, when it is one we keep; null otherwise. */
@@ -48,28 +47,16 @@ export function photoType(bytes: Uint8Array): string | null {
 }
 
 export function memberPicStore(config: MemberPicConfig) {
-  const base = config.url.replace(/\/+$/, '');
   return {
     /** The public link a stored photo is read from. */
-    urlOf: (file: string): string => `${base}/storage/v1/object/public/${BUCKET}/${MEMBER_PIC_FOLDER}/${file}`,
+    urlOf: (file: string): string => pictureUrl(config, `${MEMBER_PIC_FOLDER}/${file}`),
     /** Store one photo under a new name. Throws PhotoRefused for anything that is not a photo we keep. */
     async put(file: string, bytes: Uint8Array): Promise<void> {
       if (!MEMBER_PIC_FILE.test(file)) throw new LogoRefused('not a photo file name');
       if (bytes.length === 0 || bytes.length > config.maxBytes) throw new LogoRefused('too big');
       const type = photoType(bytes);
       if (type === null) throw new LogoRefused('not a PNG, JPEG or WebP photo');
-      let response: Response;
-      try {
-        response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${MEMBER_PIC_FOLDER}/${file}`, {
-          method: 'POST',
-          headers: { apikey: config.serviceKey, authorization: `Bearer ${config.serviceKey}`, 'content-type': type, 'cache-control': 'max-age=31536000' },
-          body: new Blob([Buffer.from(bytes)], { type }),
-          signal: AbortSignal.timeout(config.timeoutMs),
-        });
-      } catch (e) {
-        throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `request failed: ${e instanceof Error ? e.message : 'unknown'}`);
-      }
-      if (!response.ok) throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `responded ${response.status}`, response.status);
+      await writePicture(config, `${MEMBER_PIC_FOLDER}/${file}`, { bytes, type }, 'max-age=31536000');
     },
   };
 }

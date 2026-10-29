@@ -16,6 +16,8 @@
 
 import { rec, str, VendorUnavailable } from '@insidor/vendor-kit';
 
+import { r2Put, r2PublicUrl, type R2Config } from './r2.ts';
+
 const VENDOR = 'supabase-storage';
 const BUCKET = 'launch-metadata';
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -28,6 +30,8 @@ export interface StorageConfig {
   readonly serviceKey: string;
   readonly fetch: typeof globalThis.fetch;
   readonly id: () => string;
+  /** When set, the picture and document go to R2 at the same names (r2.ts); absent or null: Supabase Storage. */
+  readonly r2?: R2Config | null;
 }
 
 export interface LaunchMetadataInput {
@@ -72,6 +76,11 @@ export function supabaseStorage(config: StorageConfig) {
   const base = config.url.replace(/\/+$/, '');
   const headers = { apikey: config.serviceKey, authorization: `Bearer ${config.serviceKey}` };
   const put = async (path: string, body: Uint8Array | string, contentType: string): Promise<string> => {
+    /* The chain points at these files forever: never replaced, so a long cache is safe. */
+    if (config.r2) {
+      await r2Put(config.r2, config.fetch, path, body, contentType, 'max-age=31536000, immutable', 30_000);
+      return r2PublicUrl(config.r2, path);
+    }
     let response: Response;
     try {
       response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${path}`, {
