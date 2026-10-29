@@ -132,7 +132,8 @@ test('★ as shipped: the middle lane and every other catch-all search read past
   assert.equal(DEFAULT_POLICY.feed.middle.maxPages, 40);
   assert.equal(DEFAULT_POLICY.feed.middle.passDeadlineMs, 180_000);
   assert.equal(DEFAULT_POLICY.feed.middle.cap.dailyUsd, 3);
-  assert.deepEqual(Object.keys(DEFAULT_POLICY.feed.paging.searches).sort(), ['band_50', 'band_6', 'late_300', 'late_480', 'slow']);
+  assert.deepEqual(Object.keys(DEFAULT_POLICY.feed.paging.searches).sort(), ['band_50', 'band_6', 'late_120', 'late_300', 'late_480', 'slow']);
+  assert.equal(pagingKey({ lane: 'slow', slice: false, band: 120, late: true, middle: false }), 'late_120', 'the two-hour band (v205) has its own day');
   for (const [name, s] of Object.entries(DEFAULT_POLICY.feed.paging.searches)) {
     assert.equal(s.full, true, `${name} reads to the source's end (the re-split of 2026-10-19)`);
     assert.ok(s.dailyUsd > 0 && s.maxPages >= 1 && s.passDeadlineMs > 0, `${name} has its own day`);
