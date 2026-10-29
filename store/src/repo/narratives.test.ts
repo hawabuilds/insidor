@@ -85,3 +85,36 @@ test('★ once listed, listed (0135): a written page marks its narrative the fir
   const never = seen.find((s) => s.sql.includes('not exists (select 1 from public.story_view'));
   assert.match(never?.sql ?? '', /order by \(n\.listed_at is null\), n\.updated_at/);
 });
+
+test('the owner\'s narrative calls are held and only the newer ones read', async () => {
+  const table = [
+    { id: 1, at: new Date(1000), item_id: 'n1', verdict: 'merge', other_id: 'n2', coin_address: null, members: null, other_members: null },
+    { id: 2, at: new Date(2000), item_id: 'n3', verdict: 'hide', other_id: null, coin_address: null, members: null, other_members: null },
+  ];
+  const reads: string[] = [];
+  const db: Db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes('to_regclass')) return [{ ok: true } as R];
+      if (sql.includes('count(*)::int as n')) return [{ n: table.length, m: String(Math.max(...table.map((r) => r.id))) } as R];
+      if (sql.includes('id > $1')) {
+        reads.push(`after ${String(params?.[0])}`);
+        return table.filter((r) => r.id > Number(params?.[0])) as R[];
+      }
+      reads.push('whole');
+      return [...table].sort((a, b) => a.at.getTime() - b.at.getTime() || a.id - b.id) as R[];
+    },
+  };
+  const ids = async () => (await new PgNarrativeRepo(db).calls()).map((c) => c.id);
+  assert.deepEqual(await ids(), [1, 2]);
+  assert.deepEqual(await ids(), [1, 2]);
+  assert.deepEqual(reads, ['whole']);
+  table.push({ id: 3, at: new Date(3000), item_id: 'n4', verdict: 'hide', other_id: null, coin_address: null, members: null, other_members: null });
+  assert.deepEqual(await ids(), [1, 2, 3]);
+  assert.deepEqual(reads, ['whole', 'after 2']);
+  /* A lower id that committed late: the count still differs after the catch-up, so all is read again. */
+  table.push({ id: 5, at: new Date(5000), item_id: 'n5', verdict: 'hide', other_id: null, coin_address: null, members: null, other_members: null });
+  await ids();
+  table.push({ id: 4, at: new Date(4000), item_id: 'n6', verdict: 'hide', other_id: null, coin_address: null, members: null, other_members: null });
+  assert.deepEqual(await ids(), [1, 2, 3, 4, 5]);
+  assert.deepEqual(reads, ['whole', 'after 2', 'after 3', 'after 5', 'whole']);
+});

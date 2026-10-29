@@ -158,6 +158,9 @@ const toPost = (r: PostRow): NarrativePostRow => ({
   ownTalk: r.own_talk === true,
 });
 
+/** The owner's narrative calls as last read, for `calls` (held across repos: one is made per frame). */
+const HELD_NARRATIVE_CALLS: { calls: readonly NarrativeCallRecord[] | null; maxId: number } = { calls: null, maxId: 0 };
+
 /** An open narrative as the last pass wrote it. */
 export interface StoredNarrative {
   readonly id: string;
@@ -784,15 +787,23 @@ export class PgNarrativeRepo {
     return rows.map((r) => ({ id: r.narrative_id, state: r.state, mergedInto: r.merged_into }));
   }
 
-  /** Every call the owner made on a narrative, oldest first. Empty before 0093. */
+  /**
+   * Every call the owner made on a narrative, oldest first. Empty before 0093.
+   *
+   * ★ HELD, CAUGHT UP BY ID. The frames and the grouping pass ask for every call about every 36
+   * seconds and the answer is the same nearly every time (~0.8 GB a day of database egress,
+   * 2026-10-29). owner_feedback is append-only, so the calls are held in the process (a repo is made
+   * per frame) and each read first asks for the count and the newest id: the same, the held calls are
+   * the answer; otherwise only the rows past the newest held id are read, and a whole read is made
+   * when the count still differs (a lower id that committed late). What breaks if changed carelessly:
+   * an update or delete on these rows would be missed — the table is written only by insert.
+   */
   async calls(): Promise<readonly NarrativeCallRecord[]> {
     if (!(await this.migrated())) return [];
     type Row = { id: string | number; at: Date | string; item_id: string; verdict: NarrativeCallRecord['verdict']; other_id: string | null; coin_address: string | null; members: string[] | null; other_members: string[] | null };
-    const rows = await orEmpty(() => this.#db.query<Row>(
-      `select id, created_at as at, item_id, verdict, other_id, coin_address, members, other_members
-         from internal.owner_feedback where subject_kind = 'narrative' order by created_at, id`,
-    ), []);
-    return rows.map((r) => ({
+    const COLUMNS = `select id, created_at as at, item_id, verdict, other_id, coin_address, members, other_members
+         from internal.owner_feedback where subject_kind = 'narrative'`;
+    const toCall = (r: Row): NarrativeCallRecord => ({
       id: Number(r.id),
       atMs: toMs(r.at) ?? 0,
       narrativeId: r.item_id,
@@ -801,7 +812,26 @@ export class PgNarrativeRepo {
       coin: r.coin_address,
       members: r.members ?? [],
       otherMembers: r.other_members ?? [],
-    }));
+    });
+    const [head] = await orEmpty(() => this.#db.query<{ n: number; m: string | null }>(
+      `select count(*)::int as n, max(id)::text as m from internal.owner_feedback where subject_kind = 'narrative'`,
+    ), []);
+    const n = head === undefined ? null : Number(head.n);
+    const m = head?.m === null || head?.m === undefined ? 0 : Number(head.m);
+    const held = HELD_NARRATIVE_CALLS.calls;
+    if (held !== null && n !== null && held.length === n && HELD_NARRATIVE_CALLS.maxId === m) return held;
+    let calls: NarrativeCallRecord[] | null = null;
+    if (held !== null && n !== null) {
+      const newer = await orEmpty(() => this.#db.query<Row>(`${COLUMNS} and id > $1 order by created_at, id`, [HELD_NARRATIVE_CALLS.maxId]), []);
+      const merged = [...held, ...newer.map(toCall)];
+      if (merged.length === n) calls = merged.sort((a, b) => a.atMs - b.atMs || a.id - b.id);
+    }
+    if (calls === null) calls = (await orEmpty(() => this.#db.query<Row>(`${COLUMNS} order by created_at, id`), [])).map(toCall);
+    if (n !== null && calls.length === n) {
+      HELD_NARRATIVE_CALLS.calls = calls;
+      HELD_NARRATIVE_CALLS.maxId = calls.reduce((x, c) => Math.max(x, c.id), 0);
+    } else HELD_NARRATIVE_CALLS.calls = null;
+    return calls;
   }
 
   /**
