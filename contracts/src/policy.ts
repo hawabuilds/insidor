@@ -5933,7 +5933,8 @@ const POLICY_V1: Policy = {
      v202 (2026-10-28, the owner) holds POLITICS again (`judge.heldKinds`); the viral exception still lifts a
      huge, fast one (the Nicki Minaj and Trump post).
      v203 (2026-10-29, the owner) counts a post found four hours after it went up as late
-     (`lateNoCoin.foundAfterMs`), so what the five-hour search finds can still reach For You. */
+     (`lateNoCoin.foundAfterMs`), so what the five-hour search finds can still reach For You, and searches
+     Indonesian ('in') at Korean's share, taken from English's: the search day does not move. */
   version: 'policy.v203',
 
   admit: {
@@ -6565,7 +6566,10 @@ const POLICY_V1: Policy = {
        Arabic (0.5%, Korean 8, Indonesian 7), an undercount since only a coin's link brought them in.
        Cost: none on the day; its share (`langSplit.shares`, Korean's) comes out of the same
        `bandsDailyUsd`, and its first ask an hour per band is ~48 one-post minimums a day, $0.007. */
-    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko', 'zh', 'tr', 'ar'],
+    /* 'in' (Indonesian) from policy.v203 (the owner's missed @dellunera video of 29 Oct, 72k views and 6.8k
+       likes in three hours, which no search asked: Indonesian was never searched). At Korean's and Arabic's
+       share, taken from English's (`langSplit.shares`), so `bandsDailyUsd` does not move. */
+    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko', 'zh', 'tr', 'ar', 'in'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
@@ -6733,7 +6737,7 @@ const POLICY_V1: Policy = {
         everyMs: 600_000, // ten minutes
         /* `zxx` (no words: a picture or a video alone) and `qme` (only emoji) from v196: two of the
            never-found missed posts, 232k and 142k likes, were `zxx`. */
-        langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme'],
+        langs: ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme', 'in'],
       },
     },
     /* On from 2026-10-16, the owner's approval ("the middle X search for posts 15 min to 3 h old with
@@ -6889,7 +6893,7 @@ const POLICY_V1: Policy = {
     langSplit: {
       on: true,
       /* Arabic 0.005 from policy.v185 (`feed.langs`), Korean's share, taken from English (0.7 → 0.695). */
-      shares: { en: 0.695, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005, ar: 0.005 },
+      shares: { en: 0.69, ja: 0.1, zxx: 0.063, fr: 0.054, es: 0.024, pt: 0.019, tr: 0.015, zh: 0.012, qme: 0.008, ko: 0.005, ar: 0.005, in: 0.005 },
       bandsDailyUsd: 2.85, // 3.65 → 3.25 (Turkish, Chinese) → 2.85 (Spanish, Portuguese, 2026-10-24) in the older search (slow.langs)
       minPostsPerAsk: 2,
       maxEveryMs: 3_600_000, // an hour
