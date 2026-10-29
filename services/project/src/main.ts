@@ -108,8 +108,11 @@ async function main(): Promise<void> {
   const pool = createPool(DB_ROLE.service, {
     applicationName: 'insidor-project',
     /* Two minutes a statement (2026-10-28): the full frame's reads over a day of posts and readings
-       outgrew the service role's 30 s on a busy database, and every frame failed from 10:12 UTC. */
-    statementTimeoutMs: 120_000,
+       outgrew the service role's 30 s on a busy database, and every frame failed from 10:12 UTC.
+       Four minutes from 2026-10-29: the late route's four hours (policy.v203) took about four times the
+       late posts into the frame, and both frames after it failed on a statement over two minutes — For
+       You froze for over an hour. Under the role's own five-minute ceiling (0149). */
+    statementTimeoutMs: 240_000,
     env: { DATABASE_URL_SERVICE: connectionUrl(process.env) },
   });
 
