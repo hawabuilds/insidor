@@ -38,7 +38,8 @@
     "dev:notify": "pnpm --filter @insidor/notify dev",
     "phone": "pnpm --filter @insidor/mobile build && pnpm --filter @insidor/mobile preview",
     "tunnel": "cloudflared tunnel --no-autoupdate --url http://localhost:5174",
-    "judge:record": "node --env-file-if-exists=.env.local --experimental-strip-types tools/judge-record.ts"
+    "judge:record": "node --env-file-if-exists=.env.local --experimental-strip-types tools/judge-record.ts",
+    "golden": "node --env-file=.env.local --experimental-strip-types tools/golden.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
