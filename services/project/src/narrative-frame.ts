@@ -72,7 +72,7 @@
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { barWindowMs, coinCallFor, foldNarrativeCalls, totalReachSeries, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
-import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
+import { PgCoinPostCheckRepo, PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
@@ -287,11 +287,15 @@ async function cardCoins(db: Db, itemIds: readonly string[], nowMs: number): Pro
   /* One after the other: this runs on the projector's one transaction. */
   const searched = await loadPostLookups(db, waiting, nowMs);
   const calls = await loadCoinCalls(db, waiting);
+  /* ★ And the coins the judge, shown both sides' words and pictures, called about something else (Policy.oneCoin.postCheck). */
+  const refused = DEFAULT_POLICY.oneCoin.postCheck.on
+    ? await new PgCoinPostCheckRepo(db).refused([...searched].flatMap(([itemId, l]) => ('coins' in l ? l.coins.map((address) => ({ itemId, address })) : [])))
+    : new Set<string>();
   for (const id of waiting) {
     const call = calls.get(id);
     const lookup = searched.get(id);
     const own = call?.own ?? null;
-    const list = call?.none === true ? [] : lookup !== undefined && 'coins' in lookup ? lookup.coins.filter((a) => call?.wrong.has(a) !== true) : null;
+    const list = call?.none === true ? [] : lookup !== undefined && 'coins' in lookup ? lookup.coins.filter((a) => call?.wrong.has(a) !== true && !refused.has(`${id}|${a}`)) : null;
     if (own === null && list === null) continue;
     out.set(id, { itemId: id, confirmed: call?.none === true ? null : own, proven: null, listed: list });
   }

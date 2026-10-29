@@ -80,6 +80,8 @@ export type { AppliedExamples, CoinedPostRow, ExamplesVersion, GoldAddition, Mis
 export type { GrowthPair, LaneMeasured, RecallDay, RecallRow, RecallRun } from './repo/recall.ts';
 export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
 export { PgImagePairRepo } from './repo/image-pairs.ts';
+export { PgCoinPostCheckRepo } from './repo/coin-post-check.ts';
+export type { CoinPostDue } from './repo/coin-post-check.ts';
 export type { ImageMatch, UnembeddedImage } from './repo/image-embeddings.ts';
 export { PgCoinVectorRepo } from './repo/coin-vectors.ts';
 export type { CoinVectorKey } from './repo/coin-vectors.ts';

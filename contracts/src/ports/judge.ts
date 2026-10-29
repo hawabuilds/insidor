@@ -116,3 +116,25 @@ export interface JudgePort {
   sameSubject?(a: MediaRef, b: MediaRef, budget: Budget): Promise<Metered<SameSubjectAnswer | null>>;
   estimateSameSubject?(): CostEstimate;
 }
+
+/**
+ * One side of the coin-and-post question, as each presents itself: the coin by its name, ticker,
+ * description, the words of the post its own link points at, and its picture; the post by its words
+ * and picture. A field we do not hold is null and is told to the judge as "(none)", never guessed.
+ */
+export interface CoinPostSides {
+  readonly coin: { readonly name: string | null; readonly ticker: string | null; readonly description: string | null; readonly linkedText: string | null; readonly picture: MediaRef };
+  readonly post: { readonly text: string | null; readonly picture: MediaRef };
+}
+
+/**
+ * Is a coin tied to a post by its name alone about the same subject as the post, judged on both
+ * sides' words AND pictures together? Only "no" removes the coin, and only from a name-only tie;
+ * null (a picture that would not load, a garbled reply) is "nothing learned", never a "no".
+ */
+export interface CoinPostCheckPort {
+  /** The model and the prompt's hash: stored on every answer. */
+  readonly id: string;
+  readonly promptId: string;
+  check(sides: CoinPostSides, budget: Budget): Promise<Metered<SameSubjectAnswer | null>>;
+}

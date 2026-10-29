@@ -110,6 +110,11 @@ export interface OneCoinDeps {
    * pick is made, as before policy.v163 — an early pick already held is still kept by its discipline.
    */
   readonly early?: EarlyPickDeps;
+  /**
+   * Of these post-and-coin pairs, the ones the judge said are about different subjects (store 0151,
+   * work/coin-post-check.ts), as `item|address`. Only a name-only candidate is dropped on it. Absent: none.
+   */
+  readonly refused?: (pairs: readonly { readonly itemId: string; readonly address: string }[]) => Promise<ReadonlySet<string>>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -332,10 +337,50 @@ export function holderOf(prev: StoredPick | undefined): Holder | null {
   return { address: prev.address, sinceMs: prev.decidedAtMs, underShareSinceMs: typeof under === 'number' && Number.isFinite(under) ? under : null };
 }
 
+/** The ties that prove more than a name: a candidate holding one is never dropped on the judge's "no". */
+const PROVING_TIES: ReadonlySet<string> = new Set(['link', 'picture', 'missed_runner']);
+
+/**
+ * ★ A NAME-ONLY CANDIDATE THE JUDGE SAID IS ABOUT SOMETHING ELSE IS OUT (Policy.oneCoin.postCheck): the
+ * "vanilla" coins of @AFP's video on a post about a dog called Vanilla. Only "no" drops it — unsure, not
+ * asked or no answer keeps it — and never a candidate tied by a link, a picture or a missed runner.
+ */
+export async function withoutRefused(deps: Pick<OneCoinDeps, 'refused' | 'log'>, rows: readonly CandidateRow[]): Promise<readonly CandidateRow[]> {
+  if (deps.refused === undefined || rows.length === 0) return rows;
+  const nameOnly = (r: CandidateRow): boolean => {
+    const ties = r.evidence['ties'];
+    return Array.isArray(ties) && !ties.some((t) => typeof t === 'string' && PROVING_TIES.has(t));
+  };
+  let refused: ReadonlySet<string>;
+  try {
+    refused = await deps.refused(rows.filter(nameOnly).map((r) => ({ itemId: r.itemId, address: r.address })));
+  } catch (e) {
+    deps.log.error('one coin: the judge\'s coin-post answers not read; every candidate is judged', { err: errorText(e) });
+    return rows;
+  }
+  return refused.size === 0 ? rows : rows.filter((r) => !(nameOnly(r) && refused.has(`${r.itemId}|${r.address}`)));
+}
+
+/** The pass's repo with its two candidate reads filtered by the judge's "no"; every other read as it is. */
+function refusing(deps: OneCoinDeps): OneCoinDeps['repo'] {
+  const base = deps.repo;
+  if (deps.refused === undefined) return base;
+  return new Proxy(base, {
+    get(target, key) {
+      if (key === 'openCandidates') return async (...a: Parameters<typeof target.openCandidates>) => withoutRefused(deps, await target.openCandidates(...a));
+      if (key === 'candidatesOf') return async (ids: readonly string[]) => withoutRefused(deps, await target.candidatesOf(ids));
+      const v: unknown = Reflect.get(target, key);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+}
+
 export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promise<OneCoinResult> {
   const P = deps.policy.oneCoin;
   const now = deps.now();
-  const { repo } = deps;
+  /* ★ Every read of the candidates this pass makes — the decision, the narratives, both sweeps and the
+     hand-over — goes through the judge's "no" (withoutRefused), so no path re-picks a refused coin. */
+  const repo = refusing(deps);
   if (now - state.postsReadAt >= POSTS_REFRESH_MS) {
     state.posts = await repo.recentPosts(now - P.postWindowMs, POSTS_READ, HASH_VERSION);
     state.postsReadAt = now;

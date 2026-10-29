@@ -60,10 +60,10 @@ import { diskAlarm } from './disk-alarm.ts';
 import { judgeCostAlarm } from './judge-cost-alarm.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
-import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
+import type { CoinPostCheckPort, JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, SHARED_PROMPT, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { KNOWN_MODELS, OPEN_JUDGE_ENDPOINT, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { KNOWN_MODELS, OPEN_JUDGE_ENDPOINT, accountCredits, isOpenJudgeId, openChatClient, openCoinPostCheck, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, postJudgeOrder, postsPerCall, rolesFor, sideName, type JudgeRole, type OpenSide } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
 import { failoverNamer, failoverSameSubject, failoverTranslator, type SameSubjectPart } from './open-questions.ts';
@@ -100,6 +100,7 @@ import {
   PgOwnerCoinCallRepo,
   PgMissedRunnerRepo,
   PgImagePairRepo,
+  PgCoinPostCheckRepo,
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
   PgPostEmbeddingRepo,
@@ -181,6 +182,7 @@ import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { embedCoinPictures, pictureCoinMatches } from './work/coin-match.ts';
 import { newOneCoinState, oneCoinPass, type OneCoinResult } from './work/one-coin.ts';
+import { coinPostCheckPass, type CoinPostCheckResult } from './work/coin-post-check.ts';
 import { missedRunnerPass, newMissedRunnerState } from './work/missed-runners.ts';
 import { hashPictures } from './work/picture-hashes.ts';
 
@@ -262,6 +264,8 @@ export interface Runtime {
   readonly coinModel: () => Promise<CoinModelResult>;
   /** One post, one coin: launches matched to posts, their trades watched, each post's coin judged. See work/one-coin.ts. */
   readonly oneCoin: () => Promise<OneCoinResult>;
+  /** Name-only coins on screen put to the judge with both sides' words and pictures. See work/coin-post-check.ts. */
+  readonly coinPostCheck: () => Promise<CoinPostCheckResult>;
   /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
   readonly finders: {
     readonly coinLinks: () => Promise<CoinLinkResult>;
@@ -431,7 +435,7 @@ export function buildOpenJudge(
  * its answer budget is its own, the judge policy's retries and timeouts, the smaller picture size.
  */
 function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
-  const client = (maxOutputTokens: number) =>
+  const client = (maxOutputTokens: number, pictureSize: 'small' | null = 'small') =>
     openChatClient({
       vendor: side.setup.vendor,
       apiKey: side.setup.apiKey,
@@ -444,7 +448,7 @@ function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
       backoffMs: policy.judge.backoffMs,
       maxWaitMs: policy.judge.maxWaitMs,
       maxFrameBytes: policy.judge.maxFrameBytes,
-      pictureSize: 'small',
+      pictureSize,
       providers: side.setup.providers,
       router: side.setup.router !== false,
       fetch: globalThis.fetch,
@@ -464,6 +468,8 @@ function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
       const pair = openSameSubject({ ...common, client: client(policy.judge.pairMaxOutputTokens) });
       return { id: pair.id, sameSubjectPromptId: pair.sameSubjectPromptId, estimateSameSubject: pair.estimateSameSubject, sameSubject: pair.sameSubject };
     },
+    /* ★ Full-size pictures: at the small size the model took a Shiba Inu coin for the Akita post's dog (29 Oct, every time); full size, "no" every time. */
+    coinPost: (): CoinPostCheckPort => openCoinPostCheck({ ...common, client: client(policy.judge.pairMaxOutputTokens, null) }),
   };
 }
 
@@ -1689,6 +1695,14 @@ export async function withRuntime<T>(
               log: log.child({ step: 'missed-posts' }),
               now: () => Date.now() as Millis,
             }),
+          /* ★ On the post question's first model (Nemotron), the model the 29 Oct replay was run on; no
+             failover: a failed host leaves the pair unasked, asked again on a later pass. */
+          coinPostCheck: (() => {
+            const judge = policy.oneCoin.postCheck.on && firstAsk !== null ? firstAsk.coinPost() : null;
+            log.info('coin-post check: who asks', { on: policy.oneCoin.postCheck.on, judge: judge?.id ?? null });
+            const repo = new PgCoinPostCheckRepo(db);
+            return () => coinPostCheckPass({ judge, repo, mode: cfg.spend.kind, policy, log: log.child({ step: 'coin-post-check' }), now: () => Date.now() as Millis });
+          })(),
           oneCoin: (() => {
             const state = newOneCoinState();
             const embed =
@@ -1712,6 +1726,8 @@ export async function withRuntime<T>(
                     return new Set([...newest].filter(([, v]) => v !== 'cleared').map(([id]) => id));
                   },
                   ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
+                  /* The judge's "no" on a name-only coin (work/coin-post-check.ts): read only while the check is on, so off undoes it whole. */
+                  ...(policy.oneCoin.postCheck.on ? { refused: (pairs: readonly { readonly itemId: string; readonly address: string }[]) => new PgCoinPostCheckRepo(db).refused(pairs) } : {}),
                   policy,
                   log: log.child({ step: 'one-coin' }),
                   now: () => Date.now() as Millis,

@@ -102,6 +102,20 @@ export const SAME_SUBJECT_PROMPT = Object.freeze({
 });
 
 /**
+ * Whether a coin tied to a post by its name alone is about that post: the coin's words and picture
+ * beside the post's (the open model's `openCoinPostCheck`, store 0151). A TEMPLATE, apart from the
+ * picture-only question above on purpose: shown only two pictures, the model turned down every
+ * cartoon of the post's subject (29 Oct: every Mbappe coin); with the coin's name, description and
+ * linked post it kept them and still rejected the common-word coins. Its hash is over the template
+ * and goes on every stored answer, so a row says which wording it answered.
+ */
+const coinPostText = readFileSync(join(PROMPT_DIR, 'coin-post-subject.txt'), 'utf8');
+export const COIN_POST_PROMPT = Object.freeze({
+  text: coinPostText,
+  sha: createHash('sha256').update(coinPostText).digest('hex').slice(0, 8),
+});
+
+/**
  * The words that introduce the owner's labelled posts when they ride along with the post question
  * as precedent (client.ts `buildRequestBody`). Kept out of the post prompt set, like the
  * same-subject prompt: its hash is folded into the post question's id only when precedents are on

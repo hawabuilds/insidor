@@ -52,7 +52,7 @@
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '@insidor/contracts/policy.ts';
 import { bioAddresses, compactName, guessesFirst, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
-import { missingTable, PgAuthorRepo, PgCryptoAttentionRepo, PgImageHashRepo, PgNameGuessRepo, type Db } from '@insidor/store';
+import { missingTable, PgAuthorRepo, PgCoinPostCheckRepo, PgCryptoAttentionRepo, PgImageHashRepo, PgNameGuessRepo, type Db } from '@insidor/store';
 
 import { pictureOf } from './db.ts';
 import type { WireCoinEvidence } from './wire.ts';
@@ -424,7 +424,15 @@ export async function weighPostCoins(
 
   const pairs = [...wide].flatMap(([itemId, addresses]) => [...addresses].map((address) => ({ itemId, address })));
   /* An address posted under a post that is no coin we hold has no row: it is dropped here. */
-  const coins = (await loadCoins(db, pairs, p.group.image.space)).filter((c) => c.launched_at !== null || c.name !== null || c.ticker !== null);
+  const held = (await loadCoins(db, pairs, p.group.image.space)).filter((c) => c.launched_at !== null || c.name !== null || c.ticker !== null);
+  /* ★ THE JUDGE'S "NO" ON A NAME-ONLY COIN (Policy.oneCoin.postCheck, services/runner coin-post-check.ts):
+     a coin the judge, shown both sides' words and pictures, called about something else is out of the
+     match and of "See N coins" — @AFP's "vanilla" coins on a post about a dog called Vanilla. Never a coin
+     the poster posted or profiled the address of, or whose picture hash found it: that is more than a name. */
+  const proved = (c: CoinRow): boolean =>
+    replies.get(c.item_id)?.some((a) => a.address === c.address) === true || hashFound.get(c.item_id)?.has(c.address) === true || bioNamed.get(posts.get(c.item_id)?.author_key ?? '')?.has(c.address) === true;
+  const refused = p.oneCoin.postCheck.on ? await new PgCoinPostCheckRepo(db).refused(held.map((c) => ({ itemId: c.item_id, address: c.address }))) : new Set<string>();
+  const coins = held.filter((c) => !refused.has(`${c.item_id}|${c.address}`) || proved(c));
   const pictureHashes = await hashes.hashesOf([...new Set([...pictured.map((x) => x.uri), ...coins.flatMap((c) => (c.image_uri === null ? [] : [c.image_uri]))])], HASH_VERSION);
   /* The bot-coin filter's count, asked only while it is on. A linking coin of its own counts itself:
      a lone launch is 1, not 0, so the bar reads as "this many launches". */

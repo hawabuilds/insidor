@@ -2752,6 +2752,15 @@ export interface OneCoinPolicy {
     /** A chain call's timeout. */
     readonly callTimeoutMs: number;
   };
+  /**
+   * The coin-and-post question (policy.v206; the owner, 2026-10-29: coins whose "linked x post or image
+   * is unrelated to the post we match it to"). A coin tied to a shown post by its name alone is put to
+   * the judge with both sides' words and pictures (services/runner work/coin-post-check.ts, store 0151);
+   * on "no" the runner's pick and the projector's "See N coins" drop it. Asked once a pair, newest post
+   * first, at most `perPass` every `everyMs` and `perDay` a UTC day — about $0.0002 each, so the day's
+   * cap is about $0.40. Candidates found within `withinMs` only: an older tie is no longer on a feed.
+   */
+  readonly postCheck: { readonly on: boolean; readonly perDay: number; readonly perPass: number; readonly everyMs: number; readonly withinMs: number };
 }
 
 /**
@@ -5937,8 +5946,11 @@ const POLICY_V1: Policy = {
      Indonesian ('in') at Korean's share, taken from English's: the search day does not move.
      v204 (2026-10-29, the owner) lets For You's scroll reach back seven days (`rising.scrollKeepMs`).
      v205 (2026-10-29, the owner) adds a two-hour late band at 4,000 likes (`fresh.late.bands`, its day
-     `paging.searches.late_120` $0.45 taken from the slow lane's $1.05): the search day does not move. */
-  version: 'policy.v205',
+     `paging.searches.late_120` $0.45 taken from the slow lane's $1.05): the search day does not move.
+     v206 (2026-10-29, the owner: coins whose "linked x post or image is unrelated") asks the judge whether
+     a coin tied to a post by its name alone is about it, on both sides' words and pictures
+     (`oneCoin.postCheck`); a "no" drops the coin from the pick and from "See N coins". */
+  version: 'policy.v206',
 
   admit: {
     maxAgeMin: 240,
@@ -7722,6 +7734,9 @@ const POLICY_V1: Policy = {
       reportEveryMs: 600_000, // ten minutes
       callTimeoutMs: 10_000,
     },
+    /* 2,000 a day: the replay's 64 pairs cost $0.014, so the cap is about $0.45 a day at the most. Six a
+       pass every 20 s is 1,080 an hour, far over the feed's new name-only ties; the cap is the brake. */
+    postCheck: { on: true, perDay: 2_000, perPass: 6, everyMs: 20_000, withinMs: 86_400_000 },
   },
 
   search: {

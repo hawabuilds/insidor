@@ -129,7 +129,7 @@ import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { overJunkBar } from './junk-bar.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
-import { PgFeedRejectionRepo, PgFinderRepo, PgViralMomentRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
+import { PgCoinPostCheckRepo, PgFeedRejectionRepo, PgFinderRepo, PgViralMomentRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 import { KEY_ACCOUNTS } from '@insidor/platform-x/key-accounts.ts';
 
@@ -597,6 +597,14 @@ export function lookupWithoutWrong(lookup: PostLookup, check: CoinCheck | undefi
   return { ...lookup, coins: lookup.coins.filter((a) => !check.wrong.has(a)) };
 }
 
+/** Each post's searched coins without the ones the judge answered "no" for (store `PgCoinPostCheckRepo.refused`). */
+async function withoutRefusedCoins(db: Db, lookups: ReadonlyMap<string, PostLookup>): Promise<ReadonlyMap<string, PostLookup>> {
+  const pairs = [...lookups].flatMap(([itemId, l]) => ('coins' in l ? l.coins.map((address) => ({ itemId, address })) : []));
+  const refused = await new PgCoinPostCheckRepo(db).refused(pairs);
+  if (refused.size === 0) return lookups;
+  return new Map([...lookups].map(([id, l]) => [id, 'coins' in l ? { ...l, coins: l.coins.filter((a) => !refused.has(`${id}|${a}`)) } : l] as const));
+}
+
 /** The row's coin line and the story it came from, by the rule in the header. */
 export function postCoins(
   linked: WireCoinLink | undefined,
@@ -1047,7 +1055,11 @@ export async function buildRising(
   const calls = await loadCoinCalls(db, null);
   const stories = await loadStoryCoins(db, rowIds, calls, policy);
   const checks = coinChecks(rowIds, calls, stories);
-  const searched = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));
+  const searched0 = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));
+  /* ★ AND THE JUDGE'S "NO" (Policy.oneCoin.postCheck, store 0151): a coin the name search found that the
+     judge, shown both sides' words and pictures, called about something else is off the list before it is
+     counted, so "See N coins" and its N stay the same coins. */
+  const searched = policy.oneCoin.postCheck.on ? await withoutRefusedCoins(db, searched0) : searched0;
   const weighed = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
   /* ★ THE COIN THAT BROUGHT THE POST IN, ON ITS LIST (`withVouchingCoin`), after the weighing so it is listed and never proven. */
   const lookups = new Map(weighed);
