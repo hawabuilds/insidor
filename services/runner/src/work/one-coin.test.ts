@@ -116,6 +116,40 @@ test('★ a launch linking its own quote of an older post is that post\'s candid
   assert.equal(w.candidates[0]?.evidence['linkedThrough'], 'x:quote');
 });
 
+test('★ a coin linking a post the judge answered for after the coin\'s rematch window is still that post\'s candidate', async () => {
+  /* $8FDW22, 29 Oct: launched with its post, matched against nothing while the judge had not answered, then never looked at again. */
+  const w = world({ posts: [post] });
+  const linked = launch({ address: 'LATE', assetKey: 'k:LATE', launchedAtMs: post.postedAtMs + MIN, linksPosts: ['x:2111'] });
+  const elsewhere = launch({ address: 'OTHER', assetKey: 'k:OTHER', launchedAtMs: post.postedAtMs + MIN, name: 'Pancake' });
+  const asked: string[][] = [];
+  const d = deps(w);
+  const repo = { ...d.repo, launchesLinking: async (ids: readonly string[]) => (asked.push([...ids]), [linked, elsewhere]) };
+  await oneCoinPass({ ...d, repo }, newOneCoinState());
+  assert.deepEqual(asked, [['x:2111']]);
+  /* Only the link ties by this route; a name is the launch path's, in its own window. */
+  assert.deepEqual(w.candidates.map((c) => [c.itemId, c.address, c.evidence['ties']]), [['x:2111', 'LATE', ['link']]]);
+  assert.deepEqual(w.watched.find((x) => x.address === 'LATE')?.untilMs, NOW + DEFAULT_POLICY.oneCoin.watchMs);
+  /* Asked again only when the post is new, or every five minutes for the window. */
+  const state = newOneCoinState();
+  await oneCoinPass({ ...d, repo }, state);
+  await oneCoinPass({ ...d, repo }, state);
+  assert.equal(asked.length, 2);
+  await oneCoinPass({ ...deps(w, NOW + 5 * MIN), repo }, state);
+  assert.equal(asked.length, 3);
+});
+
+test('★ a coin linking a post that is already its candidate keeps its ties and its watch', async () => {
+  const had: CandidateRow = { itemId: 'x:2111', address: 'LATE', path: 'launch', evidence: { ties: ['link', 'picture'], similarity: 0.91 }, launchedAtMs: post.postedAtMs + MIN, foundAtMs: NOW - 30 * MIN };
+  const w = world({ posts: [post], candidates: [had] });
+  const d = deps(w);
+  const linked = launch({ address: 'LATE', assetKey: 'k:LATE', launchedAtMs: post.postedAtMs + MIN, linksPosts: ['x:2111'] });
+  let upserts = 0;
+  const repo = { ...d.repo, launchesLinking: async () => [linked], upsertCandidates: async (rows: readonly CandidateRow[]) => ((upserts += rows.filter((r) => r.address === 'LATE').length), rows.length) };
+  await oneCoinPass({ ...d, repo }, newOneCoinState());
+  assert.equal(upserts, 0);
+  assert.equal(w.watched.some((x) => x.address === 'LATE'), false);
+});
+
 test('★ our candles stand in for a stale reading: a launchpad coin is judged on its close (policy.v209, 4iuBjA)', () => {
   const market = new Map([['RUNpump', { capUsd: 3_248_814, peakCapUsd: 3_248_814, readAtMs: NOW - 5 * MIN, liquidityUsd: 0.01 }], ['OLDpump', { capUsd: 20_000, peakCapUsd: 30_000, readAtMs: NOW - MIN, liquidityUsd: 9_000 }]]);
   const caps = new Map([
