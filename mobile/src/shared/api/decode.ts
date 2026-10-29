@@ -897,6 +897,8 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
     timeframe,
     venue,
     candles,
+    /* Absent (an older read service) or null: the chart reaches the coin's launch. */
+    chartFrom: (() => { const c = o['chartFrom']; if (c === null || c === undefined) return null; const at = obj(c, `${path}.chartFrom`)['at']; return typeof at === 'number' && Number.isFinite(at) ? at : null; })(),
     trades,
     curveProgress: o['curveProgress'] === null || o['curveProgress'] === undefined ? null : measured(o['curveProgress'], `${path}.curveProgress`, 'not_reported'),
     pair: marketPair(o['pair'], `${path}.pair`),

@@ -65,7 +65,7 @@ test("Trador's first view: 1m for a coin on its curve or under a day old, 1h oth
 test('an empty chart says why: loading, unread, or too little history for the view', () => {
   assert.equal(chartNote('loading', null, '1h'), 'Loading price history.');
   assert.equal(chartNote('ready', { kind: 'unavailable', timeframe: '1h' }, '1h'), 'Price history could not be read just now.');
-  assert.equal(chartNote('ready', { kind: 'read', timeframe: '4h', venue: 'pool', candles: [], trades: [], curveProgress: null, pair: null, coin: null }, '4h'), 'Not enough history for 4h');
+  assert.equal(chartNote('ready', { kind: 'read', timeframe: '4h', venue: 'pool', candles: [], chartFrom: null, trades: [], curveProgress: null, pair: null, coin: null }, '4h'), 'Not enough history for 4h');
 });
 
 test('★ a sample market: the same chart every time, and trades with no transaction that could be looked up', () => {
@@ -79,7 +79,7 @@ test('★ a sample market: the same chart every time, and trades with no transac
 
 test('★ an outage is not an empty market, and a candle missing a number is dropped, never drawn at zero', () => {
   assert.deepEqual(decodeCoinMarket({ kind: 'unavailable', timeframe: '5m' }), { kind: 'unavailable', timeframe: '5m' });
-  const m = decodeCoinMarket({ kind: 'read', timeframe: '1m', venue: 'curve', candles: [{ t: 1, o: 1, h: 1, l: 1, c: null }, { t: 2, o: 1, h: 2, l: 1, c: 2 }], trades: [{ tx: 'x', side: 'maybe' }], curveProgress: { v: 0.2 } });
+  const m = decodeCoinMarket({ kind: 'read', timeframe: '1m', venue: 'curve', candles: [{ t: 1, o: 1, h: 1, l: 1, c: null }, { t: 2, o: 1, h: 2, l: 1, c: 2 }], chartFrom: null, trades: [{ tx: 'x', side: 'maybe' }], curveProgress: { v: 0.2 } });
   assert.equal(m.kind === 'read' && m.candles?.length, 1);
   assert.equal(m.kind === 'read' && m.trades?.length, 0, 'a trade with an unknown side is not coloured as either');
   assert.deepEqual(m.kind === 'read' && m.curveProgress, { known: true, amount: 0.2 });
