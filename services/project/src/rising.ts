@@ -337,6 +337,52 @@ const toMs = (value: Date | string | null): Millis | null => {
 };
 
 /**
+ * ★ EACH CANDIDATE'S WORDS AND PICTURES, HELD BY THEIR DIGEST. Every For You frame (the minute
+ * frame, the quick frame, the newer-cards catch-up) reads every candidate in the window, and its body and media
+ * were nearly all of each row's bytes (~1.7 GB a day of database egress, 2026-10-29) though almost
+ * none had changed since the last frame. The candidate read now carries a digest of the two
+ * (`WORDS_VERSION`) and they are read whole only for a post not held at that digest. A digest and
+ * not the row version: a re-seen post's counters rewrite its row many times a day while its words
+ * stay the same.
+ *
+ * Held in the process, not on the Db: each frame runs in its own transaction with its own Db. A
+ * post edited at the source has a new digest and is read again, so a frame shows what a full read
+ * shows. A post unused for an hour is dropped (the window moves on).
+ */
+const WORDS_VERSION = `md5(coalesce(i.body, '') || '|' || coalesce(i.media::text, ''))`;
+const HELD_WORDS_IDLE_MS = 60 * 60_000;
+const HELD_WORDS = new Map<string, { readonly v: string; readonly body: string; readonly media: unknown; usedAt: number }>();
+let heldWordsSweptAt = 0;
+
+/** `rows` with each post's body and media from what is held or read now; a post gone between the reads is left out. */
+export async function withWords<R extends { readonly item_id: string; readonly words_v: string }>(
+  db: Db,
+  rows: readonly R[],
+): Promise<(Omit<R, 'words_v'> & { body: string; media: unknown })[]> {
+  const now = Date.now();
+  const stale = [...new Set(rows.filter((r) => HELD_WORDS.get(r.item_id)?.v !== r.words_v).map((r) => r.item_id))];
+  if (stale.length > 0) {
+    const read = await db.query<{ item_id: string; v: string; body: string; media: unknown }>(
+      `select i.item_id, ${WORDS_VERSION} as v, i.body, i.media from public.item i where i.item_id = any($1::text[])`,
+      [stale],
+    );
+    for (const r of read) HELD_WORDS.set(r.item_id, { v: r.v, body: r.body, media: r.media, usedAt: now });
+  }
+  const out: (Omit<R, 'words_v'> & { body: string; media: unknown })[] = [];
+  for (const { words_v: _v, ...row } of rows) {
+    const held = HELD_WORDS.get(row.item_id);
+    if (held === undefined) continue;
+    held.usedAt = now;
+    out.push({ ...row, body: held.body, media: held.media });
+  }
+  if (now - heldWordsSweptAt >= HELD_WORDS_IDLE_MS) {
+    heldWordsSweptAt = now;
+    for (const [k, h] of HELD_WORDS) if (now - h.usedAt >= HELD_WORDS_IDLE_MS) HELD_WORDS.delete(k);
+  }
+  return out;
+}
+
+/**
  * Every catch-all post inside the window with its newest per-post score and the promoted
  * story it belongs to, if any — and the feed members outside the window that this run refreshes
  * (feed-members.ts), which are projected for their cards and never put in the frame. The service
@@ -361,8 +407,8 @@ export async function loadCandidates(
      (Policy.judge.coinModel.liveTarget, 0099): a shadowed target never lets a post through. The
      target is one of COIN_MODEL_TARGETS, so it is spelled into the query rather than bound. */
   const netColumn = net !== null && COIN_MODEL_TARGETS.includes(net) ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add and cms.target = '${net}') as net_add` : `null::boolean as net_add`;
-  const rows = await db.query<RisingRow>(
-    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media, i.reproduction_of,
+  const bare = await db.query<Omit<RisingRow, 'body' | 'media'> & { words_v: string }>(
+    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, ${WORDS_VERSION} as words_v, i.reproduction_of,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name, j.judge_id,
             k.kind_label, ${netColumn},
@@ -446,6 +492,7 @@ export async function loadCandidates(
         and ($3::text[] is null or f.item_id = any($3::text[]))`,
     [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only], [...uncredited], DEFAULT_POLICY.group.image.space],
   );
+  const rows = await withWords(db, bare);
   const gone = await loadDeleted(db, rows.map((r) => r.item_id));
   return gone.size === 0 ? rows : rows.map((r) => (gone.has(r.item_id) ? { ...r, deleted_at: gone.get(r.item_id) ?? null } : r));
 }

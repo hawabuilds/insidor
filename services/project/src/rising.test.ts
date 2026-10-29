@@ -9,7 +9,9 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, coinListHolds, firstCount, forYouBarPolicy, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
+import { barReadings, coinListHolds, firstCount, forYouBarPolicy, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, withWords, writeRising } from './rising.ts';
+import type { Db } from '@insidor/store';
+
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -308,4 +310,31 @@ test("★ a post only a coin's link found joins For You only once its own views 
   assert.equal(coinListHolds({}, false), false);
   const off = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, coinListNeedsReach: false } };
   assert.equal(coinListHolds({ coin_list_only: true }, false, off), false);
+});
+
+test('a candidate\'s words and pictures are read only when their digest changed', async () => {
+  const posts = [
+    { item_id: 'x:words-1', v: 'a', body: 'moo deng', media: [{ kind: 'image', uri: 'https://example.invalid/1.jpg' }] },
+    { item_id: 'x:words-2', v: 'b', body: 'chill guy', media: [] },
+  ];
+  const read: string[][] = [];
+  const db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      assert.ok(sql.includes('i.body, i.media'));
+      const ids = (params?.[0] ?? []) as string[];
+      read.push(ids);
+      return posts.filter((p) => ids.includes(p.item_id)) as R[];
+    },
+  } as unknown as Db;
+  const frame = () => posts.map((p) => ({ item_id: p.item_id, words_v: p.v, handle: 'h' }));
+  const first = await withWords(db, frame());
+  assert.deepEqual(first, posts.map((p) => ({ item_id: p.item_id, handle: 'h', body: p.body, media: p.media })));
+  assert.deepEqual(await withWords(db, frame()), first);
+  assert.deepEqual(read, [['x:words-1', 'x:words-2']]);
+  /* x:words-2 edited at the source: only its words cross again. */
+  posts[1] = { ...posts[1]!, v: 'c', body: 'chill guy (edited)' };
+  assert.deepEqual((await withWords(db, frame())).map((r) => r.body), ['moo deng', 'chill guy (edited)']);
+  assert.deepEqual(read, [['x:words-1', 'x:words-2'], ['x:words-2']]);
+  /* A post gone between the two reads is left out, as a read a moment later would. */
+  assert.deepEqual((await withWords(db, [{ item_id: 'x:words-gone', words_v: 'z', handle: 'h' }])), []);
 });
