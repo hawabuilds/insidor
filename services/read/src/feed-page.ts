@@ -15,7 +15,7 @@
  * newer than it. This used to go by when the post first joined (`first_shown_at`), which put an
  * old post that joined late above newer ones: the mix the owner saw.
  *
- * ★ FOR YOU'S SCROLL REACHES BACK THREE DAYS (the owner, 2026-10-24: "keep it 3 days";
+ * ★ FOR YOU'S SCROLL REACHES BACK SEVEN DAYS (the owner, 2026-10-29: "a week's worth of posts", 3 days before;
  * `rising.scrollKeepMs`). A page holds the members that first went on For You within that long of
  * the read; one that joined earlier is still a member (feed-members.ts never removes one) and comes
  * back the day the window is lengthened. The bound is on when each joined, not on when it was

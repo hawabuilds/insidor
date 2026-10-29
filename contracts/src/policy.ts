@@ -5934,8 +5934,9 @@ const POLICY_V1: Policy = {
      huge, fast one (the Nicki Minaj and Trump post).
      v203 (2026-10-29, the owner) counts a post found four hours after it went up as late
      (`lateNoCoin.foundAfterMs`), so what the five-hour search finds can still reach For You, and searches
-     Indonesian ('in') at Korean's share, taken from English's: the search day does not move. */
-  version: 'policy.v203',
+     Indonesian ('in') at Korean's share, taken from English's: the search day does not move.
+     v204 (2026-10-29, the owner) lets For You's scroll reach back seven days (`rising.scrollKeepMs`). */
+  version: 'policy.v204',
 
   admit: {
     maxAgeMin: 240,
@@ -7730,7 +7731,7 @@ const POLICY_V1: Policy = {
     windowMs: 86_400_000, // a day
     /* 60: the rows on each feed, and so the posts on it that are re-read. */
     maxRows: 60,
-    scrollKeepMs: 259_200_000, // three days
+    scrollKeepMs: 604_800_000, // seven days (v204, the owner 2026-10-29: "see a week's worth of posts on fyp"); three days before
     postsPerPass: 200,
     maxNameWords: 3,
     fypMinReach: 40_000,
