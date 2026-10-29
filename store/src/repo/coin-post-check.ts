@@ -68,6 +68,27 @@ const SIDES = `select s.item_id, s.address, a.name as coin_name, a.symbol as coi
           and jsonb_typeof(i.media) = 'array'
           and coalesce(substring(m.social_link from '/status/([0-9]+)'), '') <> coalesce(i.source_item_id, '')`;
 
+/**
+ * ★ THE POST'S OWN NAME, AND NO CLAIM ELSEWHERE (29 Oct, live): over `k` (item_id, address), true when the
+ * coin's name or ticker IS the subject the judge named for the post and the coin's own link names no other
+ * post. Such a coin is never dropped, and never asked: on its first live hour the judge said "no" to seven
+ * $GTA6 coins on the South Park GTA 6 posts, reading "Earn $TTWO stock" as another story. @AFP's $vanilla
+ * keeps its "no" — the name is the post's, but its link says it is about another post.
+ */
+const OWN_NAME = `(
+  exists (
+    select 1 from public.asset na
+      left join internal.coin_metadata nm on nm.asset_key = na.asset_key
+      cross join lateral (
+        select pj.proposed_name from internal.post_judgement pj
+         where pj.item_id = k.item_id and pj.prompt_id not like 'post-kind%'
+         order by pj.judged_at desc, pj.id desc limit 1) j
+     where na.address = k.address
+       and regexp_replace(lower(coalesce(j.proposed_name, '')), '[^a-z0-9]', '', 'g') <> ''
+       and regexp_replace(lower(coalesce(j.proposed_name, '')), '[^a-z0-9]', '', 'g')
+           in (regexp_replace(lower(coalesce(na.name, '')), '[^a-z0-9]', '', 'g'), regexp_replace(lower(coalesce(na.symbol, '')), '[^a-z0-9]', '', 'g'))
+       and coalesce(nm.social_link, '') !~ '/status/[0-9]+'))`;
+
 const duesOf = (rows: readonly DueRow[]): CoinPostDue[] =>
   rows
     .filter((r) => r.post_picture !== null && r.post_picture.startsWith('https://'))
@@ -121,8 +142,12 @@ export class PgCoinPostCheckRepo {
        ), shown as (
          select t.* from ties t
           where not exists (select 1 from internal.coin_post_check k where k.item_id = t.item_id and k.address = t.address)
+       ), k as (
+         select s.* from shown s
+       ), shown2 as (
+         select k.* from k where not ${OWN_NAME}
        )
-       ${SIDES}
+       ${SIDES.replace('from shown s', 'from shown2 s')}
         order by i.posted_at desc nulls last
         limit $2`,
       [toTimestamp(sinceMs), limit],
@@ -171,7 +196,7 @@ export class PgCoinPostCheckRepo {
     const rows = await this.#db.query<{ item_id: string; address: string }>(
       `select k.item_id, k.address from internal.coin_post_check k
          join unnest($1::text[], $2::text[]) as p(item_id, address) on p.item_id = k.item_id and p.address = k.address
-        where k.answer = 'no'`,
+        where k.answer = 'no' and not ${OWN_NAME}`,
       [pairs.map((p) => p.itemId), pairs.map((p) => p.address)],
     );
     return new Set(rows.map((r) => `${r.item_id}|${r.address}`));
