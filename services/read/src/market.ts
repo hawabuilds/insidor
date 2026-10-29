@@ -57,6 +57,8 @@ export interface MarketDeps {
   readonly db: Db;
   readonly log: Logger;
   readonly market: Pick<MarketData, 'coin'> & Partial<Pick<MarketData, 'pool'>>;
+  /** Where an older coin's chart is read when ours does not cover it; absent: `market`. */
+  readonly olderCoins?: Pick<MarketData, 'coin'>;
   /**
    * chainwatch's latest trades of a coin (own-market.ts). Set, the chart and trades come from our own
    * data whenever it holds enough of the coin, and the market source is asked only otherwise; null or
@@ -139,9 +141,10 @@ async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): P
       deps.log.info('own market data unreadable; asking the market source', { mint, err: e instanceof Error ? e.message : String(e) });
     }
   }
-  if (own === null) return deps.market.coin(mint, timeframe);
+  const older = deps.olderCoins ?? deps.market;
+  if (own === null) return older.coin(mint, timeframe);
   if (own.trades !== null) return { pool: own.pool, candles: own.candles, trades: own.trades };
-  const source = await deps.market.coin(mint, timeframe).catch(() => null);
+  const source = await older.coin(mint, timeframe).catch(() => null);
   return { pool: source?.pool ?? own.pool, candles: own.candles, trades: source?.trades ?? null };
 }
 

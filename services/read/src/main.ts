@@ -211,8 +211,13 @@ async function main(): Promise<void> {
     timeoutMs: MARKET_TIMEOUT_MS,
     now: Date.now,
   });
+  /* ★ An older coin's chart from the keyless public API when `MARKET_OLDER_CANDLES=free` (config.ts). */
+  const olderCoins = cfg.olderCandlesFree
+    ? geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, now: Date.now })
+    : undefined;
   const market = {
     market: marketData,
+    ...(olderCoins === undefined ? {} : { olderCoins }),
     /* Our own candles and chainwatch's latest trades first (own-market.ts); the source above otherwise. */
     heldTrades: heldTradesFrom(cfg.liveUpstreamUrl, HELD_TRADES_TIMEOUT_MS),
     curveProgress:
