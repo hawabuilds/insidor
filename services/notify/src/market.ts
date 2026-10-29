@@ -22,6 +22,7 @@ import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 import { highestMilestone, type AlertKind } from '@insidor/core';
 
 import { prefsOf, queue, type Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 import { pvpPassed, pvpSubject } from './pvp.ts';
 import type { Facts } from './text.ts';
 
@@ -151,7 +152,7 @@ export async function checkMarket(db: Db, ports: MarketPorts, P: NotifyPolicy): 
   const audience = new Map<string, Set<string>>();
   for (const [userId, m] of held) for (const mint of m.keys()) audience.set(mint, (audience.get(mint) ?? new Set()).add(userId));
   for (const w of watchedCoins) audience.set(w.mint, (audience.get(w.mint) ?? new Set()).add(w.userId));
-  const opened = new Set((await db.query<{ key: string }>(`select key from people.pipeline_seen where stream = 'curve-open'`)).map((r) => r.key));
+  const opened = await seenKeys(db, 'curve-open');
   for (const [mint, users] of audience) {
     const curve = await ports.curve(mint).catch(() => ({ kind: 'none' as const }));
     if (curve.kind === 'none') continue;

@@ -47,6 +47,7 @@ import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts'
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
 import { queue, type Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 import { checkFirstCoins } from './first-coin.ts';
 import { posterPictures } from './faces.ts';
 import { lineCoin } from './post-watch.ts';
@@ -266,8 +267,7 @@ export function settledCoins(raw: CoinsJson): BoardStory['coins'] {
 }
 
 async function seenSet(db: Db, stream: string): Promise<{ seeded: boolean; keys: Set<string> }> {
-  const rows = await db.query<{ key: string }>('select key from people.pipeline_seen where stream = $1', [stream]);
-  const keys = new Set(rows.map((r) => r.key));
+  const keys = await seenKeys(db, stream);
   return { seeded: keys.has(SEEDED), keys };
 }
 const SEEDED = '#seeded';

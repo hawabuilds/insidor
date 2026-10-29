@@ -97,6 +97,7 @@ import { promotionMaxAgeMs } from '@insidor/core';
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { coinGate, coinGateFacts, type CoinGateFacts } from './coin-gate.ts';
 import type { Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 import { settledCoin } from './first-coin.ts';
 import { tokenHref } from './pipeline.ts';
 import { lineCoin } from './post-watch.ts';
@@ -438,7 +439,7 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     return { key: `n:${r.storyId}`, address: coin.address, ticker: coin.ticker !== '' ? coin.ticker : (f?.symbol ?? ''), onForYouMs: Number(r.onForYouMs), launchedMs: f?.mintedAtMs ?? null, capUsd: f?.mcUsd ?? null, itemId: r.itemId, excerpt: text(r.excerpt), author: text(r.author), image: https(r.image), logo: f?.logo ?? null };
   });
 
-  const seen = new Set((await db.query<{ key: string }>('select key from people.pipeline_seen where stream = $1', [LAUNCH_STREAM])).map((r) => r.key));
+  const seen = await seenKeys(db, LAUNCH_STREAM);
   const remember = async (keys: readonly string[]) => {
     if (keys.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [LAUNCH_STREAM, [...keys]]);
   };

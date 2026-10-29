@@ -38,6 +38,7 @@ import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts'
 
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { queue, type Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 
 export const FIRST_COIN_STREAM = 'first-coin';
 const SEEDED = '#seeded';
@@ -114,7 +115,7 @@ const storyHref = (id: string) => `/#/story/${encodeURIComponent(id)}`;
  */
 export async function checkFirstCoins(db: Db, ports: FirstCoinPorts): Promise<{ readonly queued: number; readonly told: ReadonlyMap<string, ReadonlySet<string>> }> {
   const rows = (await db.query<{ storyId: string; title: string; coins: unknown }>(COINS_SQL)).map((r): NarrativeCoin => ({ storyId: r.storyId, title: r.title, coin: settledCoin(r.coins) }));
-  const seen = new Set((await db.query<{ key: string }>('select key from people.pipeline_seen where stream = $1', [FIRST_COIN_STREAM])).map((r) => r.key));
+  const seen = await seenKeys(db, FIRST_COIN_STREAM);
   const seeded = seen.delete(SEEDED);
   const watches = await db.query<{ userId: string; storyId: string }>('select user_id as "userId", story_id as "storyId" from people.watch');
   const byStory = new Map<string, string[]>();
