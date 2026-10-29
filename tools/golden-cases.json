@@ -1,0 +1,15 @@
+{
+  "about": "The owner's must-still-work cases (2026-10-29): real posts, the moment to judge them at, and what For You must do then. tools/golden.ts replays For You's own decision (services/project buildRising) for each and fails the ship on any change. Add every post the owner pastes as missed, and every wrong thing he spots.",
+  "forYou": [
+    { "post": "x:2115487551276437658", "at": "2026-10-29T01:00:00Z", "expect": "on", "why": "cat with a microphone: found at 5 h, judged yes, 500k views — the late route (v203) must take it" },
+    { "post": "x:2115483496798109930", "at": "2026-10-28T23:30:00Z", "expect": "on", "why": "the giant-dog 'email office job' post, found at 5 h" },
+    { "post": "x:2115548818167271863", "at": "2026-10-29T04:00:00Z", "expect": "on", "why": "the giant-dog 'college campus' post, found at 5 h" },
+    { "post": "x:2115536877549728215", "at": "2026-10-29T03:00:00Z", "expect": "on", "why": "the Spanish bird post, found at 5 h" },
+    { "post": "x:2115660899621200026", "at": "2026-10-29T08:30:00Z", "expect": "on", "why": "National Cat Day: the judge said no, the owner called it a meme" },
+    { "post": "x:2115403963302629778", "at": "2026-10-28T16:30:00Z", "expect": "on", "why": "the new marsupial species, re-read as a yes with no lane" },
+    { "post": "x:2115508893799383392", "at": "2026-10-28T18:30:00Z", "expect": "off", "why": "a coin's promotion (Jenny the bear, 34 views): never on For You on its coin alone" },
+    { "post": "x:2115508132042444827", "at": "2026-10-28T18:40:00Z", "expect": "off", "why": "a pointer the coin-first walk recorded (the datacenter for sale): the promotion, not the original" },
+    { "post": "x:2115489205685985663", "at": "2026-10-28T17:30:00Z", "expect": "off", "why": "Brazil election news (Flavio Bolsonaro): politics is held" },
+    { "post": "x:2115447792340480463", "at": "2026-10-28T15:00:00Z", "expect": "off", "why": "Brazil election news (Flavio's passport): politics is held" }
+  ]
+}
