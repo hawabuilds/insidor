@@ -24,3 +24,4 @@ ml/serve/fixtures/parity-measured.json
 
 # The self-hosted embedding model's files, downloaded at its first boot (services/embed).
 services/embed/models/
+reports/health/
