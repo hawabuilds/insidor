@@ -27,6 +27,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { ChartBook, type ChartTake } from './chart-book.ts';
+import { LaunchOpens, type LaunchOpenRow } from './launch-open.ts';
 
 /** How often candles are written. */
 const FLUSH_MS = 5_000;
@@ -36,6 +37,8 @@ const KEEP_UNWRITTEN_FAILURES = 60;
 const LIST_EVERY_MS = 60_000;
 /** Minute rows older than this are deleted; the hourly rows stay. */
 export const MINUTE_RETENTION_MS = 7 * 86_400_000;
+/** How long a launch's first second is kept (0150). */
+const OPENS_KEEP_MS = 14 * 86_400_000;
 /** How often old minute rows are deleted, and the most deleted at once. */
 const PRUNE_EVERY_MS = 10 * 60_000;
 const PRUNE_BATCH = 20_000;
@@ -67,6 +70,10 @@ export interface ChartStorePort {
   write(t: ChartTake): Promise<void>;
   /** Deletes up to `limit` minute rows older than `beforeMs`; how many went. */
   prune(beforeMs: number, limit: number): Promise<number>;
+  /** Each launch's first second (0150, launch-open.ts); absent: not recorded. */
+  writeOpens?(rows: readonly LaunchOpenRow[]): Promise<void>;
+  /** Deletes the first-second rows of launches before `beforeMs`. */
+  pruneOpens?(beforeMs: number): Promise<number>;
 }
 
 export interface Charts {
@@ -89,6 +96,9 @@ export interface ChartDeps {
 
 export function createCharts(deps: ChartDeps): Charts {
   const book = new ChartBook();
+  /* ★ Each launch's first second, from the same trades the candles take (launch-open.ts, 0150). */
+  const opens = new LaunchOpens();
+  let opensFailed = 0;
   /* Nothing is folded until the table has answered once: deployed before 0144 is applied, this
      stays idle instead of holding a day of candles it can never write. */
   let ready = false;
@@ -116,6 +126,7 @@ export function createCharts(deps: ChartDeps): Charts {
       onTrades: (coin, ticks, launch, seenAtMs) => {
         if (!ready) return;
         const now = deps.now();
+        if (launch) opens.launched(coin, ticks[0]?.atMs ?? seenAtMs, now);
         if (ticks.length === 0) {
           if (launch) book.launched(coin, seenAtMs, now);
           return;
@@ -126,6 +137,7 @@ export function createCharts(deps: ChartDeps): Charts {
           const priceUsd = q === null || t.priceQuote === null ? null : t.priceQuote * q;
           const usd = q === null ? null : t.quoteAmount * q;
           book.apply({ coin: t.coin, tx: t.signature, side: t.side, tokens: t.tokens, usd, priceUsd, maker: t.trader, atMs: t.atMs, pool: t.pool, poolAddress: t.poolAddress, quoteMint: t.quoteMint }, launch, now);
+          opens.trade({ coin: t.coin, side: t.side, maker: t.trader, usd, atMs: t.atMs });
         }
       },
     },
@@ -164,9 +176,21 @@ export function createCharts(deps: ChartDeps): Charts {
           }
           await pass();
           book.sweep(now);
+          /* A launch's first second is a fact worth a row but not a retry: a write that fails (0150 not
+             applied, say) drops those rows, noted, and the candles carry on. */
+          const opened = opens.take(now);
+          if (opened.length > 0 && deps.store.writeOpens !== undefined) {
+            try {
+              await deps.store.writeOpens(opened);
+            } catch (e) {
+              opensFailed += 1;
+              if (opensFailed === 1 || opensFailed % 100 === 0) deps.note('warn', 'charts: launch first seconds not written (is 0150 applied?)', { rows: opened.length, failures: opensFailed, err: e instanceof Error ? e.message : String(e) });
+            }
+          }
           if (now - prunedAt >= PRUNE_EVERY_MS) {
             prunedAt = now;
             const gone = await deps.store.prune(now - MINUTE_RETENTION_MS, PRUNE_BATCH);
+            await deps.store.pruneOpens?.(now - OPENS_KEEP_MS).catch(() => 0);
             if (gone >= PRUNE_BATCH) prunedAt = now - PRUNE_EVERY_MS + FLUSH_MS * 4;
           }
           failures = 0;

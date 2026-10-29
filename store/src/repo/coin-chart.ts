@@ -128,4 +128,27 @@ export class PgChartRepo {
     );
     return Number(rows[0]?.n ?? 0);
   }
+
+  /**
+   * Each launch's first second (0150, chainwatch launch-open.ts): one row a coin, the first reading kept
+   * (on conflict do nothing), so a restart that sees a launch again never overwrites it.
+   */
+  async writeOpens(rows: readonly { readonly address: string; readonly launchedAtMs: number; readonly buyers: number; readonly buys: number; readonly devBuyUsd: number | null }[]): Promise<void> {
+    if (rows.length === 0) return;
+    await this.#db.query(
+      `insert into internal.launch_open (address, launched_at, buyers, buys, dev_buy_usd)
+       select * from unnest($1::text[], $2::timestamptz[], $3::int[], $4::int[], $5::float8[])
+       on conflict (address) do nothing`,
+      [rows.map((r) => r.address), rows.map((r) => iso(r.launchedAtMs)), rows.map((r) => r.buyers), rows.map((r) => r.buys), rows.map((r) => r.devBuyUsd)],
+    );
+  }
+
+  /** Deletes the first-second rows of launches before `beforeMs`; how many went. */
+  async pruneOpens(beforeMs: number): Promise<number> {
+    const rows = await this.#db.query<{ n: string }>(
+      `with gone as (delete from internal.launch_open where launched_at < $1 returning 1) select count(*)::text as n from gone`,
+      [iso(beforeMs)],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
 }
