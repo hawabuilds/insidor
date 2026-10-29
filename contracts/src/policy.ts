@@ -5935,8 +5935,10 @@ const POLICY_V1: Policy = {
      v203 (2026-10-29, the owner) counts a post found four hours after it went up as late
      (`lateNoCoin.foundAfterMs`), so what the five-hour search finds can still reach For You, and searches
      Indonesian ('in') at Korean's share, taken from English's: the search day does not move.
-     v204 (2026-10-29, the owner) lets For You's scroll reach back seven days (`rising.scrollKeepMs`). */
-  version: 'policy.v204',
+     v204 (2026-10-29, the owner) lets For You's scroll reach back seven days (`rising.scrollKeepMs`).
+     v205 (2026-10-29, the owner) adds a two-hour late band at 4,000 likes (`fresh.late.bands`, its day
+     `paging.searches.late_120` $0.45 taken from the slow lane's $1.05): the search day does not move. */
+  version: 'policy.v205',
 
   admit: {
     maxAgeMin: 240,
@@ -6734,7 +6736,13 @@ const POLICY_V1: Policy = {
            unfound before the coin. Replayed on that week, a look at 8 hours over 10k likes would have held
            119–192 more of them before their coin (210 were), and 10–13 of the owner's 37 never-found
            missed posts outside the "World War" wave. Its day is `paging.searches.late_480`. */
-        bands: [{ ageMin: 300, minApproval: 6_500 }, { ageMin: 480, minApproval: 10_000 }],
+        /* The 2-hour band from policy.v205 (2026-10-29, the owner: "catch the posts before the coins"): of the 1,771
+           judged-yes X posts past 100k views over 23-28 Oct, 959 were first found four or more hours in, most by
+           the five-hour band — the slow lane's one floor (about 12,400 likes) is far above what they had at two
+           hours. Posts tracked from their first hour had 66% of their five-hour likes at two hours (median of
+           1,709), so 4,000 likes at two hours is about 6,000 at five: replayed, it reaches 667 of the 690 posts
+           found at four to six hours three hours sooner. Its day is `paging.searches.late_120`. */
+        bands: [{ ageMin: 120, minApproval: 4_000 }, { ageMin: 300, minApproval: 6_500 }, { ageMin: 480, minApproval: 10_000 }],
         everyMs: 600_000, // ten minutes
         /* `zxx` (no words: a picture or a video alone) and `qme` (only emoji) from v196: two of the
            never-found missed posts, 232k and 142k likes, were `zxx`. */
@@ -6851,7 +6859,10 @@ const POLICY_V1: Policy = {
         /* The 8-hour band (policy.v196, `fresh.late`): $0.17 a day from policy.v198, exactly what fight words off
            saves, so search spend is unchanged; `band_6` keeps its full day. */
         late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.17, paced: true },
-        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 1.05 },
+        /* The 2-hour band (policy.v205): $0.45 a day, paced, taken from the slow lane, whose two-hour slice it
+           replaces (core `sliceCoveredByLateBand`): the search day does not move. */
+        late_120: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.45, paced: true },
+        slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.6 },
       },
     },
     /* On from 2026-10-19, the owner's "hard daily total for X search, spread evenly". The search bill
