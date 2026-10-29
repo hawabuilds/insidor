@@ -176,3 +176,26 @@ test('the held picks read their evidence only when the row changed', async () =>
   for (let i = 0; i < 3; i += 1) assert.deepEqual((await repo.heldPostPicks(0, 10)).map((p) => [p.subjectId, p.address, p.evidence]), [['x:1', 'A', { ties: ['name'] }]]);
   assert.equal(evidenceReads, 1);
 });
+
+test('watched sends back only the coins whose answer is not the one held', async () => {
+  const watching = new Set(['A', 'B']);
+  const returned: string[][] = [];
+  const db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      assert.ok(sql.includes('a.held is distinct from'));
+      const asked = (params?.[0] ?? []) as string[];
+      const held = (params?.[2] ?? []) as (boolean | null)[];
+      const rows = asked.flatMap((address, i) => (held[i] === watching.has(address) ? [] : [{ address, ok: watching.has(address) }]));
+      returned.push(rows.map((r) => r.address));
+      return rows as R[];
+    },
+  } as Db;
+  const repo = new PgOneCoinRepo(db);
+  assert.deepEqual([...(await repo.watched(['A', 'B', 'C', 'A'], 1))].sort(), ['A', 'B']);
+  assert.deepEqual([...(await repo.watched(['A', 'B', 'C'], 2))].sort(), ['A', 'B']);
+  /* B's measurement ended and C's began: only those two cross again. */
+  watching.delete('B');
+  watching.add('C');
+  assert.deepEqual([...(await repo.watched(['A', 'B', 'C'], 3))].sort(), ['A', 'C']);
+  assert.deepEqual(returned, [['A', 'B', 'C'], [], ['B', 'C']]);
+});
