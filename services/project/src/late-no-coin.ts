@@ -92,7 +92,7 @@ export const lateOn = (policy: Policy = DEFAULT_POLICY): boolean => policy.lateN
  */
 export function lateHolds(r: LateRecord, nowMs: number, policy: Policy = DEFAULT_POLICY): boolean {
   if (nowMs - r.postedAtMs > policy.lateNoCoin.maxPostAgeMs) return false;
-  if (r.foundAtMs - r.postedAtMs <= policy.rising.fypMaxAgeMs) return false;
+  if (r.foundAtMs - r.postedAtMs <= policy.lateNoCoin.foundAfterMs) return false;
   return r.coinAtMs === null || r.coinAtMs > nowMs;
 }
 
@@ -152,7 +152,7 @@ export const LATE_SQL = `with yes as (
 export async function loadLate(db: Db, postedSinceMs: number, policy: Policy = DEFAULT_POLICY, only: readonly string[] | null = null): Promise<readonly LateRecord[]> {
   const rows = await db.query<{ item_id: string; posted_at: Date | string; first_seen_at: Date | string; coin_at: Date | string | null; coin_address: string | null }>(
     LATE_SQL,
-    [new Date(postedSinceMs).toISOString(), policy.rising.fypMaxAgeMs, only === null ? null : [...only], policy.oneCoin.minCapUsd, [...COIN_ORIGIN_TIES]],
+    [new Date(postedSinceMs).toISOString(), policy.lateNoCoin.foundAfterMs, only === null ? null : [...only], policy.oneCoin.minCapUsd, [...COIN_ORIGIN_TIES]],
   );
   const ms = (v: Date | string): number => (v instanceof Date ? v.getTime() : Date.parse(v));
   return rows.map((r) => ({
