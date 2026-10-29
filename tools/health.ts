@@ -47,8 +47,9 @@ const logos = (await db.query(`select count(*) filter (where outcome = 'failed')
 now.logoCopyFailPct = logos.n === 0 ? 0 : Math.round((100 * logos.failed) / logos.n);
 const stored = (await db.query(`select address from internal.coin_logo where outcome = 'stored' order by checked_at desc limit 1`))[0];
 try {
-  const base = process.env.SUPABASE_URL;
-  now.pictureStorage = !base || !stored ? -1 : (await fetch(`${base}/storage/v1/object/public/launch-metadata/coin-logos/${stored.address}`)).status;
+  /* Pictures live on R2 from 2026-10-29 (adapters/storage/supabase r2.ts); the address is the app's own base. */
+  const base = process.env.R2_PUBLIC_BASE ?? 'https://pub-4a48d947a0584b948f54f35aea911c13.r2.dev';
+  now.pictureStorage = !stored ? -1 : (await fetch(`${base}/coin-logos/${stored.address}`)).status;
 } catch { now.pictureStorage = 0; }
 await pool.end();
 try { now.tapeCoins = (await (await fetch(`${READ}/running/coins`)).json()).coins.length; } catch { now.tapeCoins = -1; }
