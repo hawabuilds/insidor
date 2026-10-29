@@ -39,6 +39,17 @@ now.rereadShedPct = shed.shed + shed.pass ? Math.round((100 * shed.shed) / (shed
 const langs = (await db.query(`select i.lang, count(*) filter (where f.found_at > now() - interval '3 hours')::int now3, count(*) filter (where f.found_at between now() - interval '27 hours' and now() - interval '24 hours')::int yday3
   from internal.item_found_by f join public.item i on i.item_id = f.item_id where f.found_at > now() - interval '27 hours' and f.lane <> 'judged' group by 1 order by 3 desc limit 12`));
 now.findsByLang = Object.fromEntries(langs.map((r) => [r.lang ?? '-', `${r.now3}/${r.yday3}`]));
+/* ★ PICTURES (2026-10-29: storage went over its transfer allowance at ~01:00 UTC and every coin logo, poster
+   picture and post picture stopped loading; nothing here noticed for 13 hours). The mirror's last hour, and
+   one stored logo fetched the way the app fetches it. */
+const logos = (await db.query(`select count(*) filter (where outcome = 'failed')::int as failed, count(*)::int as n
+  from internal.coin_logo where checked_at > now() - interval '1 hour'`))[0];
+now.logoCopyFailPct = logos.n === 0 ? 0 : Math.round((100 * logos.failed) / logos.n);
+const stored = (await db.query(`select address from internal.coin_logo where outcome = 'stored' order by checked_at desc limit 1`))[0];
+try {
+  const base = process.env.SUPABASE_URL;
+  now.pictureStorage = !base || !stored ? -1 : (await fetch(`${base}/storage/v1/object/public/launch-metadata/coin-logos/${stored.address}`)).status;
+} catch { now.pictureStorage = 0; }
 await pool.end();
 try { now.tapeCoins = (await (await fetch(`${READ}/running/coins`)).json()).coins.length; } catch { now.tapeCoins = -1; }
 now.errors = {};
@@ -56,6 +67,8 @@ const red = [];
 const floor = (k, min) => { if (now[k] < min) red.push(`${k} ${now[k]} under ${min}`); };
 floor('fypPosts', 40); floor('fypFreshPct', 80); floor('popularFreshPct', 50); floor('tapeCoins', 1); floor('judgedLast30m', 10);
 if (now.lastFypJoinMin > 60) red.push(`For You has added no post for ${now.lastFypJoinMin} min`);
+if (now.pictureStorage !== 200 && now.pictureStorage !== -1) red.push(`picture storage answers ${now.pictureStorage}: coin logos, poster and post pictures are not loading`);
+if (now.logoCopyFailPct > 50) red.push(`coin-logo copies failing: ${now.logoCopyFailPct}% in the last hour`);
 /* The shed share is information, not a failure: the re-read day is fixed, and the feeds' freshness above is the outcome. */
 for (const [s, n] of Object.entries(now.errors)) if (last && n > Math.max(10, 3 * (last.errors?.[s] ?? 0))) red.push(`${s} errors ${n} (last check ${last.errors?.[s]})`);
 if (last) for (const k of ['fypPosts', 'fypFreshPct', 'popularFreshPct', 'tapeCoins', 'judgedLast30m']) if (now[k] < 0.7 * last[k]) red.push(`${k} fell ${last[k]} → ${now[k]}`);
