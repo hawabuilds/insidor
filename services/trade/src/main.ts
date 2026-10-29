@@ -11,6 +11,7 @@ import { buildCurve, curveState, payerOf, quoteCurve } from '@insidor/venue-sola
 import { buildTransfer } from '@insidor/venue-solana-pumpfun/transfer.ts';
 import { LaunchRefused, buildLaunch, launchRules } from '@insidor/venue-solana-pumpfun/launch.ts';
 import { MetadataRejected, supabaseStorage } from '@insidor/storage-supabase';
+import { readR2Config } from '@insidor/storage-supabase/r2.ts';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 
@@ -51,7 +52,7 @@ const LAUNCH_IDLE_CLIENT_MS = 10_000;
 const launch: LaunchPort | null = (() => {
   const l = cfg.launch;
   if (l === null) return null;
-  const storage = supabaseStorage({ url: l.storageUrl, serviceKey: l.storageKey, fetch: globalThis.fetch, id: randomUUID });
+  const storage = supabaseStorage({ url: l.storageUrl, serviceKey: l.storageKey, fetch: globalThis.fetch, id: randomUUID, r2: readR2Config(process.env) });
   /* One standalone statement per launch, so the app role's URL may be the transaction-mode
      pooler (6543), and is on Railway. Two clients at most, closed after ten idle seconds. */
   const pool = new pg.Pool({ connectionString: l.databaseUrl, max: LAUNCH_POOL_MAX, idleTimeoutMillis: LAUNCH_IDLE_CLIENT_MS, application_name: 'insidor-trade' });

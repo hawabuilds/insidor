@@ -14,6 +14,7 @@ import { privyIdentity } from '@insidor/identity-privy';
 import { launchPriceSol } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 import { memberPicStore, PhotoRefused } from '@insidor/storage-supabase/member-pic.ts';
 import { posterPicStore } from '@insidor/storage-supabase/poster-pic.ts';
+import { readR2Config } from '@insidor/storage-supabase/r2.ts';
 
 import { liveCoinCheck } from './coin-sources.ts';
 import { loadSocialConfig } from './config.ts';
@@ -90,13 +91,13 @@ const chain: Chain | null = (() => {
 const PHOTO_TIMEOUT_MS = 15_000;
 const storage = cfg.storage;
 const photos: PhotoStore | null = storage === null ? null : (() => {
-  const store = memberPicStore({ url: storage.url, serviceKey: storage.serviceKey, fetch: globalThis.fetch, timeoutMs: PHOTO_TIMEOUT_MS, maxBytes: MAX_PHOTO_BYTES });
+  const store = memberPicStore({ url: storage.url, serviceKey: storage.serviceKey, fetch: globalThis.fetch, timeoutMs: PHOTO_TIMEOUT_MS, maxBytes: MAX_PHOTO_BYTES, r2: readR2Config(process.env) });
   return { put: store.put, urlOf: store.urlOf, refused: (e: unknown) => e instanceof PhotoRefused };
 })();
 
 /* Edit profile's picture and banner (profile-media.ts): the poster pictures' folder and store. The
    download half is unused here; its cap only has to be a number. */
-const media = storage === null ? null : posterPicStore({ url: storage.url, serviceKey: storage.serviceKey, fetch: globalThis.fetch, timeoutMs: PHOTO_TIMEOUT_MS, maxBytes: 2 * 1024 * 1024 });
+const media = storage === null ? null : posterPicStore({ url: storage.url, serviceKey: storage.serviceKey, fetch: globalThis.fetch, timeoutMs: PHOTO_TIMEOUT_MS, maxBytes: 2 * 1024 * 1024, r2: readR2Config(process.env) });
 
 const deps = { db, photos, media, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, invites: DEFAULT_POLICY.invites, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
 

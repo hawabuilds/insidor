@@ -18,13 +18,9 @@
  * the source's link, and the expired ones to the placeholder.
  */
 
-import { VendorUnavailable } from '@insidor/vendor-kit';
-
-import { coinLogoStore, LogoRefused, sniffPicture } from './coin-logo.ts';
+import { coinLogoStore, LogoRefused, sniffPicture, writePicture } from './coin-logo.ts';
 import type { LogoStoreConfig } from './coin-logo.ts';
 
-const VENDOR = 'supabase-storage';
-const BUCKET = 'launch-metadata';
 /** The folder in the bucket; the app's post-picture base ends in it. */
 export const POST_PIC_FOLDER = 'post-pics';
 /** The sheet's copies, inside it. "sheet" can never be a file name (those are 32 hex characters). */
@@ -35,7 +31,6 @@ export const POST_PIC_FILE = /^[0-9a-f]{32}$/;
 export type PostPicCopy = 'card' | 'sheet';
 
 export function postPicStore(config: LogoStoreConfig) {
-  const base = config.url.replace(/\/+$/, '');
   const { download } = coinLogoStore(config);
   return {
     download,
@@ -44,24 +39,7 @@ export function postPicStore(config: LogoStoreConfig) {
       if (!POST_PIC_FILE.test(file)) throw new LogoRefused('not a picture file name');
       if (sniffPicture(picture.bytes) !== picture.type) throw new LogoRefused('not the picture it says it is');
       const path = copy === 'sheet' ? `${POST_PIC_FOLDER}/${POST_PIC_SHEET_FOLDER}/${file}` : `${POST_PIC_FOLDER}/${file}`;
-      let response: Response;
-      try {
-        response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${path}`, {
-          method: 'POST',
-          headers: {
-            apikey: config.serviceKey,
-            authorization: `Bearer ${config.serviceKey}`,
-            'content-type': picture.type,
-            'x-upsert': 'true',
-            'cache-control': 'max-age=31536000',
-          },
-          body: new Blob([Buffer.from(picture.bytes)], { type: picture.type }),
-          signal: AbortSignal.timeout(config.timeoutMs),
-        });
-      } catch (e) {
-        throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `request failed: ${e instanceof Error ? e.message : 'unknown'}`);
-      }
-      if (!response.ok) throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `responded ${response.status}`, response.status);
+      await writePicture(config, path, picture, 'max-age=31536000');
     },
   };
 }

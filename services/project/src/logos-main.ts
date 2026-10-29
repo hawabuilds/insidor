@@ -24,6 +24,7 @@
 
 import { dexscreenerProfiles } from '@insidor/market-dexscreener';
 import { coinLogoStore } from '@insidor/storage-supabase/coin-logo.ts';
+import { readR2Config } from '@insidor/storage-supabase/r2.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { postPicStore } from '@insidor/storage-supabase/post-pic.ts';
 import { posterPicStore } from '@insidor/storage-supabase/poster-pic.ts';
@@ -54,7 +55,7 @@ async function main(): Promise<void> {
     return;
   }
   const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-logos', env: { DATABASE_URL_SERVICE: url } });
-  const store = coinLogoStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_LOGO_BYTES });
+  const store = coinLogoStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_LOGO_BYTES, r2: readR2Config(process.env) });
   const market = dexscreenerProfiles({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: FETCH_TIMEOUT_MS });
   const documents = { fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: DOCUMENT_MAX_BYTES };
   const log = (msg: string, fields: Record<string, unknown>) => console.log(JSON.stringify({ level: 'info', msg, ...fields }));
@@ -80,7 +81,7 @@ async function main(): Promise<void> {
     });
     console.log(JSON.stringify({ level: 'info', msg: 'coin logos mirrored', ...result }));
     /* Then the faces of the posters on the feeds (poster-pics.ts), on the time the logos left. */
-    const faces = posterPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_POSTER_BYTES });
+    const faces = posterPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_POSTER_BYTES, r2: readR2Config(process.env) });
     const posterStarted = Date.now();
     const posters = await posterPass({
       db: asDb(pool),
@@ -91,7 +92,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ level: 'info', msg: 'poster pictures copied', ...posters }));
     /* Then the shown posts' own pictures (post-pics.ts), while their signed links still load. */
     const policy = DEFAULT_POLICY.postPictures;
-    const pictures = postPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: policy.maxBytes });
+    const pictures = postPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: policy.maxBytes, r2: readR2Config(process.env) });
     const picturesStarted = Date.now();
     const posts = await postPicPass({
       db: asDb(pool),

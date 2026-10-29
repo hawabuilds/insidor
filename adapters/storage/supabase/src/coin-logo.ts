@@ -25,6 +25,8 @@
 
 import { VendorUnavailable } from '@insidor/vendor-kit';
 
+import { r2Put, r2PublicUrl, type R2Config } from './r2.ts';
+
 const VENDOR = 'supabase-storage';
 const BUCKET = 'launch-metadata';
 /** The folder in the bucket; the app's VITE_COIN_LOGO_BASE ends in it. */
@@ -53,7 +55,34 @@ export interface LogoStoreConfig {
   readonly timeoutMs: number;
   /** The largest picture copied, in bytes. A bigger one is left where it is. */
   readonly maxBytes: number;
+  /** When set, pictures are written to R2 at the same paths (r2.ts); absent or null: Supabase Storage. */
+  readonly r2?: R2Config | null;
 }
+
+/**
+ * One picture written at `path` in whichever home is configured: R2 when `config.r2` is set, else the
+ * Supabase bucket. Every store in this package writes through here, so the two can never disagree on a path.
+ */
+export async function writePicture(config: LogoStoreConfig, path: string, picture: { readonly bytes: Uint8Array; readonly type: string }, cacheControl: string): Promise<void> {
+  if (config.r2) return r2Put(config.r2, config.fetch, path, picture.bytes, picture.type, cacheControl, config.timeoutMs);
+  const base = config.url.replace(/\/+$/, '');
+  let response: Response;
+  try {
+    response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { apikey: config.serviceKey, authorization: `Bearer ${config.serviceKey}`, 'content-type': picture.type, 'x-upsert': 'true', 'cache-control': cacheControl },
+      body: new Blob([Buffer.from(picture.bytes)], { type: picture.type }),
+      signal: AbortSignal.timeout(config.timeoutMs),
+    });
+  } catch (e) {
+    throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `request failed: ${e instanceof Error ? e.message : 'unknown'}`);
+  }
+  if (!response.ok) throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `responded ${response.status}`, response.status);
+}
+
+/** Where anyone reads a stored picture at `path`. */
+export const pictureUrl = (config: Pick<LogoStoreConfig, 'url' | 'r2'>, path: string): string =>
+  config.r2 ? r2PublicUrl(config.r2, path) : `${config.url.replace(/\/+$/, '')}/storage/v1/object/public/${BUCKET}/${path}`;
 
 export function coinLogoStore(config: LogoStoreConfig) {
   const base = config.url.replace(/\/+$/, '');
@@ -96,25 +125,14 @@ export function coinLogoStore(config: LogoStoreConfig) {
     download,
     /** Where our own full copy of a coin's logo is served: the mirror reads it back to resize it. */
     ownCopyUrl(address: string): string {
-      return `${base}/storage/v1/object/public/${BUCKET}/${COIN_LOGO_FOLDER}/${address}`;
+      return pictureUrl(config, `${COIN_LOGO_FOLDER}/${address}`);
     },
     /** Store one copy of a coin's picture at its address, replacing any earlier one. */
     async put(address: string, picture: { readonly bytes: Uint8Array; readonly type: string }, copy: LogoCopy = 'full'): Promise<void> {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) throw new LogoRefused('not an address');
       if (sniffPicture(picture.bytes) !== picture.type) throw new LogoRefused('not the picture it says it is');
       const path = copy === 'small' ? `${COIN_LOGO_FOLDER}/${COIN_LOGO_SMALL_FOLDER}/${address}` : `${COIN_LOGO_FOLDER}/${address}`;
-      let response: Response;
-      try {
-        response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${path}`, {
-          method: 'POST',
-          headers: { ...headers, 'content-type': picture.type, 'x-upsert': 'true', 'cache-control': 'max-age=604800' },
-          body: new Blob([Buffer.from(picture.bytes)], { type: picture.type }),
-          signal: AbortSignal.timeout(config.timeoutMs),
-        });
-      } catch (e) {
-        throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `request failed: ${e instanceof Error ? e.message : 'unknown'}`);
-      }
-      if (!response.ok) throw new VendorUnavailable(VENDOR, 'POST /storage/v1/object', `responded ${response.status}`, response.status);
+      await writePicture(config, path, picture, 'max-age=604800');
     },
   };
 }
