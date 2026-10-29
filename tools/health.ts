@@ -14,6 +14,8 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
+/* The same bars the alert service checks every five minutes (services/notify health-alarm.ts). */
+import { JUDGED_MIN, judgingBroken, logoFailPct, LOGO_FAIL_PCT, picturesBroken, TAPE_MIN_COINS, tapeBroken } from '../services/notify/src/health-bars.ts';
 
 const READ = process.env.READ_URL ?? 'https://read-production-a6c0.up.railway.app';
 const DIR = new URL('../reports/health/', import.meta.url);
@@ -44,7 +46,7 @@ now.findsByLang = Object.fromEntries(langs.map((r) => [r.lang ?? '-', `${r.now3}
    one stored logo fetched the way the app fetches it. */
 const logos = (await db.query(`select count(*) filter (where outcome = 'failed')::int as failed, count(*)::int as n
   from internal.coin_logo where checked_at > now() - interval '1 hour'`))[0];
-now.logoCopyFailPct = logos.n === 0 ? 0 : Math.round((100 * logos.failed) / logos.n);
+now.logoCopyFailPct = logoFailPct(logos.failed, logos.n);
 const stored = (await db.query(`select address from internal.coin_logo where outcome = 'stored' order by checked_at desc limit 1`))[0];
 try {
   /* Pictures live on R2 from 2026-10-29 (adapters/storage/supabase r2.ts); the address is the app's own base. */
@@ -66,10 +68,12 @@ const files = fs.readdirSync(DIR).filter((x) => x.endsWith('.json')).sort();
 const last = files.length ? JSON.parse(fs.readFileSync(new URL(files[files.length - 1], DIR), 'utf8')) : null;
 const red = [];
 const floor = (k, min) => { if (now[k] < min) red.push(`${k} ${now[k]} under ${min}`); };
-floor('fypPosts', 40); floor('fypFreshPct', 80); floor('popularFreshPct', 50); floor('tapeCoins', 1); floor('judgedLast30m', 10);
+floor('fypPosts', 40); floor('fypFreshPct', 80); floor('popularFreshPct', 50);
+if (tapeBroken(now.tapeCoins < 0 ? null : now.tapeCoins)) red.push(`tapeCoins ${now.tapeCoins} under ${TAPE_MIN_COINS}`);
+if (judgingBroken(now.judgedLast30m)) red.push(`judgedLast30m ${now.judgedLast30m} under ${JUDGED_MIN}`);
 if (now.lastFypJoinMin > 60) red.push(`For You has added no post for ${now.lastFypJoinMin} min`);
-if (now.pictureStorage !== 200 && now.pictureStorage !== -1) red.push(`picture storage answers ${now.pictureStorage}: coin logos, poster and post pictures are not loading`);
-if (now.logoCopyFailPct > 50) red.push(`coin-logo copies failing: ${now.logoCopyFailPct}% in the last hour`);
+if (picturesBroken(now.pictureStorage === -1 ? null : now.pictureStorage)) red.push(`picture storage answers ${now.pictureStorage}: coin logos, poster and post pictures are not loading`);
+if (now.logoCopyFailPct > LOGO_FAIL_PCT) red.push(`coin-logo copies failing: ${now.logoCopyFailPct}% in the last hour`);
 /* The shed share is information, not a failure: the re-read day is fixed, and the feeds' freshness above is the outcome. */
 for (const [s, n] of Object.entries(now.errors)) if (last && n > Math.max(10, 3 * (last.errors?.[s] ?? 0))) red.push(`${s} errors ${n} (last check ${last.errors?.[s]})`);
 if (last) for (const k of ['fypPosts', 'fypFreshPct', 'popularFreshPct', 'tapeCoins', 'judgedLast30m']) if (now[k] < 0.7 * last[k]) red.push(`${k} fell ${last[k]} → ${now[k]}`);

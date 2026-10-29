@@ -5,7 +5,7 @@
  * deliver what is queued and push the held groups of follows and likes (seconds), check the
  * watched posts (seconds, watch.ts), check prices, curves and created coins' first buyers
  * (minutes), check the pipeline, what is blowing up on For You and the starred narratives, the owner's outage alarm (each minute, alarm.ts) and his
- * Not-a-meme alarm (every five minutes, junk.ts) — each pass independent, a failed pass logged
+ * health alarm and Not-a-meme alarm (every five minutes, health-alarm.ts and junk.ts) — each pass independent, a failed pass logged
  * and tried again next time.
  *
  * Every answer a push service gives is logged (host and status, never the device's address) and
@@ -22,6 +22,7 @@ import { webPushSender } from '@insidor/push-webpush';
 import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
 import { ALARM_LOOP_MS, alarmMemory, checkAlarms, JUDGE_VENDOR_OF_ROLE } from './alarm.ts';
+import { checkHealth, HEALTH_LOOP_MS, healthMemory } from './health-alarm.ts';
 import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
 import { checkLaunches } from './launch.ts';
 import { loadNotifyConfig } from './config.ts';
@@ -129,6 +130,9 @@ if (cfg.notifyOn) {
      watched from here because this service is neither the runner nor the projector. */
   const alarm = alarmMemory();
   every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, primaryJudgeVendor: JUDGE_VENDOR_OF_ROLE[DEFAULT_POLICY.judge.primary], push, ttlS: P.pushTtlS, directPush: P.launch.ownerAlarmsPush, log }, alarm));
+  /* The health check around the clock (health-alarm.ts, 2026-10-29): pictures, coin-logo copies, the Tape, judging. */
+  const health = healthMemory();
+  every(HEALTH_LOOP_MS, 'health alarms', () => checkHealth({ db, now: Date.now, fetch: globalThis.fetch, pictureBase: cfg.pictureBase, readUrl: cfg.readUrl, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, health));
   /* The owner's Not-a-meme alarm (junk.ts): his taps per 100 For You posts shown, clearly above the 3 days before. */
   const junk = junkMemory();
   every(JUNK_LOOP_MS, 'not a meme alarms', () => checkJunk({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, junk));
