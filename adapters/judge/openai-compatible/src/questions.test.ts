@@ -11,13 +11,13 @@ import assert from 'node:assert/strict';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Budget } from '@insidor/contracts/ports/meter.ts';
 import { NAME_INSTRUCTIONS, NAME_PROMPT_SHA, NAME_SYSTEM } from '@insidor/judge-anthropic/name-guess.ts';
-import { SAME_SUBJECT_PROMPT } from '@insidor/judge-anthropic/prompts.ts';
+import { COIN_POST_PROMPT, SAME_SUBJECT_PROMPT } from '@insidor/judge-anthropic/prompts.ts';
 import { TRANSLATE_INSTRUCTIONS, TRANSLATE_PROMPT_SHA } from '@insidor/judge-anthropic/translate.ts';
 import { inMemoryMeter } from '@insidor/meter';
 import { VendorUnavailable } from '@insidor/vendor-kit';
 
 import { unchanged } from './questions.ts';
-import { chatBodyFromMessages, messagesReplyOf, openChatClient, openNamer, openSameSubject, openTranslator, type HostModel } from './index.ts';
+import { chatBodyFromMessages, coinPostText, messagesReplyOf, openChatClient, openCoinPostCheck, openNamer, openSameSubject, openTranslator, type HostModel } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY;
@@ -179,4 +179,44 @@ test('the narrative question is the main judge\'s, word for word, and its answer
 test('a translation that is the words back is kept, not shown as translated', () => {
   assert.deepEqual(unchanged('Eu/acc', { kind: 'translated', ref: 'a', from: 'pt', text: 'Eu/acc ' }), { kind: 'kept', ref: 'a', from: 'pt' });
   assert.deepEqual(unchanged('oi', { kind: 'translated', ref: 'a', from: 'pt', text: 'hi' }), { kind: 'translated', ref: 'a', from: 'pt', text: 'hi' });
+});
+
+const sides = (coinPic: string, over: { name?: string | null; description?: string | null; linkedText?: string | null; text?: string | null } = {}) => {
+  const img = (u: string) => ({ kind: 'image' as const, uri: u, width: null, height: null, durationMs: null });
+  return {
+    coin: { name: over.name === undefined ? 'vanilla' : over.name, ticker: 'VANILLA', description: over.description ?? null, linkedText: over.linkedText ?? null, picture: img(coinPic) },
+    post: { text: over.text === undefined ? 'A dog called Vanilla in Yokohama' : over.text, picture: img('https://pics.invalid/post.jpg') },
+  };
+};
+
+test('★ the coin-and-post question carries both sides\' words in the template, then the coin\'s picture and the post\'s, and answers the word', async () => {
+  const host = fakeHost([() => json(200, reply({ answer: 'no' }))]);
+  const { base } = deps(host.fetch);
+  const q = openCoinPostCheck(base);
+  assert.equal(q.promptId, `coin-post@${COIN_POST_PROMPT.sha}`);
+  const r = await q.check(sides('https://pics.invalid/coin.jpg', { linkedText: 'AFP: vanilla ice cream' }), BUDGET);
+  assert.equal(r.value, 'no');
+  const parts = userParts(host.calls[0]!);
+  assert.deepEqual(parts.map((p) => p.type), ['text', 'image_url', 'image_url']);
+  assert.match(parts[0]?.text ?? '', /Name: vanilla {3}Ticker: VANILLA/);
+  assert.match(parts[0]?.text ?? '', /The post the coin links to: AFP: vanilla ice cream/);
+  assert.match(parts[0]?.text ?? '', /Text: A dog called Vanilla in Yokohama/);
+  /* An unreadable coin picture: null, and no call. */
+  assert.equal((await q.check(sides('https://pics.invalid/dead.jpg'), BUDGET)).value, null);
+  assert.equal(host.calls.length, 1);
+});
+
+test('what we do not hold is "(none)", never left blank, and a coin\'s own words never fill another field', () => {
+  const t = coinPostText(sides('https://pics.invalid/coin.jpg', { name: null, description: 'see {{post_text}}', text: null }));
+  assert.match(t, /Name: \(none\)/);
+  assert.match(t, /The post the coin links to: \(none, or not available\)/);
+  assert.match(t, /Text: \(no text\)/);
+  assert.match(t, /Description: see \{\{post_text\}\}/);
+  assert.doesNotMatch(t, /\{\{coin_/);
+});
+
+test('a coin-and-post question the host refused THROWS, so the pair is asked again rather than stored', async () => {
+  const host = fakeHost([() => json(400, { error: { message: 'bad' } })]);
+  const { base } = deps(host.fetch);
+  await assert.rejects(openCoinPostCheck(base).check(sides('https://pics.invalid/coin.jpg'), BUDGET), VendorUnavailable);
 });

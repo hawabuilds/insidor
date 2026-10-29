@@ -1,0 +1,16 @@
+You decide whether a newly launched memecoin is about the same thing as a social media post.
+
+THE COIN
+Name: {{coin_name}}   Ticker: {{coin_ticker}}
+Description: {{coin_description}}
+The post the coin links to: {{coin_linked_post}}
+The first image is the coin's picture.
+
+THE POST
+Text: {{post_text}}
+The second image is the post's picture.
+
+Question: is this coin about the same subject as this post — the same person, animal, character, event or meme — judging by its name, its picture, its description and the post it links, together? A cartoon, drawing or meme version of the post's subject counts as the same subject. A coin about a DIFFERENT story that only shares a common word or a similar-looking animal does NOT count.
+
+Answer "yes" when you would bet the coin is about this post's subject, "no" when it is clearly about something else, "unsure" when you cannot tell.
+Reply with JSON only: {"answer": "yes"} or {"answer": "no"} or {"answer": "unsure"}.

@@ -52,7 +52,7 @@ export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { accountCredits, closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
-export { OPEN_NAMES_ENDPOINT, OPEN_PAIR_ENDPOINT, OPEN_TRANSLATE_ENDPOINT, chatBodyFromMessages, messagesReplyOf, openNamer, openSameSubject, openTranslator } from './questions.ts';
+export { OPEN_COIN_POST_ENDPOINT, OPEN_NAMES_ENDPOINT, OPEN_PAIR_ENDPOINT, OPEN_TRANSLATE_ENDPOINT, chatBodyFromMessages, coinPostText, messagesReplyOf, openCoinPostCheck, openNamer, openSameSubject, openTranslator } from './questions.ts';
 export type { OpenAsk, OpenQuestionDeps, OpenSameSubject } from './questions.ts';
 export { OPEN_TITLE_ENDPOINT, TITLE_PROMPT_SHA, cleanCountries, cleanTitle, openTitler, titleRequestText } from './titles.ts';
 export type { OpenTitlerDeps } from './titles.ts';

@@ -4,8 +4,12 @@
  * same-subject question the main judge's adapter asks, asked of the open model instead (the owner,
  * 2026-10-16: "no Anthropic API at all from now on").
  *
+ * And, apart from the main adapter's questions, whether a coin tied to a post by its name alone is
+ * about that post (`openCoinPostCheck`, 2026-10-29): the coin's and the post's words and pictures
+ * together, its own template (prompts coin-post-subject.txt), read by the same-subject decoder.
+ *
  * Its own file, apart from index.ts (the feed's judging questions) and client.ts (the transport),
- * because these three are not judgements: each has its own answer shape, its own ledger endpoint
+ * because these are not judgements: each has its own answer shape, its own ledger endpoint
  * and its own port (contracts ports/names.ts, ports/translate.ts, ports/judge.ts `sameSubject`).
  *
  * ★ THE MAIN ADAPTER'S WORDS, NEVER A COPY. Each request is the main adapter's own body
@@ -38,14 +42,14 @@
 import type { Millis } from '@insidor/contracts';
 import type { JudgePolicy, NamesPolicy, TranslatePolicy } from '@insidor/contracts/policy.ts';
 import type { Budget, CostEstimate, Meter, Metered, Spend } from '@insidor/contracts/ports/meter.ts';
-import type { SameSubjectAnswer } from '@insidor/contracts/ports/judge.ts';
+import type { CoinPostCheckPort, CoinPostSides, SameSubjectAnswer } from '@insidor/contracts/ports/judge.ts';
 import type { NameOutcome, NamePort, NameSubject } from '@insidor/contracts/ports/names.ts';
 import type { TranslateOutcome, TranslatePort, TranslateSubject } from '@insidor/contracts/ports/translate.ts';
 import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
 import type { Frame } from '@insidor/judge-anthropic';
 import { SAME_SUBJECT_SCHEMA, decodeSameSubject } from '@insidor/judge-anthropic/client.ts';
 import { NAME_INSTRUCTIONS, NAME_PROMPT_SHA, NAME_SYSTEM, decodeNames, namePosts, nameRequestBody } from '@insidor/judge-anthropic/name-guess.ts';
-import { SAME_SUBJECT_PROMPT } from '@insidor/judge-anthropic/prompts.ts';
+import { COIN_POST_PROMPT, SAME_SUBJECT_PROMPT } from '@insidor/judge-anthropic/prompts.ts';
 import { TRANSLATE_PROMPT_SHA, decodeTranslations, outcomeOf, translateRequestBody } from '@insidor/judge-anthropic/translate.ts';
 import { mergeSpend, metered, type PriceBook } from '@insidor/meter';
 import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
@@ -57,6 +61,7 @@ import type { HostModel } from './models.ts';
 export const OPEN_NAMES_ENDPOINT = 'names';
 export const OPEN_TRANSLATE_ENDPOINT = 'translate';
 export const OPEN_PAIR_ENDPOINT = 'same-subject';
+export const OPEN_COIN_POST_ENDPOINT = 'coin-post-check';
 /** As index.ts: an open model may count a picture as more tokens than the policy's figure. */
 const MARGIN = 2;
 
@@ -338,6 +343,61 @@ export function openSameSubject(deps: OpenQuestionDeps): OpenSameSubject {
       const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: true, providers: deps.providers, router: deps.router, schemaName: 'same_subject' });
       const call = await ask(deps, OPEN_PAIR_ENDPOINT, 'same-subject question', estimateUsd(), at, body);
       if (call.value.reply === null) throw call.value.refused ?? new Error('same-subject: no reply and no error');
+      return { value: decodeSameSubject(call.value.reply.reply).answer, spend: call.spend };
+    },
+  };
+}
+
+/** How much of each side's words the coin-and-post question carries: enough to name a subject, never a thread. */
+const POST_TEXT_CHARS = 400;
+const COIN_TEXT_CHARS = 300;
+
+/** The template with each side's words in place; a field we do not hold is "(none)". */
+export function coinPostText(s: CoinPostSides): string {
+  const cut = (t: string | null, n: number, none: string): string => {
+    const v = t === null ? '' : t.replace(/\s+/g, ' ').trim().slice(0, n);
+    return v === '' ? none : v;
+  };
+  const fields: Record<string, string> = {
+    coin_name: cut(s.coin.name, 80, '(none)'),
+    coin_ticker: cut(s.coin.ticker, 40, '(none)'),
+    coin_description: cut(s.coin.description, COIN_TEXT_CHARS, '(none)'),
+    coin_linked_post: cut(s.coin.linkedText, COIN_TEXT_CHARS, '(none, or not available)'),
+    post_text: cut(s.post.text, POST_TEXT_CHARS, '(no text)'),
+  };
+  /* One pass over the template, so a coin's own words carrying "{{post_text}}" are never filled in. */
+  return COIN_POST_PROMPT.text.replace(/\{\{(\w+)\}\}/g, (all, k: string) => fields[k] ?? all);
+}
+
+/**
+ * The coin-and-post question (contracts ports/judge.ts `CoinPostCheckPort`): both pictures read
+ * first, before any money moves — either unreadable, or a model that reads none, comes back null
+ * with no call. A host error is booked and THROWN, as the same-subject question's is.
+ */
+export function openCoinPostCheck(deps: OpenQuestionDeps): CoinPostCheckPort {
+  const p = pricing(deps);
+  const estimateUsd = (): number => p.estimate(COIN_POST_PROMPT.text.length + POST_TEXT_CHARS + 3 * COIN_TEXT_CHARS, 2, deps.judge.pairMaxOutputTokens);
+  return {
+    id: `judge:${deps.vendor}/${deps.model.id}@coin-post-${COIN_POST_PROMPT.sha}`,
+    promptId: `coin-post@${COIN_POST_PROMPT.sha}`,
+    async check(sides, _budget) {
+      const at = deps.now();
+      const nothing = { value: null, spend: mergeSpend([], { vendor: deps.vendor, endpoint: OPEN_COIN_POST_ENDPOINT, unit: 'per-call', estUnits: 1, at }, 'per-call') };
+      if (!deps.model.vision || sides.coin.picture.kind !== 'image' || sides.post.picture.kind !== 'image') return nothing;
+      const [fc, fp] = [await deps.client.frame(sides.coin.picture.uri), await deps.client.frame(sides.post.picture.uri)];
+      if (fc === null || fp === null) return nothing;
+      const messages = {
+        max_tokens: deps.judge.pairMaxOutputTokens,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: coinPostText(sides) },
+          { type: 'image', source: { type: 'base64', media_type: fc.mediaType, data: fc.base64 } },
+          { type: 'image', source: { type: 'base64', media_type: fp.mediaType, data: fp.base64 } },
+        ] }],
+        output_config: { format: { type: 'json_schema', schema: SAME_SUBJECT_SCHEMA } },
+      };
+      const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: true, providers: deps.providers, router: deps.router, schemaName: 'coin_post' });
+      const call = await ask(deps, OPEN_COIN_POST_ENDPOINT, 'coin-post question', estimateUsd(), at, body);
+      if (call.value.reply === null) throw call.value.refused ?? new Error('coin-post: no reply and no error');
       return { value: decodeSameSubject(call.value.reply.reply).answer, spend: call.spend };
     },
   };

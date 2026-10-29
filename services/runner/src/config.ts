@@ -100,8 +100,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
    searches (loops/name-search.ts, loops/quotes.ts), each with its own cap; with HEARTBEAT=on,
    HEARTBEAT_SLUG_NAMESEARCH and HEARTBEAT_SLUG_QUOTES. `onecoin`: one post, one coin (loops/one-coin.ts); with
    HEARTBEAT=on, HEARTBEAT_SLUG_ONECOIN. `accountwatch`: the account watch (loops/account-watch.ts), with
-   its own cap; with HEARTBEAT=on, HEARTBEAT_SLUG_ACCOUNTWATCH. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel', 'namesearch', 'quotes', 'onecoin', 'accountwatch'] as const;
+   its own cap; with HEARTBEAT=on, HEARTBEAT_SLUG_ACCOUNTWATCH. `postcheck`: name-only coins on screen put
+   to the judge (loops/coin-post-check.ts), with its own cap; with HEARTBEAT=on, HEARTBEAT_SLUG_POSTCHECK. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel', 'namesearch', 'quotes', 'onecoin', 'accountwatch', 'postcheck'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 
