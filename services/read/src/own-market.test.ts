@@ -63,12 +63,18 @@ test('the market source\'s pool is used when it answers in time', async () => {
   assert.equal(r?.pool, pool);
 });
 
-test('★ not ours: a coin we never charted, one recorded from mid-life for a long view, no candles, or chainwatch silent', async () => {
+test('★ not ours: a coin we never charted, no candles, or chainwatch silent', async () => {
   const deps = { heldTrades: held({ held: true, whole: true, trades: [] }), pool: noPool, now: () => NOW };
   assert.equal(await ownMarket(MINT, '1m', { ...deps, db: fakeDb(null, []) }), null);
-  assert.equal(await ownMarket(MINT, '1h', { ...deps, db: fakeDb({ ...launchRow, from_launch: false }, minutes) }), null);
   assert.equal(await ownMarket(MINT, '1m', { ...deps, db: fakeDb(launchRow, []) }), null);
   assert.equal(await ownMarket(MINT, '1m', { ...deps, heldTrades: async () => { throw new Error('down'); }, db: fakeDb(launchRow, minutes) }), null);
+});
+
+test('★ recorded from mid-life for a long view: ours, saying where it starts (2026-10-29)', async () => {
+  const r = await ownMarket(MINT, '1h', { db: fakeDb({ ...launchRow, from_launch: false }, minutes), heldTrades: held({ held: true, whole: false, trades: [TRADE] }), pool: noPool, now: () => NOW });
+  assert.ok(r !== null);
+  assert.ok(r.fromMs !== null);
+  assert.equal(r.trades?.length, 1, 'the latest trades we hold');
 });
 
 test('a short list from a chainwatch that restarted is not the coin\'s trades: the market source lists them', async () => {
