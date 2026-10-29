@@ -208,6 +208,9 @@ interface CandidateMirror {
 }
 const toCandidate = (r: CandidateDbRow): CandidateRow => ({ itemId: r.item_id, address: r.address, path: r.path, evidence: r.evidence, launchedAtMs: ms(r.launched_at), foundAtMs: new Date(r.found_at).getTime() });
 
+/** Past this many coins `watched` holds, it starts over: a coin leaves the sweeps when its watch ends. */
+const HELD_WATCH_MAX = 50_000;
+
 export class PgOneCoinRepo {
   readonly #db: Db;
   /**
@@ -224,6 +227,12 @@ export class PgOneCoinRepo {
   readonly #waitingEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
   /** The same for `heldPostPicks`. */
   readonly #heldEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
+  /**
+   * `watched`'s last answer by coin. The sweeps ask about the same ~2,500 coins ~11,000 times a day
+   * (~1.5 GB a day of database egress when each read sent every watched coin back), and almost every
+   * answer is the one before.
+   */
+  readonly #watchedHeld = new Map<string, boolean>();
 
   constructor(db: Db, opts: { readonly mirrorCandidates?: boolean } = {}) {
     this.#db = db;
@@ -629,12 +638,23 @@ export class PgOneCoinRepo {
    */
   async watched(addresses: readonly string[], nowMs: number): Promise<ReadonlySet<string>> {
     if (addresses.length === 0) return new Set();
+    const asked = [...new Set(addresses)];
+    const held = this.#watchedHeld;
     try {
-      const rows = await this.#db.query<{ address: string }>(
-        `select address from internal.coin_watch where address = any($1::text[]) and since <= $2 and measured_from is not null and measured_from <= $2 and unmeasured_from is null`,
-        [[...addresses], new Date(nowMs).toISOString()],
+      /* ★ Only the coins whose answer is not the one held come back: the held answer goes in with
+         the question (null: never asked) and the database returns the rows that differ, so the
+         answer is the one a full read gives now, and steady state crosses a few rows, not ~2,500. */
+      const rows = await this.#db.query<{ address: string; ok: boolean }>(
+        `select a.address, (w.address is not null) as ok
+           from unnest($1::text[], $3::boolean[]) as a(address, held)
+           left join internal.coin_watch w
+             on w.address = a.address and w.since <= $2 and w.measured_from is not null and w.measured_from <= $2 and w.unmeasured_from is null
+          where a.held is distinct from (w.address is not null)`,
+        [asked, new Date(nowMs).toISOString(), asked.map((a) => held.get(a) ?? null)],
       );
-      return new Set(rows.map((r) => r.address));
+      if (held.size + rows.length > HELD_WATCH_MAX) held.clear();
+      for (const r of rows) held.set(r.address, r.ok);
+      return new Set(asked.filter((a) => held.get(a) === true));
     } catch (e) {
       if (missingTable(e)) return new Set();
       throw e;
