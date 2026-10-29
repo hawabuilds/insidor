@@ -129,3 +129,50 @@ test('without the mirror every read goes to the table', async () => {
   await repo.openCandidates(0, 10);
   assert.equal(bounds.length, 2);
 });
+
+test('the waiting sweep reads a pick\'s evidence only when its row changed', async () => {
+  const picks = [
+    { id: 'x:1', decided_at: at(1_800_000_000_000), v: '10', evidence: { ties: ['name'] } },
+    { id: 'x:2', decided_at: at(1_800_000_000_000), v: '11', evidence: { ties: ['link'] } },
+  ];
+  const evidenceRead: string[][] = [];
+  const db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes("p.outcome = 'waiting'")) {
+        assert.ok(!sql.includes('p.evidence'));
+        return picks.map(({ id, decided_at, v }) => ({ id, decided_at, v })) as R[];
+      }
+      const ids = (params?.[0] ?? []) as string[];
+      evidenceRead.push(ids);
+      return picks.filter((p) => ids.includes(p.id)).map(({ id, v, evidence }) => ({ id, v, evidence })) as R[];
+    },
+  } as Db;
+  const repo = new PgOneCoinRepo(db);
+  const first = await repo.waitingPostPicks(0, 10, 1);
+  assert.deepEqual(first.map((p) => [p.subjectId, p.evidence]), [['x:1', { ties: ['name'] }], ['x:2', { ties: ['link'] }]]);
+  assert.deepEqual(await repo.waitingPostPicks(0, 10, 1), first);
+  assert.deepEqual(evidenceRead, [['x:1', 'x:2']]);
+  /* x:2 rewritten: only its evidence crosses again. */
+  picks[1] = { ...picks[1]!, v: '12', evidence: { ties: ['link', 'picture'] } };
+  assert.deepEqual((await repo.waitingPostPicks(0, 10, 1)).map((p) => p.evidence), [{ ties: ['name'] }, { ties: ['link', 'picture'] }]);
+  assert.deepEqual(evidenceRead, [['x:1', 'x:2'], ['x:2']]);
+});
+
+test('the held picks read their evidence only when the row changed', async () => {
+  const picks = [{ id: 'x:1', address: 'A', decided_at: at(1_800_000_000_000), v: '10', evidence: { ties: ['name'] } }];
+  let evidenceReads = 0;
+  const db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes("outcome = 'picked'")) {
+        assert.ok(!sql.includes('evidence'));
+        return picks.map(({ id, address, decided_at, v }) => ({ id, address, decided_at, v })) as R[];
+      }
+      evidenceReads += 1;
+      const ids = (params?.[0] ?? []) as string[];
+      return picks.filter((p) => ids.includes(p.id)).map(({ id, v, evidence }) => ({ id, v, evidence })) as R[];
+    },
+  } as Db;
+  const repo = new PgOneCoinRepo(db);
+  for (let i = 0; i < 3; i += 1) assert.deepEqual((await repo.heldPostPicks(0, 10)).map((p) => [p.subjectId, p.address, p.evidence]), [['x:1', 'A', { ties: ['name'] }]]);
+  assert.equal(evidenceReads, 1);
+});

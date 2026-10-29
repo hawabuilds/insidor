@@ -220,6 +220,10 @@ export class PgOneCoinRepo {
    * exactly what a full read would. Null: not mirrored, every read goes to the table as before.
    */
   readonly #mirror: CandidateMirror | null;
+  /** The waiting sweep's evidence by post, with the row version it was read at: see `waitingPostPicks`. */
+  readonly #waitingEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
+  /** The same for `heldPostPicks`. */
+  readonly #heldEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
 
   constructor(db: Db, opts: { readonly mirrorCandidates?: boolean } = {}) {
     this.#db = db;
@@ -851,13 +855,18 @@ export class PgOneCoinRepo {
    */
   async heldPostPicks(sinceMs: number, limit: number): Promise<readonly StoredPick[]> {
     try {
-      const rows = await this.#db.query<{ id: string; address: string; decided_at: string; evidence: Record<string, unknown> }>(
-        `select item_id as id, address, decided_at, evidence from internal.post_coin_pick
+      /* The evidence only for rows changed since this repo last read them: see `waitingPostPicks`. */
+      const rows = await this.#db.query<{ id: string; address: string; decided_at: string; v: string }>(
+        `select item_id as id, address, decided_at, xmin::text as v from internal.post_coin_pick
           where outcome = 'picked' and address is not null and updated_at >= $1
           order by updated_at desc limit $2`,
         [new Date(sinceMs).toISOString(), limit],
       );
-      return rows.map((r) => ({ subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence }));
+      const evidence = await this.#evidenceAt(this.#heldEvidence, rows);
+      return rows.flatMap((r) => {
+        const e = evidence.get(r.id);
+        return e === undefined ? [] : [{ subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: e }];
+      });
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
@@ -869,22 +878,51 @@ export class PgOneCoinRepo {
    * peaked at `minPeakQuote` or more in the quote token, newest first (the runner's waiting sweep,
    * work/one-coin.ts): a post judged "waiting" in its hour is otherwise never judged again. The peak
    * keeps the sweep to the posts where a coin did trade; most waiting posts have only dust.
+   *
+   * ★ THE EVIDENCE ONLY WHEN THE ROW CHANGED. The sweep runs every pass over the same ~900 posts,
+   * and each pick's evidence is about a kilobyte: ~4 GB a day of the database's egress on 29 Oct
+   * 2026, nearly all of it the rows the pass before was sent. The selection now returns each row's
+   * version (`xmin`, changed by every write), and the evidence is read only for the rows this repo
+   * does not hold at that version — the runner's one long-lived repo holds them between passes.
    */
   async waitingPostPicks(sinceMs: number, limit: number, minPeakQuote: number): Promise<readonly StoredPick[]> {
     try {
-      const rows = await this.#db.query<{ id: string; decided_at: string; evidence: Record<string, unknown> }>(
-        `select p.item_id as id, p.decided_at, p.evidence from internal.post_coin_pick p
+      const rows = await this.#db.query<{ id: string; decided_at: string; v: string }>(
+        `select p.item_id as id, p.decided_at, p.xmin::text as v from internal.post_coin_pick p
           where p.outcome = 'waiting' and p.decided_at >= $1
             and exists (select 1 from internal.one_coin_candidate oc join internal.coin_trade_state s on s.address = oc.address
                          where oc.item_id = p.item_id and s.peak_mcap_sol >= $3)
           order by p.decided_at desc limit $2`,
         [new Date(sinceMs).toISOString(), limit, minPeakQuote],
       );
-      return rows.map((r) => ({ subjectId: r.id, address: null, outcome: 'waiting' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence }));
+      const evidence = await this.#evidenceAt(this.#waitingEvidence, rows);
+      return rows.flatMap((r) => {
+        const e = evidence.get(r.id);
+        return e === undefined ? [] : [{ subjectId: r.id, address: null, outcome: 'waiting' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: e }];
+      });
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
     }
+  }
+
+  /**
+   * Each selected post pick's evidence: from `held` where it was read at the row's version, else read
+   * now. `held` keeps only the posts of this selection. A row gone between the two reads (picks are
+   * never deleted) has no evidence and is left out by the caller rather than given an invented one.
+   */
+  async #evidenceAt(held: Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>, rows: readonly { readonly id: string; readonly v: string }[]): Promise<ReadonlyMap<string, Record<string, unknown>>> {
+    const stale = rows.filter((r) => held.get(r.id)?.v !== r.v).map((r) => r.id);
+    if (stale.length > 0) {
+      const fresh = await this.#db.query<{ id: string; v: string; evidence: Record<string, unknown> }>(
+        `select item_id as id, xmin::text as v, evidence from internal.post_coin_pick where item_id = any($1::text[])`,
+        [stale],
+      );
+      for (const f of fresh) held.set(f.id, { v: f.v, evidence: f.evidence });
+    }
+    const asked = new Set(rows.map((r) => r.id));
+    for (const id of [...held.keys()]) if (!asked.has(id)) held.delete(id);
+    return new Map([...held].map(([id, e]) => [id, e.evidence] as const));
   }
 
   /**
