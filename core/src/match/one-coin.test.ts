@@ -313,6 +313,21 @@ test('★ a held coin the trades put out is not re-held on the readings fallback
   assert.notEqual(fresh.kind === 'picked' ? fresh.address : null, 'RUG');
 });
 
+test('★ an unmeasured rival is weighed before the held coin: a runner the trades cannot read takes it on readings (policy.v208)', () => {
+  /* The held coin trades on the feed; the runner graduated off it, read at $900k. Judged on trades first, nobody led the held coin. */
+  const holder = { address: 'DUD', sinceMs: 1_011 * MIN };
+  const dud = c('DUD', 1_005, trades({}), { market: { capUsd: 18_000, peakCapUsd: 26_000 } });
+  const runner = c('RUN', 1_006, null, { market: { capUsd: 900_000, peakCapUsd: 900_000 } });
+  const o = pickOneCoin([dud, runner], holder, NOW, true, BARS);
+  assert.equal(o.kind === 'picked' && o.address, 'RUN');
+  assert.equal(o.kind === 'picked' && o.handedOverFrom, 'DUD');
+  assert.equal(o.kind === 'picked' && o.basis, 'market_readings');
+  /* Under the hand-over bar on readings the held coin stays. */
+  const near = c('RUN', 1_006, null, { market: { capUsd: 40_000, peakCapUsd: 40_000 } });
+  const kept = pickOneCoin([dud, near], holder, NOW, true, BARS);
+  assert.equal(kept.kind === 'picked' && kept.address, 'DUD');
+});
+
 test('★ the crash switch: under the share, a coin made for the post worth twice the held one takes it, on trades too', () => {
   /* 25 Oct 02:20: the wrong Marvin fell from $177k to $42k; the real one, linking the post, stood at $147k; net buying flat on both. */
   const holder = { address: 'WRONG', sinceMs: 1_006 * MIN };
