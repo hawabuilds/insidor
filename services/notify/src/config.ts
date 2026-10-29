@@ -18,12 +18,19 @@ export interface NotifyConfig {
   readonly rpcUrl: string | null;
   readonly parseUrl: string | null;
   readonly allowedOrigins: readonly string[];
+  /** Picture storage's public address and the read service, for the health alarm (health-alarm.ts). */
+  readonly pictureBase: string;
+  readonly readUrl: string;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
 
 const DEFAULT_PORT = 8792;
 const DEV_ORIGINS = ['http://localhost:5174', 'http://localhost:5173'];
+/* The live addresses, the same defaults as tools/health.ts: a variable forgotten on the host must not
+   leave the health alarm watching nothing. */
+const DEFAULT_PICTURE_BASE = 'https://pub-4a48d947a0584b948f54f35aea911c13.r2.dev';
+const DEFAULT_READ_URL = 'https://read-production-a6c0.up.railway.app';
 
 const trimmed = (env: Env, key: string): string | null => {
   const v = env[key]?.trim();
@@ -49,5 +56,7 @@ export function loadNotifyConfig(env: Env): NotifyConfig {
     rpcUrl: helius === null ? null : `https://mainnet.helius-rpc.com/?api-key=${helius}`,
     parseUrl: helius === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${helius}`,
     allowedOrigins: origins.length > 0 ? origins : DEV_ORIGINS,
+    pictureBase: (trimmed(env, 'R2_PUBLIC_BASE') ?? DEFAULT_PICTURE_BASE).replace(/\/+$/, ''),
+    readUrl: (trimmed(env, 'READ_URL') ?? DEFAULT_READ_URL).replace(/\/+$/, ''),
   };
 }

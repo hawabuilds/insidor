@@ -442,6 +442,42 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         if (back) return { title: 'The database answers again', body: long === null ? 'The alert service read the database again.' : `The alert service read the database again after ${long}.` };
         return { title: 'Insidor cannot read its database', body: `Every read by the alert service has failed${long === null ? '' : ` for ${long}`}. The feed, the judge and alerts all need it.` };
       }
+      /* The round-the-clock health check (health-alarm.ts): pictures, coin-logo copies, the Tape, judging. */
+      if (f['what'] === 'pictures') {
+        if (back) return { title: 'Coin pictures load again', body: long === null ? 'Picture storage answers again.' : `Picture storage answers again after ${long}.` };
+        const status = n(f['status']);
+        return {
+          title: 'Coin pictures are not loading',
+          body: `Picture storage ${status === null || status === 0 ? 'does not answer' : `answers ${status}`} for a stored coin logo${at === null ? '' : ` since ${at}`}. Coin logos, poster and post pictures are blank in the app.`,
+        };
+      }
+      if (f['what'] === 'logos') {
+        if (back) return { title: 'Coin logos are copied again', body: long === null ? 'New coin logos are copied again.' : `New coin logos are copied again after ${long}.` };
+        const failed = n(f['failed']);
+        const copies = n(f['copies']);
+        return {
+          title: 'Coin logos are not being copied',
+          body: `${failed === null || copies === null ? 'Most' : `${failed} of ${copies}`} coin-logo copies in the last ${n(f['windowMinutes']) ?? 60} minutes failed. New coins show without their picture.`,
+        };
+      }
+      if (f['what'] === 'tape') {
+        if (back) return { title: 'The Tape shows coins again', body: long === null ? 'The running coins strip has coins again.' : `The running coins strip has coins again after ${long}.` };
+        const unreachable = f['coins'] === null;
+        return {
+          title: unreachable ? 'The Tape cannot be read' : `The Tape has been empty for ${long ?? 'a while'}`,
+          body: unreachable
+            ? `The read service has not answered for the running coins strip${at === null ? '' : ` since ${at}`}. The app hides the strip.`
+            : `No coin has been on the running coins strip${at === null ? '' : ` since ${at}`}. The app hides the strip.`,
+        };
+      }
+      if (f['what'] === 'judged') {
+        if (back) return { title: 'Posts are judged again', body: long === null ? 'Posts are being judged again.' : `Posts are being judged again after ${long}.` };
+        const judged = n(f['judged']);
+        return {
+          title: 'Judging has stopped',
+          body: `${judged ?? 'Few'} ${judged === 1 ? 'post' : 'posts'} judged in the last ${n(f['windowMinutes']) ?? 30} minutes. New posts are not judged, so nothing new reaches For You.`,
+        };
+      }
       if (f['what'] === 'lang') {
         /* The runner's language-drop alarm (services/runner language-alarm.ts): one source's finds in
            one language (or every language, `language` null) over the last few hours, against the same

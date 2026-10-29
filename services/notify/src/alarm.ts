@@ -108,7 +108,8 @@ export const DB_UNREADABLE_MS = 10 * 60_000;
    waiting for a connection forever, and a pass that never ends would never say so. */
 const READ_TIMEOUT_MS = 30_000;
 
-export type AlarmId = 'fyp' | 'judge' | 'backup' | 'stream' | 'database';
+/* The last four are health-alarm.ts's (the round-the-clock health check), stepped by the same rule. */
+export type AlarmId = 'fyp' | 'judge' | 'backup' | 'stream' | 'database' | 'pictures' | 'logos' | 'tape' | 'judged';
 
 /** One condition as read this pass: down or not, and the evidence it was decided on. */
 export interface Reading {
@@ -132,7 +133,7 @@ export type Tracked = ReadonlyMap<AlarmId, { readonly mark: string; readonly sin
 /* No evidence (no answer within the day the read looks back): never a reason to say "back". */
 const NO_MARK = 'none';
 const iso = (ms: number): string => new Date(ms).toISOString();
-const minutesSince = (fromMs: number, nowMs: number): number => Math.max(0, Math.round((nowMs - fromMs) / 60_000));
+export const minutesSince = (fromMs: number, nowMs: number): number => Math.max(0, Math.round((nowMs - fromMs) / 60_000));
 
 export function fypReading(lastShownMs: number | null, nowMs: number): Reading | null {
   if (lastShownMs === null) return null;
@@ -255,7 +256,7 @@ export interface AlarmDeps {
 /* A read this role may not make yet (no grant, no function, no table): skipped, not the database down. */
 const NOT_YET = new Set(['42501', '42883', '42P01']);
 
-async function optional<T>(name: string, mem: AlarmMemory, deps: AlarmDeps, read: () => Promise<T>): Promise<T | null> {
+export async function optional<T>(name: string, mem: Pick<AlarmMemory, 'notYet'>, deps: Pick<AlarmDeps, 'log'>, read: () => Promise<T>): Promise<T | null> {
   try {
     return await read();
   } catch (e) {
@@ -275,6 +276,12 @@ function within<T>(ms: number, work: Promise<T>): Promise<T> {
     timer = setTimeout(() => reject(new Error(`no answer in ${Math.round(ms / 1000)}s`)), ms);
   });
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/** The owner's people ids, from Policy.owner.wallets: the only people an outage alarm is queued for. */
+export async function ownerIds(db: Db, wallets: readonly string[]): Promise<readonly string[]> {
+  if (wallets.length === 0) return [];
+  return (await db.query<{ userId: string }>('select user_id as "userId" from people.profile where wallet = any($1::text[])', [[...wallets]])).map((o) => o.userId);
 }
 
 const toMs = (v: unknown): number | null => (v instanceof Date ? v.getTime() : typeof v === 'string' ? Date.parse(v) : null);
@@ -301,7 +308,7 @@ export async function checkAlarms(deps: AlarmDeps, mem: AlarmMemory): Promise<nu
     const stream = await optional('stream', mem, deps, () => deps.db.query<{ at: unknown }>('select internal.coin_stream_read_at() as at'));
     const c = stream === null ? null : streamReading(toMs(stream[0]?.at), now);
     if (c !== null) readings.push(c);
-    owners = deps.ownerWallets.length === 0 ? [] : (await deps.db.query<{ userId: string }>('select user_id as "userId" from people.profile where wallet = any($1::text[])', [[...deps.ownerWallets]])).map((o) => o.userId);
+    owners = await ownerIds(deps.db, deps.ownerWallets);
     mem.devices = owners.length === 0 ? [] : await deps.db.query<Device>('select endpoint, p256dh, auth from people.push_subscription where user_id = any($1::text[])', [[...owners]]);
   };
   try {
