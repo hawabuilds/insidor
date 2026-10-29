@@ -91,6 +91,12 @@ export interface ReadConfig {
    */
   readonly marketData: { readonly plan: 'free' | 'demo' | 'pro'; readonly apiKey: string | null; readonly baseUrl: string };
   /**
+   * `MARKET_OLDER_CANDLES=free`: an older coin's chart — one our own candles do not cover, so the market
+   * source draws it (market.ts) — is read from the keyless public market API, not the paid key (the owner,
+   * 2026-10-29: "only for older coin candles"). Everything else keeps `marketData`. Unset: the paid key, as before.
+   */
+  readonly olderCandlesFree: boolean;
+  /**
    * The Solana RPC a coin's bonding curve is read through, built from `HELIUS_API_KEY`. Null
    * when unset: the token page then shows curve progress as a dash, never a guess.
    */
@@ -203,6 +209,7 @@ export function loadReadConfig(env: Env): ReadConfig {
     allowedOrigins,
     liveUpstreamUrl: ((u) => (u !== null && /^https?:\/\//.test(u) ? u : null))(trimmed(env, 'LIVE_UPSTREAM_URL')),
     marketData: marketDataFrom(env),
+    olderCandlesFree: trimmed(env, 'MARKET_OLDER_CANDLES') === 'free',
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
   };

@@ -82,3 +82,26 @@ test('★ served from our own data, the reply has the same shape, and the market
   assert.deepEqual(body.coin, { ticker: 'Laura', name: 'Forever Laura' });
   assert.equal(body.pair.token.ticker, 'SOL');
 });
+
+test('★ an older coin our candles do not cover is drawn by `olderCoins` (the free source), never the paid one', async () => {
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL } = await import('./own-market.ts');
+  const db = {
+    query: async (sql: string) => {
+      if (sql === ASSET_SQL) return [{ chain: 'solana', address: LAURA }];
+      if (sql === CHART_SQL) return [];
+      throw new Error('unexpected');
+    },
+  };
+  const asked: string[] = [];
+  const reply = { pool: null, candles: [], trades: [] };
+  await coinMarket(`solana:${LAURA}`, '1h', {
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => { asked.push('paid'); return reply as never; }, pool: async () => null },
+    olderCoins: { coin: async () => { asked.push('free'); return reply as never; } },
+    curveProgress: null,
+    heldTrades: async () => ({ held: false, whole: false, trades: [] }),
+  });
+  assert.deepEqual(asked, ['free']);
+});
