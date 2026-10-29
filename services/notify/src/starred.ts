@@ -27,6 +27,7 @@
 import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 
 import { queue, type Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 import { posterPictures } from './faces.ts';
 
 export const BIG_ACCOUNT_STREAM = 'big-account';
@@ -103,7 +104,7 @@ export async function checkStarred(db: Db, P: NotifyPolicy, nowMs: number): Prom
       where m.narrative_id = any($1::text[]) and a.follower_count >= $2 and i.origin = 'observed'`,
     [stories, P.bigAccount.minFollowers],
   );
-  const seen = new Set((await db.query<{ key: string }>('select key from people.pipeline_seen where stream = $1', [BIG_ACCOUNT_STREAM])).map((r) => r.key));
+  const seen = await seenKeys(db, BIG_ACCOUNT_STREAM);
   const fresh = big.filter((b) => !seen.has(`${b.storyId}|${b.itemId}`));
   const remember = async (keys: readonly string[]) => {
     if (keys.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [BIG_ACCOUNT_STREAM, [...keys]]);

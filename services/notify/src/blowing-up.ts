@@ -31,6 +31,7 @@ import type { Policy } from '@insidor/contracts';
 import { riserPlace, sortGainIn, sortOrder, sortRunsOf, type SortReading } from '@insidor/core';
 
 import { queue, type Db } from './deliver.ts';
+import { seenKeys } from './seen.ts';
 import { posterPictures } from './faces.ts';
 import { postHref } from './pipeline.ts';
 import { lineCoin } from './post-watch.ts';
@@ -212,8 +213,7 @@ export async function readNewNarratives(db: Db): Promise<NewNarrative[]> {
 
 /** One pass. Returns how many alerts were queued. */
 export async function checkBlowingUp(db: Db, policy: Policy, nowMs: number): Promise<number> {
-  const seenRows = await db.query<{ key: string }>('select key from people.pipeline_seen where stream = $1', [BLOWING_UP_STREAM]);
-  const seen = new Set(seenRows.map((r) => r.key));
+  const seen = await seenKeys(db, BLOWING_UP_STREAM);
   const seeded = seen.delete(SEEDED);
   const posts = blowingUpPosts(await readRiserPosts(db), nowMs, policy, seen);
   const narratives = blowingUpNarratives(await readNewNarratives(db), nowMs, policy, seen);
