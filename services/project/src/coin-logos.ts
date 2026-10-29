@@ -55,8 +55,15 @@ import type { Db } from '@insidor/store';
 
 /** Coins a person can see, looked at per pass: the 60 shown plus the 120 the old backfill took. */
 export const SHOWN_PER_PASS = 180;
-/** Coins worked on at once. Each one's tries are in order; coins run side by side. */
-export const CONCURRENCY = 8;
+/**
+ * Coins worked on at once. Each one's tries are in order; coins run side by side. 24 from 2026-10-29:
+ * after the move to R2 the whole shown set had to be copied again, and at 8 a pass of slow IPFS hosts
+ * (4 s a dead try) stored 0–24 of 180 and skipped the rest — the Tape's coins never had their turn.
+ * The tries are network waits on other hosts, so more side by side costs nothing here.
+ */
+export const CONCURRENCY = 24;
+/** The market source's one batch read waits no longer than this, so it cannot eat the pass budget. */
+export const MARKET_READ_MS = 8_000;
 /** No new coin is started after this much of a pass; the ones under way finish. */
 export const PASS_BUDGET_MS = 40_000;
 /** A coin no source had a picture for is asked about again after this long. */
@@ -348,7 +355,11 @@ export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
   /* One batch read of the market source for the whole pass; an outage there is not "no picture". */
   let market: ReadonlyMap<string, string | null> | null = null;
   try {
-    market = await deps.marketImages(due.map((c) => c.address));
+    /* Capped: a slow market read once took most of the 40 s budget before a single picture was tried. */
+    market = await Promise.race([
+      deps.marketImages(due.map((c) => c.address)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`no answer in ${MARKET_READ_MS} ms`)), MARKET_READ_MS).unref()),
+    ]);
   } catch (e) {
     deps.log('market pictures unavailable', { err: errText(e) });
   }
