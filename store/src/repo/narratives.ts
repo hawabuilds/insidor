@@ -158,6 +158,11 @@ const toPost = (r: PostRow): NarrativePostRow => ({
   ownTalk: r.own_talk === true,
 });
 
+/** `fightPosts`' words by post, under the digest they were read at (held across repos); dropped after an hour unused. */
+const HELD_FIGHT_BODIES = new Map<string, { readonly v: string; readonly body: string; usedAt: number }>();
+const HELD_BODY_IDLE_MS = 60 * 60_000;
+let heldFightSweptAt = 0;
+
 /** The owner's narrative calls as last read, for `calls` (held across repos: one is made per frame). */
 const HELD_NARRATIVE_CALLS: { calls: readonly NarrativeCallRecord[] | null; maxId: number } = { calls: null, maxId: 0 };
 
@@ -562,8 +567,8 @@ export class PgNarrativeRepo {
   async fightPosts(sinceMs: number, langs: readonly string[], minReach: number, limit: number): Promise<readonly FightPostRow[]> {
     if (langs.length === 0 || limit <= 0 || !(await this.migrated())) return [];
     const since = new Date(sinceMs).toISOString();
-    const rows = await orEmpty(() => this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; body: string; at: Date | string; reach: number | string | null }>(
-      `select i.item_id, i.author_key, i.lang, i.body, coalesce(i.posted_at, i.first_seen_at) as at,
+    const bare = await orEmpty(() => this.#db.query<{ item_id: string; author_key: string | null; lang: string | null; bv: string; at: Date | string; reach: number | string | null }>(
+      `select i.item_id, i.author_key, i.lang, md5(coalesce(i.body, '')) as bv, coalesce(i.posted_at, i.first_seen_at) as at,
               (i.counters->'reach'->>'value')::double precision as reach
          from public.item i
         where i.first_seen_at >= $1 and coalesce(i.posted_at, i.first_seen_at) >= $1
@@ -574,7 +579,28 @@ export class PgNarrativeRepo {
         limit $4`,
       [since, [...langs], minReach, limit],
     ), []);
-    return rows.map((r) => ({ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: r.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach) }));
+    /* ★ The words cross only when not held at their digest (`HELD_FIGHT_BODIES`): the same posts rank
+       every pass, and their words were nearly all of each row (~0.9 GB a day of database egress). */
+    const now = Date.now();
+    const stale = bare.filter((r) => HELD_FIGHT_BODIES.get(r.item_id)?.v !== r.bv).map((r) => r.item_id);
+    if (stale.length > 0) {
+      const read = await this.#db.query<{ item_id: string; v: string; body: string | null }>(
+        `select item_id, md5(coalesce(body, '')) as v, body from public.item where item_id = any($1::text[])`,
+        [stale],
+      );
+      for (const r of read) HELD_FIGHT_BODIES.set(r.item_id, { v: r.v, body: r.body as string, usedAt: now });
+    }
+    const rows = bare.flatMap((r) => {
+      const held = HELD_FIGHT_BODIES.get(r.item_id);
+      if (held === undefined) return [];
+      held.usedAt = now;
+      return [{ itemId: r.item_id, authorKey: r.author_key, lang: r.lang, body: held.body, atMs: toMs(r.at) ?? 0, reach: r.reach === null ? null : Number(r.reach) }];
+    });
+    if (now - heldFightSweptAt >= HELD_BODY_IDLE_MS) {
+      heldFightSweptAt = now;
+      for (const [k, h] of HELD_FIGHT_BODIES) if (now - h.usedAt >= HELD_BODY_IDLE_MS) HELD_FIGHT_BODIES.delete(k);
+    }
+    return rows;
   }
 
   /**

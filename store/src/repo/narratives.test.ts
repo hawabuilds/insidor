@@ -118,3 +118,31 @@ test('the owner\'s narrative calls are held and only the newer ones read', async
   assert.deepEqual(await ids(), [1, 2, 3, 4, 5]);
   assert.deepEqual(reads, ['whole', 'after 2', 'after 3', 'after 5', 'whole']);
 });
+
+test('the meme-war ranking reads a post\'s words only when they changed', async () => {
+  const posts = [
+    { item_id: 'x:f1', author_key: 'a', lang: 'ko', body: 'korea vs japan', at: new Date(1000), reach: 5000 },
+    { item_id: 'x:f2', author_key: 'b', lang: 'ko', body: 'second', at: new Date(2000), reach: 4000 },
+  ];
+  const digest = (b: string) => `md5:${b}`;
+  const bodiesRead: string[][] = [];
+  const db: Db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      if (sql.includes('to_regclass')) return [{ ok: true } as R];
+      if (sql.includes('order by reach desc')) {
+        assert.ok(!sql.includes('i.lang, i.body'));
+        return posts.map(({ body, ...r }) => ({ ...r, bv: digest(body) })) as R[];
+      }
+      const ids = (params?.[0] ?? []) as string[];
+      bodiesRead.push(ids);
+      return posts.filter((p) => ids.includes(p.item_id)).map((p) => ({ item_id: p.item_id, v: digest(p.body), body: p.body })) as R[];
+    },
+  };
+  const read = async () => (await new PgNarrativeRepo(db).fightPosts(0, ['ko'], 1000, 10)).map((p) => p.body);
+  assert.deepEqual(await read(), ['korea vs japan', 'second']);
+  assert.deepEqual(await read(), ['korea vs japan', 'second']);
+  assert.deepEqual(bodiesRead, [['x:f1', 'x:f2']]);
+  posts[1] = { ...posts[1]!, body: 'second, edited' };
+  assert.deepEqual(await read(), ['korea vs japan', 'second, edited']);
+  assert.deepEqual(bodiesRead, [['x:f1', 'x:f2'], ['x:f2']]);
+});
