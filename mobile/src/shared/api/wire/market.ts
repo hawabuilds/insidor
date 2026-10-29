@@ -61,6 +61,11 @@ export type CoinMarket =
       readonly venue: 'curve' | 'pool' | null;
       /** Null when they could not be read; an empty list is "no trades yet". */
       readonly candles: readonly Candle[] | null;
+      /**
+       * Where the chart starts when our record of the coin began after its launch (ms); null when the chart
+       * reaches its launch. A chart that starts mid-life says so on screen, never that the coin began there.
+       */
+      readonly chartFrom: number | null;
       readonly trades: readonly MarketTrade[] | null;
       /** 0..1 while on the curve; null when it is not on one. */
       readonly curveProgress: Measured | null;

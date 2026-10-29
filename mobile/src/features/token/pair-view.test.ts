@@ -48,12 +48,12 @@ test('★ before the first read the pair is not claimed, and an unreported depth
 test('the pair is kept across timeframes: a loading read does not unknow it, a new read replaces it', () => {
   assert.equal(pairFrom(null, laura), laura);
   assert.equal(pairFrom({ kind: 'unavailable', timeframe: '1m' }, laura), laura);
-  assert.equal(pairFrom({ kind: 'read', timeframe: '1m', venue: 'pool', candles: [], trades: [], curveProgress: null, pair: null, coin: null }, laura), null);
+  assert.equal(pairFrom({ kind: 'read', timeframe: '1m', venue: 'pool', candles: [], chartFrom: null, trades: [], curveProgress: null, pair: null, coin: null }, laura), null);
 });
 
 test('the wire: the pair is read whole; a link that is not https is no link; an older reply has no pair', () => {
   const m = decodeCoinMarket({
-    kind: 'read', timeframe: '1h', venue: 'pool', candles: [], trades: [], curveProgress: null,
+    kind: 'read', timeframe: '1h', venue: 'pool', candles: [], chartFrom: null, trades: [], curveProgress: null,
     pair: { token: { address: MSTRX, ticker: 'MSTRx', name: 'MicroStrategy xStock', imageUrl: 'http://x', stock: true }, venue: { name: 'PumpSwap', launchpad: true, url: 'javascript:1' }, liquidityUsd: { v: null, why: 'not_reported' } },
     coin: { ticker: 'Laura', name: 'Forever Laura' },
   });
@@ -62,7 +62,7 @@ test('the wire: the pair is read whole; a link that is not https is no link; an 
   assert.equal(m.pair?.venue.url, null);
   assert.deepEqual(m.pair?.liquidityUsd, { known: false, pending: 'not_reported' });
   assert.deepEqual(m.coin, { ticker: 'Laura', name: 'Forever Laura' });
-  const old = decodeCoinMarket({ kind: 'read', timeframe: '1h', venue: 'pool', candles: [], trades: [], curveProgress: null });
+  const old = decodeCoinMarket({ kind: 'read', timeframe: '1h', venue: 'pool', candles: [], chartFrom: null, trades: [], curveProgress: null });
   assert.ok(old.kind === 'read' && old.pair === null && old.coin === null);
 });
 

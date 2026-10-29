@@ -146,6 +146,11 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
       >
         <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} />
       </Suspense>
+      {/* ★ A chart from our own record that began after the coin launched says where it starts (2026-10-29):
+          never a chart that reads as if the coin was born at its left edge. */}
+      {read !== null && read.chartFrom !== null ? (
+        <div className={styles['chartFrom']}>Chart from {new Date(read.chartFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+      ) : null}
 
       <div className={styles['tfRow']}>
         <div className={styles['tfs']} role="group" aria-label="Chart timeframe">

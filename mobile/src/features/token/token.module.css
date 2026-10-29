@@ -293,6 +293,13 @@
 }
 
 /* Over the empty chart, the way Trador says it: why there is nothing to draw. */
+/* "Chart from 27 Oct": an older coin's chart drawn from our own record, which began after its launch. */
+.chartFrom {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 .chartEmpty {
   position: absolute;
   inset: 0;
