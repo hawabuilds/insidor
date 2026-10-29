@@ -82,8 +82,8 @@ test('★ For You\'s page orders and cuts by the frame\'s key: posted (else firs
   assert.doesNotMatch(FOR_YOU_PAGE_SQL.split('order by')[1] ?? '', /first_shown_at/, 'when a post joined is not its place');
 });
 
-test("★ For You's scroll reaches back three days of joins, a bound and never an order", async () => {
-  assert.equal(DEFAULT_POLICY.rising.scrollKeepMs, 3 * 24 * 3_600_000, 'the owner, 2026-10-24: keep it 3 days');
+test("★ For You's scroll reaches back seven days of joins, a bound and never an order", async () => {
+  assert.equal(DEFAULT_POLICY.rising.scrollKeepMs, 7 * 24 * 3_600_000, 'the owner, 2026-10-29: a week of posts on For You (3 days before)');
   assert.equal(forYouKeptFrom(1_760_000_000_000, 3_600_000), new Date(1_760_000_000_000 - 3_600_000).toISOString());
   assert.match(FOR_YOU_PAGE_SQL, /and f\.first_shown_at >= \$4::timestamptz/, 'every page, the first and the later ones');
   const calls: { sql: string; params: readonly unknown[] }[] = [];

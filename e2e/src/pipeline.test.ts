@@ -511,7 +511,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
      frame's oldest card — For You is newest posted first all the way down (services/read
      feed-page.ts) — and one posted after it waits off the scroll rather than land under older
      cards; a frame's own posts are not repeated there. The time is the post's, not when it joined.
-     And it reaches back three days of joins (`rising.scrollKeepMs`): one that joined before that is
+     And it reaches back seven days of joins (`rising.scrollKeepMs`, v204): one that joined before that is
      still a member but no longer on the scroll. */
   const edge = await db.query<{ author_key: string; newest: Date }>(
     `select min(i.author_key) as author_key, max(coalesce(i.posted_at, i.first_seen_at)) as newest
@@ -531,7 +531,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const newest = new Date(edge[0]?.newest ?? NOW);
   await member('x:gone', new Date(NOW - 3 * 24 * 60 * MINUTE), new Date(NOW));
   await member('x:newer', new Date(newest.getTime() + MINUTE), new Date(NOW - 2 * 24 * 60 * MINUTE));
-  await member('x:past', new Date(NOW - 5 * 24 * 60 * MINUTE), new Date(NOW - 4 * 24 * 60 * MINUTE));
+  await member('x:past', new Date(NOW - 9 * 24 * 60 * MINUTE), new Date(NOW - 8 * 24 * 60 * MINUTE));
   const older = JSON.parse((await handle('GET', '/rising/fyp/older', read)).body) as { posts: { id: string }[]; next: string | null };
   assert.deepEqual(older.posts.map((p) => p.id), ['x:gone'], 'joined last but posted three days ago: under the frame; posted after the frame: not under it');
   assert.equal(older.next, null, 'a short page ends the scroll');
