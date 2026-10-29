@@ -29,6 +29,9 @@ now.fypPosts = f.n; now.fypFreshPct = f.n ? Math.round((100 * f.fresh) / f.n) : 
 const p = await one(`select count(*)::int n, count(*) filter (where o.last > now() - interval '78 minutes')::int fresh
   from public.rising_row r left join lateral (select max(captured_at) last from public.observation x where x.item_id = r.item_id and x.kind = 'reach') o on true where r.feed_id = 'popular'`);
 now.popularPosts = p.n; now.popularFreshPct = p.n ? Math.round((100 * p.fresh) / p.n) : 0;
+/* Minutes since For You last ADDED a post (its newest join), the freeze alarm: a post's own age only says
+   how young the posts over the views bar are, which is naturally an hour or more at quiet times. */
+now.lastFypJoinMin = Math.round(Number((await one(`select extract(epoch from now() - max(first_shown_at)) / 60 m from public.feed_post where feed_id = 'fyp'`)).m ?? -1));
 now.newestFypPostMin = Math.round(Number((await one(`select extract(epoch from now() - max(i.posted_at)) / 60 m from public.rising_row r join public.item i using (item_id) where r.feed_id = 'fyp'`)).m ?? -1));
 now.judgedLast30m = (await one(`select count(*)::int n from internal.post_judgement where judged_at > now() - interval '30 minutes'`)).n;
 const shed = await one(`select count(*) filter (where reason = 'T2_budget_shed')::int shed, count(*) filter (where verdict = 'pass')::int pass from internal.decisions where stage = 'track' and decided_at > now() - interval '15 minutes'`);
@@ -52,7 +55,7 @@ const last = files.length ? JSON.parse(fs.readFileSync(new URL(files[files.lengt
 const red = [];
 const floor = (k, min) => { if (now[k] < min) red.push(`${k} ${now[k]} under ${min}`); };
 floor('fypPosts', 40); floor('fypFreshPct', 80); floor('popularFreshPct', 50); floor('tapeCoins', 1); floor('judgedLast30m', 10);
-if (now.newestFypPostMin > 60) red.push(`newest For You post is ${now.newestFypPostMin} min old`);
+if (now.lastFypJoinMin > 60) red.push(`For You has added no post for ${now.lastFypJoinMin} min`);
 /* The shed share is information, not a failure: the re-read day is fixed, and the feeds' freshness above is the outcome. */
 for (const [s, n] of Object.entries(now.errors)) if (last && n > Math.max(10, 3 * (last.errors?.[s] ?? 0))) red.push(`${s} errors ${n} (last check ${last.errors?.[s]})`);
 if (last) for (const k of ['fypPosts', 'fypFreshPct', 'popularFreshPct', 'tapeCoins', 'judgedLast30m']) if (now[k] < 0.7 * last[k]) red.push(`${k} fell ${last[k]} → ${now[k]}`);
