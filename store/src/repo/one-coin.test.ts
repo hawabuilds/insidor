@@ -17,8 +17,9 @@ import { PgOneCoinRepo } from './one-coin.ts';
 
 interface Row { item_id: string; address: string; path: 'launch' | 'existing'; evidence: Record<string, unknown>; launched_at: string | null; found_at: string; updated: number }
 
-function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[] } {
+function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[]; asideReads: string[][] } {
   const bounds: (number | null)[] = [];
+  const asideReads: string[][] = [];
   const db: Db = {
     query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
       if (!sql.includes('from internal.one_coin_candidate')) throw new Error(`unexpected statement: ${sql}`);
@@ -29,6 +30,7 @@ function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[] } {
       }
       if (sql.includes('where item_id = any($1::text[])')) {
         const ids = (params?.[0] ?? []) as string[];
+        asideReads.push(ids);
         return table.filter((r) => ids.includes(r.item_id)).map((r) => ({ ...r, u: r.updated }) as R);
       }
       const bound = (params?.[0] ?? null) as number | null;
@@ -36,7 +38,7 @@ function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[] } {
       return table.filter((r) => bound === null || r.updated >= bound).map((r) => ({ ...r, u: r.updated }) as R);
     },
   } as Db;
-  return { db, bounds };
+  return { db, bounds, asideReads };
 }
 
 const at = (ms: number): string => new Date(ms).toISOString();
@@ -96,6 +98,28 @@ test('a post unwritten for a day leaves the mirror, is read from the table, and 
   table.push({ item_id: 'x:old', address: 'D', path: 'launch', evidence: {}, launched_at: at(T + 1_000), found_at: at(T + 1_000), updated: T + 1_000 });
   const open = await repo.openCandidates(T - 3_600_000, 10);
   assert.deepEqual(open.map((r) => `${r.itemId}/${r.address}`).sort(), ['x:new/C', 'x:old/A', 'x:old/B', 'x:old/D']);
+});
+
+test('a pruned post asked about is read once and held while it is asked about, then pruned again', async () => {
+  const T = 1_800_000_000_000;
+  const DAY = 86_400_000;
+  const table: Row[] = [
+    { item_id: 'x:old', address: 'A', path: 'launch', evidence: { ties: ['name'] }, launched_at: at(T - 2 * DAY), found_at: at(T - 2 * DAY), updated: T - 2 * DAY },
+    { item_id: 'x:new', address: 'C', path: 'launch', evidence: {}, launched_at: at(T), found_at: at(T), updated: T },
+  ];
+  const { db, asideReads } = fakeDb(table);
+  const repo = new PgOneCoinRepo(db, { mirrorCandidates: true });
+  await repo.openCandidates(T - 3_600_000, 10);
+  /* Asked every pass: one read of the table, then served from the mirror. */
+  for (let i = 0; i < 5; i += 1) assert.deepEqual((await repo.candidatesOf(['x:old', 'x:new'])).map((r) => r.address), ['A', 'C']);
+  assert.deepEqual(asideReads, [['x:old']]);
+  /* Not asked for over an hour (the table's clock moves with new writes): pruned again at the next prune, then read again once. */
+  for (const step of [1, 2, 3]) {
+    table.push({ item_id: `x:t${step}`, address: `T${step}`, path: 'launch', evidence: {}, launched_at: at(T + step * 3_600_000), found_at: at(T + step * 3_600_000), updated: T + step * 3_600_000 });
+    await repo.openCandidates(T + step * 3_600_000 - 60_000, 10);
+  }
+  assert.deepEqual((await repo.candidatesOf(['x:old'])).map((r) => r.address), ['A']);
+  assert.deepEqual(asideReads, [['x:old'], ['x:old']]);
 });
 
 test('without the mirror every read goes to the table', async () => {
