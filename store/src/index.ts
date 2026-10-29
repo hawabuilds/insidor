@@ -41,6 +41,8 @@ export { PgMissedRunnerRepo, runnerKey, type RunnerCoinRow, type RunnerPostRow }
 export { PgCoinFirstRepo } from './repo/coin-first.ts';
 export type { AccountCoinRow, CoinFirstRecord, CoinFirstRole, CoinFirstRow, CoinFirstWrite, CoinOriginPost, CoinOrigins, CoinTie } from './repo/coin-first.ts';
 export { PgChartRepo } from './repo/coin-chart.ts';
+export { PgCandleCapRepo } from './repo/candle-caps.ts';
+export type { CandleCap } from './repo/candle-caps.ts';
 export type { CandleDeltaWrite, ChartCoinWrite, ChartWrite } from './repo/coin-chart.ts';
 export { PgTradeFeedRepo } from './repo/trade-feed.ts';
 export type { CoverWrite, FeedDay, OpeningWrite, TradeFeedWrite, TradeMinuteWrite, TradeStateWrite, UnmeasuredReason, WatchedCoin } from './repo/trade-feed.ts';

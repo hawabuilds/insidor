@@ -13,7 +13,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { CandidateRow, ExistingCoinRow, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
-import { holderOf, newOneCoinState, oneCoinPass, pickWrite, type OneCoinDeps } from './one-coin.ts';
+import { holderOf, newOneCoinState, oneCoinPass, pickWrite, withCandleCaps, type OneCoinDeps } from './one-coin.ts';
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet } as unknown as Logger;
 const MIN = 60_000;
@@ -114,6 +114,37 @@ test('★ a launch linking its own quote of an older post is that post\'s candid
   assert.deepEqual(w.candidates.map((c) => [c.itemId, c.address]), [['x:baby', 'HI']]);
   assert.deepEqual(w.candidates[0]?.evidence['ties'], ['link']);
   assert.equal(w.candidates[0]?.evidence['linkedThrough'], 'x:quote');
+});
+
+test('★ our candles stand in for a stale reading: a launchpad coin is judged on its close (policy.v209, 4iuBjA)', () => {
+  const market = new Map([['RUNpump', { capUsd: 3_248_814, peakCapUsd: 3_248_814, readAtMs: NOW - 5 * MIN, liquidityUsd: 0.01 }], ['OLDpump', { capUsd: 20_000, peakCapUsd: 30_000, readAtMs: NOW - MIN, liquidityUsd: 9_000 }]]);
+  const caps = new Map([
+    ['RUNpump', { capUsd: 3_471_346, peakCapUsd: 12_645_439, atMs: NOW - 2 * MIN }],
+    /* A close older than the bar is no price now: the reading stays. */
+    ['OLDpump', { capUsd: 90_000, peakCapUsd: 90_000, atMs: NOW - 31 * MIN - DEFAULT_POLICY.oneCoin.candles.freshMs }],
+    ['NEWpump', { capUsd: 18_000, peakCapUsd: 18_000, atMs: NOW - MIN }],
+  ]);
+  const out = withCandleCaps(market, caps, NOW, DEFAULT_POLICY.oneCoin.candles.freshMs);
+  assert.deepEqual(out.get('RUNpump'), { capUsd: 3_471_346, peakCapUsd: 12_645_439, readAtMs: NOW - MIN, liquidityUsd: null });
+  assert.equal(out.get('OLDpump')?.capUsd, 20_000);
+  assert.equal(out.get('NEWpump')?.capUsd, 18_000);
+});
+
+test('★ our candles are read once a minute, for launchpad coins only, and a failed read leaves the readings', async () => {
+  const c = (address: string): CandidateRow => ({ itemId: 'x:1', address, path: 'launch', evidence: { ties: ['link'] }, launchedAtMs: NOW - 30 * MIN, foundAtMs: NOW - 30 * MIN });
+  const w = world({ candidates: [c('RUNpump'), c('OFFCURVE')], market: new Map([['RUNpump', { capUsd: 9_000, peakCapUsd: 9_000, readAtMs: NOW - MIN, liquidityUsd: 0.01 }]]) });
+  const asked: string[][] = [];
+  const state = newOneCoinState();
+  const at = (now: number): OneCoinDeps => ({ ...deps(w, now), candleCaps: async (addresses) => (asked.push([...addresses]), new Map([['RUNpump', { capUsd: 80_000, peakCapUsd: 80_000, atMs: now - MIN }]])) });
+  await oneCoinPass(at(NOW), state);
+  await oneCoinPass(at(NOW + 15_000), state);
+  assert.deepEqual(asked, [['RUNpump']]);
+  /* Judged on readings, the frozen $9k quote could not be picked; on its candle the coin clears. */
+  assert.equal(w.picks.get('x:1')?.address, 'RUNpump');
+  await oneCoinPass(at(NOW + DEFAULT_POLICY.oneCoin.candles.readEveryMs), state);
+  assert.equal(asked.length, 2);
+  const failing: OneCoinDeps = { ...deps(world(), NOW), candleCaps: async () => { throw new Error('down'); } };
+  await oneCoinPass(failing, newOneCoinState());
 });
 
 test('★ without trade data the pick is judged on readings, and the evidence says so', async () => {
