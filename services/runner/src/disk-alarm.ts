@@ -21,6 +21,11 @@
  * its month, so it is pushed the first pass the projection is over the line and never again that
  * month, even if it dips under and back.
  *
+ * ★ AND THE MONTH'S TRANSFER (Policy.store.transfer, 0153, the owner 2026-10-29): the host restricts
+ * the project when the plan's transfer is used up and the spend cap stays on, so the owner is told
+ * once a month (`transfer|<month>`) when the estimate (transfer-model.ts) projects the month past
+ * `alertShare` of it — in time to cut reads, not after the restriction.
+ *
  * What breaks if changed carelessly: a subject without the crossing's hour pushes the 80% alert once
  * ever, never again at the next disk size; queueing every replayed crossing pushes the history on
  * each deploy. The bill alert fires from the first pass while `computeNetUsd` alone puts the month
@@ -30,6 +35,7 @@
 import type { StorePolicy } from '@insidor/contracts/policy.ts';
 
 import { billParts, GB, growthOf, projectBill, replayDisk, type SizeSample } from './disk-model.ts';
+import { projectTransfer } from './transfer-model.ts';
 import { errorText, type Logger } from './log.ts';
 import type { OwnerQueue } from './supplier-warnings.ts';
 
@@ -74,7 +80,7 @@ export function diskAlarm(deps: DiskAlarmDeps): { readonly check: () => Promise<
     /** One pass: sample, replay, queue what is new. Returns how many alerts were queued. Never throws. */
     async check() {
       const p = deps.policy;
-      if (!p.disk.on && !p.bill.on) return 0;
+      if (!p.disk.on && !p.bill.on && !p.transfer.on) return 0;
       const sent = { n: 0 };
       try {
         await deps.sample();
@@ -123,6 +129,24 @@ export function diskAlarm(deps: DiskAlarmDeps): { readonly check: () => Promise<
             diskEndGb: round(bill.diskEndGb),
           };
           await push(`bill|${bill.month}`, facts, `the database bill for ${bill.month} is heading for ${billParts(bill)}`, sent);
+        }
+      }
+      if (p.transfer.on) {
+        const t = projectTransfer(samples, now, p.transfer);
+        if (t !== null && t.projectedGb >= p.transfer.alertShare * p.transfer.includedGb) {
+          const facts = {
+            what: 'transfer',
+            month: t.month,
+            projectedGb: round(t.projectedGb, 1),
+            includedGb: p.transfer.includedGb,
+            percent: Math.round((100 * t.projectedGb) / p.transfer.includedGb),
+            alertPercent: Math.round(100 * p.transfer.alertShare),
+            soFarGb: round(t.gbSoFar, 1),
+            gbPerDay: round(t.gbPerDay, 2),
+            knownHours: t.knownHours,
+            elapsedHours: t.elapsedHours,
+          };
+          await push(`transfer|${t.month}`, facts, `the database transfer for ${t.month} is heading for about ${facts.projectedGb} GB of the ${facts.includedGb} GB plan`, sent);
         }
       }
       return sent.n;

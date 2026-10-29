@@ -33,6 +33,8 @@ export interface SizeSample {
   readonly atMs: number;
   readonly dbBytes: number;
   readonly storageBytes: number | null;
+  /** Rows read in the hour (0153; transfer-model.ts). Absent or null: unknown. */
+  readonly readRows?: number | null;
 }
 
 export interface DiskGrow {

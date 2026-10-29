@@ -560,6 +560,16 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `Over your $${n(f['overUsd']) ?? 40} line. Plan ${usd('planUsd') ?? '–'}, compute ${usd('computeUsd') ?? '–'}${f['computeConfirmed'] === true ? '' : ' (assumed, please confirm)'}, disk ${usd('diskUsd') ?? '–'}, files ${files ?? 'unknown'}. Egress is not counted.`,
         };
       }
+      if (f['what'] === 'transfer') {
+        /* The runner's transfer estimate (services/runner transfer-model.ts): rows read times a measured row size, so "about". */
+        const gb = n(f['projectedGb']);
+        const plan = n(f['includedGb']) ?? 250;
+        const perDay = n(f['gbPerDay']);
+        return {
+          title: `Database transfer heading for about ${gb ?? 'over'} GB this month`,
+          body: `That is ${n(f['percent']) ?? '–'}% of the plan's ${plan} GB${perDay === null ? '' : `, at about ${perDay} GB a day now`}. The host restricts the project when it runs out and the spend cap is on. Estimated from the rows read, not the host's own count.`,
+        };
+      }
       if (f['what'] === 'junk') {
         /* The owner's Not-a-meme alarm (junk.ts): his own taps per 100 For You posts shown, against the days before. */
         const taps = n(f['taps']);
