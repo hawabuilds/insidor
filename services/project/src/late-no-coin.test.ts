@@ -31,9 +31,14 @@ test('★ the moustache post is the route\'s from when it was found until its co
   assert.equal(lateHolds(MOUSTACHE, MOUSTACHE.coinAtMs!), false);
 });
 
-test('a post found inside the six hours is not the route\'s: For You\'s own gates had their chance', () => {
-  const young = { ...MOUSTACHE, foundAtMs: POSTED + DEFAULT_POLICY.rising.fypMaxAgeMs };
+test('a post found inside four hours is not the route\'s: For You\'s own gates had their chance', () => {
+  const young = { ...MOUSTACHE, foundAtMs: POSTED + DEFAULT_POLICY.lateNoCoin.foundAfterMs };
   assert.equal(lateHolds(young, young.foundAtMs + MIN), false);
+});
+
+test('★ a post found at five hours is late (v203): the cat with a microphone, found with under an hour of For You left', () => {
+  const fiveHours = { ...MOUSTACHE, coinAtMs: null, coinAddress: null, foundAtMs: POSTED + 5 * HOUR };
+  assert.equal(lateHolds(fiveHours, fiveHours.foundAtMs + MIN), true);
 });
 
 test('★ with no coin at all, the route lets go at its age cap', () => {
@@ -77,7 +82,7 @@ test('switched off, the route reads nothing and holds nothing', async () => {
   assert.equal((await loadLateNoCoin(db as never, POSTED, off)).size, 0);
 });
 
-test('★ the read holds the coin to the running bar and the six hours to For You\'s own', async () => {
+test('★ the read holds the coin to the running bar and lateness to the route\'s own four hours', async () => {
   const asked: unknown[][] = [];
   const db = { query: async (_sql: string, params: unknown[]) => (asked.push(params), [
     { item_id: MOUSTACHE.itemId, posted_at: new Date(POSTED), first_seen_at: new Date(MOUSTACHE.foundAtMs), coin_at: new Date(MOUSTACHE.coinAtMs!), coin_address: MOUSTACHE.coinAddress },
@@ -85,9 +90,9 @@ test('★ the read holds the coin to the running bar and the six hours to For Yo
   const now = MOUSTACHE.foundAtMs + HOUR;
   const got = await loadLateNoCoin(db as never, now);
   assert.deepEqual(got.get(MOUSTACHE.itemId), MOUSTACHE);
-  const [since, sixHours, only, cap] = asked[0] ?? [];
+  const [since, foundAfter, only, cap] = asked[0] ?? [];
   assert.equal(since, new Date(now - DEFAULT_POLICY.lateNoCoin.maxPostAgeMs).toISOString());
-  assert.equal(sixHours, DEFAULT_POLICY.rising.fypMaxAgeMs);
+  assert.equal(foundAfter, DEFAULT_POLICY.lateNoCoin.foundAfterMs);
   assert.equal(only, null);
   assert.equal(cap, DEFAULT_POLICY.oneCoin.minCapUsd);
   /* After the coin ran, the same row is no longer the route's. */

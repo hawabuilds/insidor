@@ -5282,6 +5282,13 @@ export interface LateNoCoinPolicy {
    * picture boost's does with a coined picture. False: For You's own bar.
    */
   readonly nearBar: boolean;
+  /**
+   * A post counts as late when we first held it this long after it went up (policy.v203). Under For You's
+   * six hours on purpose: the late searches look at posts five hours old, and a post they find there has
+   * under an hour of For You's window left — the cat with a microphone, @kira_pryce, @C4NCERGIRL and
+   * @RincnCuriosoo (28 Oct) were each found at five hours, judged yes, past 300k views, and never shown.
+   */
+  readonly foundAfterMs: number;
 }
 
 /**
@@ -5924,8 +5931,10 @@ const POLICY_V1: Policy = {
      v200 (2026-10-28) runs the one-coin pass every 15 s instead of 5 s, to take load off the database.
      v201 (2026-10-28, the owner) lowers the viral exception's bar `judge.viral.minReach` to 100k.
      v202 (2026-10-28, the owner) holds POLITICS again (`judge.heldKinds`); the viral exception still lifts a
-     huge, fast one (the Nicki Minaj and Trump post). */
-  version: 'policy.v202',
+     huge, fast one (the Nicki Minaj and Trump post).
+     v203 (2026-10-29, the owner) counts a post found four hours after it went up as late
+     (`lateNoCoin.foundAfterMs`), so what the five-hour search finds can still reach For You. */
+  version: 'policy.v203',
 
   admit: {
     maxAgeMin: 240,
@@ -8601,6 +8610,7 @@ const POLICY_V1: Policy = {
     on: true,
     maxPostAgeMs: 259_200_000, // 72 hours
     nearBar: true,
+    foundAfterMs: 14_400_000, // four hours: every post the five-hour late search finds (v203)
   },
 
   /* policy.v155 adds `runnerLink` (RunnerLinkPolicy above), after v152's `lateNoCoin`, v153's saved-post push and v154's meme wars. The miss: on
