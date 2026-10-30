@@ -57,7 +57,7 @@ import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultView, fetchTimeframe, type ChartView } from './chart-view.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
-import { OddsSummary } from './LaunchOdds.tsx';
+import { OddsChip } from './LaunchOdds.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
@@ -205,6 +205,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
         <a className={styles['chip']} href={venueShown.url} target="_blank" rel="noopener noreferrer" title={`Open ${ticker} on ${venueShown.label}`}>
           {venueShown.label}
         </a>
+        {/* What similar launches did, one chip in this row (LaunchOdds.tsx); it opens Info. */}
+        <OddsChip odds={odds} className={styles['chip']} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
         {chips.map((c) => (
           <span key={c} className={`${styles['chip']} ${styles['chipBrand']}`}>{c}</span>
         ))}
@@ -220,7 +222,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
-      <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} summary={<OddsSummary odds={odds} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />} />
+      <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
       {narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : noNarrative && about !== null ? <ViralPost posts={about.posts} /> : null}
 
