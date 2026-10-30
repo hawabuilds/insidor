@@ -73,8 +73,10 @@ const FACTS_AT: Record<Signal, readonly OddsFact[]> = {
   minute_5: ['trades_so_far', 'moved_since_launch', 'first_second_buyers', 'dev_buy'],
 };
 
-interface Outcome { readonly peak: number; readonly rugged: boolean }
-interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome }
+/** `peakS`: seconds after launch the hour's peak came. */
+interface Outcome { readonly peak: number; readonly rugged: boolean; readonly peakS: number }
+/** `momentS`: seconds after launch the signal looked. */
+interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome; readonly momentS: number }
 interface Launch {
   readonly address: string;
   readonly launchMs: number;
@@ -93,17 +95,19 @@ const arg = (name: string): string | null => {
 /** The hour after an entry: the peak over the entry price, and whether it was rugged. */
 function hourAfter(trades: readonly Trade[], after: (t: Trade) => boolean, entry: number): Outcome {
   let peak = entry;
+  let peakS = 0;
   let low = Infinity;
   for (const t of trades) {
     if (t[1] * 1_000 > P.firstHourMs || !after(t)) continue;
     if (t[5] > peak) {
       peak = t[5];
+      peakS = t[1];
       low = Infinity;
     } else low = Math.min(low, t[5]);
   }
   const rose = peak >= (1 + P.rugRise) * entry;
   const fell = low !== Infinity && peak - low >= P.rugGiveBack * (peak - Math.min(CURVE_START, entry));
-  return { peak: peak / entry, rugged: rose && fell };
+  return { peak: peak / entry, rugged: rose && fell, peakS };
 }
 
 /** The price of the last trade before a condition fails, else the curve's start. */
@@ -150,7 +154,7 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
   const sLate = (t: Trade): boolean => t[0] <= LATE_SLOTS;
   const e1 = priceBy(trades, sNow);
   const e1l = priceBy(trades, sLate);
-  at.second_1 = { opening: base, now: hourAfter(trades, (t) => !sNow(t), e1), late: hourAfter(trades, (t) => !sLate(t), e1l) };
+  at.second_1 = { momentS: 1, opening: base, now: hourAfter(trades, (t) => !sNow(t), e1), late: hourAfter(trades, (t) => !sLate(t), e1l) };
 
   for (const signal of ['minute_1', 'minute_5'] as const) {
     const moment = signalMomentMs(launchMs, signal) - launchMs;
@@ -162,6 +166,7 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
     const entry = upTo.length > 0 ? (upTo[upTo.length - 1] as Trade)[5] : CURVE_START;
     if (!whole && upTo.length === 0) continue;
     at[signal] = {
+      momentS: moment / 1_000,
       opening: { ...base, tradesSoFar: upTo.length, movedSinceLaunch: upTo.length > 0 ? entry / first : null },
       now: hourAfter(trades, (t) => !before(t), entry),
       late: hourAfter(trades, (t) => !beforeLate(t), priceBy(trades, beforeLate)),
@@ -172,17 +177,33 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
 
 /* ── rates ─────────────────────────────────────────────────────────────── */
 
-interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[] }
+/** `halfPeakS`: the weighted median, over the launches that doubled, of seconds from the signal to the hour's peak. */
+interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[]; halfPeakS: number | null }
 function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
-  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0) };
+  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0), halfPeakS: null };
+  const peaks: { s: number; w: number }[] = [];
   for (const { l, s } of xs) {
     r.w += l.w;
+    if (s.now.peak >= (P.multiples[0] ?? 2)) peaks.push({ s: Math.max(0, s.now.peakS - s.momentS), w: l.w });
     P.multiples.forEach((k, i) => {
       if (s.now.peak >= k) r.hit[i] = (r.hit[i] ?? 0) + l.w;
       if (s.late.peak >= k) r.lateHit[i] = (r.lateHit[i] ?? 0) + l.w;
     });
     if (s.now.rugged) r.rugged += l.w;
     if (s.now.peak < P.neverMovedBelow) r.never += l.w;
+  }
+  /* Fewer doublers than this and "half of them peaked within" is one or two coins' story. */
+  if (peaks.length >= MIN_TEST) {
+    peaks.sort((a, b) => a.s - b.s);
+    const half = peaks.reduce((s, p) => s + p.w, 0) / 2;
+    let acc = 0;
+    for (const p of peaks) {
+      acc += p.w;
+      if (acc >= half) {
+        r.halfPeakS = p.s;
+        break;
+      }
+    }
   }
   const d = r.w > 0 ? r.w : 1;
   return { ...r, hit: r.hit.map((h) => h / d), lateHit: r.lateHit.map((h) => h / d), rugged: r.rugged / d, never: r.never / d };
@@ -317,7 +338,7 @@ try {
       return s === undefined ? [] : [{ l, s: { ...s, opening: dollars(s.opening, l) } }];
     });
     const all = rates(seen);
-    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, held_up: true });
+    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, half_peak_s: all.halfPeakS, held_up: true });
     console.log(`\n${signal}: ${all.n} launches. All: hit ${all.hit.map(pctS).join(' ')}  rugged ${pctS(all.rugged)}  never moved ${pctS(all.never)}  | 3 s later: ${all.lateHit.map(pctS).join(' ')}`);
     const scored = seen.flatMap((x) => {
       const v = openingScore(signal, x.s.opening);
@@ -325,7 +346,7 @@ try {
     });
     const gs = groups(scored, EDGES[signal], split);
     gs.forEach((g, i) => {
-      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, held_up: g.held });
+      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, half_peak_s: g.all.halfPeakS, held_up: g.held });
       console.log(
         `  [${g.bin.from}, ${g.bin.to ?? '∞'}) n=${String(g.all.n).padStart(5)} hit ${g.all.hit.map(pctS).join(' ')} rugged ${pctS(g.all.rugged)} never ${pctS(g.all.never)}` +
           ` | before: 2x ${pctS(g.train.hit[0] ?? 0)} 5x ${pctS(g.train.hit[2] ?? 0)} 10x ${pctS(g.train.hit[3] ?? 0)} (n=${g.train.n}) after: 2x ${pctS(g.test.hit[0] ?? 0)} 5x ${pctS(g.test.hit[2] ?? 0)} 10x ${pctS(g.test.hit[3] ?? 0)} (n=${g.test.n})` +
@@ -359,7 +380,7 @@ try {
     'delete from public.launch_odds_badge;',
     ...out.bands.map((b) => {
       const h = b['hit'] as number[];
-      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
+      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['half_peak_s'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
     }),
     ...out.badges.map((b) => `insert into public.launch_odds_badge (fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h) values (${[b['fact'], b['signal'], b['value_from'], b['value_to'], b['tone'], b['launches'], b['hit_2x'], b['rugged_1h']].map(lit).join(', ')});`),
     'commit;',

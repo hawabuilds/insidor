@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import { VENUE_ID } from '@insidor/venue-solana-pumpfun';
 
-import { badgesFor, bandFor, createLaunchOdds, lookOf, minuteFacts, oddsReply, signalMomentMs, signalNow, type BadgeRow, type BandRow, type Opening } from './launch-odds.ts';
+import { bandFor, signalsFor, createLaunchOdds, lookOf, minuteFacts, oddsReply, signalMomentMs, signalNow, type BadgeRow, type BandRow, type Opening } from './launch-odds.ts';
 import type { Db, Row } from './queries.ts';
 
 const DAY = 86_400_000;
@@ -22,6 +22,7 @@ const band = (over: Partial<BandRow>): BandRow => ({
   hit: [0.12, 0.06, 0.03, 0.01],
   rugged: 0.1,
   neverMoved: 0.5,
+  halfPeakS: 240,
   heldUp: true,
   launchedFromMs: 0,
   launchedToMs: 30 * DAY,
@@ -66,37 +67,50 @@ test('a score falls in the group whose range holds it; the top group is open-end
 });
 
 test('the reply is history beside all launches, with the group in words', () => {
-  const r = oddsReply('second_1', opening({ buyers: 12, buys: 14, devBuyUsd: 20 }), BANDS, []);
+  const r = oddsReply('second_1', { second_1: opening({ buyers: 12, buys: 14, devBuyUsd: 20 }) }, BANDS, []);
   assert.equal(r.kind, 'odds');
   if (r.kind !== 'odds') return;
-  assert.equal(r.headline, 'Launches that opened like this one, last 30 days');
-  assert.equal(r.group, '8 or more buyers in the first second');
-  assert.equal(r.like.launches, 400);
-  assert.deepEqual(r.like.hit.map((h) => h.x), [...DEFAULT_POLICY.launchOdds.multiples]);
-  assert.equal(r.normal.hit[0]?.share, 0.12);
-  assert.equal(r.look, 'runner');
+  const m = r.moments[0];
+  assert.equal(r.days, 30);
+  assert.equal(m?.group, '8 or more buyers in the first second');
+  assert.equal(m?.like.launches, 400);
+  assert.deepEqual(m?.like.hit.map((h) => h.x), [...DEFAULT_POLICY.launchOdds.multiples]);
+  assert.equal(m?.normal.hit[0]?.share, 0.12);
+  assert.equal(m?.like.halfPeakS, 240);
+  assert.equal(m?.look, 'runner');
 });
 
-test('a group that did not hold up shows all launches, and says the opening was no different', () => {
-  const bands = BANDS.map((b) => (b.band === 3 ? { ...b, heldUp: false } : b));
-  const r = oddsReply('second_1', opening({ buyers: 12 }), bands, []);
+test('every moment reached is in the reply, in order, and the page opens on the latest', () => {
+  const minuteBands = BANDS.map((b) => ({ ...b, signal: 'minute_1' as const }));
+  const r = oddsReply('minute_5', { second_1: opening({ buyers: 1 }), minute_1: opening({ buyers: 1, tradesSoFar: 40 }), minute_5: opening({ buyers: 1, tradesSoFar: 90 }) }, [...BANDS, ...minuteBands], []);
   assert.ok(r.kind === 'odds');
   if (r.kind !== 'odds') return;
-  assert.equal(r.held, false);
-  assert.equal(r.like.launches, NORMAL.launches);
-  assert.match(r.headline, /no different/);
-  assert.equal(r.look, 'mixed');
+  /* No minute-5 groups built: that moment is left out, not shown empty. */
+  assert.deepEqual(r.moments.map((m) => m.at), ['second_1', 'minute_1']);
+  assert.equal(r.at, 'minute_1');
+});
+
+test('a group that did not hold up shows all launches, and says so', () => {
+  const bands = BANDS.map((b) => (b.band === 3 ? { ...b, heldUp: false } : b));
+  const r = oddsReply('second_1', { second_1: opening({ buyers: 12 }) }, bands, []);
+  assert.ok(r.kind === 'odds');
+  if (r.kind !== 'odds') return;
+  const m = r.moments[0];
+  assert.equal(m?.held, false);
+  assert.equal(m?.like.launches, NORMAL.launches);
+  assert.equal(m?.group, 'No group of launches like it held up');
+  assert.equal(m?.look, 'mixed');
 });
 
 test('too few launches is too early to tell; an unseen opening and unbuilt groups are said, not zero', () => {
   const thin = BANDS.map((b) => (b.band === 3 ? { ...b, launches: 20 } : b));
-  const r = oddsReply('second_1', opening({ buyers: 12 }), thin, []);
-  assert.ok(r.kind === 'odds' && r.look === 'early');
-  assert.deepEqual(oddsReply('second_1', opening({}), BANDS, []), { kind: 'none', why: 'not_seen' });
-  assert.deepEqual(oddsReply('second_1', opening({ buyers: 3 }), [], []), { kind: 'none', why: 'not_built' });
+  const r = oddsReply('second_1', { second_1: opening({ buyers: 12 }) }, thin, []);
+  assert.ok(r.kind === 'odds' && r.moments[0]?.look === 'early');
+  assert.deepEqual(oddsReply('second_1', { second_1: opening({}) }, BANDS, []), { kind: 'none', why: 'not_seen' });
+  assert.deepEqual(oddsReply('second_1', { second_1: opening({ buyers: 3 }) }, [], []), { kind: 'none', why: 'not_built' });
 });
 
-test('badges are worst first, at most four, with the comparison in their words; any red wins the summary', () => {
+test('signals are worst first, at most four, each with its value and comparison; a rug sign wins the summary', () => {
   const rows: BadgeRow[] = [
     { fact: 'first_second_buyers', signal: 'second_1', from: 8, to: null, tone: 'green', launches: 400, hit2x: 0.31, rugged: 0.12 },
     { fact: 'dev_buy', signal: 'second_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3 },
@@ -104,11 +118,11 @@ test('badges are worst first, at most four, with the comparison in their words; 
     { fact: 'dev_buy', signal: 'minute_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3 },
   ];
   const o = opening({ buyers: 12, buys: 14, devBuyUsd: 250 });
-  const shown = badgesFor(rows, NORMAL, 'second_1', o, 30);
-  assert.deepEqual(shown.map((b) => b.tone), ['red', 'amber', 'green']);
-  assert.deepEqual([shown[0]?.fact, shown[0]?.compare], ['Creator bought $250 at launch', 'rugged 30% vs 10%']);
+  const shown = signalsFor(rows, NORMAL, 'second_1', o, 30);
+  assert.deepEqual(shown.map((b) => b.qualifier), ['Rug sign', 'Typical', 'Strong']);
+  assert.deepEqual([shown[0]?.label, shown[0]?.value, shown[0]?.context], ['Developer buy', '$250', 'Launches like it were rugged 30%, avg 10%']);
   assert.match(shown[0]?.explain ?? '', /^Of 900 launches whose creator bought \$100 or more in the last 30 days, 30% were rugged within the hour/);
-  assert.deepEqual([shown[2]?.fact, shown[2]?.compare], ['12 buyers in its first second', 'doubled 31% vs 12%']);
+  assert.deepEqual([shown[2]?.label, shown[2]?.value, shown[2]?.context], ['First-second buyers', '12', 'Launches like it doubled 31%, avg 12%']);
   assert.equal(lookOf(BANDS[3] as BandRow, NORMAL, shown), 'rug');
 });
 
@@ -126,7 +140,7 @@ test('the route: a coin we do not hold is a 404, another venue is none, the grou
       if (sql.includes('from public.launch_odds_badge')) return [];
       if (sql.includes('from public.launch_odds')) {
         bandReads += 1;
-        return BANDS.map((b) => ({ signal: b.signal, band: b.band, score_from: b.scoreFrom, score_to: b.scoreTo, launches: b.launches, hit_2x: b.hit[0], hit_3x: b.hit[1], hit_5x: b.hit[2], hit_10x: b.hit[3], rugged_1h: b.rugged, never_moved: b.neverMoved, held_up: b.heldUp, from_ms: b.launchedFromMs, to_ms: b.launchedToMs }));
+        return BANDS.map((b) => ({ signal: b.signal, band: b.band, score_from: b.scoreFrom, score_to: b.scoreTo, launches: b.launches, hit_2x: b.hit[0], hit_3x: b.hit[1], hit_5x: b.hit[2], hit_10x: b.hit[3], rugged_1h: b.rugged, never_moved: b.neverMoved, half_peak_s: b.halfPeakS, held_up: b.heldUp, from_ms: b.launchedFromMs, to_ms: b.launchedToMs }));
       }
       const c = coins[String(params[0])];
       return c === undefined ? [] : [c];
@@ -140,7 +154,7 @@ test('the route: a coin we do not hold is a 404, another venue is none, the grou
   await read('solana:A', db);
   assert.equal(bandReads, 1);
   const c = await read('solana:C', db);
-  assert.ok(c !== null && c.kind === 'odds' && c.group === 'under 2 buyers in the first second');
+  assert.ok(c !== null && c.kind === 'odds' && c.moments[0]?.group === 'under 2 buyers in the first second');
 });
 
 test('groups that cannot be read (the table not there yet) are not built, not a server fault', async () => {
