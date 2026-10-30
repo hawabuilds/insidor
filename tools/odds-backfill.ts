@@ -11,6 +11,8 @@
  *            a random sample of both. Each stratum's population is recorded for the weights. Free.
  *   run      each listed coin's trades through its first hour, oldest first, one JSONL line a coin. Paid
  *            in RPC credits on the RESEARCH key.
+ *   late     hours 1 to 24 of each coin already read, for the slow run (2x after the first hour). Paid
+ *            on the same ledger and cap; refuses unless `--budget` calls fit under the cap.
  *   status   coins done, by stratum, and credits used.
  *
  * ★ ONLY THE RESEARCH KEY. `HELIUS_RESEARCH_KEY`, never `HELIUS_API_KEY`: the live key exhausted by a
@@ -329,6 +331,68 @@ async function run(): Promise<void> {
   console.log(`Done: ${n} coins this run, ${ledger.calls} calls, ${ledger.credits} credits in all.`);
 }
 
+/* ── the slow run: hours 1 to 24 ─────────────────────────────────────────── */
+
+const LATE_FILE = join(DIR, 'launches-late.jsonl');
+const DAY_S = 86_400;
+/** After hour one, one page at each of these offsets from launch: enough to see a slow 2x, not every trade. */
+const LATE_GRID_S = Array.from({ length: 12 }, (_, i) => HOUR_S + i * 7_200);
+
+/**
+ * `late`: for each coin already read, its trades from hour 1 to hour 24, for "Slow run, 2x after 1h". A
+ * coin whose trades ended before an hour is one request; one still trading reads one page every two hours.
+ * Counted on the same ledger and stopped by the same cap: it never raises it, and it refuses to start
+ * unless `--budget` calls (the caller's estimate of what the pass needs) fit under the cap.
+ */
+async function late(): Promise<void> {
+  const apiKey = process.env['HELIUS_RESEARCH_KEY'];
+  if (apiKey === undefined || apiKey === '') throw new Error('HELIUS_RESEARCH_KEY is not set; this tool reads on the research key only.');
+  const ledger = readLedger();
+  const budget = arg('--budget', 0);
+  if (budget <= 0 || ledger.credits + budget * CREDITS_PER_CALL > CREDIT_CAP) {
+    console.log(`Refusing: --budget ${budget} calls would take the ledger from ${ledger.credits} past the ${CREDIT_CAP}-credit cap (or no budget given).`);
+    return;
+  }
+  const done = new Set<string>();
+  if (existsSync(LATE_FILE)) for (const line of readFileSync(LATE_FILE, 'utf8').split('\n')) if (line) done.add((JSON.parse(line) as { a: string }).a);
+  const coins = readFileSync(OUT_FILE, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as { a: string; bt0: number | null; creator: string | null });
+  const call = rpcCaller(apiKey, ledger);
+  const base = { transactionDetails: 'full', sortOrder: 'asc', encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 };
+  const start = ledger.calls;
+  for (const c of coins) {
+    if (done.has(c.a) || c.bt0 === null || c.creator === null) continue;
+    if (ledger.calls - start >= budget) break;
+    const trades: LaunchTrade[] = [];
+    const windows: [number, number][] = [];
+    try {
+      for (const g of LATE_GRID_S) {
+        const at = c.bt0 + g;
+        if (windows.length > 0 && (windows[windows.length - 1] as [number, number])[1] >= at - c.bt0) continue;
+        const page = await call([c.a, { ...base, limit: GRID_PAGE, filters: { status: 'succeeded', blockTime: { gte: at, lt: c.bt0 + DAY_S } } }]);
+        let last = at;
+        for (const tx of page.data) {
+          trades.push(...readTx(tx, c.a).trades);
+          const bt = (tx as { blockTime?: number }).blockTime;
+          if (typeof bt === 'number') last = Math.max(last, bt);
+        }
+        /* Fewer than asked: the coin's last trades before hour 24 — the rest of the day is read. */
+        windows.push([g, page.data.length < GRID_PAGE ? DAY_S : last - c.bt0]);
+        if (page.data.length < GRID_PAGE) break;
+      }
+    } catch (e) {
+      if (e instanceof CapReached) {
+        console.log(`Stopped: ${e.message}.`);
+        break;
+      }
+      appendFileSync(join(DIR, 'errors.log'), `${new Date().toISOString()} late ${c.a} ${e instanceof Error ? e.message : String(e)}\n`);
+      continue;
+    }
+    /* [seconds after launch, price in SOL] — the slow run needs only the price path. */
+    appendFileSync(LATE_FILE, JSON.stringify({ a: c.a, windows, prices: trades.map((t) => [t.blockTime - (c.bt0 as number), Number(t.price.toPrecision(6))]) }) + '\n');
+  }
+  console.log(`Late pass: ${ledger.calls - start} calls this run, ledger ${ledger.credits} credits of ${CREDIT_CAP}.`);
+}
+
 function status(): void {
   const ledger = readLedger();
   const by = { g: 0, o: 0 };
@@ -345,4 +409,5 @@ const stage = process.argv[2];
 if (stage === 'list') await list();
 else if (stage === 'run') await run();
 else if (stage === 'status') status();
-else console.log('stages: list | run [--limit N] | status');
+else if (stage === 'late') await late();
+else console.log('stages: list | run [--limit N] | late --budget N | status');
