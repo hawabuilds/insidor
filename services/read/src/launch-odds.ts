@@ -62,7 +62,9 @@ export interface BandRow {
   readonly rugged: number;
   readonly neverMoved: number;
   /** Seconds from the signal by which half the launches that doubled had peaked; null when too few doubled. */
-  readonly halfPeakS: number | null;
+  readonly peakP50S: number | null;
+  /** The slowest one in four of them, out to a day (75th percentile); null until measured. */
+  readonly peakP75S: number | null;
   /** First reached 2x after the hour and within a day; null until measured. */
   readonly slow2x: number | null;
   readonly heldUp: boolean;
@@ -122,7 +124,9 @@ export interface OddsShares {
   readonly rugged: number;
   readonly neverMoved: number;
   /** Of these launches that doubled, half had peaked within this many seconds; null when too few doubled. */
-  readonly halfPeakS: number | null;
+  readonly peakP50S: number | null;
+  /** The slowest one in four of them, out to a day (75th percentile); null until measured. */
+  readonly peakP75S: number | null;
   /** The share that first reached 2x more than an hour after the moment, within a day; null until measured. */
   readonly slow2x: number | null;
 }
@@ -263,7 +267,7 @@ export function bandFor(bands: readonly BandRow[], signal: Signal, score: number
 }
 
 function shares(b: BandRow, policy: Policy): OddsShares {
-  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved, halfPeakS: b.halfPeakS, slow2x: b.slow2x };
+  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved, peakP50S: b.peakP50S, peakP75S: b.peakP75S, slow2x: b.slow2x };
 }
 
 const TONE_ORDER: Record<Tone, number> = { red: 0, amber: 1, green: 2 };
@@ -426,7 +430,7 @@ select extract(epoch from bucket) * 1000 as bucket_ms, o, c, trades
  order by bucket`;
 
 export const ODDS_BANDS_SQL = `
-select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, slow_2x, held_up,
+select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, peak_p50_s, peak_p75_s, slow_2x, held_up,
        extract(epoch from launched_from) * 1000 as from_ms, extract(epoch from launched_to) * 1000 as to_ms
   from public.launch_odds`;
 
@@ -451,7 +455,8 @@ export function bandRows(rows: readonly Row[]): BandRow[] {
       hit: [num(r['hit_2x']) ?? 0, num(r['hit_3x']) ?? 0, num(r['hit_5x']) ?? 0, num(r['hit_10x']) ?? 0],
       rugged: num(r['rugged_1h']) ?? 0,
       neverMoved: num(r['never_moved']) ?? 0,
-      halfPeakS: num(r['half_peak_s']),
+      peakP50S: num(r['peak_p50_s']),
+      peakP75S: num(r['peak_p75_s']),
       slow2x: num(r['slow_2x']),
       heldUp: r['held_up'] === true,
       launchedFromMs: num(r['from_ms']) ?? 0,

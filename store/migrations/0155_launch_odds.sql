@@ -55,9 +55,11 @@ create table public.launch_odds (
   hit_10x       double precision not null check (hit_10x between 0 and 1),
   rugged_1h     double precision not null check (rugged_1h between 0 and 1),
   never_moved   double precision not null check (never_moved between 0 and 1),
-  -- Of the group's launches that doubled, half had reached the hour's peak within this many seconds of the
-  -- signal time (weighted median). Null when too few doubled to say: never zero.
-  half_peak_s   double precision check (half_peak_s is null or half_peak_s >= 0),
+  -- Of the group's launches that reached 2x within a day, the weighted median and 75th percentile of
+  -- seconds from the signal time to the day's peak ("Usual peak time", "Slowest 1 in 4 peak"). Measured
+  -- from the backfill's day reads; NULL until they have run, or when too few doubled: never zero.
+  peak_p50_s    double precision check (peak_p50_s is null or peak_p50_s >= 0),
+  peak_p75_s    double precision check (peak_p75_s is null or peak_p75_s >= 0),
   -- The slow run: the share that first reached 2x of the signal time's price more than an hour later and
   -- within a day. NULL until the backfill's day reads have run: not measured, never zero.
   slow_2x       double precision check (slow_2x is null or slow_2x between 0 and 1),
