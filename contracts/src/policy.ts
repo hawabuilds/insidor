@@ -5390,7 +5390,9 @@ export interface RunningCoinsPolicy {
  *   minLaunches    a group resting on fewer sampled launches than this says "Too early to tell".
  *   lift           a group (or a badge's fact) is green when it went on to double at least `green` times
  *                  as often as all launches; red — a rug sign, and only that — when it was rugged at least
- *                  `red` times as often; dead when it never moved at least `dead` times as often (or
+ *                  `red` times as often AND `red` times as often for each launch that doubled (nearly every
+ *                  riser gives it back within the hour, so rugs alone only measure movement); dead when
+ *                  it never moved at least `dead` times as often (or
  *                  doubled at most 1/`red` as often and mostly never moved). A rare doubler is never red.
  *   keepMs         the groups are read from the database once this often, not on every page.
  */

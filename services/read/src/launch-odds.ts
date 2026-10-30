@@ -218,7 +218,7 @@ export function badgesFor(rows: readonly BadgeRow[], normal: BandRow, signal: Si
     if (r.signal !== signal) continue;
     const v = factValue(r.fact, o);
     if (v === null || v < r.from || (r.to !== null && v >= r.to)) continue;
-    const ruggedSign = normal.rugged > 0 && r.rugged >= policy.launchOdds.lift.red * normal.rugged;
+    const ruggedSign = rugSign(r.rugged, r.hit2x, normal.rugged, doubled, policy);
     const said =
       r.tone === 'red' && ruggedSign
         ? `rugged ${pct(r.rugged)} vs ${pct(normal.rugged)}`
@@ -241,6 +241,20 @@ export function badgesFor(rows: readonly BadgeRow[], normal: BandRow, signal: Si
     .map(({ tone, fact, compare, explain }) => ({ tone, fact, compare, explain }));
 }
 
+/**
+ * A rug sign: launches like it were rugged at least `lift.red` times as often as all launches, AND at least
+ * `lift.red` times as often for each one that doubled. The second half is what makes it a sign: on the
+ * launchpad nearly every launch that rises gives it back within the hour, so a busy opening is rugged more
+ * often simply because it moves more often — and it doubles more often too. Only an opening whose rugs
+ * outgrow its doubles is warned about.
+ */
+export function rugSign(rugged: number, doubled: number, normalRugged: number, normalDoubled: number, policy: Policy = DEFAULT_POLICY): boolean {
+  const red = policy.launchOdds.lift.red;
+  if (normalRugged <= 0 || rugged < red * normalRugged) return false;
+  if (doubled <= 0) return true;
+  return normalDoubled > 0 && rugged / doubled >= red * (normalRugged / normalDoubled);
+}
+
 /** The block's summary word: any rug sign first, then too few launches, then the group against all. */
 export function lookOf(like: BandRow, normal: BandRow, badges: readonly OddsBadge[], policy: Policy = DEFAULT_POLICY): Look {
   const l = policy.launchOdds.lift;
@@ -249,7 +263,7 @@ export function lookOf(like: BandRow, normal: BandRow, badges: readonly OddsBadg
   if (!like.heldUp) return 'mixed';
   const d = like.hit[0] ?? 0;
   const nd = normal.hit[0] ?? 0;
-  if (normal.rugged > 0 && like.rugged >= l.red * normal.rugged) return 'rug';
+  if (rugSign(like.rugged, d, normal.rugged, nd, policy)) return 'rug';
   if (nd > 0 && d <= nd / l.red) return like.neverMoved >= l.dead * normal.neverMoved ? 'dead' : 'mixed';
   if (normal.neverMoved > 0 && like.neverMoved >= l.dead * normal.neverMoved) return 'dead';
   if (nd > 0 && d >= l.green * nd) return 'runner';

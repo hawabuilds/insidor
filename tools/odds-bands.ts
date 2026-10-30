@@ -39,7 +39,7 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
-import { openingScore, signalMomentMs, SIGNALS, type Opening, type OddsFact, type Signal, type Tone } from '../services/read/src/launch-odds.ts';
+import { openingScore, rugSign, signalMomentMs, SIGNALS, type Opening, type OddsFact, type Signal, type Tone } from '../services/read/src/launch-odds.ts';
 
 const P = DEFAULT_POLICY.launchOdds;
 const DIR = process.env['ODDS_DIR'] ?? '/tmp/insidor-odds';
@@ -241,11 +241,16 @@ function groups(rows: readonly { l: Launch; s: Seen; v: number }[], edges: reado
   }
 }
 
-/** Red is a rug sign and nothing else: a fact whose launches rarely moved is amber, and the group says "dead". */
+/**
+ * Red is a rug sign and nothing else (launch-odds.ts `rugSign`, the same rule the page's summary uses): a
+ * fact whose launches rarely moved is amber, and the group says "dead". Measured on the first 3,000
+ * launches, almost every launch that rose 50% gave it back within the hour, so "rugged more often" alone
+ * only meant "moved more often" and painted the busiest openings — which also doubled most — red.
+ */
 function tone(g: Rates, all: Rates): Tone {
   const d = g.hit[0] ?? 0;
   const nd = all.hit[0] ?? 0;
-  if (all.rugged > 0 && g.rugged >= P.lift.red * all.rugged) return 'red';
+  if (rugSign(g.rugged, d, all.rugged, nd)) return 'red';
   if (nd > 0 && d >= P.lift.green * nd) return 'green';
   return 'amber';
 }
