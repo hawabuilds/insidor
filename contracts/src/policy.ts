@@ -6011,8 +6011,10 @@ const POLICY_V1: Policy = {
      v210 (2026-10-30, the owner: cut hosting egress) sends public pictures to the open model as links
      (`judge.linkPictures`), copy-tested equal to sending the bytes.
      v211 (2026-10-30, the owner) re-reads For You posts from the week still gaining views once a day
-     (`feed.readings.gaining`), so This week and All time see a slow burn. */
-  version: 'policy.v211',
+     (`feed.readings.gaining`), so This week and All time see a slow burn.
+     v212 (2026-10-30, the owner: "charge me the extra") raises the late bands that ran dry on 29 Oct
+     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut. */
+  version: 'policy.v212',
 
   admit: {
     maxAgeMin: 240,
@@ -6933,10 +6935,12 @@ const POLICY_V1: Policy = {
         late_300: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 1.3, paced: true },
         /* The 8-hour band (policy.v196, `fresh.late`): $0.17 a day from policy.v198, exactly what fight words off
            saves, so search spend is unchanged; `band_6` keeps its full day. */
-        late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.17, paced: true },
+        /* $0.17 → $0.50 (policy.v212): it ran dry by 21:30 on 29 Oct; the late bands are For You's cheapest route (~$0.015 a post). */
+        late_480: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.5, paced: true },
         /* The 2-hour band (policy.v205): $0.45 a day, paced, taken from the slow lane, whose two-hour slice it
            replaces (core `sliceCoveredByLateBand`): the search day does not move. */
-        late_120: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.45, paced: true },
+        /* $0.45 → $0.70 (policy.v212): spent $0.447 of $0.45 on 29 Oct, the day it missed @nakkkkkan (~10k likes at two hours). */
+        late_120: { full: true, maxPages: 9, passDeadlineMs: 60_000, dailyUsd: 0.7, paced: true },
         slow: { full: true, maxPages: 3, passDeadlineMs: 60_000, dailyUsd: 0.6 },
       },
     },
