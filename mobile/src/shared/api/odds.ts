@@ -27,6 +27,8 @@ export interface OddsShares {
   readonly neverMoved: number | null;
   /** Seconds from the moment by which half of these launches that doubled had peaked; null when too few doubled. */
   readonly halfPeakS: number | null;
+  /** First reached 2x more than an hour after the moment, within a day; null until measured. */
+  readonly slow2x: number | null;
 }
 
 export interface OddsSignal {
@@ -48,8 +50,16 @@ export interface MomentOdds {
   readonly signals: readonly OddsSignal[];
 }
 
+/** One cell of the Wallets card. A fact not recorded live is a dash with its reason in `note`, never a zero. */
+export interface WalletCell {
+  readonly label: string;
+  readonly value: string;
+  readonly note: string;
+  readonly tone: 'good' | 'bad' | 'plain';
+}
+
 export type CoinOdds =
-  | { readonly kind: 'odds'; readonly at: OddsMoment; readonly days: number; readonly moments: readonly MomentOdds[] }
+  | { readonly kind: 'odds'; readonly at: OddsMoment; readonly days: number; readonly moments: readonly MomentOdds[]; readonly wallets: readonly WalletCell[] }
   | { readonly kind: 'none'; readonly why: 'not_launchpad' | 'not_seen' | 'not_built' };
 
 const MOMENTS: readonly OddsMoment[] = ['second_1', 'minute_1', 'minute_5'];
@@ -75,7 +85,7 @@ function sharesOf(v: unknown, path: string): OddsShares {
     return typeof r['x'] === 'number' && s !== null ? [{ x: r['x'], share: s }] : [];
   });
   const peak = o['halfPeakS'];
-  return { launches: count(o['launches']), hit, rugged: share(o['rugged']), neverMoved: share(o['neverMoved']), halfPeakS: typeof peak === 'number' && Number.isFinite(peak) && peak >= 0 ? peak : null };
+  return { launches: count(o['launches']), hit, rugged: share(o['rugged']), neverMoved: share(o['neverMoved']), halfPeakS: typeof peak === 'number' && Number.isFinite(peak) && peak >= 0 ? peak : null, slow2x: share(o['slow2x']) };
 }
 
 function signalOf(v: unknown): OddsSignal | null {
@@ -112,5 +122,12 @@ export function decodeCoinOdds(raw: unknown, path = '$.odds'): CoinOdds {
   const last = moments[moments.length - 1];
   if (last === undefined) return { kind: 'none', why: 'not_built' };
   const at = MOMENTS.find((m) => m === o['at'] && moments.some((x) => x.at === m)) ?? last.at;
-  return { kind: 'odds', at, days: count(o['days']), moments };
+  const wallets = (Array.isArray(o['wallets']) ? o['wallets'] : []).flatMap((w): WalletCell[] => {
+    if (typeof w !== 'object' || w === null) return [];
+    const r = w as Record<string, unknown>;
+    const label = text(r['label']);
+    const tone = r['tone'] === 'good' || r['tone'] === 'bad' ? r['tone'] : 'plain';
+    return label === '' ? [] : [{ label, value: text(r['value']) || '—', note: text(r['note']), tone }];
+  });
+  return { kind: 'odds', at, days: count(o['days']), moments, wallets };
 }
