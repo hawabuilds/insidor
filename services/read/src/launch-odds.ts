@@ -288,7 +288,7 @@ export function oddsReply(signal: Signal, o: Opening, bands: readonly BandRow[],
     at: signal,
     look,
     headline: band !== null && band.heldUp ? `Launches that ${opened}, last ${days} days` : `All launches, last ${days} days: this one's opening was no different`,
-    group: band === null ? 'No launches opened like this one' : groupText(signal, band),
+    group: band === null ? 'No launches opened like this one' : band.heldUp ? groupText(signal, band) : 'No group of launches like it held up',
     held: band !== null && band.heldUp,
     like: shares(like, policy),
     normal: shares(normal, policy),
@@ -299,15 +299,21 @@ export function oddsReply(signal: Signal, o: Opening, bands: readonly BandRow[],
 
 /* ── the reads ─────────────────────────────────────────────────────────── */
 
-/** The coin and its first second, when chainwatch saw it, and whether we chart it from its launch. */
+/**
+ * The coin and its first second, when chainwatch saw it, and whether we chart it from its launch. A coin
+ * with no asset row is still answered when chainwatch saw it launch: chainwatch records only the
+ * launchpad's launches, and most of them never get an asset row. Nothing outside the database is read, so
+ * an unknown address costs one indexed lookup and is a 404.
+ */
 export const ODDS_COIN_SQL = `
-select a.address, a.venue_id,
+select coalesce(a.address, f.address) as address, a.venue_id,
        extract(epoch from f.launched_at) * 1000 as launched_ms, f.buyers, f.buys, f.dev_buy_usd,
        c.from_launch
-  from public.asset a
-  left join public.launch_first_second f on f.address = a.address
-  left join public.coin_chart c on c.address = a.address
- where a.asset_key = $1`;
+  from (select $1::text as k, split_part($1::text, ':', 2) as addr) q
+  left join public.asset a on a.asset_key = q.k
+  left join public.launch_first_second f on f.address = coalesce(a.address, q.addr)
+  left join public.coin_chart c on c.address = coalesce(a.address, q.addr)
+ where a.asset_key is not null or f.address is not null`;
 
 /** The coin's minute candles from its launch up to a moment (ms). */
 export const ODDS_CANDLES_SQL = `
@@ -378,7 +384,9 @@ export function createLaunchOdds(now: () => number = Date.now, policy: Policy = 
     const nowMs = now();
     const coin = (await db.query(ODDS_COIN_SQL, [assetKey]))[0];
     if (coin === undefined) return null;
-    if (!policy.launchOdds.on || coin['venue_id'] !== VENUE_ID) return { kind: 'none', why: 'not_launchpad' };
+    /* No asset row but a launch chainwatch saw: the launchpad's, by where the row came from. */
+    const venue = coin['venue_id'] ?? VENUE_ID;
+    if (!policy.launchOdds.on || venue !== VENUE_ID) return { kind: 'none', why: 'not_launchpad' };
     const launchMs = num(coin['launched_ms']);
     if (launchMs === null) return { kind: 'none', why: 'not_seen' };
     const groups = await built(db, nowMs);

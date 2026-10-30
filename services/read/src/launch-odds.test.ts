@@ -118,6 +118,8 @@ test('the route: a coin we do not hold is a 404, another venue is none, the grou
   const coins: Record<string, Row> = {
     'solana:A': { address: 'A', venue_id: VENUE_ID, launched_ms: launched, buyers: 12, buys: 14, dev_buy_usd: 20, from_launch: false },
     'solana:B': { address: 'B', venue_id: 'solana:pool', launched_ms: null, buyers: null, buys: null, dev_buy_usd: null, from_launch: null },
+    /* No asset row, but chainwatch saw it launch: the launchpad's. */
+    'solana:C': { address: 'C', venue_id: null, launched_ms: launched, buyers: 1, buys: 1, dev_buy_usd: null, from_launch: false },
   };
   const db: Db = {
     query: async (sql, params) => {
@@ -137,6 +139,8 @@ test('the route: a coin we do not hold is a 404, another venue is none, the grou
   assert.ok(a !== null && a.kind === 'odds' && a.at === 'second_1');
   await read('solana:A', db);
   assert.equal(bandReads, 1);
+  const c = await read('solana:C', db);
+  assert.ok(c !== null && c.kind === 'odds' && c.group === 'under 2 buyers in the first second');
 });
 
 test('groups that cannot be read (the table not there yet) are not built, not a server fault', async () => {
