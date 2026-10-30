@@ -26,7 +26,9 @@ export interface OddsShares {
   readonly rugged: number | null;
   readonly neverMoved: number | null;
   /** Seconds from the moment by which half of these launches that doubled had peaked; null when too few doubled. */
-  readonly halfPeakS: number | null;
+  readonly peakP50S: number | null;
+  /** The slowest one in four of those, out to a day; null until measured. */
+  readonly peakP75S: number | null;
   /** First reached 2x more than an hour after the moment, within a day; null until measured. */
   readonly slow2x: number | null;
 }
@@ -84,8 +86,8 @@ function sharesOf(v: unknown, path: string): OddsShares {
     const s = share(r['share']);
     return typeof r['x'] === 'number' && s !== null ? [{ x: r['x'], share: s }] : [];
   });
-  const peak = o['halfPeakS'];
-  return { launches: count(o['launches']), hit, rugged: share(o['rugged']), neverMoved: share(o['neverMoved']), halfPeakS: typeof peak === 'number' && Number.isFinite(peak) && peak >= 0 ? peak : null, slow2x: share(o['slow2x']) };
+  const time = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  return { launches: count(o['launches']), hit, rugged: share(o['rugged']), neverMoved: share(o['neverMoved']), peakP50S: time(o['peakP50S']), peakP75S: time(o['peakP75S']), slow2x: share(o['slow2x']) };
 }
 
 function signalOf(v: unknown): OddsSignal | null {

@@ -10,14 +10,14 @@ import assert from 'node:assert/strict';
 import { WireLeakError } from './decode.ts';
 import { decodeCoinOdds } from './odds.ts';
 
-const SHARES = { launches: 400, hit: [{ x: 2, share: 0.31 }, { x: 3, share: 0.18 }, { x: 5, share: 'lots' }, { x: 10, share: 0.004 }], rugged: 0.12, neverMoved: null, halfPeakS: 240, slow2x: null };
+const SHARES = { launches: 400, hit: [{ x: 2, share: 0.31 }, { x: 3, share: 0.18 }, { x: 5, share: 'lots' }, { x: 10, share: 0.004 }], rugged: 0.12, neverMoved: null, peakP50S: 240, peakP75S: null, slow2x: null };
 const MOMENT = {
   at: 'second_1',
   look: 'runner',
   group: '8 or more buyers in the first second',
   held: true,
   like: SHARES,
-  normal: { ...SHARES, launches: 20_000, halfPeakS: -1, slow2x: 0.02 },
+  normal: { ...SHARES, launches: 20_000, peakP50S: -1, slow2x: 0.02 },
   signals: [
     { tone: 'red', label: 'Developer buy', value: '$250', context: 'Launches like it were rugged 30%, avg 10%', qualifier: 'Rug sign', explain: 'Of 900 launches…' },
     { tone: 'purple', label: 'x', qualifier: 'Strong' },
@@ -38,10 +38,10 @@ test('moments and wallet cells decode; a share that is not a number in 0..1 is d
   const m = o.moments[0];
   assert.deepEqual(m?.like.hit.map((h) => h.x), [2, 3, 10]);
   assert.equal(m?.like.neverMoved, null);
-  assert.equal(m?.like.halfPeakS, 240);
+  assert.equal(m?.like.peakP50S, 240);
   assert.equal(m?.like.slow2x, null, 'not measured is a dash, never zero');
   assert.equal(m?.normal.slow2x, 0.02);
-  assert.equal(m?.normal.halfPeakS, null);
+  assert.equal(m?.normal.peakP50S, null);
   assert.deepEqual(o.wallets.map((w) => [w.label, w.value, w.note, w.tone]), [
     ['Buyers in sec 1', '15', 'Usual 1', 'good'],
     ['Smart wallets', '—', 'Not recorded yet', 'plain'],

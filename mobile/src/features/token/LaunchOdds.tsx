@@ -1,10 +1,10 @@
 /**
- * WHAT SIMILAR LAUNCHES DID, ON A TOKEN PAGE (the owner, 2026-10-30; reference
- * reports/mockups/odds-1-top.jpg and odds-5-one-column.jpg). Two additions and nothing else changed:
+ * WHAT SIMILAR LAUNCHES DID, ON A TOKEN PAGE (the owner, 2026-10-30; references
+ * reports/mockups/odds-9-top-line-close.png and odds-6-clean.jpg). Two additions and nothing else changed:
  *
- *   OddsChip     one chip in the page's existing chips row, the same size as its neighbours: "16% reach
- *                10x ›" in green when similar launches did clearly better than usual, "27% rug within 1h ›"
- *                in red on a rug sign, plain otherwise. It opens the Info tab.
+ *   OddsLine     one plain line under the address row, no box: "Strong" (or no word), then 2x, 10x, Rug and
+ *                Peak with their values, a chevron at the end. Values green by the same rule as the table.
+ *                Tapping it opens the Info tab.
  *   LaunchOdds   the top of the Info tab: "Similar launches" with a verdict pill (Strong, or Rug risk only
  *                when a group earned red), the group in one line, a card of THIS COIN against USUAL measured
  *                from the price at the latest moment the coin has reached (minute 5, else minute 1, else
@@ -13,17 +13,19 @@
  * ★ FACTS ABOUT OTHER LAUNCHES, NEVER A CALL ON THIS ONE. Every share is of past launches that opened like
  * this one, measured from the price at that moment; the coin's own numbers are what it did. Colour only where
  * a value is clearly better (green) or worse (red) than usual; everything else is white or grey.
- * ★ A SLOW RUN needs a day of trades per past launch (2x first reached after the hour, within a day); until
- * the backfill's day reads have run, its row is a dash that says so.
+ * ★ A SLOW RUN AND THE PEAK TIMES need a day of trades per past launch (2x first reached after the hour; the
+ * day's peak, usual and slowest one in four); until the backfill's day reads have run they are a dash that
+ * says so, and the line's Peak is a dash.
  * ★ AN ABSENCE SAYS WHY. A coin whose first second we did not see, or history not built, shows the heading
  * and that sentence; a wallet fact not recorded live is a dash with "Not recorded yet". Never a zero.
  *
- * What breaks if changed carelessly: the moment. The chip, the header cell and the subline must all name the
- * same moment (`latest`), or the chip quotes one moment's history and the card another's.
+ * What breaks if changed carelessly: the moment. The line, the header cell and the subline must all name the
+ * same moment (`latest`), or the line quotes one moment's history and the card another's.
  */
 
 import type { CoinOdds, MomentOdds, OddsMoment, OddsShares } from '../../shared/api/index.ts';
-import { better, peakText, sharePercent } from './odds-view.ts';
+import { ChevronIcon } from '../../shared/ui/icons.tsx';
+import { better, peakAbout, peakText, sharePercent } from './odds-view.ts';
 import styles from './odds.module.css';
 
 const FROM: Record<OddsMoment, string> = { second_1: 'From sec 1 price', minute_1: 'From min 1 price', minute_5: 'From min 5 price' };
@@ -41,16 +43,23 @@ function latest(odds: CoinOdds): MomentOdds | null {
 
 const hitOf = (s: OddsShares, x: number): number | null => s.hit.find((h) => h.x === x)?.share ?? null;
 
-/** The chip in the page's chips row. Nothing while loading, for another venue, or when too few launches. */
-export function OddsChip({ odds, className, onOpen }: { odds: CoinOdds | null; className: string | undefined; onOpen: () => void }) {
+/** The line under the address row. Nothing while loading, for another venue, or when too few launches. */
+export function OddsLine({ odds, onOpen }: { odds: CoinOdds | null; onOpen: () => void }) {
   const m = odds === null ? null : latest(odds);
   if (m === null || m.look === 'early') return null;
-  const rug = m.look === 'rug';
-  const text = rug ? `${sharePercent(m.like.rugged)} rug within 1h ›` : `${sharePercent(hitOf(m.like, 10))} reach 10x ›`;
-  const tone = rug ? styles['chipBad'] : m.look === 'runner' ? styles['chipGood'] : '';
+  const v = (mine: number | null, usual: number | null, moreIsGood: boolean, shown: string) => (
+    <b className={styles[better(mine, usual, moreIsGood)] ?? ''}>{shown}</b>
+  );
+  const two = hitOf(m.like, 2);
+  const ten = hitOf(m.like, 10);
   return (
-    <button type="button" className={`${className ?? ''} ${tone ?? ''}`} onClick={onOpen} aria-label={`Similar launches: ${text.slice(0, -2)}. Open Info`}>
-      {text}
+    <button type="button" className={styles['line']} onClick={onOpen} aria-label="Similar launches, open Info">
+      {m.look === 'runner' ? <span className={styles['good']}>Strong</span> : null}
+      <span>2x {v(two, hitOf(m.normal, 2), true, sharePercent(two))}</span>
+      <span>10x {v(ten, hitOf(m.normal, 10), true, sharePercent(ten))}</span>
+      <span>Rug {v(m.like.rugged, m.normal.rugged, false, sharePercent(m.like.rugged))}</span>
+      <span>Peak <b>{peakAbout(m.like.peakP50S)}</b></span>
+      <span className={styles['lineEnd']} aria-hidden="true"><ChevronIcon size={14} /></span>
     </button>
   );
 }
@@ -83,6 +92,17 @@ export function LaunchOdds({ odds }: { odds: CoinOdds | null }) {
       <span className={styles['rowLabel']}>{label}</span>
       <span className={`${styles['num']} ${styles[better(mine, avg, moreIsGood)] ?? ''}`}>{show(mine)}</span>
       <span className={`${styles['num']} ${styles['usual']}`}>{show(avg)}</span>
+    </div>
+  );
+  /* A peak time is measured out to a day from the backfill's day reads; until then, a dash that says so. */
+  const timeRow = (label: string, mine: number | null, avg: number | null) => (
+    <div className={styles['row']}>
+      <span className={styles['rowLabel']}>
+        {label}
+        {mine === null && avg === null ? <span className={styles['why']}>Not measured yet</span> : null}
+      </span>
+      <span className={styles['num']}>{peakText(mine)}</span>
+      <span className={`${styles['num']} ${styles['usual']}`}>{peakText(avg)}</span>
     </div>
   );
   return (
@@ -118,11 +138,8 @@ export function LaunchOdds({ odds }: { odds: CoinOdds | null }) {
           )}
           {row('Rug within 1h', like.rugged, usual.rugged, false)}
           {row('Never moved', like.neverMoved, usual.neverMoved, false)}
-          <div className={styles['row']}>
-            <span className={styles['rowLabel']}>Time to peak</span>
-            <span className={styles['num']}>{peakText(like.halfPeakS)}</span>
-            <span className={`${styles['num']} ${styles['usual']}`}>{peakText(usual.halfPeakS)}</span>
-          </div>
+          {timeRow('Usual peak time', like.peakP50S, usual.peakP50S)}
+          {timeRow('Slowest 1 in 4 peak', like.peakP75S, usual.peakP75S)}
         </div>
       )}
 

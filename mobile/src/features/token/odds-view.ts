@@ -17,12 +17,23 @@ export function sharePercent(share: number | null): string {
   return `${Math.round(p)}%`;
 }
 
-/** A median time: "40s", "4m", "1h 2m"; a dash when too few launches doubled to say. */
+/** A peak time: "40s", "4m", "1h 52m", "2d 3h"; a dash when not measured or too few launches doubled. */
 export function peakText(seconds: number | null): string {
   if (seconds === null) return '—';
   if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
   const m = Math.round(seconds / 60);
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${Math.floor(m / 60)}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** The same, rounded for the top line: "~40m", "~6h", "~2d"; a dash when not measured. */
+export function peakAbout(seconds: number | null): string {
+  if (seconds === null) return '—';
+  if (seconds < 3_600) return `~${Math.max(1, Math.round(seconds / 60))}m`;
+  if (seconds < 172_800) return `~${Math.round(seconds / 3_600)}h`;
+  return `~${Math.round(seconds / 86_400)}d`;
 }
 
 /** 'good', 'bad' or '' (white): whether this coin's value is clearly better or worse than usual. */
