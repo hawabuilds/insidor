@@ -58,6 +58,9 @@ create table public.launch_odds (
   -- Of the group's launches that doubled, half had reached the hour's peak within this many seconds of the
   -- signal time (weighted median). Null when too few doubled to say: never zero.
   half_peak_s   double precision check (half_peak_s is null or half_peak_s >= 0),
+  -- The slow run: the share that first reached 2x of the signal time's price more than an hour later and
+  -- within a day. NULL until the backfill's day reads have run: not measured, never zero.
+  slow_2x       double precision check (slow_2x is null or slow_2x between 0 and 1),
   held_up       boolean not null,
   launched_from timestamptz not null,
   launched_to   timestamptz not null,
@@ -76,6 +79,10 @@ create table public.launch_odds_badge (
   launches      integer not null check (launches >= 0),
   hit_2x        double precision not null check (hit_2x between 0 and 1),
   rugged_1h     double precision not null check (rugged_1h between 0 and 1),
+  -- The fact's usual value over all launches (weighted median, the same on every row of a fact), and the
+  -- weighted share of launches whose value is at least `value_from`: "Usual $20", "Top 5% of launches".
+  usual_value    double precision,
+  share_at_least double precision check (share_at_least is null or share_at_least between 0 and 1),
   built_at      timestamptz not null default now(),
   primary key (fact, signal, value_from)
 );
