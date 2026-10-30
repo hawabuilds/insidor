@@ -3,8 +3,8 @@
  * stat block a trader reads before sizing (depth, day volume, cap, price, holders, what it is
  * priced in, volume over liquidity, the day's move), then the rows (pair, launchpad, where it
  * stands on the curve, whether it can be traded, the address with copy, the creator, the launch),
- * then the launch history (LaunchOdds.tsx: what happened to past launches that opened like this one),
- * then Insidor's own part: the narrative and where the coin came from (passed in by the page that
+ * The launch history card comes first (LaunchOdds.tsx: what happened to past launches that opened like
+ * this one; the owner's layout, reports/mockups/token-page-info.html). Then Insidor's own part: the narrative and where the coin came from (passed in by the page that
  * knows them) and the feed posts that name this coin, each with its evidence as facts.
  *
  * Trador's "Holder rewards" and "Pool" rows are not ported: no launchpad coin here routes
@@ -99,6 +99,8 @@ export function InfoPanel({ facts, market, about, odds = null, tradable, now, in
 
   return (
     <div className={styles['info']}>
+      <LaunchOdds odds={odds} />
+
       <dl className={styles['stats']}>
         <Stat label="Liquidity"><Value r={formatUsd(liquidity)} num /></Stat>
         <Stat label="24h volume"><Value r={formatUsd(volume)} num /></Stat>
@@ -112,8 +114,6 @@ export function InfoPanel({ facts, market, about, odds = null, tradable, now, in
           <Value r={change.text} num />
         </Stat>
       </dl>
-
-      <LaunchOdds odds={odds} />
 
       <div className={styles['rows']}>
         <Row label="Pair">{pricedIn === null ? <Value r={pendingRendered('not_read_yet')} /> : <b>{ticker} / {pricedIn}</b>}</Row>
