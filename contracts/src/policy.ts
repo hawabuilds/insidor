@@ -3358,6 +3358,20 @@ export interface RisingPolicy {
     readonly minGapMs: number;
     readonly settleMs: number;
     readonly kindsInSkipsWait: boolean;
+    /**
+     * ★ A READING THAT PUTS A JUDGED POST OVER THE BAR IS A CHANGE TOO (policy.v213; the owner, 2026-10-30:
+     * "beat the runner"). A post the judge passed, inside For You's window, off For You and not withdrawn,
+     * whose newest readings clear For You's views bar when the readings up to the last frame did not, is
+     * one of the quick frame's changed posts (services/project bar-cross.ts) — it used to wait for a full
+     * frame, 6.5 min after that reading at the median (80 of 819 For You posts with a yes in the 48 h to
+     * 30 Oct crossed after it). `maxPosts` caps how many such posts one probe or frame weighs: a few an
+     * hour cross, so it only bounds the read after an outage or a long-held cursor. The gap and
+     * the settle above hold for it as for an answer. Off: a crossing waits for the full frame, as before.
+     */
+    readonly barCross: {
+      readonly on: boolean;
+      readonly maxPosts: number;
+    };
   };
 }
 
@@ -6013,8 +6027,10 @@ const POLICY_V1: Policy = {
      v211 (2026-10-30, the owner) re-reads For You posts from the week still gaining views once a day
      (`feed.readings.gaining`), so This week and All time see a slow burn.
      v212 (2026-10-30, the owner: "charge me the extra") raises the late bands that ran dry on 29 Oct
-     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut. */
-  version: 'policy.v212',
+     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut.
+     v213 (2026-10-30, the owner: "beat the runner") lets the quick frame place a judged post the moment a
+     reading puts it over For You's views bar (`rising.quickFrame.barCross`), instead of the next full frame. */
+  version: 'policy.v213',
 
   admit: {
     maxAgeMin: 240,
@@ -7955,7 +7971,7 @@ const POLICY_V1: Policy = {
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and
        311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
        hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
-    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true },
+    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 } },
     /* policy.v167, replayed read-only over 21-24 Oct: 24 For You posts (2 Popular) would have left
        (the @Infinitidigits promotion of @prtygal777's 6-day-old "Light Baby" among them); of 784 posts
        picked a coin, 239 were promotions: 136 originals take the coin, 19 older ones wait for it to run,
