@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -135,11 +135,20 @@ export interface OneCoinState {
   watchMissingSaid: boolean;
   /** When the runner hand-over step last ran: it runs every Policy.runnerLink.handover.everyMs, not every pass. */
   handoverAt: number;
+  /** When every post of the window last met the coins linking it (`LINK_RECHECK_MS`). */
+  linkingAt: number;
   /** Our candles' caps, and when they were read (Policy.oneCoin.candles.readEveryMs). */
   candleCaps: { readonly atMs: number; readonly caps: ReadonlyMap<string, CandleCap> } | null;
 }
 
-export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, candleCaps: null });
+export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, linkingAt: 0, candleCaps: null });
+
+/**
+ * How often every post of the window meets the coins linking it (a post new to the pass meets them at
+ * once). Five minutes: a coin we start charting is a candidate within that, and the read returns the
+ * same few coins each time, about 20 over six hours of posts.
+ */
+const LINK_RECHECK_MS = 5 * 60_000;
 
 /** A launchpad coin's address ends so (services/read trade-card.ts): only its supply is known, and so only its candle is a cap. */
 const LAUNCHPAD_SUFFIX = 'pump';
@@ -485,6 +494,33 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
         if (c.launchedAtMs === null || chosen.has(c.address) || !statesName(stated, c, statedBars)) continue;
         rows.push({ itemId: p.itemId, address: c.address, path: 'launch', evidence: { ties: ['name_stated'], capUsd: c.capUsd, launchedAfterMs: c.launchedAtMs - p.postedAtMs }, launchedAtMs: c.launchedAtMs, foundAtMs: now });
         watch.push({ address: c.address, untilMs: now + P.watchMs });
+      }
+    }
+  }
+  /* ★ THE COINS THAT LINK A POST (store `launchesLinking`). A coin launched within a minute of its post
+     was matched only while the judge had not yet answered for the post, and never again: 28-29 Oct,
+     $DMnMwU linked a post the judge called coinable 41 minutes after we saw the coin and ran to $285k
+     sixteen hours later, never the post's candidate. Each post new to this pass, and every
+     `LINK_RECHECK_MS` every post of the window (a coin we start charting later), meets the coins whose
+     own link names it, by the launch path's own rule (`launchMatches`); a pair already a candidate is
+     left as it is, its ties and its watch untouched. 22-29 Oct: about 105 pairs a week, 6 of them
+     coins that ran past $25k. */
+  if (repo.launchesLinking !== undefined) {
+    const recheck = now - state.linkingAt >= LINK_RECHECK_MS;
+    const these = recheck ? posts : fresh;
+    if (recheck) state.linkingAt = now;
+    if (these.length > 0) {
+      const linking = await repo.launchesLinking(these.map((p) => p.itemId), P.perPass.launches, HASH_VERSION);
+      if (linking.length > 0) {
+        const had = new Set([...rows, ...(await repo.candidatesOf(these.map((p) => p.itemId)))].map((r) => `${r.itemId}|${r.address}`));
+        for (const c of linking) {
+          for (const m of launchMatches(sideOf(c, noSimilarity), these, bars)) {
+            if (!m.evidence.includes('link') || had.has(`${m.itemId}|${c.address}`)) continue;
+            had.add(`${m.itemId}|${c.address}`);
+            rows.push({ itemId: m.itemId, address: c.address, path: 'launch', evidence: evidenceOf(m), launchedAtMs: c.launchedAtMs, foundAtMs: now });
+            watch.push({ address: c.address, untilMs: now + P.watchMs });
+          }
+        }
       }
     }
   }

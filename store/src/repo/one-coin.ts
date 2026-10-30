@@ -356,6 +356,33 @@ export class PgOneCoinRepo {
     }
   }
 
+  /**
+   * ★ THE COINS THAT LINK THESE POSTS (2026-10-29, the owner: "fix the matching so we catch runners
+   * earlier"). `recentLaunches` looks at a launch for `rematchMs` only, and only against posts the judge
+   * has already called coinable; a coin launched within a minute of its post was gone from it before the
+   * judge answered (median four minutes), and nothing looked again. Every observed coin we chart (0144:
+   * it traded) whose own link names one of `itemIds` — or a quote of one — whatever its age; the
+   * matcher's link bounds decide. Charted only: over 22-29 Oct the uncharted ones were 1,000 a week of
+   * coins nobody traded, none of which reached the pick's cap bar.
+   */
+  async launchesLinking(itemIds: readonly string[], limit: number, hashVersion: string): Promise<readonly RecentLaunch[]> {
+    if (itemIds.length === 0) return [];
+    const where = `a.origin in ('live_stream', 'backfill') and a.asset_key in (
+           select l.asset_key from unnest($1::text[]) as x(item_id)
+             join internal.coin_post_link l on l.source = split_part(x.item_id, ':', 1) and l.source_item_id = substr(x.item_id, strpos(x.item_id, ':') + 1)
+           union
+           select l.asset_key from public.item i
+             join internal.coin_post_link l on l.source = i.source and l.source_item_id = i.source_item_id
+            where i.reproduction_of = any($1::text[]))
+         and exists (select 1 from internal.chart_coin cc where cc.address = a.address)`;
+    try {
+      return await this.#launches(where, [[...new Set(itemIds)]], limit, hashVersion);
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
   /** The launches `where` selects (its parameters first), with everything the matcher reads of each. */
   async #launches(where: string, params: readonly unknown[], limit: number, hashVersion: string, throughPointers = false): Promise<readonly RecentLaunch[]> {
     const limitAt = `$${params.length + 1}`;
