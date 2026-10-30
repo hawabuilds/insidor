@@ -18,6 +18,7 @@ import { DEFAULT_POLICY, type Millis } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
 
 import { loadAnswerPolicies } from './judge-cutoff.ts';
+import { holdLogoHoursIn } from './post-match.ts';
 import { quickForYou, type QuickCursor } from './quick-frame.ts';
 
 function cursorOf(argv: readonly string[]): QuickCursor {
@@ -32,6 +33,8 @@ async function main(): Promise<void> {
   const cursor = cursorOf(process.argv.slice(2));
   const url = process.env['DATABASE_URL'];
   if (url === undefined || url === '') throw new Error('DATABASE_URL is not set; refusing to start (see main.ts)');
+  /* The picture search's logo hours, shared with the full frame (post-match.ts holdLogoHoursIn). */
+  holdLogoHoursIn(url);
   const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-quick', env: { DATABASE_URL_SERVICE: url }, statementTimeoutMs: 60_000 });
   try {
     const started = performance.now();

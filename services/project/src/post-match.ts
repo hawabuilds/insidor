@@ -49,6 +49,10 @@
  * bar set here alone ships a rule nobody measured.
  */
 
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '@insidor/contracts/policy.ts';
 import { bioAddresses, compactName, guessesFirst, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
@@ -64,6 +68,17 @@ export const MAX_TICKER = 10;
 export const MAX_NAME_IDEAS = 5;
 /** The hash the runner writes (services/runner picture-hash.ts HASH_VERSION); another is never compared. */
 const HASH_VERSION = 'dct64-1';
+
+/**
+ * Where the picture search keeps the coin logos it holds by mint hour between frames (store
+ * image-hash.ts `#logosBetween`). Each frame is its own process, so without a file every frame read
+ * the whole three-day window again. Set only by the frames' entries (main.ts, quick-main.ts), one
+ * file per database; tests and tools hold the hours in memory, so no run sees another's logos.
+ */
+let logoHoldFile: string | null = null;
+export function holdLogoHoursIn(databaseUrl: string): void {
+  logoHoldFile = join(tmpdir(), `insidor-logo-hours-${createHash('sha256').update(databaseUrl).digest('hex').slice(0, 16)}.json`);
+}
 
 /** The match's bars from the policy, with the re-tune's weights and likely bar when it has refitted. */
 export function matchBars(p: Policy = DEFAULT_POLICY, fit: { readonly weights: PostCoinWeights; readonly likelyMinShare: number } | null = null): MatchBars {
@@ -398,7 +413,7 @@ export async function weighPostCoins(
 
   /* Widen: addresses posted under the post, coins with its picture, the mint stream's names. */
   const replies = await new PgCryptoAttentionRepo(db).addressesFor(ids);
-  const hashes = new PgImageHashRepo(db);
+  const hashes = new PgImageHashRepo(db, { file: logoHoldFile });
   const pictured = timed.flatMap(({ post, at }) => {
     const uri = pictureOf(post.media)?.uri ?? null;
     return uri === null ? [] : [{ itemId: post.item_id, uri, postedAt: at }];

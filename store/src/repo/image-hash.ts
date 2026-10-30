@@ -15,6 +15,8 @@
  * every distance in SQL wrong while the hashes in JavaScript still look fine.
  */
 
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+
 import type { Millis } from '@insidor/contracts';
 
 import type { Db } from '../client.ts';
@@ -54,6 +56,18 @@ export function fromBits(bits: string | number | bigint): string {
 }
 
 const HOUR_MS = 3_600_000;
+/**
+ * ★ WHICH HOURS ARE ASKED ABOUT EACH FRAME. An hour that ended within HOT_MS is digested every
+ * frame: new launches land there, and nearly every logo is hashed within half an hour of its mint
+ * (on 30 Oct, 370 of the 372 logos of one hour eleven hours back were hashed within 30 minutes).
+ * An older hour is digested again once COLD_RECHECK_MS has passed since it last was, so a logo
+ * hashed hours late, or a coin whose metadata was re-read, reaches the picture search at most that
+ * much later. Before 2026-10-30 every hour of the three-day window was digested every frame: the
+ * digest joins ~90,000 coins with their metadata and hashes, ~27,000 disk blocks and 15–100 s a
+ * frame on a disk-bound database — as much as the read it was saving.
+ */
+const HOT_MS = 2 * HOUR_MS;
+const COLD_RECHECK_MS = 15 * 60_000;
 interface Logo {
   readonly address: string;
   readonly at: number;
@@ -63,15 +77,87 @@ interface Logo {
 interface HeldHour {
   readonly digest: string;
   readonly logos: readonly Logo[];
+  /** When this hour's digest was last compared with the database's (wall clock, ms). */
+  readonly checkedAt: number;
 }
 /** The picture search's logos, by hash version then mint hour (UTC): see `#logosBetween`. */
 const HELD_LOGOS = new Map<string, Map<number, HeldHour>>();
 
+/** The held hours as the hold file keeps them: [hour, digest, checkedAt, [address, at, hi, lo][]]. */
+interface HoldFile {
+  readonly version: string;
+  readonly hours: readonly (readonly [number, string, number, readonly (readonly [string, number, number, number])[]])[];
+}
+
+function loadHold(file: string, version: string): Map<number, HeldHour> | null {
+  try {
+    const f = JSON.parse(readFileSync(file, 'utf8')) as HoldFile;
+    if (f.version !== version) return null;
+    return new Map(f.hours.map(([h, digest, checkedAt, logos]) => [h, { digest, checkedAt, logos: logos.map(([address, at, hi, lo]) => ({ address, at, hi, lo })) }] as const));
+  } catch {
+    /* No file yet, or an unreadable one: the hours are read as on a first frame. */
+    return null;
+  }
+}
+
+function saveHold(file: string, version: string, held: ReadonlyMap<number, HeldHour>): void {
+  const body: HoldFile = { version, hours: [...held].map(([h, x]) => [h, x.digest, x.checkedAt, x.logos.map((l) => [l.address, l.at, l.hi, l.lo] as const)] as const) };
+  /* Written aside and renamed, so a frame starting meanwhile reads the old file or the new one, never half. */
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, JSON.stringify(body));
+    renameSync(tmp, file);
+  } catch {
+    /* A full or read-only disk: the next frame reads the hours from the database, as before the file. */
+  }
+}
+
+/**
+ * Whole hours as a mint-time condition, neighbouring hours merged into one [start, end) range each,
+ * the bounds as parameters from `$2` (`$1` is the hash version). Written out range by range rather
+ * than joined to an array of ranges: against an array the planner guessed ~70,000 coins for an
+ * hour's ~600 and hashed the whole of internal.image_hash (5,000 blocks) to join them; written out,
+ * it looks each coin's metadata and hash up by key.
+ */
+function hourRanges(hours: readonly number[]): { readonly where: string; readonly params: string[] } {
+  const params: string[] = [];
+  const parts: string[] = [];
+  const sorted = [...hours].sort((a, b) => a - b);
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j]! + 1) j += 1;
+    params.push(new Date(sorted[i]! * HOUR_MS).toISOString(), new Date((sorted[j]! + 1) * HOUR_MS).toISOString());
+    parts.push(`(a.minted_at >= $${params.length} and a.minted_at < $${params.length + 1})`);
+    i = j + 1;
+  }
+  return { where: parts.join(' or '), params };
+}
+
+/** Tests only: forget the hours held in memory, as a new process starts without them. */
+export function forgetHeldLogos(): void {
+  HELD_LOGOS.clear();
+}
+
+/** Where the picture search's held hours are kept between frames; see `PgImageHashRepo`'s constructor. */
+export interface LogoHoldOptions {
+  /** The file the held hours are kept in (one process a frame); null keeps them in memory only. */
+  readonly file: string | null;
+  /** The wall clock, ms, against which an hour's last digest is aged. A stand-in in tests. */
+  readonly now?: () => number;
+}
+
 export class PgImageHashRepo {
   readonly #db: Db;
+  readonly #hold: LogoHoldOptions;
 
-  constructor(db: Db) {
+  /**
+   * `hold.file`: the projector runs each frame as a new process (tools/railway-start.mjs), so hours
+   * held in memory alone were gone by the next frame and every frame read the whole window again;
+   * post-match.ts names a file here so they outlive the process.
+   */
+  constructor(db: Db, hold: LogoHoldOptions = { file: null }) {
     this.#db = db;
+    this.#hold = hold;
   }
 
   /**
@@ -186,55 +272,76 @@ export class PgImageHashRepo {
    *
    * ★ HELD BY THE HOUR, RE-READ ONLY WHERE AN HOUR CHANGED. The picture search asks for three days
    * of logos each frame: ~450,000 rows a read, about 20 GB a day on 29 Oct 2026 and the largest
-   * share of the database's egress, nearly all of it the rows the frame before was sent. Now each
+   * share of the database's egress, nearly all of it the rows the frame before was sent. Now an
    * hour's rows are first asked for as one digest (count and md5 of every address, mint time and
-   * hash in it); an hour whose digest is the one held is served from memory, and only the hours
-   * that differ (new launches, a logo hashed or re-read since) are read whole. The answer is the
-   * one the single statement gave, a moment later. Held per process across repos (post-match makes
-   * a repo per frame), by hash version; hours outside the asked window are dropped.
+   * hash in it); an hour whose digest is the one held is served from what is held, and only the
+   * hours that differ (new launches, a logo hashed or re-read since) are read whole. Which hours
+   * are digested in a frame: HOT_MS and COLD_RECHECK_MS. Held per process across repos (post-match
+   * makes a repo per frame) and, with `hold.file`, across processes; by hash version; hours outside
+   * the asked window are dropped.
    *
    * What breaks if changed carelessly: a digest that leaves out a field the search uses (address,
-   * mint time, bits) serves a stale logo for as long as the hour is asked about.
+   * mint time, bits) serves a stale logo for as long as the hour is held. And the ranges: both
+   * statements read only the asked hours, as ranges of the mint-time index. One range from the
+   * first stale hour to the last, as before 2026-10-30, read the whole window whenever an old hour
+   * and the newest changed together.
    */
   async #logosBetween(fromMs: number, toMs: number, version: string): Promise<readonly Logo[]> {
+    const now = (this.#hold.now ?? Date.now)();
     const firstHour = Math.floor(fromMs / HOUR_MS);
     const lastHour = Math.floor(toMs / HOUR_MS);
-    const range = [new Date(firstHour * HOUR_MS).toISOString(), new Date((lastHour + 1) * HOUR_MS).toISOString(), version];
-    const digests = await this.#db.query<{ h: string; d: string }>(
-      `select floor(extract(epoch from a.minted_at) / 3600)::bigint::text as h,
-              count(*)::text || '/' || md5(string_agg(a.address || ' ' || a.minted_at::text || ' ' || ch.bits::text, ',' order by a.address, a.minted_at, ch.bits)) as d
-         from public.asset a
-         left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-         join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
-        where a.minted_at >= $1 and a.minted_at < $2
-        group by 1`,
-      range,
-    );
-    const held = HELD_LOGOS.get(version) ?? new Map<number, HeldHour>();
-    HELD_LOGOS.set(version, held);
+    let held = HELD_LOGOS.get(version);
+    if (held === undefined) {
+      held = (this.#hold.file === null ? null : loadHold(this.#hold.file, version)) ?? new Map<number, HeldHour>();
+      HELD_LOGOS.set(version, held);
+    }
     for (const h of [...held.keys()]) if (h < firstHour || h > lastHour) held.delete(h);
-    const now = new Map(digests.map((r) => [Number(r.h), r.d] as const));
-    /* An hour with no logos now has no digest row: it holds nothing. */
-    for (const h of [...held.keys()]) if (!now.has(h)) held.delete(h);
-    const stale = [...now].filter(([h, d]) => held.get(h)?.digest !== d).map(([h]) => h);
-    if (stale.length > 0) {
-      const lo = Math.min(...stale);
-      const hi = Math.max(...stale);
-      const rows = await this.#db.query<{ address: string; minted_at: string | Date; bits: string }>(
-        `select a.address, a.minted_at, ch.bits::text as bits
+
+    const asked: number[] = [];
+    for (let h = firstHour; h <= lastHour; h += 1) {
+      const x = held.get(h);
+      const hot = (h + 1) * HOUR_MS > now - HOT_MS;
+      if (x === undefined || hot || x.checkedAt <= now - COLD_RECHECK_MS) asked.push(h);
+    }
+    if (asked.length > 0) {
+      const r = hourRanges(asked);
+      const digests = await this.#db.query<{ h: string; d: string }>(
+        `select floor(extract(epoch from a.minted_at) / 3600)::bigint::text as h,
+                count(*)::text || '/' || md5(string_agg(a.address || ' ' || a.minted_at::text || ' ' || ch.bits::text, ',' order by a.address, a.minted_at, ch.bits)) as d
            from public.asset a
            left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-           join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $3
-          where a.minted_at >= $1 and a.minted_at < $2 and floor(extract(epoch from a.minted_at) / 3600)::bigint = any($4::bigint[])`,
-        [new Date(lo * HOUR_MS).toISOString(), new Date((hi + 1) * HOUR_MS).toISOString(), version, stale.map(String)],
+           join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $1
+          where ${r.where}
+          group by 1`,
+        [version, ...r.params],
       );
-      const fresh = new Map<number, Logo[]>(stale.map((h) => [h, []] as const));
-      for (const r of rows) {
-        const at = new Date(r.minted_at).getTime();
-        fresh.get(Math.floor(at / HOUR_MS))?.push({ address: r.address, at, ...halves(fromBits(r.bits)) });
+      const digest = new Map(digests.map((x) => [Number(x.h), x.d] as const));
+      /* An asked hour with no logos now has no digest row: it is held empty, under the empty digest. */
+      const stale = new Set(asked.filter((h) => held.get(h)?.digest !== (digest.get(h) ?? '')));
+      for (const h of asked) {
+        const x = held.get(h);
+        if (x !== undefined && !stale.has(h)) held.set(h, { ...x, checkedAt: now });
+      }
+      const fresh = new Map<number, Logo[]>([...stale].map((h) => [h, []] as const));
+      const read = [...stale].filter((h) => digest.has(h));
+      if (read.length > 0) {
+        const w = hourRanges(read);
+        const rows = await this.#db.query<{ address: string; minted_at: string | Date; bits: string }>(
+          `select a.address, a.minted_at, ch.bits::text as bits
+             from public.asset a
+             left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
+             join internal.image_hash ch on ch.uri = coalesce(m.image_uri, a.image_uri) and ch.bits is not null and ch.version = $1
+            where ${w.where}`,
+          [version, ...w.params],
+        );
+        for (const row of rows) {
+          const at = new Date(row.minted_at).getTime();
+          fresh.get(Math.floor(at / HOUR_MS))?.push({ address: row.address, at, ...halves(fromBits(row.bits)) });
+        }
       }
       /* Held under the digest read first: a change between the two reads differs next time and is read again. */
-      for (const [h, list] of fresh) held.set(h, { digest: now.get(h) ?? '', logos: list });
+      for (const [h, list] of fresh) held.set(h, { digest: digest.get(h) ?? '', logos: list, checkedAt: now });
+      if (this.#hold.file !== null) saveHold(this.#hold.file, version, held);
     }
     return [...held.values()]
       .flatMap((x) => x.logos)
