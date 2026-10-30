@@ -77,7 +77,8 @@ const FACTS_AT: Record<Signal, readonly OddsFact[]> = {
 interface Outcome { readonly peak: number; readonly rugged: boolean; readonly peakS: number }
 /** `momentS`: seconds after launch the signal looked. */
 /** `slow`: first reached 2x of the entry after hour one and within a day; null when hours 1–24 were not read. */
-interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome; readonly momentS: number; readonly slow: boolean | null }
+/** `peakDayS`: seconds from the signal to the day's peak, for a launch that reached 2x within the day; null when it did not or its day was not read. */
+interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome; readonly momentS: number; readonly slow: boolean | null; readonly dayRead: boolean; readonly peakDayS: number | null }
 interface Launch {
   readonly address: string;
   readonly launchMs: number;
@@ -156,7 +157,7 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
   const e1 = priceBy(trades, sNow);
   const e1l = priceBy(trades, sLate);
   const now1 = hourAfter(trades, (t) => !sNow(t), e1);
-  at.second_1 = { momentS: 1, opening: base, now: now1, late: hourAfter(trades, (t) => !sLate(t), e1l), slow: slowRun(r.a, now1, e1) };
+  at.second_1 = { momentS: 1, opening: base, now: now1, late: hourAfter(trades, (t) => !sLate(t), e1l), slow: slowRun(r.a, now1, e1), dayRead: dayOf.has(r.a), peakDayS: dayPeak(r.a, now1, e1, 1) };
 
   for (const signal of ['minute_1', 'minute_5'] as const) {
     const moment = signalMomentMs(launchMs, signal) - launchMs;
@@ -170,6 +171,8 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
     at[signal] = {
       momentS: moment / 1_000,
       slow: slowRun(r.a, hourAfter(trades, (t) => !before(t), entry), entry),
+      dayRead: dayOf.has(r.a),
+      peakDayS: dayPeak(r.a, hourAfter(trades, (t) => !before(t), entry), entry, moment / 1_000),
       opening: { ...base, tradesSoFar: upTo.length, movedSinceLaunch: upTo.length > 0 ? entry / first : null },
       now: hourAfter(trades, (t) => !before(t), entry),
       late: hourAfter(trades, (t) => !beforeLate(t), priceBy(trades, beforeLate)),
@@ -180,16 +183,16 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
 
 /* ── rates ─────────────────────────────────────────────────────────────── */
 
-/** `halfPeakS`: the weighted median, over the launches that doubled, of seconds from the signal to the hour's peak. */
-interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[]; halfPeakS: number | null; slow: number | null }
+/** `peakP50S`, `peakP75S`: over the launches that reached 2x within the day (day reads only), the weighted median and 75th percentile of seconds from the signal to the day's peak. */
+interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[]; peakP50S: number | null; peakP75S: number | null; slow: number | null }
 function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
-  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0), halfPeakS: null, slow: null };
+  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0), peakP50S: null, peakP75S: null, slow: null };
   const peaks: { s: number; w: number }[] = [];
   let slowW = 0;
   let slowOf = 0;
   for (const { l, s } of xs) {
     r.w += l.w;
-    if (s.now.peak >= (P.multiples[0] ?? 2)) peaks.push({ s: Math.max(0, s.now.peakS - s.momentS), w: l.w });
+    if (s.peakDayS !== null) peaks.push({ s: s.peakDayS, w: l.w });
     P.multiples.forEach((k, i) => {
       if (s.now.peak >= k) r.hit[i] = (r.hit[i] ?? 0) + l.w;
       if (s.late.peak >= k) r.lateHit[i] = (r.lateHit[i] ?? 0) + l.w;
@@ -201,18 +204,20 @@ function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
     }
     if (s.now.peak < P.neverMovedBelow) r.never += l.w;
   }
-  /* Fewer doublers than this and "half of them peaked within" is one or two coins' story. */
+  /* Fewer doublers than this and a peak time is one or two coins' story. */
   if (peaks.length >= MIN_TEST) {
     peaks.sort((a, b) => a.s - b.s);
-    const half = peaks.reduce((s, p) => s + p.w, 0) / 2;
-    let acc = 0;
-    for (const p of peaks) {
-      acc += p.w;
-      if (acc >= half) {
-        r.halfPeakS = p.s;
-        break;
+    const total = peaks.reduce((s, p) => s + p.w, 0);
+    const at = (q: number): number | null => {
+      let acc = 0;
+      for (const p of peaks) {
+        acc += p.w;
+        if (acc >= q * total) return p.s;
       }
-    }
+      return null;
+    };
+    r.peakP50S = at(0.5);
+    r.peakP75S = at(0.75);
   }
   /* Over the launches whose day was read, and only once enough were. */
   if (slowOf > 0 && xs.filter((x) => x.s.slow !== null).length >= MIN_TEST) r.slow = slowW / slowOf;
@@ -305,6 +310,25 @@ function slowRun(address: string, hour: Outcome, entry: number): boolean | null 
   return day.some(([, p]) => p >= (P.multiples[0] ?? 2) * entry);
 }
 
+/**
+ * Seconds from the signal to the day's peak, for a launch that reached 2x of its entry within the day:
+ * the hour's peak or a later one from the day reads, whichever is higher. Null without a day read (the hour
+ * alone would call every slow mover's peak "within the hour") or when it never reached 2x.
+ */
+function dayPeak(address: string, hour: Outcome, entry: number, momentS: number): number | null {
+  const day = dayOf.get(address);
+  if (day === undefined) return null;
+  let peak = hour.peak * entry;
+  let peakS = hour.peakS;
+  for (const [s, p] of day) {
+    if (p > peak) {
+      peak = p;
+      peakS = s;
+    }
+  }
+  return peak >= (P.multiples[0] ?? 2) * entry ? Math.max(0, peakS - momentS) : null;
+}
+
 const recs = readFileSync(join(DIR, 'launches.jsonl'), 'utf8').split('\n').filter((x) => x !== '').map((x) => JSON.parse(x) as Rec);
 const sampled = { g: 0, o: 0 };
 for (const r of recs) sampled[r.s] += 1;
@@ -364,7 +388,7 @@ try {
       return s === undefined ? [] : [{ l, s: { ...s, opening: dollars(s.opening, l) } }];
     });
     const all = rates(seen);
-    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, half_peak_s: all.halfPeakS, slow_2x: all.slow, held_up: true });
+    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, peak_p50_s: all.peakP50S, peak_p75_s: all.peakP75S, slow_2x: all.slow, held_up: true });
     console.log(`\n${signal}: ${all.n} launches. All: hit ${all.hit.map(pctS).join(' ')}  rugged ${pctS(all.rugged)}  never moved ${pctS(all.never)}  | 3 s later: ${all.lateHit.map(pctS).join(' ')}`);
     const scored = seen.flatMap((x) => {
       const v = openingScore(signal, x.s.opening);
@@ -372,7 +396,7 @@ try {
     });
     const gs = groups(scored, EDGES[signal], split);
     gs.forEach((g, i) => {
-      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, half_peak_s: g.all.halfPeakS, slow_2x: g.all.slow, held_up: g.held });
+      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, peak_p50_s: g.all.peakP50S, peak_p75_s: g.all.peakP75S, slow_2x: g.all.slow, held_up: g.held });
       console.log(
         `  [${g.bin.from}, ${g.bin.to ?? '∞'}) n=${String(g.all.n).padStart(5)} hit ${g.all.hit.map(pctS).join(' ')} rugged ${pctS(g.all.rugged)} never ${pctS(g.all.never)}` +
           ` | before: 2x ${pctS(g.train.hit[0] ?? 0)} 5x ${pctS(g.train.hit[2] ?? 0)} 10x ${pctS(g.train.hit[3] ?? 0)} (n=${g.train.n}) after: 2x ${pctS(g.test.hit[0] ?? 0)} 5x ${pctS(g.test.hit[2] ?? 0)} 10x ${pctS(g.test.hit[3] ?? 0)} (n=${g.test.n})` +
@@ -417,7 +441,7 @@ try {
     'delete from public.launch_odds_badge;',
     ...out.bands.map((b) => {
       const h = b['hit'] as number[];
-      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, slow_2x, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['half_peak_s'], b['slow_2x'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
+      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, peak_p50_s, peak_p75_s, slow_2x, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['peak_p50_s'], b['peak_p75_s'], b['slow_2x'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
     }),
     ...out.badges.map((b) => `insert into public.launch_odds_badge (fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h, usual_value, share_at_least) values (${[b['fact'], b['signal'], b['value_from'], b['value_to'], b['tone'], b['launches'], b['hit_2x'], b['rugged_1h'], b['usual_value'], b['share_at_least']].map(lit).join(', ')});`),
     'commit;',

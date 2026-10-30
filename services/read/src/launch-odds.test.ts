@@ -22,7 +22,8 @@ const band = (over: Partial<BandRow>): BandRow => ({
   hit: [0.12, 0.06, 0.03, 0.01],
   rugged: 0.1,
   neverMoved: 0.5,
-  halfPeakS: 240,
+  peakP50S: 240,
+  peakP75S: 900,
   slow2x: null,
   heldUp: true,
   launchedFromMs: 0,
@@ -77,7 +78,7 @@ test('the reply is history beside all launches, with the group in words', () => 
   assert.equal(m?.like.launches, 400);
   assert.deepEqual(m?.like.hit.map((h) => h.x), [...DEFAULT_POLICY.launchOdds.multiples]);
   assert.equal(m?.normal.hit[0]?.share, 0.12);
-  assert.equal(m?.like.halfPeakS, 240);
+  assert.equal(m?.like.peakP50S, 240);
   assert.equal(m?.look, 'runner');
 });
 
@@ -141,7 +142,7 @@ test('the route: a coin we do not hold is a 404, another venue is none, the grou
       if (sql.includes('from public.launch_odds_badge')) return [];
       if (sql.includes('from public.launch_odds')) {
         bandReads += 1;
-        return BANDS.map((b) => ({ signal: b.signal, band: b.band, score_from: b.scoreFrom, score_to: b.scoreTo, launches: b.launches, hit_2x: b.hit[0], hit_3x: b.hit[1], hit_5x: b.hit[2], hit_10x: b.hit[3], rugged_1h: b.rugged, never_moved: b.neverMoved, half_peak_s: b.halfPeakS, held_up: b.heldUp, from_ms: b.launchedFromMs, to_ms: b.launchedToMs }));
+        return BANDS.map((b) => ({ signal: b.signal, band: b.band, score_from: b.scoreFrom, score_to: b.scoreTo, launches: b.launches, hit_2x: b.hit[0], hit_3x: b.hit[1], hit_5x: b.hit[2], hit_10x: b.hit[3], rugged_1h: b.rugged, never_moved: b.neverMoved, peak_p50_s: b.peakP50S, held_up: b.heldUp, from_ms: b.launchedFromMs, to_ms: b.launchedToMs }));
       }
       const c = coins[String(params[0])];
       return c === undefined ? [] : [c];
