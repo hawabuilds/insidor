@@ -1099,7 +1099,7 @@ export async function buildRising(
   /* ★ THE OWNER'S COIN LABELS, LIVE: every coin call (the owner's own coin, the coins called wrong,
      "No coin is from this") and the coin the owner confirmed for each post's story. */
   const rowIds = rows.map((row) => row.item_id);
-  const calls = await loadCoinCalls(db, null);
+  const calls = await loadCoinCalls(db, null, nowMs);
   const stories = await loadStoryCoins(db, rowIds, calls, policy);
   const checks = coinChecks(rowIds, calls, stories);
   const searched0 = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));

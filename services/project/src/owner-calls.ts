@@ -66,8 +66,11 @@ export function withOwnerCall(judge: PostScoreReason | undefined, call: OwnerPos
  * never show, and "No coin is from this". All posts when `itemIds` is null — the story coins read
  * every confirmation, not only the feed's.
  */
-export async function loadCoinCalls(db: Db, itemIds: readonly string[] | null): Promise<ReadonlyMap<string, PostCoinCalls>> {
-  const rows = await new PgOwnerCoinCallRepo(db).rows(itemIds);
+export async function loadCoinCalls(db: Db, itemIds: readonly string[] | null, asOfMs: number | null = null): Promise<ReadonlyMap<string, PostCoinCalls>> {
+  /* ★ `asOfMs`: only the calls made by then. A frame built for a past moment (tools/golden.ts) must not
+     see a call made after it — 2026-10-30, the owner's "this is the coin" on the giant-dog post took it
+     off the late route and failed a golden case set at the day before. A live frame passes its now. */
+  const rows = (await new PgOwnerCoinCallRepo(db).rows(itemIds)).filter((r) => asOfMs === null || r.atMs <= asOfMs);
   return foldCoinCalls(rows.map((r) => ({ itemId: r.itemId, verdict: r.verdict, coinAddress: r.coinAddress, shownCoin: addressOfCoinId(r.shownCoinId), atMs: r.atMs, id: r.id })));
 }
 
