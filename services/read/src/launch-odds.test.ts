@@ -152,3 +152,12 @@ test('groups that cannot be read (the table not there yet) are not built, not a 
   };
   assert.deepEqual(await createLaunchOdds(() => 10 * 60_000)('solana:A', db), { kind: 'none', why: 'not_built' });
 });
+
+test('a rug sign is rugs outgrowing doubles, not a busy opening that is rugged and doubles more', async () => {
+  const { rugSign } = await import('./launch-odds.ts');
+  /* All launches: 14% rugged, 12% doubled. */
+  assert.equal(rugSign(0.3, 0.27, 0.14, 0.12), false, 'rugged twice as often, but doubled twice as often too');
+  assert.equal(rugSign(0.3, 0.08, 0.14, 0.12), true, 'rugged twice as often, doubled less');
+  assert.equal(rugSign(0.18, 0, 0.14, 0.12), false, 'not rugged enough more often');
+  assert.equal(rugSign(0.3, 0, 0.14, 0.12), true, 'rugged, never doubled');
+});
