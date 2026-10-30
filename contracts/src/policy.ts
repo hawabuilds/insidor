@@ -5369,6 +5369,45 @@ export interface RunningCoinsPolicy {
 }
 
 /**
+ * THE LAUNCH ODDS ON A TOKEN PAGE (policy.v215, the owner, 2026-10-30: show a trader the odds and the rug
+ * risk at a glance). What happened to past launches that opened like this one, read from the chain by
+ * tools/odds-backfill.ts and grouped by tools/odds-bands.ts into 0155; the read service
+ * (services/read launch-odds.ts) puts a live coin in its group. Every figure is history — "launches that
+ * opened like this one, last 30 days: 31% went on to double from there" — beside the same figure for all
+ * launches and the number of launches it rests on.
+ *
+ * These are the DEFINITIONS both sides share, so a figure on the page means what the tool counted:
+ *   multiples      a launch "hit" k when its price, within its first hour, reached k times the price at
+ *                  the signal time (never the launch price: that is not a price anyone looking then paid).
+ *   rug            it rose at least `rugRise` from that price, then gave back at least `rugGiveBack` of its
+ *                  peak's height above the curve's starting price, within the hour. Measured from the
+ *                  curve's start and not from zero because a launchpad curve cannot fall below its
+ *                  starting price: "lost 90% of its peak" would count only coins that had run tenfold.
+ *   neverMoved     its price never reached `neverMovedBelow` times the price at the signal time.
+ *   signalAfterMs  when after launch the minute signals look. The read service counts a coin's trades from
+ *                  our own one-minute candles, which end on the clock's minute, so a signal's moment is the
+ *                  end of the clock minute that holds launch + this: the first moment its count is whole.
+ *   minLaunches    a group resting on fewer sampled launches than this says "Too early to tell".
+ *   lift           a group (or a badge's fact) is green when it went on to double at least `green` times
+ *                  as often as all launches; red — a rug sign, and only that — when it was rugged at least
+ *                  `red` times as often; dead when it never moved at least `dead` times as often (or
+ *                  doubled at most 1/`red` as often and mostly never moved). A rare doubler is never red.
+ *   keepMs         the groups are read from the database once this often, not on every page.
+ */
+export interface LaunchOddsPolicy {
+  readonly on: boolean;
+  readonly multiples: readonly number[];
+  readonly rugRise: number;
+  readonly rugGiveBack: number;
+  readonly neverMovedBelow: number;
+  readonly firstHourMs: number;
+  readonly signalAfterMs: { readonly minute_1: number; readonly minute_5: number };
+  readonly minLaunches: number;
+  readonly lift: { readonly green: number; readonly red: number; readonly dead: number };
+  readonly keepMs: number;
+}
+
+/**
  * THE COIN THAT RUNS, AND ITS POST (policy.v155, after the $BITCHES miss of 23 Oct): three layers
  * that tie a running coin back to the post it came from when the one-coin pick missed it.
  *
@@ -5581,6 +5620,8 @@ export interface Policy {
   readonly lateNoCoin: LateNoCoinPolicy;
   /** A running coin tied back to its post: the stated name, the running pick, the missed-runner net (policy.v155). */
   readonly runnerLink: RunnerLinkPolicy;
+  /** What happened to past launches that opened like this one, on a token page (policy.v215). */
+  readonly launchOdds: LaunchOddsPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -6013,8 +6054,10 @@ const POLICY_V1: Policy = {
      v211 (2026-10-30, the owner) re-reads For You posts from the week still gaining views once a day
      (`feed.readings.gaining`), so This week and All time see a slow burn.
      v212 (2026-10-30, the owner: "charge me the extra") raises the late bands that ran dry on 29 Oct
-     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut. */
-  version: 'policy.v212',
+     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut.
+     v215 (2026-10-30, the owner: odds and rug risk at a glance on a token page) adds `launchOdds`: the
+     definitions the launch-odds tools count by and the read service shows. Read-only; nothing decides on it. */
+  version: 'policy.v215',
 
   admit: {
     maxAgeMin: 240,
@@ -8752,6 +8795,20 @@ const POLICY_V1: Policy = {
        the $15K cap bar 9, seven of them $3-6K coins churned past $20K in an hour by bots that never
        reached $17K. A minute: the market reader lands a reading about every five. */
     handover: { on: true, everyMs: 60_000, push: true },
+  },
+
+  launchOdds: {
+    on: true,
+    multiples: [2, 3, 5, 10],
+    rugRise: 0.5,
+    rugGiveBack: 0.9,
+    neverMovedBelow: 1.1,
+    firstHourMs: 3_600_000,
+    signalAfterMs: { minute_1: 60_000, minute_5: 300_000 },
+    /* A share out of fewer launches than this moves by more than its own size from one month to the next. */
+    minLaunches: 100,
+    lift: { green: 1.5, red: 1.5, dead: 1.25 },
+    keepMs: 600_000,
   },
 
   scorers: {

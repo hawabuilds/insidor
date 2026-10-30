@@ -95,6 +95,8 @@ export function edgeLifeFor(rawUrl: string): EdgeLife | null {
     if ((head === 'post' || head === 'story') && tail === 'sheet') return SHEET;
     if (head === 'coin' && tail === 'market') return MARKET;
     if (head === 'coin' && tail === 'about') return ABOUT;
+    /* The launch odds: the coin's group moves at most once a signal (its first second, minute 1, minute 5). */
+    if (head === 'coin' && tail === 'odds') return ABOUT;
   }
   return null;
 }
