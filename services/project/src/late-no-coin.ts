@@ -180,13 +180,16 @@ export interface LatePost {
   readonly byViews: boolean;
   /** The one-coin rule's pick for the post on its card (live mode), if any. */
   readonly picked: boolean;
-  /** The owner named a coin as the post's own. */
-  readonly ownerCoin: boolean;
 }
 
-/** Whether the late route lets this post onto For You now. */
+/**
+ * Whether the late route lets this post onto For You now.
+ * ★ THE OWNER'S COIN CALL NEVER BLOCKS IT (the owner, 2026-10-30: "if i give a post a coin it will remove
+ * it from for you?" — "change it"). Naming a post's coin is information to show on its card, not a sign the
+ * post was already coined and running; only the one-coin rule's own pick (a coin trading for it) does.
+ */
 export function lateLets(p: LatePost, late: ReadonlyMap<string, LateRecord>): boolean {
-  return late.has(p.itemId) && p.judgedYes && p.byViews && !p.picked && !p.ownerCoin;
+  return late.has(p.itemId) && p.judgedYes && p.byViews && !p.picked;
 }
 
 /**

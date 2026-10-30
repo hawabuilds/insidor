@@ -48,14 +48,13 @@ test('★ with no coin at all, the route lets go at its age cap', () => {
   assert.equal(lateHolds(none, POSTED + cap + 1), false);
 });
 
-test('★ the judge\'s yes, the views bar, and no coin on the card or in the owner\'s word', () => {
+test('★ the judge\'s yes, the views bar, and no coin picked on the card; the owner naming a coin does not block it', () => {
   const late = new Map([[MOUSTACHE.itemId, MOUSTACHE]]);
-  const post = { itemId: MOUSTACHE.itemId, judgedYes: true, byViews: true, picked: false, ownerCoin: false };
+  const post = { itemId: MOUSTACHE.itemId, judgedYes: true, byViews: true, picked: false };
   assert.equal(lateLets(post, late), true);
   assert.equal(lateLets({ ...post, judgedYes: false }, late), false);
   assert.equal(lateLets({ ...post, byViews: false }, late), false);
   assert.equal(lateLets({ ...post, picked: true }, late), false);
-  assert.equal(lateLets({ ...post, ownerCoin: true }, late), false);
   assert.equal(lateLets(post, new Map()), false);
 });
 
