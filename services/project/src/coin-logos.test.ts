@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MAX_ATTEMPTS, mirrorPass, resolveCoin, shownSetSql, type DueCoin, type MirrorDeps } from './coin-logos.ts';
+import { MAX_ATTEMPTS, mirrorPass, resolveCoin, shownSetSql, shownSql, type DueCoin, type MirrorDeps } from './coin-logos.ts';
 
 const A = 'So1aNaCoinMint1111111111111111111111111pmp';
 const coin = (over: Partial<DueCoin> = {}): DueCoin => ({ address: A, metadataUri: 'https://ipfs.example/ipfs/doc', metadataImage: null, lastOutcome: null, attempts: 0, ...over });
@@ -204,4 +204,18 @@ test('a new copy is recorded as the two sizes once 0102 has run', async () => {
   assert.equal(r.stored, 1);
   assert.ok(asked.some(([s]) => s.includes('insert into internal.coin_logo')));
   assert.ok(asked.some(([s]) => s.includes('set sized_at = now()')));
+});
+
+test('★ the pass takes its coins from the ledger before joining the coin and its metadata', () => {
+  for (const sql of [shownSql(true, true), shownSql(false, false)]) {
+    const limit = sql.indexOf('limit $6');
+    assert.ok(limit > 0);
+    /* The ledger's order and the limit sit inside `due`; the coin and metadata joins only after it. */
+    assert.ok(sql.indexOf('internal.coin_logo') < limit);
+    assert.ok(sql.indexOf('public.asset a') > limit);
+    assert.ok(sql.indexOf('internal.coin_metadata m') > limit);
+    /* The same order inside and out, so the 180 come back in the order they were chosen. */
+    assert.match(sql, /order by l\.outcome = 'stored' nulls first, l\.checked_at asc nulls first\s+limit \$6/);
+    assert.match(sql, /order by d\.last_outcome = 'stored' nulls first, d\.checked_at asc nulls first$/);
+  }
 });
