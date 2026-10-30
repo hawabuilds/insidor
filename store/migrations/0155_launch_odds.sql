@@ -55,6 +55,9 @@ create table public.launch_odds (
   hit_10x       double precision not null check (hit_10x between 0 and 1),
   rugged_1h     double precision not null check (rugged_1h between 0 and 1),
   never_moved   double precision not null check (never_moved between 0 and 1),
+  -- Of the group's launches that doubled, half had reached the hour's peak within this many seconds of the
+  -- signal time (weighted median). Null when too few doubled to say: never zero.
+  half_peak_s   double precision check (half_peak_s is null or half_peak_s >= 0),
   held_up       boolean not null,
   launched_from timestamptz not null,
   launched_to   timestamptz not null,

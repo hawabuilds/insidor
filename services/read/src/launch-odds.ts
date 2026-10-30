@@ -18,7 +18,9 @@
  *   minute_1/5 its trades since launch and its move since its first trade, from our one-minute candles,
  *              counted up to the end of the clock minute holding launch + 1 (or 5) minutes — the first
  *              moment a candle count is whole. A coin without candles from its launch has only second_1.
- * The latest signal a coin has reached is the one shown, and the reply says which.
+ * Every moment the coin has reached is in the reply, so the page can switch between them; it opens on the
+ * latest (`at`). Each moment carries its group's history, a normal launch's, its time to peak, and the
+ * coin's own opening facts as signal rows with what launches like it did.
  *
  * ★ AN ABSENCE IS SAID, NEVER ZERO. A coin whose first second we did not see is `{ kind: 'none', why }`, and
  * the page says so; the groups not yet built are the same, so the route works before 0155 is filled.
@@ -59,6 +61,8 @@ export interface BandRow {
   readonly hit: readonly number[];
   readonly rugged: number;
   readonly neverMoved: number;
+  /** Seconds from the signal by which half the launches that doubled had peaked; null when too few doubled. */
+  readonly halfPeakS: number | null;
   readonly heldUp: boolean;
   readonly launchedFromMs: number;
   readonly launchedToMs: number;
@@ -75,13 +79,21 @@ export interface BadgeRow {
   readonly rugged: number;
 }
 
-export interface OddsBadge {
+/**
+ * One of the coin's own opening facts, as an on-chain signal row: what it is, its value for this coin, what
+ * launches with it did against all launches, and a word for how that compares. The word is history's colour
+ * and nothing else: "Strong" (they doubled clearly more often), "Rug sign" (their rugs outgrew their
+ * doubles, `rugSign`), "Typical" otherwise.
+ */
+export interface OddsSignal {
   readonly tone: Tone;
-  /** The coin's own fact: "14 buyers in its first second". */
-  readonly fact: string;
-  /** What launches with it did, against all launches: "doubled 31% vs 12%". Two fields, laid out apart by the
-      page: the phone's screen rules allow no middle dot or bullet between them. */
-  readonly compare: string;
+  /** "First-second buyers". */
+  readonly label: string;
+  /** This coin's value: "15", "$58", "11.7x". */
+  readonly value: string;
+  /** "Launches like it doubled 31%, avg 12%". */
+  readonly context: string;
+  readonly qualifier: 'Strong' | 'Typical' | 'Rug sign';
   /** The same in full, for a tap: what was counted, over how many launches. */
   readonly explain: string;
 }
@@ -91,23 +103,32 @@ export interface OddsShares {
   readonly hit: readonly { readonly x: number; readonly share: number }[];
   readonly rugged: number;
   readonly neverMoved: number;
+  /** Of these launches that doubled, half had peaked within this many seconds; null when too few doubled. */
+  readonly halfPeakS: number | null;
+}
+
+/** What launches comparable to this coin did, measured from one moment. */
+export interface MomentOdds {
+  readonly at: Signal;
+  readonly look: Look;
+  /** What the group is, in words: "8–14 buyers in the first second". */
+  readonly group: string;
+  /** False when the group did not hold up; its figures are then all launches'. */
+  readonly held: boolean;
+  readonly like: OddsShares;
+  readonly normal: OddsShares;
+  /** At most four, worst first. */
+  readonly signals: readonly OddsSignal[];
 }
 
 export type LaunchOddsReply =
   | {
       readonly kind: 'odds';
+      /** The latest moment the coin has reached: the one the page opens on. */
       readonly at: Signal;
-      readonly look: Look;
-      /** "Launches that opened like this one, last 30 days" — or the group's own words. */
-      readonly headline: string;
-      /** What the group is, in words: "8–14 buyers in the first second". */
-      readonly group: string;
-      /** False when the group did not hold up; its figures are then all launches'. */
-      readonly held: boolean;
-      readonly like: OddsShares;
-      readonly normal: OddsShares;
-      readonly badges: readonly OddsBadge[];
       readonly days: number;
+      /** Every moment the coin has reached and we hold its facts for, in order. */
+      readonly moments: readonly MomentOdds[];
     }
   | { readonly kind: 'none'; readonly why: 'not_launchpad' | 'not_seen' | 'not_built' };
 
@@ -167,19 +188,31 @@ function range(from: number, to: number | null, unit: (n: number) => string = co
   return `${unit(from)}–${unit(unit === count ? to - 1 : to)}`;
 }
 
-/** The fact as this coin's own number, in words. */
-function factText(fact: OddsFact, signal: Signal, v: number): string {
+/** The fact's name on the signals list. */
+function factLabel(fact: OddsFact, signal: Signal): string {
   switch (fact) {
     case 'first_second_buyers':
-      return `${count(v)} ${v === 1 ? 'buyer' : 'buyers'} in its first second`;
+      return 'First-second buyers';
     case 'first_second_buys':
-      return `${count(v)} ${v === 1 ? 'buy' : 'buys'} in its first second`;
+      return 'First-second buys';
     case 'dev_buy':
-      return v <= 0 ? 'Creator did not buy at launch' : `Creator bought ${usd(v)} at launch`;
+      return 'Developer buy';
     case 'trades_so_far':
-      return `${count(v)} trades by minute ${minuteOf(signal)}`;
+      return `Trades by minute ${minuteOf(signal)}`;
     case 'moved_since_launch':
-      return v >= 1.1 ? `Up ${v.toFixed(1)}x since its first trade` : v <= 0.9 ? `Down ${Math.round((1 - v) * 100)}% since its first trade` : 'Flat since its first trade';
+      return 'Move since first trade';
+  }
+}
+
+/** The coin's own value of a fact. */
+function factShown(fact: OddsFact, v: number): string {
+  switch (fact) {
+    case 'dev_buy':
+      return v <= 0 ? 'None' : usd(v);
+    case 'moved_since_launch':
+      return v >= 1 ? `${v.toFixed(1)}x` : `−${Math.round((1 - v) * 100)}%`;
+    default:
+      return count(v);
   }
 }
 
@@ -205,40 +238,38 @@ export function bandFor(bands: readonly BandRow[], signal: Signal, score: number
 }
 
 function shares(b: BandRow, policy: Policy): OddsShares {
-  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved };
+  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved, halfPeakS: b.halfPeakS };
 }
 
 const TONE_ORDER: Record<Tone, number> = { red: 0, amber: 1, green: 2 };
 
-/** The badges for a coin at a signal, worst first, each with its comparison in its words. */
-export function badgesFor(rows: readonly BadgeRow[], normal: BandRow, signal: Signal, o: Opening, days: number, policy: Policy = DEFAULT_POLICY): OddsBadge[] {
-  const out: (OddsBadge & { readonly order: number })[] = [];
+/** The signals for a coin at a moment, worst first, each with its comparison in its words. */
+export function signalsFor(rows: readonly BadgeRow[], normal: BandRow, signal: Signal, o: Opening, days: number, policy: Policy = DEFAULT_POLICY): OddsSignal[] {
+  const out: (OddsSignal & { readonly order: number })[] = [];
   const doubled = normal.hit[0] ?? 0;
   for (const r of rows) {
     if (r.signal !== signal) continue;
     const v = factValue(r.fact, o);
     if (v === null || v < r.from || (r.to !== null && v >= r.to)) continue;
-    const ruggedSign = rugSign(r.rugged, r.hit2x, normal.rugged, doubled, policy);
-    const said =
-      r.tone === 'red' && ruggedSign
-        ? `rugged ${pct(r.rugged)} vs ${pct(normal.rugged)}`
-        : `doubled ${pct(r.hit2x)} vs ${pct(doubled)}`;
-    const told =
-      r.tone === 'red' && ruggedSign
-        ? `${pct(r.rugged)} were rugged within the hour (rose ${Math.round(policy.launchOdds.rugRise * 100)}%, then gave back ${Math.round(policy.launchOdds.rugGiveBack * 100)}% of the rise), against ${pct(normal.rugged)} of all launches`
-        : `${pct(r.hit2x)} went on to double from there, against ${pct(doubled)} of all launches`;
+    const ruggedSign = r.tone === 'red' && rugSign(r.rugged, r.hit2x, normal.rugged, doubled, policy);
+    const context = ruggedSign ? `Launches like it were rugged ${pct(r.rugged)}, avg ${pct(normal.rugged)}` : `Launches like it doubled ${pct(r.hit2x)}, avg ${pct(doubled)}`;
+    const told = ruggedSign
+      ? `${pct(r.rugged)} were rugged within the hour (rose ${Math.round(policy.launchOdds.rugRise * 100)}%, then gave back ${Math.round(policy.launchOdds.rugGiveBack * 100)}% of the rise), against ${pct(normal.rugged)} of all launches`
+      : `${pct(r.hit2x)} went on to double from there, against ${pct(doubled)} of all launches`;
     out.push({
       tone: r.tone,
       order: TONE_ORDER[r.tone],
-      fact: factText(r.fact, signal, v),
-      compare: said,
+      label: factLabel(r.fact, signal),
+      value: factShown(r.fact, v),
+      context,
+      qualifier: r.tone === 'green' ? 'Strong' : ruggedSign ? 'Rug sign' : 'Typical',
       explain: `Of ${count(r.launches)} ${factGroup(r.fact, signal, r.from, r.to)} in the last ${days} days, ${told}.`,
     });
   }
   return out
     .sort((a, b) => a.order - b.order)
     .slice(0, 4)
-    .map(({ tone, fact, compare, explain }) => ({ tone, fact, compare, explain }));
+    .map(({ order: _order, ...rest }) => rest);
 }
 
 /**
@@ -256,9 +287,9 @@ export function rugSign(rugged: number, doubled: number, normalRugged: number, n
 }
 
 /** The block's summary word: any rug sign first, then too few launches, then the group against all. */
-export function lookOf(like: BandRow, normal: BandRow, badges: readonly OddsBadge[], policy: Policy = DEFAULT_POLICY): Look {
+export function lookOf(like: BandRow, normal: BandRow, signals: readonly OddsSignal[], policy: Policy = DEFAULT_POLICY): Look {
   const l = policy.launchOdds.lift;
-  if (badges.some((b) => b.tone === 'red')) return 'rug';
+  if (signals.some((b) => b.qualifier === 'Rug sign')) return 'rug';
   if (like.launches < policy.launchOdds.minLaunches) return 'early';
   if (!like.heldUp) return 'mixed';
   const d = like.hit[0] ?? 0;
@@ -285,30 +316,40 @@ export function signalNow(launchMs: number, nowMs: number, haveMinutes: boolean,
   return 'second_1';
 }
 
-/** The whole reply for one coin, from its opening and the built groups. Pure. */
-export function oddsReply(signal: Signal, o: Opening, bands: readonly BandRow[], badges: readonly BadgeRow[], policy: Policy = DEFAULT_POLICY): LaunchOddsReply {
+/** What comparable launches did from one moment, from the coin's opening and the built groups. Pure. Null: no groups built for it. */
+export function momentOdds(signal: Signal, o: Opening, bands: readonly BandRow[], badges: readonly BadgeRow[], policy: Policy = DEFAULT_POLICY): MomentOdds | null {
   const normal = bands.find((b) => b.signal === signal && b.band === 0);
   const score = openingScore(signal, o);
-  if (normal === undefined) return { kind: 'none', why: 'not_built' };
-  if (score === null) return { kind: 'none', why: 'not_seen' };
-  const days = Math.max(1, Math.round((normal.launchedToMs - normal.launchedFromMs) / 86_400_000));
+  if (normal === undefined || score === null) return null;
   const band = bandFor(bands, signal, score);
   const like = band !== null && band.heldUp ? band : normal;
-  const shown = badgesFor(badges, normal, signal, o, days, policy);
-  const look = band === null ? 'early' : lookOf(band, normal, shown, policy);
-  const opened = signal === 'second_1' ? 'opened like this one' : `stood like this one at minute ${minuteOf(signal)}`;
+  const signals = signalsFor(badges, normal, signal, o, daysOf(normal), policy);
   return {
-    kind: 'odds',
     at: signal,
-    look,
-    headline: band !== null && band.heldUp ? `Launches that ${opened}, last ${days} days` : `All launches, last ${days} days: this one's opening was no different`,
+    look: band === null ? 'early' : lookOf(band, normal, signals, policy),
     group: band === null ? 'No launches opened like this one' : band.heldUp ? groupText(signal, band) : 'No group of launches like it held up',
     held: band !== null && band.heldUp,
     like: shares(like, policy),
     normal: shares(normal, policy),
-    badges: shown,
-    days,
+    signals,
   };
+}
+
+const daysOf = (b: BandRow): number => Math.max(1, Math.round((b.launchedToMs - b.launchedFromMs) / 86_400_000));
+
+/** The whole reply: every moment the coin has reached, up to `latest`, that we hold its facts for. Pure. */
+export function oddsReply(latest: Signal, openings: Partial<Record<Signal, Opening>>, bands: readonly BandRow[], badges: readonly BadgeRow[], policy: Policy = DEFAULT_POLICY): LaunchOddsReply {
+  const normal = bands.find((b) => b.signal === 'second_1' && b.band === 0);
+  if (normal === undefined) return { kind: 'none', why: 'not_built' };
+  const moments: MomentOdds[] = [];
+  for (const signal of SIGNALS.slice(0, SIGNALS.indexOf(latest) + 1)) {
+    const o = openings[signal];
+    const m = o === undefined ? null : momentOdds(signal, o, bands, badges, policy);
+    if (m !== null) moments.push(m);
+  }
+  const last = moments[moments.length - 1];
+  if (last === undefined) return { kind: 'none', why: 'not_seen' };
+  return { kind: 'odds', at: last.at, days: daysOf(normal), moments };
 }
 
 /* ── the reads ─────────────────────────────────────────────────────────── */
@@ -337,7 +378,7 @@ select extract(epoch from bucket) * 1000 as bucket_ms, o, c, trades
  order by bucket`;
 
 export const ODDS_BANDS_SQL = `
-select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, held_up,
+select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, held_up,
        extract(epoch from launched_from) * 1000 as from_ms, extract(epoch from launched_to) * 1000 as to_ms
   from public.launch_odds`;
 
@@ -362,6 +403,7 @@ export function bandRows(rows: readonly Row[]): BandRow[] {
       hit: [num(r['hit_2x']) ?? 0, num(r['hit_3x']) ?? 0, num(r['hit_5x']) ?? 0, num(r['hit_10x']) ?? 0],
       rugged: num(r['rugged_1h']) ?? 0,
       neverMoved: num(r['never_moved']) ?? 0,
+      halfPeakS: num(r['half_peak_s']),
       heldUp: r['held_up'] === true,
       launchedFromMs: num(r['from_ms']) ?? 0,
       launchedToMs: num(r['to_ms']) ?? 0,
@@ -407,16 +449,20 @@ export function createLaunchOdds(now: () => number = Date.now, policy: Policy = 
     if (groups === null) return { kind: 'none', why: 'not_built' };
     const signal = signalNow(launchMs, nowMs, coin['from_launch'] === true, policy);
     if (signal === null) return { kind: 'none', why: 'not_seen' };
-    let minutes: { readonly tradesSoFar: number | null; readonly movedSinceLaunch: number | null } = { tradesSoFar: null, movedSinceLaunch: null };
+    const first: Opening = { buyers: num(coin['buyers']), buys: num(coin['buys']), devBuyUsd: num(coin['dev_buy_usd']), tradesSoFar: null, movedSinceLaunch: null };
+    const openings: Partial<Record<Signal, Opening>> = { second_1: first };
     if (signal !== 'second_1') {
-      const moment = signalMomentMs(launchMs, signal, policy);
-      const candles = await db.query(ODDS_CANDLES_SQL, [coin['address'], launchMs, moment]);
-      minutes = minuteFacts(
-        candles.map((k) => ({ bucketMs: num(k['bucket_ms']) ?? 0, o: num(k['o']) ?? 0, c: num(k['c']) ?? 0, trades: num(k['trades']) ?? 0 })),
-        moment,
-      );
+      /* One read of the candles up to the latest moment serves every minute moment before it. */
+      const candles = (await db.query(ODDS_CANDLES_SQL, [coin['address'], launchMs, signalMomentMs(launchMs, signal, policy)])).map((k) => ({
+        bucketMs: num(k['bucket_ms']) ?? 0,
+        o: num(k['o']) ?? 0,
+        c: num(k['c']) ?? 0,
+        trades: num(k['trades']) ?? 0,
+      }));
+      for (const m of ['minute_1', 'minute_5'] as const) {
+        if (SIGNALS.indexOf(m) <= SIGNALS.indexOf(signal)) openings[m] = { ...first, ...minuteFacts(candles, signalMomentMs(launchMs, m, policy)) };
+      }
     }
-    const opening: Opening = { buyers: num(coin['buyers']), buys: num(coin['buys']), devBuyUsd: num(coin['dev_buy_usd']), ...minutes };
-    return oddsReply(signal, opening, groups.bands, groups.badges, policy);
+    return oddsReply(signal, openings, groups.bands, groups.badges, policy);
   };
 }
