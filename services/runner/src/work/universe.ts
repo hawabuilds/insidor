@@ -47,6 +47,7 @@ import { errorText, type Logger } from '../log.ts';
 import type { CoinLinkHandOff } from './coin-link-hand-off.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 import { reuseCoinPicture } from './picture-reuse.ts';
+import { samePictureMemo, type SamePictureRead } from './same-picture-memo.ts';
 import type { Shadow } from '../judge-shadow.ts';
 
 export interface MetadataReader {
@@ -176,6 +177,12 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
 
   /* ── origin ─────────────────────────────────────────────────────────── */
   const due = await deps.coins.unchecked(since, (now - u.recheckAfterMs) as Millis, u.checksPerPass);
+  /* One picture search per matched post this pass, from the oldest coin's lookback (same-picture-memo.ts). */
+  const launches = due.flatMap((c) => (c.launchedAt === null ? [] : [c.launchedAt]));
+  const samePicture =
+    deps.coins.postsWithSamePicture === undefined || launches.length === 0
+      ? undefined
+      : samePictureMemo(deps.coins.postsWithSamePicture.bind(deps.coins), (Math.min(...launches) - u.pictureLookbackMs) as Millis);
   const settled: Record<string, number> = {};
   let pending = 0;
   let usd = 0;
@@ -193,7 +200,7 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
     }
     const spent: { usd: number } = { usd: 0 };
     try {
-      const decision = await checkOne(deps, coin, coin.launchedAt, spent);
+      const decision = await checkOne(deps, coin, coin.launchedAt, spent, samePicture);
       await deps.coins.recordOrigin(coin.assetKey, decision, now, deps.policy.version);
       settled[decision.status] = (settled[decision.status] ?? 0) + 1;
     } catch (e) {
@@ -233,7 +240,7 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
   return result;
 }
 
-async function checkOne(deps: UniverseDeps, coin: CoinToCheck, launchedAt: Millis, spent: { usd: number }) {
+async function checkOne(deps: UniverseDeps, coin: CoinToCheck, launchedAt: Millis, spent: { usd: number }, samePicture: SamePictureRead | undefined) {
   const facts: CoinFacts = { address: coin.address, ticker: coin.ticker, name: coin.name, launchedAt };
 
   /* 1. The creator's link. */
@@ -244,7 +251,7 @@ async function checkOne(deps: UniverseDeps, coin: CoinToCheck, launchedAt: Milli
   const match =
     creator.kind === 'origin'
       ? { result: { kind: 'none', why: 'settled by the creator\'s link' } as const, postedAt: new Map<ItemId, Millis>() }
-      : await matchOwn(deps, coin, facts, spent);
+      : await matchOwn(deps, coin, facts, spent, samePicture);
 
   const decision = decideOrigin(creator, match.result);
   const postItemId = decision.postId === null ? null : (decision.postId as ItemId);
@@ -381,7 +388,7 @@ async function judgeBatches(deps: UniverseDeps, items: readonly Item[]): Promise
 }
 
 /** The posts we hold that name the coin, with what their pictures show against the coin's. */
-async function matchOwn(deps: UniverseDeps, coin: CoinToCheck, facts: CoinFacts, spent: { usd: number }) {
+async function matchOwn(deps: UniverseDeps, coin: CoinToCheck, facts: CoinFacts, spent: { usd: number }, samePicture: SamePictureRead | undefined) {
   const postedAt = new Map<ItemId, Millis>();
   const u = deps.policy.universe;
   const naming = (await deps.coins.postsNaming([coin.name, coin.ticker], (facts.launchedAt - u.matchWindowMs) as Millis, deps.now(), u.candidatesPerCoin))
@@ -421,13 +428,13 @@ async function matchOwn(deps: UniverseDeps, coin: CoinToCheck, facts: CoinFacts,
     candidates.push({ postId: p.itemId, postedAt: p.postedAt, text: p.text, picture });
   }
   const result = matchCandidates(candidates, facts, deps.policy);
-  if (result.kind !== 'matched' || deps.coins.postsWithSamePicture === undefined) return { result, postedAt };
+  if (result.kind !== 'matched' || samePicture === undefined) return { result, postedAt };
   /* ★ Back to where the matched post's picture started: the earliest post we hold with the same
      picture, named or not (core `earliestBySamePicture`). Read from vectors already held; nothing
      is paid. A failed read keeps the matched post — the walk only ever moves earlier. */
   const matchedAt = postedAt.get(result.postId as ItemId) ?? null;
   try {
-    const same = await deps.coins.postsWithSamePicture(result.postId, space, bars.nearIdentical, (facts.launchedAt - u.pictureLookbackMs) as Millis, (matchedAt ?? facts.launchedAt) as Millis, u.picturePostsPerCoin);
+    const same = await samePicture(result.postId, space, bars.nearIdentical, (facts.launchedAt - u.pictureLookbackMs) as Millis, (matchedAt ?? facts.launchedAt) as Millis, u.picturePostsPerCoin);
     const first = earliestBySamePicture({ postId: result.postId, postedAt: matchedAt }, same.map((p) => ({ postId: p.itemId, postedAt: p.postedAt })));
     if (first.postId === result.postId) return { result, postedAt };
     if (first.postedAt !== null) postedAt.set(first.postId as ItemId, first.postedAt);
