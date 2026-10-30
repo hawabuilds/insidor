@@ -188,6 +188,9 @@ function range(from: number, to: number | null, unit: (n: number) => string = co
   return `${unit(from)}–${unit(unit === count ? to - 1 : to)}`;
 }
 
+/** "1 buyer", "2–4 buyers". */
+const noun = (r: string, word: string): string => `${r} ${r === '1' ? word : `${word}s`}`;
+
 /** The fact's name on the signals list. */
 function factLabel(fact: OddsFact, signal: Signal): string {
   switch (fact) {
@@ -208,7 +211,7 @@ function factLabel(fact: OddsFact, signal: Signal): string {
 function factShown(fact: OddsFact, v: number): string {
   switch (fact) {
     case 'dev_buy':
-      return v <= 0 ? 'None' : usd(v);
+      return v < 0.01 ? 'None' : usd(v);
     case 'moved_since_launch':
       return v >= 1 ? `${v.toFixed(1)}x` : `−${Math.round((1 - v) * 100)}%`;
     default:
@@ -220,9 +223,9 @@ function factShown(fact: OddsFact, v: number): string {
 function factGroup(fact: OddsFact, signal: Signal, from: number, to: number | null): string {
   switch (fact) {
     case 'first_second_buyers':
-      return `launches with ${range(from, to)} buyers in their first second`;
+      return `launches with ${noun(range(from, to), 'buyer')} in their first second`;
     case 'first_second_buys':
-      return `launches with ${range(from, to)} buys in their first second`;
+      return `launches with ${noun(range(from, to), 'buy')} in their first second`;
     case 'dev_buy':
       return from <= 0 && to !== null && to <= 0.01 ? 'launches whose creator did not buy' : `launches whose creator bought ${range(from, to, usd)}`;
     case 'trades_so_far':
@@ -304,7 +307,7 @@ export function lookOf(like: BandRow, normal: BandRow, signals: readonly OddsSig
 /** The group in words: what the coin's opening score range is. */
 function groupText(signal: Signal, b: BandRow): string {
   const r = range(b.scoreFrom ?? 0, b.scoreTo);
-  return signal === 'second_1' ? `${r} buyers in the first second` : `${r} trades by minute ${minuteOf(signal)}`;
+  return signal === 'second_1' ? `${noun(r, 'buyer')} in the first second` : `${noun(r, 'trade')} by minute ${minuteOf(signal)}`;
 }
 
 /** The latest signal a coin has reached that it has the facts for. */
