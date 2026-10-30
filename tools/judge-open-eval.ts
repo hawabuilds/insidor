@@ -408,7 +408,7 @@ for (const m of models) {
   }
   const timings: Timing[] = [];
   /* The router's providers as the runner pins them (OPEN_JUDGE_PROVIDERS; adapters/judge/openai-compatible client.ts says why). */
-  const client = openChatClient({ vendor: DEFAULT_VENDOR, apiKey, baseUrl, model: m.id, vision: m.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens, timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs, maxFrameBytes: P.judge.maxFrameBytes, pictureSize: 'small', providers: openProviders(process.env), fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  const client = openChatClient({ vendor: DEFAULT_VENDOR, apiKey, baseUrl, model: m.id, vision: m.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens, timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs, maxFrameBytes: P.judge.maxFrameBytes, pictureSize: 'small', linkPictures: process.env['JUDGE_LINK_PICTURES'] === '1', providers: openProviders(process.env), fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
   const deps = { meter, now: Date.now, model: m, vendor: DEFAULT_VENDOR, policy: { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens }, maxBatch: ctx.maxBatch };
   const post = openJudge({ ...deps, client: timedClient(client, timings), question: 'post', examples: gate.examples, precedents: P.judge.precedents.k > 0 });
   const kind = openJudge({ ...deps, client, question: 'kind' });

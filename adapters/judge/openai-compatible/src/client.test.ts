@@ -429,3 +429,22 @@ test('★ an answer cut off at the cap is no verdict: its posts are asked again,
   assert.ok(out.value.every((o) => o.kind === 'unavailable'), 'no post was judged from a cut-off answer');
   assert.ok(Math.abs(out.spend.usd - 0.0012) < 1e-9, 'both calls were billed and both are booked');
 });
+
+test('★ with linkPictures a public X picture is checked by its first byte and sent as its address; any other host still as bytes', async () => {
+  const asked: { url: string; range: string | null }[] = [];
+  const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    asked.push({ url: String(url), range: new Headers(init?.headers).get('range') });
+    return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+  }) as typeof globalThis.fetch;
+  const base = { vendor: 'router', apiKey: 'k', baseUrl: 'https://router.invalid/api/v1', model: 'm', vision: true, maxOutputTokens: 100, timeoutMs: 1_000, maxAttempts: 1, backoffMs: 1, maxWaitMs: 1, maxFrameBytes: 1_000_000, fetch, sleep: async () => {} };
+  const linked = openChatClient({ ...base, linkPictures: true });
+  const x = await linked.frame('https://pbs.twimg.com/media/abc.jpg');
+  assert.equal(x?.url, 'https://pbs.twimg.com/media/abc.jpg');
+  assert.equal(x?.base64, '');
+  assert.equal(asked[0]?.range, 'bytes=0-0', 'only the first byte is read to check it');
+  const other = await linked.frame('https://p16-sign.tiktokcdn.com/obj/cover.jpg?x-expires=1');
+  assert.equal(other?.url, undefined, 'a signed address is sent as bytes');
+  assert.notEqual(other?.base64, '');
+  const plain = await openChatClient(base).frame('https://pbs.twimg.com/media/abc.jpg');
+  assert.equal(plain?.url, undefined, 'off by default');
+});

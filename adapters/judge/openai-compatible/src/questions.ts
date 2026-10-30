@@ -57,6 +57,9 @@ import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import { routerFields, unfenced } from './client.ts';
 import type { HostModel } from './models.ts';
 
+/** A picture as a Messages image block: its address when the client linked it, else its bytes. */
+const imagePart = (f: Frame) => ({ type: 'image', source: f.url !== undefined ? { type: 'url', url: f.url } : { type: 'base64', media_type: f.mediaType, data: f.base64 } });
+
 /** The ledger's endpoints, the main adapter's names for the same questions. */
 export const OPEN_NAMES_ENDPOINT = 'names';
 export const OPEN_TRANSLATE_ENDPOINT = 'translate';
@@ -103,6 +106,7 @@ export function chatBodyFromMessages(body: Record<string, unknown>, to: { readon
     content: (Array.isArray(m['content']) ? (m['content'] as Part[]) : []).flatMap((p): Part[] => {
       if (p['type'] === 'text') return [{ type: 'text', text: p['text'] }];
       const src = (p['source'] ?? {}) as Part;
+      if (p['type'] === 'image' && to.vision && src['type'] === 'url') return [{ type: 'image_url', image_url: { url: String(src['url']) } }];
       if (p['type'] === 'image' && to.vision) return [{ type: 'image_url', image_url: { url: `data:${String(src['media_type'])};base64,${String(src['data'])}` } }];
       return [];
     }),
@@ -334,8 +338,8 @@ export function openSameSubject(deps: OpenQuestionDeps): OpenSameSubject {
       const messages = {
         max_tokens: deps.judge.pairMaxOutputTokens,
         messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: fa.mediaType, data: fa.base64 } },
-          { type: 'image', source: { type: 'base64', media_type: fb.mediaType, data: fb.base64 } },
+          imagePart(fa),
+          imagePart(fb),
           { type: 'text', text: SAME_SUBJECT_PROMPT.text },
         ] }],
         output_config: { format: { type: 'json_schema', schema: SAME_SUBJECT_SCHEMA } },
@@ -390,8 +394,8 @@ export function openCoinPostCheck(deps: OpenQuestionDeps): CoinPostCheckPort {
         max_tokens: deps.judge.pairMaxOutputTokens,
         messages: [{ role: 'user', content: [
           { type: 'text', text: coinPostText(sides) },
-          { type: 'image', source: { type: 'base64', media_type: fc.mediaType, data: fc.base64 } },
-          { type: 'image', source: { type: 'base64', media_type: fp.mediaType, data: fp.base64 } },
+          imagePart(fc),
+          imagePart(fp),
         ] }],
         output_config: { format: { type: 'json_schema', schema: SAME_SUBJECT_SCHEMA } },
       };

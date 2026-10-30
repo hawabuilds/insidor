@@ -110,6 +110,11 @@ export interface Usage {
 export interface Frame {
   readonly mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
   readonly base64: string;
+  /**
+   * Set instead of sending the bytes (the open adapter's `linkPictures`): the picture's public address,
+   * which the model host fetches itself. `base64` is then empty. Absent: the bytes are sent, as always.
+   */
+  readonly url?: string;
 }
 
 export interface JudgeRequest {

@@ -811,6 +811,14 @@ export interface JudgePolicy {
   readonly tokensPerFrame: number;
   /** A frame larger than this is not sent; the story is unavailable rather than judged blind. */
   readonly maxFrameBytes: number;
+  /**
+   * Send a picture on a public host to the open model as its address instead of its bytes (policy.v210;
+   * the owner, 2026-10-30: "cut costs without impacting performance"). The runner uploaded ~13 GB a day
+   * of pictures, most of its 708 GB of hosting egress (~$35 of a $77 bill). Copy-tested on 100 posts with
+   * the open model: links vs bytes 100/100 and 93/100 the same answer, exactly the model's own
+   * bytes-vs-bytes noise (93/100). False: bytes, as before.
+   */
+  readonly linkPictures: boolean;
   /** Member texts sent per story, and the characters kept of each. */
   readonly maxTextsPerStory: number;
   readonly maxCharsPerText: number;
@@ -5990,8 +5998,10 @@ const POLICY_V1: Policy = {
      candidate is unmeasured on trades, so a held coin can be handed to a runner the trades cannot read,
      and counts a reading whose cap is over `oneCoin.maxCapToPool` times its pool as a frozen quote.
      v209 (2026-10-29, the owner) judges a charted launchpad coin on our own candles' close in place of a
-     stale market reading (`oneCoin.candles`). */
-  version: 'policy.v209',
+     stale market reading (`oneCoin.candles`).
+     v210 (2026-10-30, the owner: cut hosting egress) sends public pictures to the open model as links
+     (`judge.linkPictures`), copy-tested equal to sending the bytes. */
+  version: 'policy.v210',
 
   admit: {
     maxAgeMin: 240,
@@ -6267,6 +6277,7 @@ const POLICY_V1: Policy = {
     /* A ~1.15 megapixel image is about 1,600 input tokens (width × height / 750). */
     tokensPerFrame: 1_600,
     maxFrameBytes: 5_000_000,
+    linkPictures: true,
     maxTextsPerStory: 8,
     maxCharsPerText: 400,
     /* Half again as many members. A story of 4 is asked again at 6, a story of 20 at 30. */
