@@ -23,6 +23,7 @@ const band = (over: Partial<BandRow>): BandRow => ({
   rugged: 0.1,
   neverMoved: 0.5,
   halfPeakS: 240,
+  slow2x: null,
   heldUp: true,
   launchedFromMs: 0,
   launchedToMs: 30 * DAY,
@@ -112,10 +113,10 @@ test('too few launches is too early to tell; an unseen opening and unbuilt group
 
 test('signals are worst first, at most four, each with its value and comparison; a rug sign wins the summary', () => {
   const rows: BadgeRow[] = [
-    { fact: 'first_second_buyers', signal: 'second_1', from: 8, to: null, tone: 'green', launches: 400, hit2x: 0.31, rugged: 0.12 },
-    { fact: 'dev_buy', signal: 'second_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3 },
-    { fact: 'first_second_buys', signal: 'second_1', from: 10, to: 20, tone: 'amber', launches: 300, hit2x: 0.14, rugged: 0.1 },
-    { fact: 'dev_buy', signal: 'minute_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3 },
+    { fact: 'first_second_buyers', signal: 'second_1', from: 8, to: null, tone: 'green', launches: 400, hit2x: 0.31, rugged: 0.12, usual: 1, atLeast: 0.05 },
+    { fact: 'dev_buy', signal: 'second_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3, usual: 20, atLeast: 0.4 },
+    { fact: 'first_second_buys', signal: 'second_1', from: 10, to: 20, tone: 'amber', launches: 300, hit2x: 0.14, rugged: 0.1, usual: 1, atLeast: 0.3 },
+    { fact: 'dev_buy', signal: 'minute_1', from: 100, to: null, tone: 'red', launches: 900, hit2x: 0.1, rugged: 0.3, usual: 20, atLeast: 0.4 },
   ];
   const o = opening({ buyers: 12, buys: 14, devBuyUsd: 250 });
   const shown = signalsFor(rows, NORMAL, 'second_1', o, 30);
@@ -174,4 +175,22 @@ test('a rug sign is rugs outgrowing doubles, not a busy opening that is rugged a
   assert.equal(rugSign(0.3, 0.08, 0.14, 0.12), true, 'rugged twice as often, doubled less');
   assert.equal(rugSign(0.18, 0, 0.14, 0.12), false, 'not rugged enough more often');
   assert.equal(rugSign(0.3, 0, 0.14, 0.12), true, 'rugged, never doubled');
+});
+
+test('the Wallets card: the coin against all launches, and a dash with a reason for what is not recorded', async () => {
+  const { walletCells } = await import('./launch-odds.ts');
+  const rows: BadgeRow[] = [
+    { fact: 'first_second_buyers', signal: 'second_1', from: 8, to: null, tone: 'green', launches: 400, hit2x: 0.31, rugged: 0.12, usual: 1, atLeast: 0.05 },
+    { fact: 'dev_buy', signal: 'second_1', from: 5, to: 20, tone: 'amber', launches: 400, hit2x: 0.2, rugged: 0.2, usual: 12, atLeast: 0.4 },
+  ];
+  const cells = walletCells(rows, opening({ buyers: 15, devBuyUsd: 8 }));
+  assert.deepEqual(cells.map((c) => [c.label, c.value, c.note, c.tone]), [
+    ['Buyers in sec 1', '15', 'Usual 1', 'good'],
+    ['Smart wallets', '—', 'Not recorded yet', 'plain'],
+    ['Dev buy', '$8.00', 'Usual $12', 'plain'],
+    ['Dev sold', '—', 'Not recorded yet', 'plain'],
+    ['Bundled supply', '—', 'Not recorded yet', 'plain'],
+    ['Top 10 hold', '—', 'Not recorded yet', 'plain'],
+  ]);
+  assert.equal(walletCells(rows, undefined)[0]?.note, 'Not seen at launch');
 });

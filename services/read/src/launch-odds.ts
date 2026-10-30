@@ -63,6 +63,8 @@ export interface BandRow {
   readonly neverMoved: number;
   /** Seconds from the signal by which half the launches that doubled had peaked; null when too few doubled. */
   readonly halfPeakS: number | null;
+  /** First reached 2x after the hour and within a day; null until measured. */
+  readonly slow2x: number | null;
   readonly heldUp: boolean;
   readonly launchedFromMs: number;
   readonly launchedToMs: number;
@@ -77,6 +79,22 @@ export interface BadgeRow {
   readonly launches: number;
   readonly hit2x: number;
   readonly rugged: number;
+  /** The fact's usual value over all launches (weighted median); null when not built. */
+  readonly usual: number | null;
+  /** The weighted share of launches whose value is at least `from`. */
+  readonly atLeast: number | null;
+}
+
+/**
+ * One cell of the Wallets card: the coin's own value and a grey line on how it compares with all launches.
+ * Facts we do not record live yet are a dash that says so, never a zero.
+ */
+export interface WalletCell {
+  readonly label: string;
+  readonly value: string;
+  readonly note: string;
+  /** Green where launches like it did clearly better, red on a rug sign; plain otherwise. */
+  readonly tone: 'good' | 'bad' | 'plain';
 }
 
 /**
@@ -105,6 +123,8 @@ export interface OddsShares {
   readonly neverMoved: number;
   /** Of these launches that doubled, half had peaked within this many seconds; null when too few doubled. */
   readonly halfPeakS: number | null;
+  /** The share that first reached 2x more than an hour after the moment, within a day; null until measured. */
+  readonly slow2x: number | null;
 }
 
 /** What launches comparable to this coin did, measured from one moment. */
@@ -129,6 +149,8 @@ export type LaunchOddsReply =
       readonly days: number;
       /** Every moment the coin has reached and we hold its facts for, in order. */
       readonly moments: readonly MomentOdds[];
+      /** The Wallets card: six cells, the coin's opening facts against all launches'. */
+      readonly wallets: readonly WalletCell[];
     }
   | { readonly kind: 'none'; readonly why: 'not_launchpad' | 'not_seen' | 'not_built' };
 
@@ -241,7 +263,7 @@ export function bandFor(bands: readonly BandRow[], signal: Signal, score: number
 }
 
 function shares(b: BandRow, policy: Policy): OddsShares {
-  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved, halfPeakS: b.halfPeakS };
+  return { launches: b.launches, hit: policy.launchOdds.multiples.map((x, i) => ({ x, share: b.hit[i] ?? 0 })), rugged: b.rugged, neverMoved: b.neverMoved, halfPeakS: b.halfPeakS, slow2x: b.slow2x };
 }
 
 const TONE_ORDER: Record<Tone, number> = { red: 0, amber: 1, green: 2 };
@@ -340,6 +362,29 @@ export function momentOdds(signal: Signal, o: Opening, bands: readonly BandRow[]
 
 const daysOf = (b: BandRow): number => Math.max(1, Math.round((b.launchedToMs - b.launchedFromMs) / 86_400_000));
 
+const NOT_RECORDED = 'Not recorded yet';
+
+/** The Wallets card's six cells from the coin's first second and the built facts. Pure. */
+export function walletCells(rows: readonly BadgeRow[], o: Opening | undefined): WalletCell[] {
+  const cell = (label: string, fact: OddsFact, shown: (v: number) => string): WalletCell => {
+    const v = o === undefined ? null : factValue(fact, o);
+    if (v === null) return { label, value: '—', note: 'Not seen at launch', tone: 'plain' };
+    const r = rows.find((x) => x.signal === 'second_1' && x.fact === fact && v >= x.from && (x.to === null || v < x.to));
+    /* The owner's wording: the usual value (the median over all launches), never a rank. */
+    const note = r === undefined || r.usual === null ? '' : `Usual ${shown(r.usual)}`;
+    return { label, value: shown(v), note, tone: r?.tone === 'green' ? 'good' : r?.tone === 'red' ? 'bad' : 'plain' };
+  };
+  const unrecorded = (label: string): WalletCell => ({ label, value: '—', note: NOT_RECORDED, tone: 'plain' });
+  return [
+    cell('Buyers in sec 1', 'first_second_buyers', count),
+    unrecorded('Smart wallets'),
+    cell('Dev buy', 'dev_buy', (v) => (v < 0.01 ? 'None' : usd(v))),
+    unrecorded('Dev sold'),
+    unrecorded('Bundled supply'),
+    unrecorded('Top 10 hold'),
+  ];
+}
+
 /** The whole reply: every moment the coin has reached, up to `latest`, that we hold its facts for. Pure. */
 export function oddsReply(latest: Signal, openings: Partial<Record<Signal, Opening>>, bands: readonly BandRow[], badges: readonly BadgeRow[], policy: Policy = DEFAULT_POLICY): LaunchOddsReply {
   const normal = bands.find((b) => b.signal === 'second_1' && b.band === 0);
@@ -352,7 +397,7 @@ export function oddsReply(latest: Signal, openings: Partial<Record<Signal, Openi
   }
   const last = moments[moments.length - 1];
   if (last === undefined) return { kind: 'none', why: 'not_seen' };
-  return { kind: 'odds', at: last.at, days: daysOf(normal), moments };
+  return { kind: 'odds', at: last.at, days: daysOf(normal), moments, wallets: walletCells(badges, openings.second_1) };
 }
 
 /* ── the reads ─────────────────────────────────────────────────────────── */
@@ -381,11 +426,11 @@ select extract(epoch from bucket) * 1000 as bucket_ms, o, c, trades
  order by bucket`;
 
 export const ODDS_BANDS_SQL = `
-select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, held_up,
+select signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, slow_2x, held_up,
        extract(epoch from launched_from) * 1000 as from_ms, extract(epoch from launched_to) * 1000 as to_ms
   from public.launch_odds`;
 
-export const ODDS_BADGES_SQL = `select fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h from public.launch_odds_badge`;
+export const ODDS_BADGES_SQL = `select fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h, usual_value, share_at_least from public.launch_odds_badge`;
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const isSignal = (v: unknown): v is Signal => SIGNALS.includes(v as Signal);
@@ -407,6 +452,7 @@ export function bandRows(rows: readonly Row[]): BandRow[] {
       rugged: num(r['rugged_1h']) ?? 0,
       neverMoved: num(r['never_moved']) ?? 0,
       halfPeakS: num(r['half_peak_s']),
+      slow2x: num(r['slow_2x']),
       heldUp: r['held_up'] === true,
       launchedFromMs: num(r['from_ms']) ?? 0,
       launchedToMs: num(r['to_ms']) ?? 0,
@@ -420,7 +466,7 @@ export function badgeRows(rows: readonly Row[]): BadgeRow[] {
   for (const r of rows) {
     const from = num(r['value_from']);
     if (!isFact(r['fact']) || !isSignal(r['signal']) || !isTone(r['tone']) || from === null) continue;
-    out.push({ fact: r['fact'], signal: r['signal'], from, to: num(r['value_to']), tone: r['tone'], launches: num(r['launches']) ?? 0, hit2x: num(r['hit_2x']) ?? 0, rugged: num(r['rugged_1h']) ?? 0 });
+    out.push({ fact: r['fact'], signal: r['signal'], from, to: num(r['value_to']), tone: r['tone'], launches: num(r['launches']) ?? 0, hit2x: num(r['hit_2x']) ?? 0, rugged: num(r['rugged_1h']) ?? 0, usual: num(r['usual_value']), atLeast: num(r['share_at_least']) });
   }
   return out;
 }

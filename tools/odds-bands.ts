@@ -76,7 +76,8 @@ const FACTS_AT: Record<Signal, readonly OddsFact[]> = {
 /** `peakS`: seconds after launch the hour's peak came. */
 interface Outcome { readonly peak: number; readonly rugged: boolean; readonly peakS: number }
 /** `momentS`: seconds after launch the signal looked. */
-interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome; readonly momentS: number }
+/** `slow`: first reached 2x of the entry after hour one and within a day; null when hours 1–24 were not read. */
+interface Seen { readonly opening: Opening; readonly now: Outcome; readonly late: Outcome; readonly momentS: number; readonly slow: boolean | null }
 interface Launch {
   readonly address: string;
   readonly launchMs: number;
@@ -154,7 +155,8 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
   const sLate = (t: Trade): boolean => t[0] <= LATE_SLOTS;
   const e1 = priceBy(trades, sNow);
   const e1l = priceBy(trades, sLate);
-  at.second_1 = { momentS: 1, opening: base, now: hourAfter(trades, (t) => !sNow(t), e1), late: hourAfter(trades, (t) => !sLate(t), e1l) };
+  const now1 = hourAfter(trades, (t) => !sNow(t), e1);
+  at.second_1 = { momentS: 1, opening: base, now: now1, late: hourAfter(trades, (t) => !sLate(t), e1l), slow: slowRun(r.a, now1, e1) };
 
   for (const signal of ['minute_1', 'minute_5'] as const) {
     const moment = signalMomentMs(launchMs, signal) - launchMs;
@@ -167,6 +169,7 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
     if (!whole && upTo.length === 0) continue;
     at[signal] = {
       momentS: moment / 1_000,
+      slow: slowRun(r.a, hourAfter(trades, (t) => !before(t), entry), entry),
       opening: { ...base, tradesSoFar: upTo.length, movedSinceLaunch: upTo.length > 0 ? entry / first : null },
       now: hourAfter(trades, (t) => !before(t), entry),
       late: hourAfter(trades, (t) => !beforeLate(t), priceBy(trades, beforeLate)),
@@ -178,10 +181,12 @@ function launchOf(r: Rec, w: number): Launch | 'unpriced' | 'unread' {
 /* ── rates ─────────────────────────────────────────────────────────────── */
 
 /** `halfPeakS`: the weighted median, over the launches that doubled, of seconds from the signal to the hour's peak. */
-interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[]; halfPeakS: number | null }
+interface Rates { n: number; w: number; hit: number[]; rugged: number; never: number; lateHit: number[]; halfPeakS: number | null; slow: number | null }
 function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
-  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0), halfPeakS: null };
+  const r: Rates = { n: xs.length, w: 0, hit: P.multiples.map(() => 0), rugged: 0, never: 0, lateHit: P.multiples.map(() => 0), halfPeakS: null, slow: null };
   const peaks: { s: number; w: number }[] = [];
+  let slowW = 0;
+  let slowOf = 0;
   for (const { l, s } of xs) {
     r.w += l.w;
     if (s.now.peak >= (P.multiples[0] ?? 2)) peaks.push({ s: Math.max(0, s.now.peakS - s.momentS), w: l.w });
@@ -190,6 +195,10 @@ function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
       if (s.late.peak >= k) r.lateHit[i] = (r.lateHit[i] ?? 0) + l.w;
     });
     if (s.now.rugged) r.rugged += l.w;
+    if (s.slow !== null) {
+      slowOf += l.w;
+      if (s.slow) slowW += l.w;
+    }
     if (s.now.peak < P.neverMovedBelow) r.never += l.w;
   }
   /* Fewer doublers than this and "half of them peaked within" is one or two coins' story. */
@@ -205,6 +214,8 @@ function rates(xs: readonly { l: Launch; s: Seen }[]): Rates {
       }
     }
   }
+  /* Over the launches whose day was read, and only once enough were. */
+  if (slowOf > 0 && xs.filter((x) => x.s.slow !== null).length >= MIN_TEST) r.slow = slowW / slowOf;
   const d = r.w > 0 ? r.w : 1;
   return { ...r, hit: r.hit.map((h) => h / d), lateHit: r.lateHit.map((h) => h / d), rugged: r.rugged / d, never: r.never / d };
 }
@@ -279,6 +290,21 @@ function tone(g: Rates, all: Rates): Tone {
 /* ── main ──────────────────────────────────────────────────────────────── */
 
 const list = JSON.parse(readFileSync(join(DIR, 'launches.json'), 'utf8')) as { from: string; to: string; population: { g: number; o: number } };
+/* Hours 1–24 per coin, from the backfill's `late` pass, when it has run. */
+const lateFile = join(DIR, 'launches-late.jsonl');
+const dayOf = new Map<string, readonly (readonly [number, number])[]>();
+if (existsSync(lateFile)) for (const line of readFileSync(lateFile, 'utf8').split('\n')) if (line) {
+  const x = JSON.parse(line) as { a: string; prices: [number, number][] };
+  dayOf.set(x.a, x.prices);
+}
+/** First reached 2x of the entry after the hour and within the day — only if it had not within the hour. */
+function slowRun(address: string, hour: Outcome, entry: number): boolean | null {
+  const day = dayOf.get(address);
+  if (day === undefined) return null;
+  if (hour.peak >= (P.multiples[0] ?? 2)) return false;
+  return day.some(([, p]) => p >= (P.multiples[0] ?? 2) * entry);
+}
+
 const recs = readFileSync(join(DIR, 'launches.jsonl'), 'utf8').split('\n').filter((x) => x !== '').map((x) => JSON.parse(x) as Rec);
 const sampled = { g: 0, o: 0 };
 for (const r of recs) sampled[r.s] += 1;
@@ -338,7 +364,7 @@ try {
       return s === undefined ? [] : [{ l, s: { ...s, opening: dollars(s.opening, l) } }];
     });
     const all = rates(seen);
-    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, half_peak_s: all.halfPeakS, held_up: true });
+    out.bands.push({ signal, band: 0, score_from: null, score_to: null, launches: all.n, hit: all.hit, rugged_1h: all.rugged, never_moved: all.never, half_peak_s: all.halfPeakS, slow_2x: all.slow, held_up: true });
     console.log(`\n${signal}: ${all.n} launches. All: hit ${all.hit.map(pctS).join(' ')}  rugged ${pctS(all.rugged)}  never moved ${pctS(all.never)}  | 3 s later: ${all.lateHit.map(pctS).join(' ')}`);
     const scored = seen.flatMap((x) => {
       const v = openingScore(signal, x.s.opening);
@@ -346,7 +372,7 @@ try {
     });
     const gs = groups(scored, EDGES[signal], split);
     gs.forEach((g, i) => {
-      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, half_peak_s: g.all.halfPeakS, held_up: g.held });
+      out.bands.push({ signal, band: i + 1, score_from: g.bin.from, score_to: g.bin.to, launches: g.all.n, hit: g.all.hit, rugged_1h: g.all.rugged, never_moved: g.all.never, half_peak_s: g.all.halfPeakS, slow_2x: g.all.slow, held_up: g.held });
       console.log(
         `  [${g.bin.from}, ${g.bin.to ?? '∞'}) n=${String(g.all.n).padStart(5)} hit ${g.all.hit.map(pctS).join(' ')} rugged ${pctS(g.all.rugged)} never ${pctS(g.all.never)}` +
           ` | before: 2x ${pctS(g.train.hit[0] ?? 0)} 5x ${pctS(g.train.hit[2] ?? 0)} 10x ${pctS(g.train.hit[3] ?? 0)} (n=${g.train.n}) after: 2x ${pctS(g.test.hit[0] ?? 0)} 5x ${pctS(g.test.hit[2] ?? 0)} 10x ${pctS(g.test.hit[3] ?? 0)} (n=${g.test.n})` +
@@ -361,11 +387,22 @@ try {
       });
       const trainAll = rates(rows.filter((x) => x.l.launchMs < split));
       const testAll = rates(rows.filter((x) => x.l.launchMs >= split));
+      /* The fact's usual value (weighted median) and, per range, the weighted share of launches at or above
+         its lower edge: what the Wallets card says beside a coin's own value ("Usual $20", "Top 5% of launches"). */
+      const sorted = rows.slice().sort((a, b) => a.v - b.v);
+      const total = sorted.reduce((s, x) => s + x.l.w, 0);
+      let acc = 0;
+      let usual: number | null = null;
+      for (const x of sorted) {
+        acc += x.l.w;
+        if (usual === null && acc >= total / 2) usual = x.v;
+      }
+      const atLeast = (from: number): number => (total > 0 ? sorted.filter((x) => x.v >= from).reduce((s, x) => s + x.l.w, 0) / total : 0);
       for (const g of groups(rows, FACT_EDGES[fact], split)) {
         if (g.all.n < P.minLaunches) continue;
         const before = tone(g.train, trainAll);
         const t: Tone = g.test.n >= MIN_TEST && tone(g.test, testAll) === before ? before : 'amber';
-        out.badges.push({ fact, signal, value_from: g.bin.from, value_to: g.bin.to, tone: t, launches: g.all.n, hit_2x: g.all.hit[0], rugged_1h: g.all.rugged });
+        out.badges.push({ fact, signal, value_from: g.bin.from, value_to: g.bin.to, tone: t, launches: g.all.n, hit_2x: g.all.hit[0], rugged_1h: g.all.rugged, usual_value: usual, share_at_least: atLeast(g.bin.from) });
         console.log(`    ${fact.padEnd(20)} [${g.bin.from}, ${g.bin.to ?? '∞'}) n=${String(g.all.n).padStart(5)} 2x ${pctS(g.all.hit[0] ?? 0)} rugged ${pctS(g.all.rugged)} → ${t}`);
       }
     }
@@ -380,9 +417,9 @@ try {
     'delete from public.launch_odds_badge;',
     ...out.bands.map((b) => {
       const h = b['hit'] as number[];
-      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['half_peak_s'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
+      return `insert into public.launch_odds (signal, band, score_from, score_to, launches, hit_2x, hit_3x, hit_5x, hit_10x, rugged_1h, never_moved, half_peak_s, slow_2x, held_up, launched_from, launched_to) values (${[b['signal'], b['band'], b['score_from'], b['score_to'], b['launches'], h[0], h[1], h[2], h[3], b['rugged_1h'], b['never_moved'], b['half_peak_s'], b['slow_2x'], b['held_up'], window.launched_from, window.launched_to].map(lit).join(', ')});`;
     }),
-    ...out.badges.map((b) => `insert into public.launch_odds_badge (fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h) values (${[b['fact'], b['signal'], b['value_from'], b['value_to'], b['tone'], b['launches'], b['hit_2x'], b['rugged_1h']].map(lit).join(', ')});`),
+    ...out.badges.map((b) => `insert into public.launch_odds_badge (fact, signal, value_from, value_to, tone, launches, hit_2x, rugged_1h, usual_value, share_at_least) values (${[b['fact'], b['signal'], b['value_from'], b['value_to'], b['tone'], b['launches'], b['hit_2x'], b['rugged_1h'], b['usual_value'], b['share_at_least']].map(lit).join(', ')});`),
     'commit;',
   ].join('\n');
   writeFileSync(join(DIR, 'bands.sql'), sql + '\n');
