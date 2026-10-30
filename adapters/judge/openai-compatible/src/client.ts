@@ -82,6 +82,13 @@ export interface OpenChatConfig {
   /** As the live judge: ask the picture host for this size first (the Anthropic adapter's pictures.ts). */
   readonly pictureSize?: PictureSize | null;
   /**
+   * Send a picture on a public host (`LINKABLE_HOSTS`) as its address instead of its bytes (2026-10-30):
+   * the runner uploaded ~13 GB a day of pictures to the model host, most of its 708 GB of Railway egress
+   * (~$35 of a $77 bill). The host fetches the same public picture itself. A signed or private address
+   * is still sent as bytes — another host may not be allowed to read it. Absent or false: bytes, as before.
+   */
+  readonly linkPictures?: boolean;
+  /**
    * The router's providers for the model, in order, and no others; absent or empty: the router
    * chooses. See the header: some providers loop on this schema until the token limit.
    */
@@ -119,6 +126,17 @@ export class OpenJudgeNotConfigured extends Error {
  * The chat body for one judge request: the live body's parts in the live body's order. With
  * `vision` false the pictures are left out and every story says `frame: none`.
  */
+/** Hosts whose pictures are public and stable: the model host can fetch them itself. X's image servers only. */
+export const LINKABLE_HOSTS: ReadonlySet<string> = new Set(['pbs.twimg.com']);
+export const linkable = (uri: string): boolean => {
+  try {
+    const u = new URL(uri);
+    return u.protocol === 'https:' && LINKABLE_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+};
+
 export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers' | 'answerTokensPerSubject' | 'router'>, request: JudgeRequest): Record<string, unknown> {
   const providers = config.providers ?? [];
   const frames: ReadonlyMap<string, Frame> = config.vision ? request.frames : new Map();
@@ -139,7 +157,7 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     const frame = frames.get(String(s.storyId));
     if (frame === undefined) continue;
     content.push({ type: 'text', text: `Picture for storyId ${String(s.storyId)} (a still picture, or a frame from its video):` });
-    content.push({ type: 'image_url', image_url: { url: `data:${frame.mediaType};base64,${frame.base64}` } });
+    content.push({ type: 'image_url', image_url: { url: frame.url ?? `data:${frame.mediaType};base64,${frame.base64}` } });
   }
   const per = config.answerTokensPerSubject ?? null;
   return {
@@ -342,6 +360,18 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
 
   const readFrame = async (uri: string, sized = false): Promise<Frame | null> => {
     if (!sized && pictureUrlProblem(uri) !== null) return null;
+    /* A public picture is checked (status and type, its first bytes only) and sent as its address. */
+    if (config.linkPictures === true && linkable(uri)) {
+      try {
+        const response = await config.fetch(uri, { headers: { range: 'bytes=0-0' }, signal: AbortSignal.timeout(config.timeoutMs) });
+        const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+        await response.body?.cancel();
+        if (!response.ok || !FRAME_TYPES.has(type as Frame['mediaType'])) return null;
+        return { mediaType: type as Frame['mediaType'], base64: '', url: uri };
+      } catch {
+        return null;
+      }
+    }
     try {
       const response = await config.fetch(uri, { signal: AbortSignal.timeout(config.timeoutMs) });
       const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
