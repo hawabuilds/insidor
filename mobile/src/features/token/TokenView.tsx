@@ -57,7 +57,7 @@ import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultView, fetchTimeframe, type ChartView } from './chart-view.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
-import { OddsChip } from './LaunchOdds.tsx';
+import { OddsLine } from './LaunchOdds.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
@@ -205,8 +205,6 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
         <a className={styles['chip']} href={venueShown.url} target="_blank" rel="noopener noreferrer" title={`Open ${ticker} on ${venueShown.label}`}>
           {venueShown.label}
         </a>
-        {/* What similar launches did, one chip in this row (LaunchOdds.tsx); it opens Info. */}
-        <OddsChip odds={odds} className={styles['chip']} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
         {chips.map((c) => (
           <span key={c} className={`${styles['chip']} ${styles['chipBrand']}`}>{c}</span>
         ))}
@@ -219,6 +217,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
           <a href={`https://solscan.io/token/${facts.address}`} target="_blank" rel="noopener noreferrer" aria-label="View mint on the explorer"><ExternalIcon size={12} /></a>
         </span>
       </div>
+
+      {/* What similar launches did, one line (LaunchOdds.tsx); it opens Info. */}
+      <OddsLine odds={odds} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 

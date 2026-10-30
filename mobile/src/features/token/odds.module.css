@@ -2,17 +2,41 @@
    the section heading 17 at 600; no shading anywhere in this block — the outcome card has one hairline
    under its header and plain rows about 38px tall, the Wallets card hairline cell borders in --card-line;
    values mono and tabular. Colour only for clearly better (the up green) or worse (the down red); the Usual
-   column is grey. The two chip tints sit on the page's own chip class (token.module.css), so the chip keeps
-   its neighbours' size. The Info tab's existing cards are untouched. */
+   column is grey. The top line is plain text with
+   no box. The Info tab's existing cards are untouched. */
 
-.chipGood {
-  background: var(--up-wash);
+/* The top line: plain text under the address row, no box or background (odds-9-top-line-close.png). */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 24px;
+  margin-top: 12px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.line b {
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+.line b.good {
   color: var(--up);
 }
 
-.chipBad {
-  background: var(--down-wash);
+.line b.bad {
   color: var(--down);
+}
+
+.lineEnd {
+  display: flex;
+  margin-left: auto;
 }
 
 .odds {
