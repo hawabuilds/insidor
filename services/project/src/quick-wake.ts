@@ -96,5 +96,5 @@ export function quickWake(deps: QuickWakeDeps, close: () => Promise<void> = asyn
 /** The launcher's wake: one pooled client on the service credential, and the quick frame as a child. */
 export function openQuickWake(env: Readonly<Record<string, string | undefined>>, run: QuickWakeDeps['run'], log: QuickWakeDeps['log'], policy: Policy = DEFAULT_POLICY): QuickWake {
   const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-wake', env: { DATABASE_URL_SERVICE: env['DATABASE_URL'] }, max: 1 });
-  return quickWake({ probe: (since) => readProbe(asDb(pool), since), run, policy, now: () => Date.now(), log }, () => pool.end());
+  return quickWake({ probe: (since) => readProbe(asDb(pool), since, policy), run, policy, now: () => Date.now(), log }, () => pool.end());
 }

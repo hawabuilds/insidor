@@ -11,7 +11,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { mergeForYou, quickDue, type QuickProbe } from './quick-frame.ts';
 
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true } } };
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 } } } };
 const NOW = 1_800_000_000_000;
 const probe = (answerId: number, answerAgoMs: number | null, linkAtMs: number | null = null, callAtMs: number | null = null): QuickProbe => ({ answerId, atMs: NOW, answerAtMs: answerAgoMs === null ? null : NOW - answerAgoMs, linkAtMs, callAtMs });
 
@@ -47,6 +47,14 @@ test('a coin linking a passed post, or the owner calling a post, since the curso
   assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, probe(11, 60_000, NOW - 1_000), NOW, P), true, 'a new link');
   assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, probe(11, 60_000, NOW - 90_000), NOW, P), false, 'a link from before the cursor');
   assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, probe(11, 60_000, null, NOW - 1_000), NOW, P), true, 'an owner call');
+});
+
+test('★ a reading that put a passed post over For You\'s bar is a change: due, held to the gap and the settle like an answer', () => {
+  const crossed = (n: number | null): QuickProbe => ({ ...probe(11, 60_000), crossers: n });
+  assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, crossed(1), NOW, P), true, 'no new answer, one post crossed');
+  assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, NOW - 5_000, crossed(1), NOW, P), false, 'inside the gap: it waits, as an answer would');
+  assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, crossed(0), NOW, P), false, 'readings, but none crossed');
+  assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, null, crossed(null), NOW, P), false, 'not readable: the full frame has them');
 });
 
 const card = (id: string, at: number, v = 'old') => ({ id, at, v });
