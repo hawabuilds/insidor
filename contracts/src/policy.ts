@@ -2657,6 +2657,15 @@ export interface OneCoinPolicy {
    * quote (`minLiquidityUsd`). A reading with no pool figure is unknown and passes, as there.
    */
   readonly maxCapToPool: number;
+  /**
+   * ★ OUR OWN CANDLES OVER THE READINGS (policy.v209; the owner, 2026-10-29: "i approve 3"). For a
+   * launchpad candidate we chart (0144), the newest one-minute close and the highest close stand in for
+   * its market reading wherever the rule reads one, when that close is at most `freshMs` old. The
+   * market source keeps quoting a coin long after its pool moved: 4iuBjA ran to $12.6M on our candles
+   * while its readings said $3.2M on a $0.01 pool, then $6. Read every `readEveryMs`, not each pass:
+   * a minute's candle is all there is to know. Off: readings alone, as before.
+   */
+  readonly candles: { readonly on: boolean; readonly freshMs: number; readonly readEveryMs: number };
   /** The trade feed counts as running when any watched coin's trades were updated this recently. */
   readonly tradeFeedFreshMs: number;
   /** Picture evidence: hashes this close are the same picture; an embedding this similar is too. */
@@ -5979,8 +5988,10 @@ const POLICY_V1: Policy = {
      plan's 250 GB (`store.transfer`), estimated from the rows read each hour.
      v208 (2026-10-29, the owner: "beat the runner") judges a post on readings before its held coin when a
      candidate is unmeasured on trades, so a held coin can be handed to a runner the trades cannot read,
-     and counts a reading whose cap is over `oneCoin.maxCapToPool` times its pool as a frozen quote. */
-  version: 'policy.v208',
+     and counts a reading whose cap is over `oneCoin.maxCapToPool` times its pool as a frozen quote.
+     v209 (2026-10-29, the owner) judges a charted launchpad coin on our own candles' close in place of a
+     stale market reading (`oneCoin.candles`). */
+  version: 'policy.v209',
 
   admit: {
     maxAgeMin: 240,
@@ -7701,6 +7712,11 @@ const POLICY_V1: Policy = {
        times), each holding a post's pick over its real runner ($8TJ1uh, $160M on our candles). Replayed on
        186 runner posts: three more runners picked, no dud more. */
     maxCapToPool: 1_000,
+    /* policy.v209. Replayed over 22-29 Oct on 186 posts whose launchpad coin passed $25k, beside v208's
+       rules: runner picked 49% -> 52%, before take-off 17% -> 19%, dud picks unchanged (32 on runner
+       posts, 8 of 186 posts where nothing ran). Half an hour: the replay's bar; a staler close falls back
+       to the reading. */
+    candles: { on: true, freshMs: 1_800_000, readEveryMs: 60_000 },
     tradeFeedFreshMs: 120_000,
     /* 10 bits is postCoin's same picture; 0.82 is the replay's "likely" picture. */
     picture: { maxHashDistance: 10, minSimilarity: 0.86 },

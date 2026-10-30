@@ -62,7 +62,7 @@
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
-import type { CandidateRow, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
+import type { CandidateRow, CandleCap, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
 import { HASH_VERSION } from './picture-hash.ts';
@@ -115,6 +115,11 @@ export interface OneCoinDeps {
    * work/coin-post-check.ts), as `item|address`. Only a name-only candidate is dropped on it. Absent: none.
    */
   readonly refused?: (pairs: readonly { readonly itemId: string; readonly address: string }[]) => Promise<ReadonlySet<string>>;
+  /**
+   * Our own candles' caps for these launchpad coins (store `PgCandleCapRepo`, Policy.oneCoin.candles):
+   * read once every `readEveryMs`, and laid over the readings the rule judges on. Absent: readings alone.
+   */
+  readonly candleCaps?: (addresses: readonly string[], sinceMs: number) => Promise<ReadonlyMap<string, CandleCap>>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -130,9 +135,31 @@ export interface OneCoinState {
   watchMissingSaid: boolean;
   /** When the runner hand-over step last ran: it runs every Policy.runnerLink.handover.everyMs, not every pass. */
   handoverAt: number;
+  /** Our candles' caps, and when they were read (Policy.oneCoin.candles.readEveryMs). */
+  candleCaps: { readonly atMs: number; readonly caps: ReadonlyMap<string, CandleCap> } | null;
 }
 
-export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0 });
+export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, candleCaps: null });
+
+/** A launchpad coin's address ends so (services/read trade-card.ts): only its supply is known, and so only its candle is a cap. */
+const LAUNCHPAD_SUFFIX = 'pump';
+const MINUTE_MS = 60_000;
+
+/**
+ * ★ OUR CANDLES OVER THE READINGS (Policy.oneCoin.candles). Each coin with a candle closed at most
+ * `freshMs` ago is judged on its close and its highest close, with no pool figure (a launchpad coin's
+ * cap is known, not quoted); every other coin keeps its reading.
+ */
+export function withCandleCaps(market: ReadonlyMap<string, MarketFacts & { readonly readAtMs: number; readonly liquidityUsd: number | null }>, caps: ReadonlyMap<string, CandleCap>, nowMs: number, freshMs: number): ReadonlyMap<string, MarketFacts & { readonly readAtMs: number; readonly liquidityUsd: number | null }> {
+  if (caps.size === 0) return market;
+  const out = new Map(market);
+  for (const [a, k] of caps) {
+    const closedAt = k.atMs + MINUTE_MS;
+    if (nowMs - closedAt > freshMs || k.capUsd <= 0) continue;
+    out.set(a, { capUsd: k.capUsd, peakCapUsd: Math.max(k.peakCapUsd, k.capUsd), readAtMs: Math.min(closedAt, nowMs), liquidityUsd: null });
+  }
+  return out;
+}
 
 export interface OneCoinResult {
   readonly launches: number;
@@ -501,13 +528,23 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     repo.appliedFit(),
   ]);
   const running = trades !== null && feedAt !== null && now - feedAt <= P.tradeFeedFreshMs;
+  /* ★ Our candles over the readings (withCandleCaps), read at most once a `readEveryMs`; a failed read keeps the readings. */
+  if (P.candles.on && deps.candleCaps !== undefined && (state.candleCaps === null || now - state.candleCaps.atMs >= P.candles.readEveryMs)) {
+    try {
+      state.candleCaps = { atMs: now, caps: await deps.candleCaps(addresses.filter((a) => a.endsWith(LAUNCHPAD_SUFFIX)), now - P.postWindowMs - P.watchMs) };
+    } catch (e) {
+      state.candleCaps = { atMs: now, caps: new Map() };
+      deps.log.error('one coin: our candles were not read; the pick is judged on readings this minute', { err: errorText(e) });
+    }
+  }
+  const ruled = P.candles.on && state.candleCaps !== null ? withCandleCaps(market, state.candleCaps.caps, now, P.candles.freshMs) : market;
   /* ★ The trades' caps in dollars (withDollarCaps): never a stale reading's when the trades are live. */
   const solUsd = trades === null ? null : solPriceOf(trades, market);
   const tradesUsd = trades === null ? null : withDollarCaps(trades, market, solUsd);
   const ruleBars = oneCoinBars(P, fit);
   const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }): OneCoinOutcome =>
     facts === undefined
-      ? pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, market), holderOf(prev), now, running, ruleBars)
+      ? pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, ruled), holderOf(prev), now, running, ruleBars)
       : pickOneCoin(contendersOf(rs, running ? facts.trades : null, facts.watched, facts.market), holderOf(prev), now, running, ruleBars);
   /* ★ The owner's coin call stands: his posts are judged without the stated-name tie. */
   const called = deps.ownerCalled === undefined || byPost.size === 0 ? new Set<string>() : await deps.ownerCalled([...byPost.keys()]);
@@ -534,7 +571,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const withRace = (w: PickWrite): PickWrite => {
     const rs = byId.get(w.subjectId);
     if (!P.race.on || rs === undefined) return w;
-    const racing = racingCoins(contendersOf(rs, running ? tradesUsd : null, watched, market), now, raceBars);
+    const racing = racingCoins(contendersOf(rs, running ? tradesUsd : null, watched, ruled), now, raceBars);
     return racing.length === 0 ? w : { ...w, evidence: { ...w.evidence, racing } };
   };
   const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
