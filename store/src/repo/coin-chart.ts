@@ -15,6 +15,23 @@
 
 import type { Db } from '../client.ts';
 
+/** A launch's first-minute row (0150 + 0154), as chainwatch's launch-open.ts hands it over. */
+export interface LaunchOpenWrite {
+  readonly address: string;
+  readonly launchedAtMs: number;
+  readonly buyers: number;
+  readonly buys: number;
+  readonly devBuyUsd: number | null;
+  readonly devBuySol: number | null;
+  readonly pool: string | null;
+  readonly blockShare: number | null;
+  readonly firstBuyers: readonly string[];
+  readonly devSold: boolean | null;
+}
+
+/** Postgres's undefined_column: a column a later migration adds is not there yet. */
+const missingColumn = (e: unknown): boolean => (e as { code?: unknown } | null)?.code === '42703';
+
 export interface ChartCoinWrite {
   readonly address: string;
   readonly recordedFromMs: number;
@@ -68,6 +85,8 @@ interface ListedState {
 export class PgChartRepo {
   readonly #db: Db;
   readonly #listed: ListedState = { watchSince: new Map(), picks: new Map(), watchNewestMs: null, pickNewestMs: null };
+  /** Set once an insert named a column 0154 adds and Postgres had none: write 0150's columns until restart. */
+  #before0154 = false;
 
   constructor(db: Db) {
     this.#db = db;
@@ -179,18 +198,60 @@ export class PgChartRepo {
    * Each launch's first second (0150, chainwatch launch-open.ts): one row a coin, the first reading kept
    * (on conflict do nothing), so a restart that sees a launch again never overwrites it.
    */
-  async writeOpens(rows: readonly { readonly address: string; readonly launchedAtMs: number; readonly buyers: number; readonly buys: number; readonly devBuyUsd: number | null }[]): Promise<void> {
+  /*
+   * ★ THE FIRST MINUTE'S FACTS TOO (0154), and the first second's alone while 0154 is not applied: a
+   * deploy that lands before the migration keeps writing what 0150 holds instead of losing every row.
+   * The buyer lists cross as one space-joined string per row — Postgres cannot unnest a ragged array of
+   * arrays — and a wallet address has no space in it.
+   */
+  async writeOpens(rows: readonly LaunchOpenWrite[]): Promise<void> {
     if (rows.length === 0) return;
+    const first = [rows.map((r) => r.address), rows.map((r) => iso(r.launchedAtMs)), rows.map((r) => r.buyers), rows.map((r) => r.buys), rows.map((r) => r.devBuyUsd)];
+    if (!this.#before0154) {
+      try {
+        await this.#db.query(
+          `insert into internal.launch_open (address, launched_at, buyers, buys, dev_buy_usd, dev_buy_sol, pool, block_share, first_buyers, dev_sold)
+           select a, l, b, n, u, s, p, k, string_to_array(f, ' '), d
+             from unnest($1::text[], $2::timestamptz[], $3::int[], $4::int[], $5::float8[], $6::float8[], $7::text[], $8::real[], $9::text[], $10::boolean[])
+               as x(a, l, b, n, u, s, p, k, f, d)
+           on conflict (address) do nothing`,
+          [...first, rows.map((r) => r.devBuySol), rows.map((r) => r.pool), rows.map((r) => r.blockShare), rows.map((r) => r.firstBuyers.join(' ')), rows.map((r) => r.devSold)],
+        );
+        return;
+      } catch (e) {
+        if (!missingColumn(e)) throw e;
+        this.#before0154 = true;
+      }
+    }
     await this.#db.query(
       `insert into internal.launch_open (address, launched_at, buyers, buys, dev_buy_usd)
        select * from unnest($1::text[], $2::timestamptz[], $3::int[], $4::int[], $5::float8[])
        on conflict (address) do nothing`,
-      [rows.map((r) => r.address), rows.map((r) => iso(r.launchedAtMs)), rows.map((r) => r.buyers), rows.map((r) => r.buys), rows.map((r) => r.devBuyUsd)],
+      first,
     );
   }
 
-  /** Deletes the first-second rows of launches before `beforeMs`; how many went. */
-  async pruneOpens(beforeMs: number): Promise<number> {
+  /**
+   * Deletes the first-minute rows of launches before `beforeMs`, and of graduates (0154) only before
+   * `graduatesBeforeMs`, so the smart wallet list can look back over its whole window; how many went.
+   */
+  async pruneOpens(beforeMs: number, graduatesBeforeMs: number = beforeMs): Promise<number> {
+    if (!this.#before0154) {
+      try {
+        const rows = await this.#db.query<{ n: string }>(
+          `with gone as (
+             delete from internal.launch_open
+              where launched_at < $1 and (graduated_seen_at is null or launched_at < $2)
+             returning 1)
+           select count(*)::text as n from gone`,
+          [iso(beforeMs), iso(Math.min(beforeMs, graduatesBeforeMs))],
+        );
+        return Number(rows[0]?.n ?? 0);
+      } catch (e) {
+        if (!missingColumn(e)) throw e;
+        this.#before0154 = true;
+      }
+    }
     const rows = await this.#db.query<{ n: string }>(
       `with gone as (delete from internal.launch_open where launched_at < $1 returning 1) select count(*)::text as n from gone`,
       [iso(beforeMs)],

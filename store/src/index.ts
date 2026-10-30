@@ -43,7 +43,9 @@ export type { AccountCoinRow, CoinFirstRecord, CoinFirstRole, CoinFirstRow, Coin
 export { PgChartRepo } from './repo/coin-chart.ts';
 export { PgCandleCapRepo } from './repo/candle-caps.ts';
 export type { CandleCap } from './repo/candle-caps.ts';
-export type { CandleDeltaWrite, ChartCoinWrite, ChartWrite } from './repo/coin-chart.ts';
+export type { CandleDeltaWrite, ChartCoinWrite, ChartWrite, LaunchOpenWrite } from './repo/coin-chart.ts';
+export { PgSmartWalletRepo } from './repo/smart-wallets.ts';
+export type { SmartWalletRules, SmartWalletRun } from './repo/smart-wallets.ts';
 export { PgTradeFeedRepo } from './repo/trade-feed.ts';
 export type { CoverWrite, FeedDay, OpeningWrite, TradeFeedWrite, TradeMinuteWrite, TradeStateWrite, UnmeasuredReason, WatchedCoin } from './repo/trade-feed.ts';
 export type { CandidateRow, ExistingCoinRow, MinuteRow, PickKind, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from './repo/one-coin.ts';

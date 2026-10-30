@@ -107,6 +107,10 @@ if (service in MAIN) {
        (tools/onecoin-refit.ts, Policy.oneCoin.refit), asked every ten minutes whether a week has passed;
        a proposal is applied only when it beats the bars in force on the same replay. Free; database only. */
     { name: 'onecoin-refit', everyMs: 600_000, args: ['tools/onecoin-refit.ts', 'due'] },
+    /* The smart wallet list (tools/smart-wallets.ts, Policy.launchSignals.smart, 0154): asked every ten
+       minutes whether tonight (UTC) has been judged; one run a day of two statements over our own tables.
+       Recorded only — nothing decides on it yet. Free; database only. */
+    { name: 'smart-wallets', everyMs: 600_000, args: ['tools/smart-wallets.ts', 'due'] },
     /* Posts that never made For You, slimmed a week after we found them (tools/post-slim.ts,
        Policy.slim): a minute or so a run, one short transaction per 500 posts. Says "off" and exits
        while Policy.slim.on is false. */

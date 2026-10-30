@@ -26,6 +26,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
 import { ChartBook, type ChartTake } from './chart-book.ts';
 import { LaunchOpens, type LaunchOpenRow } from './launch-open.ts';
 
@@ -37,8 +39,9 @@ const KEEP_UNWRITTEN_FAILURES = 60;
 const LIST_EVERY_MS = 60_000;
 /** Minute rows older than this are deleted; the hourly rows stay. */
 export const MINUTE_RETENTION_MS = 7 * 86_400_000;
-/** How long a launch's first second is kept (0150). */
-const OPENS_KEEP_MS = 14 * 86_400_000;
+/** How long a launch's first-minute row is kept (0150), and a graduate's (0154): the policy's. */
+const OPENS_KEEP_MS = DEFAULT_POLICY.launchSignals.keepMs;
+const OPENS_KEEP_GRADUATES_MS = DEFAULT_POLICY.launchSignals.keepGraduatesMs;
 /** How often old minute rows are deleted, and the most deleted at once. */
 const PRUNE_EVERY_MS = 10 * 60_000;
 const PRUNE_BATCH = 20_000;
@@ -72,8 +75,8 @@ export interface ChartStorePort {
   prune(beforeMs: number, limit: number): Promise<number>;
   /** Each launch's first second (0150, launch-open.ts); absent: not recorded. */
   writeOpens?(rows: readonly LaunchOpenRow[]): Promise<void>;
-  /** Deletes the first-second rows of launches before `beforeMs`. */
-  pruneOpens?(beforeMs: number): Promise<number>;
+  /** Deletes the first-minute rows of launches before `beforeMs`, a graduate's only before `graduatesBeforeMs`. */
+  pruneOpens?(beforeMs: number, graduatesBeforeMs: number): Promise<number>;
 }
 
 export interface Charts {
@@ -137,7 +140,7 @@ export function createCharts(deps: ChartDeps): Charts {
           const priceUsd = q === null || t.priceQuote === null ? null : t.priceQuote * q;
           const usd = q === null ? null : t.quoteAmount * q;
           book.apply({ coin: t.coin, tx: t.signature, side: t.side, tokens: t.tokens, usd, priceUsd, maker: t.trader, atMs: t.atMs, pool: t.pool, poolAddress: t.poolAddress, quoteMint: t.quoteMint }, launch, now);
-          opens.trade({ coin: t.coin, side: t.side, maker: t.trader, usd, atMs: t.atMs });
+          opens.trade({ coin: t.coin, side: t.side, maker: t.trader, usd, sol: t.quoteMint === WRAPPED_SOL ? t.quoteAmount : null, tokens: t.tokens, pool: t.pool, atMs: t.atMs }, now);
         }
       },
     },
@@ -190,7 +193,7 @@ export function createCharts(deps: ChartDeps): Charts {
           if (now - prunedAt >= PRUNE_EVERY_MS) {
             prunedAt = now;
             const gone = await deps.store.prune(now - MINUTE_RETENTION_MS, PRUNE_BATCH);
-            await deps.store.pruneOpens?.(now - OPENS_KEEP_MS).catch(() => 0);
+            await deps.store.pruneOpens?.(now - OPENS_KEEP_MS, now - OPENS_KEEP_GRADUATES_MS).catch(() => 0);
             if (gone >= PRUNE_BATCH) prunedAt = now - PRUNE_EVERY_MS + FLUSH_MS * 4;
           }
           failures = 0;

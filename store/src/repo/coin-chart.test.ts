@@ -57,3 +57,21 @@ test('listed answers like the whole read, and after the first read sends only th
   assert.deepEqual(await repo.listed(T + 1.5 * DAY), whole(T + 1.5 * DAY));
   assert.ok(!(await repo.listed(T + 1.5 * DAY)).has('W2'));
 });
+
+test('★ a deploy before 0154 keeps writing the first second (0150) instead of losing every launch row', async () => {
+  const sent: string[] = [];
+  const db = {
+    query: async <R>(sql: string): Promise<R[]> => {
+      const asks0154 = sql.includes('first_buyers') || sql.includes('graduated_seen_at');
+      sent.push(asks0154 ? 'new' : 'old');
+      if (asks0154) throw Object.assign(new Error('column "first_buyers" does not exist'), { code: '42703' });
+      return [{ n: '0' }] as R[];
+    },
+  } as unknown as Db;
+  const repo = new PgChartRepo(db);
+  const row = { address: 'C', launchedAtMs: T, buyers: 2, buys: 3, devBuyUsd: 10, devBuySol: 0.1, pool: 'pump', blockShare: 0.2, firstBuyers: ['a', 'b'], devSold: false };
+  await repo.writeOpens([row]);
+  await repo.writeOpens([row]);
+  await repo.pruneOpens(T, T);
+  assert.deepEqual(sent, ['new', 'old', 'old', 'old'], "tried once, then 0150's columns until a restart");
+});
