@@ -5389,6 +5389,47 @@ export interface RunningCoinsPolicy {
  *            'outage', what 'missed-runner'; services/runner work/missed-runners.ts). No migration:
  *            the pick, its candidate and the alert are the record.
  */
+/**
+ * WHAT A LAUNCH'S FIRST MINUTE SAYS, RECORDED (policy.v214; the owner, 2026-10-30: "beat the runner").
+ * The signal research (reports/signals/stage1.md §5) found early facts that held out of sample: 15+
+ * first-second buyers, 30%+ of supply bought in the launch block, a dev buy of 10+ in the quote coin, and
+ * 1+ "smart" wallet among the first buyers; the dev selling early was a weak minus. Chainwatch records them
+ * per launch from the trade stream it already reads (launch-open.ts; 0150 and 0154), and a nightly job
+ * keeps the smart wallet list (tools/smart-wallets.ts). NOTHING HERE DECIDES A PICK: the pick reads none of
+ * it until a week of live rows has been replayed against the research.
+ *
+ *   openWindowMs     the "first second" the buyers and the dev buy are counted over (the research's own).
+ *   blockWindowMs    the launch block. The stream carries no block number, so the buys within one block's
+ *                    time of the launch, on the chain's clock, stand for it. Checked against chain reads
+ *                    before anything decides on it.
+ *   supplyTokens     every launch on the launchpad makes this many tokens; the block's share is its buys
+ *                    over this. A share over 1 means another supply, and is recorded as unknown.
+ *   firstBuyersKept  first-second buyers listed per launch, in order, for matching smart wallets: 20
+ *                    lists every buyer of 98% of launches (20+ buyers was 1.8%).
+ *   devSellWindowMs  whether the dev sold within this of the launch; the row is written when it ends.
+ *   keepMs           a launch's row is kept this long, and `keepGraduatesMs` once it was seen graduating,
+ *                    so the smart list can look back over its whole `smart.withinMs`.
+ *   smart            the nightly list: a wallet among the first buyers of `minGraduates`+ launches that
+ *                    graduated in the last `withinMs`, unless its launches name `maxAccounts`+ different
+ *                    promoting accounts (a bot or an exchange buys everything). Each night's list is kept
+ *                    `keepListsMs`, so a replay can use the list as it stood before a launch.
+ */
+export interface LaunchSignalsPolicy {
+  readonly openWindowMs: number;
+  readonly blockWindowMs: number;
+  readonly supplyTokens: number;
+  readonly firstBuyersKept: number;
+  readonly devSellWindowMs: number;
+  readonly keepMs: number;
+  readonly keepGraduatesMs: number;
+  readonly smart: {
+    readonly withinMs: number;
+    readonly minGraduates: number;
+    readonly maxAccounts: number;
+    readonly keepListsMs: number;
+  };
+}
+
 export interface RunnerLinkPolicy {
   readonly stated: {
     readonly on: boolean;
@@ -5581,6 +5622,8 @@ export interface Policy {
   readonly lateNoCoin: LateNoCoinPolicy;
   /** A running coin tied back to its post: the stated name, the running pick, the missed-runner net (policy.v155). */
   readonly runnerLink: RunnerLinkPolicy;
+  /** A launch's first-minute facts and the smart wallet list, recorded only (policy.v214; chainwatch launch-open.ts). */
+  readonly launchSignals: LaunchSignalsPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -6013,8 +6056,10 @@ const POLICY_V1: Policy = {
      v211 (2026-10-30, the owner) re-reads For You posts from the week still gaining views once a day
      (`feed.readings.gaining`), so This week and All time see a slow burn.
      v212 (2026-10-30, the owner: "charge me the extra") raises the late bands that ran dry on 29 Oct
-     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut. */
-  version: 'policy.v212',
+     (`late_480` $0.17 → $0.50, `late_120` $0.45 → $0.70): about +$0.58 a day, nothing else cut.
+     v214 (2026-10-30, the owner: "beat the runner") records each launch's first-minute facts and keeps a
+     nightly smart wallet list (`launchSignals`); nothing reads them to decide yet. */
+  version: 'policy.v214',
 
   admit: {
     maxAgeMin: 240,
@@ -8752,6 +8797,20 @@ const POLICY_V1: Policy = {
        the $15K cap bar 9, seven of them $3-6K coins churned past $20K in an hour by bots that never
        reached $17K. A minute: the market reader lands a reading about every five. */
     handover: { on: true, everyMs: 60_000, push: true },
+  },
+
+  /* policy.v214, recorded only: the research's own cuts (reports/signals/stage1.md §5). On 29–30 Oct the
+     stream saw about 46,000 launches a day with 2.6 first-second buyers on average, so the listed buyers
+     add about 120 bytes to an average row. */
+  launchSignals: {
+    openWindowMs: 1_000,
+    blockWindowMs: 400,
+    supplyTokens: 1_000_000_000,
+    firstBuyersKept: 20,
+    devSellWindowMs: 60_000,
+    keepMs: 1_209_600_000,
+    keepGraduatesMs: 2_592_000_000,
+    smart: { withinMs: 2_592_000_000, minGraduates: 2, maxAccounts: 5, keepListsMs: 2_592_000_000 },
   },
 
   scorers: {
