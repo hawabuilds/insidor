@@ -10,7 +10,7 @@ export type { DiscussionPost, Evidence, InWindow, NarrativeStage, NarrativesList
 export type { OlderCoin, PostSortBy, PostSortWindow, PostSpeeds, RisingFeed, RisingFeedId, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';
 export type { LaunchPreview, LaunchRules, NarrativeListSort } from './client.ts';
 export type { AboutLink, AboutLinkKind, AboutPost, CoinAbout } from './about.ts';
-export type { CoinOdds, OddsBadge, OddsLook, OddsMoment, OddsShares, OddsTone } from './odds.ts';
+export type { CoinOdds, MomentOdds, OddsLook, OddsMoment, OddsQualifier, OddsShares, OddsSignal, OddsTone } from './odds.ts';
 export type { PostSheetData, SheetCoin, SheetMedia, ViewReading } from './post-sheet.ts';
 export type { StoryMember, StorySheet } from './story-sheet.ts';
 export type { BuildResult, Holding as TradeHolding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
