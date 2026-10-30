@@ -1225,13 +1225,12 @@ export async function buildRising(
        the coin's vouch, a running coin — puts the pointer on For You. */
     const coinListHeld = row.pointer_only === true || (!shares.has(row.item_id) && coinListHolds(row, seen, policy));
     const byViews = !coinListHeld && !underBar && (clearsReachBar('fyp', barViews, postedAt, fypBar, scale) || coinVouchesFor(vouch.get(row.item_id), policy));
-    /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin on the card or in the owner's word. */
+    /* ★ THE LATE ROUTE: the judge's own yes, the views bar, and no coin picked on the card (the owner naming one never blocks it). */
     const byLate = lateLets({
       itemId: row.item_id,
       judgedYes: passing.has(row.item_id) && !netOnly.has(row.item_id) && !viralOnly.has(row.item_id),
       byViews,
       picked: pick?.outcome === 'picked',
-      ownerCoin: calls.get(row.item_id)?.own !== null && calls.get(row.item_id)?.own !== undefined,
     }, late);
     /* ★ A KEY ACCOUNT'S SHARE (Policy.judge.resurface.keyAccounts, the owner 2026-10-26, Dandy): the
        judge's own yes with the share in view stands in for the views — a repost by @solana of a post
