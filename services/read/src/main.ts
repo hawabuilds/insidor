@@ -38,6 +38,7 @@ import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
+import { createLaunchOdds } from './launch-odds.ts';
 import { createMarketWarm } from './market-warm.ts';
 import { heldTradesFrom } from './own-market.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
@@ -325,7 +326,7 @@ async function main(): Promise<void> {
     now: Date.now,
     solCandles: async (untilMs, minutes) => (await marketData.history(SOL, untilMs, 1, minutes)).candles,
   });
-  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins() };
+  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */
