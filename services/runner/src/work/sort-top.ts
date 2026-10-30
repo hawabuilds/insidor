@@ -107,6 +107,27 @@ export function sortTopIds(members: readonly SortMember[], readings: ReadonlyMap
   return top;
 }
 
+/**
+ * The text-source members of the scroll's week still gaining when last read: the last two readings grew
+ * at least `gaining.minGainPerHour` of the earlier count per hour, fastest first, `gaining.maxSet` at most.
+ */
+export function gainingIds(members: readonly SortMember[], readings: ReadonlyMap<string, readonly SortReading[]>, nowMs: number, p: Policy): ReadonlySet<string> {
+  const g = p.feed.readings.gaining;
+  if (!g.on) return new Set();
+  const ranked = members.flatMap((m) => {
+    if (m.source === SHORT_VIDEO_SOURCE) return [];
+    const at = m.postedAt ?? m.firstSeenAt;
+    if (at === null || nowMs - at > p.rising.scrollKeepMs) return [];
+    const r = (readings.get(m.itemId) ?? []).filter((x): x is SortReading & { value: number } => x.value !== null).sort((a, b) => a.atMs - b.atMs);
+    const last = r[r.length - 1];
+    const before = r[r.length - 2];
+    if (last === undefined || before === undefined || before.value <= 0 || last.atMs <= before.atMs) return [];
+    const perHour = (last.value - before.value) / before.value / ((last.atMs - before.atMs) / 3_600_000);
+    return perHour >= g.minGainPerHour ? [{ id: m.itemId, perHour }] : [];
+  });
+  return new Set(ranked.sort((a, b) => b.perHour - a.perHour).slice(0, g.maxSet).map((x) => x.id));
+}
+
 export interface SortTopDeps {
   readonly members: () => Promise<readonly SortMember[]>;
   readonly series: (itemIds: readonly ItemId[], sinceMs: Millis) => Promise<ReadonlyMap<ItemId, readonly Observation[]>>;
@@ -115,11 +136,15 @@ export interface SortTopDeps {
   readonly now: () => Millis;
 }
 
-/** The set, recomputed at most every `recomputeMs`; the last good one is kept when a recompute fails. */
-export function sortTop(deps: SortTopDeps): () => Promise<ReadonlySet<string>> {
-  let kept: { readonly at: number; readonly ids: ReadonlySet<string> } | null = null;
+/**
+ * The set, recomputed at most every `recomputeMs`; the last good one is kept when a recompute fails.
+ * `.gaining()` is the still-gaining set from the same recompute (`gainingIds`): one week of readings
+ * read once for both.
+ */
+export function sortTop(deps: SortTopDeps): (() => Promise<ReadonlySet<string>>) & { readonly gaining: () => ReadonlySet<string> } {
+  let kept: { readonly at: number; readonly ids: ReadonlySet<string>; readonly gaining: ReadonlySet<string> } | null = null;
   let warned = false;
-  return async () => {
+  const get = async (): Promise<ReadonlySet<string>> => {
     const p = deps.policy;
     const now = deps.now();
     if (kept !== null && now - kept.at < p.feed.readings.sortTop.recomputeMs) return kept.ids;
@@ -130,13 +155,14 @@ export function sortTop(deps: SortTopDeps): () => Promise<ReadonlySet<string>> {
       const back = f.mostViewedSpansMs.week + f.mostViewedSpansMs.week / f.minReadShare;
       const series = await deps.series(members.map((m) => m.itemId as ItemId), (now - back) as Millis);
       const readings = new Map([...series].map(([id, obs]) => [id as string, obs.filter((o) => o.kind === 'reach').map(sortReadingOf)] as const));
-      kept = { at: now, ids: sortTopIds(members, readings, now, p) };
+      kept = { at: now, ids: sortTopIds(members, readings, now, p), gaining: gainingIds(members, readings, now, p) };
       warned = false;
     } catch (e) {
       if (!warned) deps.log.warn("the sorts' top posts could not be ranked; kept the last set", { err: errorText(e) });
       warned = true;
-      kept = { at: now, ids: kept?.ids ?? new Set() };
+      kept = { at: now, ids: kept?.ids ?? new Set(), gaining: kept?.gaining ?? new Set() };
     }
     return kept.ids;
   };
+  return Object.assign(get, { gaining: (): ReadonlySet<string> => kept?.gaining ?? new Set<string>() });
 }

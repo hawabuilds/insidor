@@ -16,7 +16,7 @@ import type { ReadingCandidate } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
 import { memoryLaneLedger, type LaneLedger } from './lane-ledger.ts';
-import { cadenceDue, dueReadings, openDue, readingsMemory, readingsPass, stepFor, type ReadingsDeps } from './readings.ts';
+import { cadenceDue, dueReadings, gainingDue, openDue, readingsMemory, readingsPass, stepFor, type ReadingsDeps } from './readings.ts';
 
 const NOW = 1_800_000_000_000;
 const S = 1_000;
@@ -292,4 +292,22 @@ test('★ what an answered read said about each post is handed on (gone-posts.ts
   const after = { returned: seen.returned.length, leftOut: seen.leftOut.length };
   await readingsPass({ ...failing.deps, gone, platforms: { has: (s) => String(s) === 'x', get: () => broken } as ReadingsDeps['platforms'], readings: { ...failing.deps.readings, candidates: async () => [post('1', { lastReadAt: NOW - 2 * MIN }), post('gone')] } });
   assert.deepEqual({ returned: seen.returned.length, leftOut: seen.leftOut.length }, after);
+});
+
+test('★ a post still gaining is read again once a day, after everything else owed, a few a pass; never a short video', () => {
+  const DAY = 86_400_000;
+  const g = (id: string, lastAgo: number, source = 'x') => post(id, { lastReadAt: NOW - lastAgo, postedAt: NOW - 3 * DAY, onForYou: false, source });
+  const stale = g('stale', DAY + MIN);
+  const fresh = g('fresh', 3 * 3_600_000);
+  const video = g('video', 2 * DAY, 'tiktok');
+  const set = new Set([stale.itemId, fresh.itemId, video.itemId]);
+  assert.equal(gainingDue(stale, NOW, set, ON), true);
+  assert.equal(gainingDue(fresh, NOW, set, ON), false, 'read within the day');
+  assert.equal(gainingDue(video, NOW, set, ON), false, 'short videos are paid credits');
+  assert.equal(gainingDue(g('other', 2 * DAY), NOW, set, ON), false, 'not still gaining');
+  const many = Array.from({ length: 30 }, (_, i) => g(`m${i}`, 2 * DAY));
+  const out = dueReadings(many, NOW, ON, new Set(), new Set(many.map((c) => c.itemId)));
+  assert.equal(out.gaining, ON.feed.readings.gaining.maxPerPass);
+  const off = { ...ON, feed: { ...ON.feed, readings: { ...ON.feed.readings, gaining: { ...ON.feed.readings.gaining, on: false } } } };
+  assert.equal(dueReadings(many, NOW, off, new Set(), new Set(many.map((c) => c.itemId))).gaining, 0);
 });

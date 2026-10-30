@@ -1462,6 +1462,7 @@ export async function withRuntime<T>(
                 log: log.child({ step: 'readings' }),
                 now: () => Date.now() as Millis,
                 sortTop: sortTopPosts,
+                gaining: sortTopPosts.gaining,
                 gone: { repo: new PgGonePostRepo(db), log: log.child({ step: 'gone-posts' }) },
               },
               readingNotes,
