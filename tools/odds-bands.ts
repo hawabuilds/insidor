@@ -252,7 +252,7 @@ function tone(g: Rates, all: Rates): Tone {
 
 /* ── main ──────────────────────────────────────────────────────────────── */
 
-const list = JSON.parse(readFileSync(join(DIR, 'launches.json'), 'utf8')) as { population: { g: number; o: number } };
+const list = JSON.parse(readFileSync(join(DIR, 'launches.json'), 'utf8')) as { from: string; to: string; population: { g: number; o: number } };
 const recs = readFileSync(join(DIR, 'launches.jsonl'), 'utf8').split('\n').filter((x) => x !== '').map((x) => JSON.parse(x) as Rec);
 const sampled = { g: 0, o: 0 };
 for (const r of recs) sampled[r.s] += 1;
@@ -298,8 +298,10 @@ try {
   const times = launches.map((l) => l.launchMs).sort((a, b) => a - b);
   const splitArg = arg('--split');
   const split = splitArg !== null ? Date.parse(splitArg) : (times[Math.floor(times.length * 0.67)] ?? 0);
-  const from = times[0] ?? 0;
-  const to = times[times.length - 1] ?? 0;
+  /* The listed window, not the launches' own times: a coin whose first transaction predates its listing
+     would stretch "the last 30 days" to whatever its mint said. */
+  const from = Date.parse(list.from);
+  const to = Date.parse(list.to);
   console.log(`Built on launches before ${new Date(split).toISOString()}, tested on those after.`);
 
   const out: { bands: Record<string, unknown>[]; badges: Record<string, unknown>[] } = { bands: [], badges: [] };
