@@ -14,7 +14,7 @@
  * 'loading' is a placeholder the size of the number, in its place: never "$0", never empty.
  */
 
-import { Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 
 import type { CoinMarket } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -39,7 +39,7 @@ const CHART_HEIGHT = 200;
 /** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
 export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;
 
-export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity, summary = null }: {
+export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
   view: ChartView;
@@ -55,8 +55,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   cap: Measured | 'loading';
   /** Null where the page does not show liquidity; 'loading' while it is being read. */
   liquidity: Measured | 'loading' | null;
-  /** A one-line summary drawn right under the price (the launch history's, LaunchOdds.tsx); null: none. */
-  summary?: ReactNode;
 }) {
   const [style, setStyle] = useState<ChartStyle>(readChartStyle);
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
@@ -131,8 +129,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
           {liquidity !== null ? <span className={styles['liq']}>Liq {liquidity === 'loading' ? <span className={styles['liqWait']} aria-label="reading" /> : <Value r={formatUsd(liquidity)} />}</span> : null}
         </div>
       </div>
-
-      {summary}
 
       {/* While the finger is on a candle: its open, high, low and close, in market cap. */}
       <div className={styles['ohlc']} aria-live="polite">
