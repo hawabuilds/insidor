@@ -11,7 +11,7 @@ import type { ItemId, Millis, Observation } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 
 import type { Logger } from '../log.ts';
-import { sortReadingOf, sortTop, sortTopIds, type SortMember } from './sort-top.ts';
+import { gainingIds, sortReadingOf, sortTop, sortTopIds, type SortMember } from './sort-top.ts';
 
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
@@ -111,4 +111,19 @@ test('ranked once a recompute and kept through a failed one', async () => {
   fail = true;
   assert.deepEqual([...(await get())], ['x:a'], 'a failed recompute keeps the last set');
   assert.equal(asks, 2);
+});
+
+test('★ still gaining: the scroll week\'s text posts whose last two readings grew at least the bar an hour, fastest first', () => {
+  const NOW = 1_800_000_000_000;
+  const H = 3_600_000;
+  const m = (id: string, source = 'x', ageH = 48): SortMember => ({ itemId: id, source, postedAt: NOW - ageH * H, firstSeenAt: NOW - ageH * H, views: 1, readAtMs: NOW });
+  const readings = new Map([
+    ['grow', [{ atMs: NOW - 30 * H, value: 100_000 }, { atMs: NOW - 26 * H, value: 110_000 }]], // 2.5% an hour
+    ['slow', [{ atMs: NOW - 30 * H, value: 100_000 }, { atMs: NOW - 26 * H, value: 100_400 }]], // 0.1% an hour
+    ['vid', [{ atMs: NOW - 30 * H, value: 100_000 }, { atMs: NOW - 26 * H, value: 200_000 }]],
+    ['old', [{ atMs: NOW - 30 * H, value: 100_000 }, { atMs: NOW - 26 * H, value: 200_000 }]],
+    ['one', [{ atMs: NOW - 30 * H, value: 100_000 }]],
+  ]);
+  const ids = gainingIds([m('grow'), m('slow'), m('vid', 'tiktok'), m('old', 'x', 24 * 9), m('one')], readings, NOW, DEFAULT_POLICY);
+  assert.deepEqual([...ids], ['grow']);
 });

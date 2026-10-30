@@ -2139,6 +2139,15 @@ export interface FeedPolicy {
       /** Most viewed's lists' short-video top, under Trending's `shortVideoTopN`: see the cap below. */
       readonly shortVideoViewedTopN: number;
     };
+    /**
+     * ★ THE POSTS STILL GAINING (policy.v211; the owner, 2026-10-30, "do the targeted re-reads"). A post
+     * stops being read about a day after it leaves the live frame, so one that kept spreading on day two
+     * or three never showed it, and could not climb This week or All time. A text-source For You member
+     * from the scroll's week whose last two readings grew at least `minGainPerHour` (a share of the
+     * earlier count, per hour between them) is read again once every `everyMs`, the `maxSet` fastest at
+     * most, `maxPerPass` a pass — inside the readings lane's own day, so no new money.
+     */
+    readonly gaining: { readonly on: boolean; readonly minGainPerHour: number; readonly everyMs: number; readonly maxSet: number; readonly maxPerPass: number };
   };
   /**
    * ★ THE NARRATIVE-NAME SEARCH (the owner, 2026-10-18): every `everyMs`, each open narrative on the
@@ -6000,8 +6009,10 @@ const POLICY_V1: Policy = {
      v209 (2026-10-29, the owner) judges a charted launchpad coin on our own candles' close in place of a
      stale market reading (`oneCoin.candles`).
      v210 (2026-10-30, the owner: cut hosting egress) sends public pictures to the open model as links
-     (`judge.linkPictures`), copy-tested equal to sending the bytes. */
-  version: 'policy.v210',
+     (`judge.linkPictures`), copy-tested equal to sending the bytes.
+     v211 (2026-10-30, the owner) re-reads For You posts from the week still gaining views once a day
+     (`feed.readings.gaining`), so This week and All time see a slow burn. */
+  version: 'policy.v211',
 
   admit: {
     maxAgeMin: 240,
@@ -7038,6 +7049,8 @@ const POLICY_V1: Policy = {
          $0.63), so Most viewed's two lists keep their top 7 short videos fresh and Trending its 10: about
          +$0.33 a day (8 would be +$0.49). */
       sortTop: { on: true, topN: 20, everyMs: 1_500_000, recomputeMs: 300_000, maxPerPass: 20, shortVideoTopN: 10, shortVideoMaxPerPass: 10, shortVideoViewedTopN: 7 },
+      /* 0.5% an hour is about 12% a day still to come; 300 posts a day at $0.00015 is ~$0.05 a day, in the lane's $3.75. */
+      gaining: { on: true, minGainPerHour: 0.005, everyMs: 86_400_000, maxSet: 300, maxPerPass: 10 },
     },
     /* The owner, 2026-10-18: "build the narrative-name search ... its own daily $ cap at your top
        estimate: $0.35". 52 of the 95-99 shown narratives had a safe name on 2026-10-18; one ask an hour

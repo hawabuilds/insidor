@@ -58,6 +58,8 @@ export interface ReadingsDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /** The For You posts of the week still gaining when last read (sort-top.ts `gainingIds`, Policy.feed.readings.gaining); absent, none. */
+  readonly gaining?: () => ReadonlySet<string>;
   /** The sorts' top text-source posts (sort-top.ts); absent, none are read for the sorts. */
   readonly sortTop?: () => Promise<ReadonlySet<string>>;
   /** Where what each answered read said about a post's presence is kept (gone-posts.ts, 0131); absent, nothing is. */
@@ -111,8 +113,14 @@ export function sortDue(c: ReadingCandidate, now: number, top: ReadonlySet<strin
   return c.lastReadAt === null || now - c.lastReadAt >= p.feed.readings.sortTop.everyMs - p.feed.readings.dueSlackMs;
 }
 
-/** The posts to read this pass, in the order they are owed: opened sheets first, then For You's cadence and the sorts' top posts, stalest first. */
-export function dueReadings(candidates: readonly ReadingCandidate[], now: number, p: Policy, top: ReadonlySet<string> = new Set()): { readonly posts: readonly ReadingCandidate[]; readonly opened: number; readonly sorts: number } {
+/** A post still gaining when last read (Policy.feed.readings.gaining) that has gone `gaining.everyMs` without a reading. */
+export function gainingDue(c: ReadingCandidate, now: number, gaining: ReadonlySet<string>, p: Policy): boolean {
+  if (!p.feed.readings.gaining.on || !gaining.has(c.itemId) || c.source === SHORT_VIDEO_SOURCE) return false;
+  return c.lastReadAt === null || now - c.lastReadAt >= p.feed.readings.gaining.everyMs - p.feed.readings.dueSlackMs;
+}
+
+/** The posts to read this pass, in the order they are owed: opened sheets first, then For You's cadence, the sorts' top posts and the posts still gaining, stalest first. */
+export function dueReadings(candidates: readonly ReadingCandidate[], now: number, p: Policy, top: ReadonlySet<string> = new Set(), gaining: ReadonlySet<string> = new Set()): { readonly posts: readonly ReadingCandidate[]; readonly opened: number; readonly sorts: number; readonly gaining: number } {
   const r = p.feed.readings;
   const opened = candidates
     .filter((c) => openDue(c, p))
@@ -128,10 +136,13 @@ export function dueReadings(candidates: readonly ReadingCandidate[], now: number
     ...owedSort.filter((c) => c.source !== SHORT_VIDEO_SOURCE).slice(0, r.sortTop.maxPerPass),
     ...owedSort.filter((c) => c.source === SHORT_VIDEO_SOURCE).slice(0, r.sortTop.shortVideoMaxPerPass),
   ];
+  for (const c of sorts) taken.add(c.itemId);
+  /* The posts still gaining: once a day each, `gaining.maxPerPass` a pass, after everything owed above. */
+  const stillGaining = candidates.filter((c) => !taken.has(c.itemId) && gainingDue(c, now, gaining, p)).sort(stalest).slice(0, r.gaining.maxPerPass);
   const owed = [...cadence, ...sorts].sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity));
-  const posts = [...opened, ...owed].slice(0, r.maxPostsPerPass);
+  const posts = [...opened, ...owed, ...stillGaining].slice(0, r.maxPostsPerPass);
   const kept = new Set(posts.map((c) => c.itemId));
-  return { posts, opened: Math.min(opened.length, posts.length), sorts: sorts.filter((c) => kept.has(c.itemId)).length };
+  return { posts, opened: Math.min(opened.length, posts.length), sorts: sorts.filter((c) => kept.has(c.itemId)).length, gaining: stillGaining.filter((c) => kept.has(c.itemId)).length };
 }
 
 /** What the loop remembers between passes: which held reasons it has already said, so a quiet day is not a log line a pass. */
@@ -165,14 +176,15 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
 
   let top: ReadonlySet<string> = new Set();
   if (r.sortTop.on && deps.sortTop !== undefined) top = await deps.sortTop().catch(() => new Set<string>());
+  const gaining: ReadonlySet<string> = r.gaining.on && deps.gaining !== undefined ? deps.gaining() : new Set();
   let candidates: readonly ReadingCandidate[];
   try {
-    candidates = await deps.readings.candidates(new Date(started - r.openAskMaxAgeMs), false, [...top]);
+    candidates = await deps.readings.candidates(new Date(started - r.openAskMaxAgeMs), false, [...top, ...gaining]);
   } catch (e) {
     /* Before 0090 the opens cannot be read; For You's cadence does not need them. */
     deps.log.warn('opened sheets could not be read; For You alone this pass', { err: errorText(e) });
     try {
-      candidates = await deps.readings.candidates(new Date(started), true, [...top]);
+      candidates = await deps.readings.candidates(new Date(started), true, [...top, ...gaining]);
     } catch (e2) {
       deps.log.warn('posts to read could not be listed; tried again next pass', { err: errorText(e2) });
       return NONE;
@@ -180,7 +192,7 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
   }
   await deps.readings.expire(new Date(started - r.openAskMaxAgeMs)).catch(() => 0);
 
-  const { posts, opened, sorts } = dueReadings(candidates, started, p, top);
+  const { posts, opened, sorts, gaining: regained } = dueReadings(candidates, started, p, top, gaining);
   if (posts.length === 0) return NONE;
 
   let asked = 0;
@@ -263,6 +275,6 @@ export async function readingsPass(deps: ReadingsDeps, memory: ReadingsMemory = 
   for (const why of [...memory.said]) if (!held.includes(why)) memory.said.delete(why);
 
   if (deps.mode === 'dry') deps.log.info('DRY RUN — readings priced, not taken', { due: posts.length, opened, sorts, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
-  else if (asked > 0) deps.log.info('readings taken', { due: posts.length, opened, sorts, asked, answered, usd: Number(spentUsd.toFixed(6)), ms: deps.now() - started });
+  else if (asked > 0) deps.log.info('readings taken', { due: posts.length, opened, sorts, gaining: regained, asked, answered, usd: Number(spentUsd.toFixed(6)), ms: deps.now() - started });
   return { due: posts.length, opened, sorts, asked, answered, spentUsd, wouldSpendUsd, held };
 }
