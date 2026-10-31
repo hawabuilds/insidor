@@ -35,6 +35,8 @@ import { DEFAULT_POLICY, type LaunchSignalsPolicy } from '@insidor/contracts/pol
 export const OPEN_WINDOW_MS = DEFAULT_POLICY.launchSignals.openWindowMs;
 /** Wall time past the dev's minute after which a launch with no later trade is closed anyway. */
 const CLOSE_GRACE_MS = 10_000;
+/** How long past the first second, with no later trade, before its row is handed over by the wall clock. */
+const EARLY_GRACE_MS = 1_000;
 /** A closed launch is forgotten this long after it closed, so a late duplicate of its launch is not a second row. */
 const FORGET_AFTER_CLOSE_MS = 60_000;
 
@@ -84,6 +86,8 @@ interface Open {
   blockTokens: number;
   sawFirst: boolean;
   closedAtMs: number | null;
+  /** The first-second row was handed over (`#early`); the minute's close hands it over again with `devSold`. */
+  earlySent: boolean;
 }
 
 export class LaunchOpens {
@@ -98,7 +102,7 @@ export class LaunchOpens {
   /** The relay showed this coin launching at `atMs` (its first trade's time, or the launch's when it had none). */
   launched(coin: string, atMs: number, nowMs: number): void {
     if (this.#open.has(coin)) return;
-    this.#open.set(coin, { atMs, seenAtMs: nowMs, buyers: new Set(), firstBuyers: [], buys: 0, devBuyUsd: null, devBuySol: null, dev: null, devSold: false, pool: null, blockTokens: 0, sawFirst: false, closedAtMs: null });
+    this.#open.set(coin, { atMs, seenAtMs: nowMs, buyers: new Set(), firstBuyers: [], buys: 0, devBuyUsd: null, devBuySol: null, dev: null, devSold: false, pool: null, blockTokens: 0, sawFirst: false, closedAtMs: null, earlySent: false });
   }
 
   /** One trade leg of any coin; only a coin whose launch was seen and whose minute is open counts it. */
@@ -111,6 +115,7 @@ export class LaunchOpens {
       return;
     }
     if (since > this.#p.openWindowMs) {
+      if (!o.earlySent) this.#early(t.coin, o);
       /* Past the first second only the dev's own sell is still news. */
       if (t.side === 'sell' && o.dev !== null && t.maker === o.dev) o.devSold = true;
       return;
@@ -139,12 +144,42 @@ export class LaunchOpens {
   /** The launches whose minute is over: closed by a later trade, or by the minute and a grace of quiet. */
   take(nowMs: number): readonly LaunchOpenRow[] {
     for (const [coin, o] of this.#open) {
+      /* The first second is over by the wall clock with no later trade to close it: its row now. */
+      if (!o.earlySent && o.closedAtMs === null && nowMs - o.seenAtMs >= this.#p.openWindowMs + EARLY_GRACE_MS) this.#early(coin, o);
       if (o.closedAtMs === null && nowMs - o.seenAtMs >= this.#p.devSellWindowMs + CLOSE_GRACE_MS) this.#close(coin, o, nowMs);
       if (o.closedAtMs !== null && nowMs - o.closedAtMs >= FORGET_AFTER_CLOSE_MS) this.#open.delete(coin);
     }
     const out = this.#ready;
     this.#ready = [];
     return out;
+  }
+
+  /**
+   * ★ THE FIRST SECOND, HANDED OVER AS SOON AS IT IS OVER (the owner, 2026-10-31). Until then the row
+   * waited for the dev's minute, so a launch's opening was readable a minute late; replayed, coins with
+   * two or more proven runner wallets among the first buyers ran 5x 40% of the time from the price at
+   * +1 s and 8% from the price at +60 s. The same row is handed over again at the minute's close with
+   * `devSold`, and the store fills that in (coin-chart.ts `writeOpens`). `devSold` is null here: not known yet.
+   */
+  #early(coin: string, o: Open): void {
+    o.earlySent = true;
+    this.#ready.push({ ...this.#row(coin, o), devSold: null });
+  }
+
+  #row(coin: string, o: Open): LaunchOpenRow {
+    const share = o.sawFirst ? o.blockTokens / this.#p.supplyTokens : null;
+    return {
+      address: coin,
+      launchedAtMs: o.atMs,
+      buyers: o.buyers.size,
+      buys: o.buys,
+      devBuyUsd: o.devBuyUsd,
+      devBuySol: o.devBuySol,
+      pool: o.pool,
+      blockShare: share === null || share > 1 ? null : share,
+      firstBuyers: [...o.firstBuyers],
+      devSold: o.dev === null ? null : o.devSold,
+    };
   }
 
   #close(coin: string, o: Open, nowMs: number): void {

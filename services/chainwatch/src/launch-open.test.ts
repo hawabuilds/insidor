@@ -11,7 +11,10 @@ const MINUTE = P.devSellWindowMs;
 const buy = (maker: string, atMs: number, usd: number | null = 10, tokens = 1_000_000, sol: number | null = 0.05) => ({ coin: 'C', side: 'buy' as const, maker, usd, sol, tokens, pool: 'pump', atMs });
 const sell = (maker: string, atMs: number) => ({ coin: 'C', side: 'sell' as const, maker, usd: 5, sol: 0.02, tokens: 500_000, pool: 'pump', atMs });
 
-test('★ a launch\'s first second: buys, distinct buyers and the creator\'s opening buy, one row when its minute closes', () => {
+/** Each launch's last row in a take: the minute's close, after the first second's early row. */
+const finals = <R extends { readonly address: string }>(rows: readonly R[]): R[] => [...new Map(rows.map((r) => [r.address, r] as const)).values()];
+
+test('★ a launch\'s first second: buys, distinct buyers and the creator\'s opening buy, handed over when the second is over, and again with dev sold when its minute closes', () => {
   const o = new LaunchOpens();
   o.launched('C', T0, T0);
   o.trade(buy('dev', T0, 400, 100_000_000, 3), T0);
@@ -20,7 +23,11 @@ test('★ a launch\'s first second: buys, distinct buyers and the creator\'s ope
   o.trade(buy('w2', T0 + OPEN_WINDOW_MS, 10, 5_000_000), T0);
   o.trade(sell('w3', T0 + 300), T0);
   o.trade(buy('late', T0 + OPEN_WINDOW_MS + 1), T0 + 2_000);
-  assert.deepEqual(o.take(T0 + 2_000), [], 'the dev\'s minute is still open');
+  const early = o.take(T0 + 2_000);
+  assert.equal(early.length, 1, 'the first second is over: its row now, not a minute later (31 Oct)');
+  assert.equal(early[0]?.buyers, 3);
+  assert.deepEqual(early[0]?.firstBuyers, ['dev', 'w1', 'w2']);
+  assert.equal(early[0]?.devSold, null, 'the dev\'s minute is still open: not known yet');
   o.trade(buy('after', T0 + MINUTE + 1), T0 + MINUTE + 1_000);
   assert.deepEqual(o.take(T0 + MINUTE + 1_000), [
     {
@@ -37,7 +44,7 @@ test('★ a launch\'s first second: buys, distinct buyers and the creator\'s ope
       devSold: false,
     },
   ]);
-  assert.deepEqual(o.take(T0 + MINUTE + 3_000), [], 'one row a launch');
+  assert.deepEqual(o.take(T0 + MINUTE + 3_000), [], 'two rows a launch, never more');
 });
 
 test('★ the dev selling inside the minute is recorded; a sell after it, or by anyone else, is not', () => {
@@ -46,21 +53,21 @@ test('★ the dev selling inside the minute is recorded; a sell after it, or by 
   sold.trade(buy('dev', T0), T0);
   sold.trade(sell('other', T0 + 5_000), T0 + 5_000);
   sold.trade(sell('dev', T0 + 42_000), T0 + 42_000);
-  assert.equal(sold.take(T0 + MINUTE + 20_000)[0]?.devSold, true);
+  assert.equal(finals(sold.take(T0 + MINUTE + 20_000))[0]?.devSold, true);
 
   const held = new LaunchOpens();
   held.launched('C', T0, T0);
   held.trade(buy('dev', T0), T0);
   held.trade(sell('other', T0 + 5_000), T0 + 5_000);
   held.trade(sell('dev', T0 + MINUTE + 1), T0 + MINUTE + 1);
-  assert.equal(held.take(T0 + MINUTE + 1)[0]?.devSold, false);
+  assert.equal(finals([...held.take(T0 + 5_000), ...held.take(T0 + MINUTE + 1)])[0]?.devSold, false);
 });
 
 test('only the first `firstBuyersKept` buyers are listed, every one is counted', () => {
   const o = new LaunchOpens();
   o.launched('C', T0, T0);
   for (let i = 0; i < P.firstBuyersKept + 5; i += 1) o.trade(buy(`w${i}`, T0 + i), T0);
-  const [row] = o.take(T0 + MINUTE + 20_000);
+  const [row] = finals(o.take(T0 + MINUTE + 20_000));
   assert.equal(row?.buyers, P.firstBuyersKept + 5);
   assert.equal(row?.firstBuyers.length, P.firstBuyersKept);
   assert.equal(row?.firstBuyers[0], 'w0');
@@ -72,7 +79,7 @@ test('an absence is not a zero: no opening buy is no dev to watch, and no trade 
   o.launched('D', T0, T0);
   o.trade({ ...sell('someone', T0), coin: 'D' }, T0);
   o.trade({ coin: 'OTHER', side: 'buy', maker: 'x', usd: 1, sol: 1, tokens: 1, pool: 'pump', atMs: T0 }, T0);
-  const rows = o.take(T0 + MINUTE + 10_000);
+  const rows = finals(o.take(T0 + MINUTE + 10_000));
   assert.deepEqual(rows.find((r) => r.address === 'C'), { address: 'C', launchedAtMs: T0, buyers: 0, buys: 0, devBuyUsd: null, devBuySol: null, pool: null, blockShare: null, firstBuyers: [], devSold: null });
   const d = rows.find((r) => r.address === 'D');
   assert.equal(d?.devSold, null);

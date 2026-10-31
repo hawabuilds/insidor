@@ -214,7 +214,8 @@ export class PgChartRepo {
            select a, l, b, n, u, s, p, k, string_to_array(f, ' '), d
              from unnest($1::text[], $2::timestamptz[], $3::int[], $4::int[], $5::float8[], $6::float8[], $7::text[], $8::real[], $9::text[], $10::boolean[])
                as x(a, l, b, n, u, s, p, k, f, d)
-           on conflict (address) do nothing`,
+           on conflict (address) do update set dev_sold = coalesce(excluded.dev_sold, internal.launch_open.dev_sold)
+            where excluded.dev_sold is not null and internal.launch_open.dev_sold is distinct from excluded.dev_sold`,
           [...first, rows.map((r) => r.devBuySol), rows.map((r) => r.pool), rows.map((r) => r.blockShare), rows.map((r) => r.firstBuyers.join(' ')), rows.map((r) => r.devSold)],
         );
         return;
