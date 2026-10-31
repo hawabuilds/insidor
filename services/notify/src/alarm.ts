@@ -109,7 +109,7 @@ export const DB_UNREADABLE_MS = 10 * 60_000;
 const READ_TIMEOUT_MS = 30_000;
 
 /* The last four are health-alarm.ts's (the round-the-clock health check), stepped by the same rule. */
-export type AlarmId = 'fyp' | 'judge' | 'backup' | 'stream' | 'database' | 'pictures' | 'logos' | 'tape' | 'judged';
+export type AlarmId = 'fyp' | 'judge' | 'backup' | 'stream' | 'database' | 'pictures' | 'logos' | 'tape' | 'judged' | 'names' | 'matching';
 
 /** One condition as read this pass: down or not, and the evidence it was decided on. */
 export interface Reading {

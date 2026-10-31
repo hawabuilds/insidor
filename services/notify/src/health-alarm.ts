@@ -21,6 +21,10 @@
  *             the strip can be briefly empty at a quiet moment, so one pass is not enough.
  *   judged    fewer than 10 posts judged in the last 30 minutes. alarm.ts's judge alarm catches the
  *             judge being asked and refused; this one catches nothing being asked at all.
+ *   names     name guesses in the last 3 hours under half the usual (the larger of the same hours one
+ *   matching  and two days before), when the usual is at least 30; the same for coin-to-post ties.
+ *             ★ These watch OUTPUT. On 30 Oct the namer ran on every pass and named almost nothing
+ *             (empty pictures after a picture change), and every bar above stayed green for a day.
  *
  *   For You adding no post is alarm.ts's `fyp` (45 minutes, stricter than the tool's 60), so it is
  *   not repeated here. Service error counts need `railway logs` and stay in the tool.
@@ -39,16 +43,16 @@
 
 import { minutesSince, optional, ownerIds, stepAlarms, type AlarmId, type Reading, type Tracked } from './alarm.ts';
 import { queue, type Db } from './deliver.ts';
-import { JUDGED_WINDOW_MS, judgingBroken, logoFailPct, logosBroken, LOGO_WINDOW_MS, picturesBroken, tapeBroken } from './health-bars.ts';
+import { FLOW_WINDOW_HOURS, flowFallen, flowUsual, JUDGED_WINDOW_MS, judgingBroken, logoFailPct, logosBroken, LOGO_WINDOW_MS, picturesBroken, tapeBroken, type FlowStep } from './health-bars.ts';
 import type { Facts } from './text.ts';
 
 /** How often the health alarm looks. */
 export const HEALTH_LOOP_MS = 5 * 60_000;
 
-export type HealthId = Extract<AlarmId, 'pictures' | 'logos' | 'tape' | 'judged'>;
+export type HealthId = Extract<AlarmId, 'pictures' | 'logos' | 'tape' | 'judged' | 'names' | 'matching'>;
 
 /** How long a condition must have been seen broken before it is down (0: on the first pass). */
-export const CONFIRM_MS: Readonly<Record<HealthId, number>> = { pictures: HEALTH_LOOP_MS, logos: 0, tape: 30 * 60_000, judged: 0 };
+export const CONFIRM_MS: Readonly<Record<HealthId, number>> = { pictures: HEALTH_LOOP_MS, logos: 0, tape: 30 * 60_000, judged: 0, names: 0, matching: 0 };
 
 /* A fetch with no answer in this long has failed: storage that hangs is as broken as one that refuses. */
 const FETCH_TIMEOUT_MS = 10_000;
@@ -61,6 +65,8 @@ export interface HealthSeen {
   /** Coins on the strip; null when the read service did not answer. */
   readonly tapeCoins?: number | null | undefined;
   readonly judged?: number | undefined;
+  /** Each step's output in the window and the same window one and two days before. */
+  readonly flow?: ReadonlyMap<FlowStep, { readonly recent: number; readonly dayBefore: number; readonly twoDaysBefore: number }> | undefined;
 }
 
 export interface HealthMemory {
@@ -100,6 +106,10 @@ export function healthReadings(seen: HealthSeen, badSince: Map<HealthId, number>
   if (seen.tapeCoins !== undefined) out.push(reading('tape', tapeBroken(seen.tapeCoins), { coins: seen.tapeCoins }, badSince, nowMs));
   if (seen.judged !== undefined) {
     out.push(reading('judged', judgingBroken(seen.judged), { judged: seen.judged, windowMinutes: Math.round(JUDGED_WINDOW_MS / 60_000) }, badSince, nowMs));
+  }
+  for (const [step, c] of seen.flow ?? []) {
+    const usual = flowUsual(c.dayBefore, c.twoDaysBefore);
+    out.push(reading(step, flowFallen(c.recent, usual), { recent: c.recent, usual, windowHours: FLOW_WINDOW_HOURS }, badSince, nowMs));
   }
   return out;
 }
@@ -148,6 +158,9 @@ export async function checkHealth(deps: HealthDeps, mem: HealthMemory): Promise<
     deps.db.query<{ copies: unknown; failed: unknown; stored_address: string | null }>('select copies, failed, stored_address from internal.picture_health($1)', [new Date(now - LOGO_WINDOW_MS)]),
   );
   const judged = await optional('judged_since', mem, deps, () => deps.db.query<{ n: unknown }>('select internal.judged_since($1) as n', [new Date(now - JUDGED_WINDOW_MS)]));
+  const flowRows = await optional('flow_counts', mem, deps, () =>
+    deps.db.query<{ step: string; recent: unknown; day_before: unknown; two_days_before: unknown }>('select step, recent, day_before, two_days_before from internal.flow_counts($1, $2)', [new Date(now), FLOW_WINDOW_HOURS]),
+  );
   const p = pic?.[0];
   const [status, coins] = await Promise.all([p === undefined ? Promise.resolve(undefined) : pictureStatus(deps, p.stored_address), tapeCoins(deps)]);
   const seen: HealthSeen = {
@@ -155,6 +168,9 @@ export async function checkHealth(deps: HealthDeps, mem: HealthMemory): Promise<
     logos: p === undefined ? undefined : { failed: toInt(p.failed), copies: toInt(p.copies) },
     tapeCoins: coins,
     judged: judged?.[0] === undefined ? undefined : toInt(judged[0].n),
+    flow: flowRows === undefined || flowRows === null
+      ? undefined
+      : new Map(flowRows.flatMap((r) => (r.step === 'names' || r.step === 'matching' ? [[r.step, { recent: toInt(r.recent), dayBefore: toInt(r.day_before), twoDaysBefore: toInt(r.two_days_before) }] as const] : []))),
   };
 
   const { next, events } = stepAlarms(mem.tracked, healthReadings(seen, mem.badSince, now), now);

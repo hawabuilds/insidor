@@ -122,6 +122,11 @@ function fake(): { db: Db; fetch: typeof globalThis.fetch; queued: { userId: str
         if (w.before0152) throw Object.assign(new Error('function does not exist'), { code: '42883' });
         return [{ n: w.judged }] as R[];
       }
+      if (sql.includes('internal.flow_counts')) {
+        /* Before 0155 (and so before 0152): no function, skipped like the others. */
+        if (w.before0152) throw Object.assign(new Error('function does not exist'), { code: '42883' });
+        return [{ step: 'names', recent: 250, day_before: 270, two_days_before: 260 }, { step: 'matching', recent: 3000, day_before: 3100, two_days_before: 3200 }] as R[];
+      }
       if (sql.includes('people.profile')) {
         assert.deepEqual(params?.[0], ['OwnerWa11et'], 'only the owner\'s wallets are looked up');
         return [{ userId: 'owner-1' }] as R[];
@@ -189,7 +194,7 @@ test('before 0152: the database reads are skipped, logged once, and the Tape is 
     now += HEALTH_LOOP_MS;
   }
   assert.deepEqual(f.queued.map((q) => q.subject), ['tape|2026-10-29T01:00:00.000Z']);
-  assert.equal(logs.filter((m) => m.includes('not available yet')).length, 2, 'one line per missing read, not one a pass');
+  assert.equal(logs.filter((m) => m.includes('not available yet')).length, 3, 'one line per missing read (two from 0152, one from 0155), not one a pass');
   assert.ok(!f.fetched.some((u) => u.includes('/coin-logos/')), 'no stored logo known, so no picture fetch');
 });
 
@@ -200,4 +205,16 @@ test('a database that cannot be read fails the pass and changes nothing (the out
   await assert.rejects(checkHealth({ db: f.db, now: () => T0, fetch: f.fetch, pictureBase: 'p', readUrl: 'r', ownerWallets: ['OwnerWa11et'], log: () => undefined }, mem));
   assert.equal(mem.tracked.size, 0);
   assert.equal(mem.badSince.size, 0);
+});
+
+test('★ output bars: 30 Oct\'s namer (10 guesses against ~270 the day before) is down; a quiet night or a normal dip is not', async () => {
+  const { flowFallen, flowUsual } = await import('./health-bars.ts');
+  assert.equal(flowFallen(30, flowUsual(270, 250)), true);
+  assert.equal(flowFallen(200, flowUsual(270, 250)), false);
+  assert.equal(flowFallen(2, flowUsual(20, 25)), false);
+  /* A bad yesterday does not become the usual: the day before that still counts. */
+  assert.equal(flowFallen(30, flowUsual(25, 270)), true);
+  const badSince = new Map();
+  const r = healthReadings({ flow: new Map([['names', { recent: 30, dayBefore: 270, twoDaysBefore: 250 }], ['matching', { recent: 900, dayBefore: 1000, twoDaysBefore: 1100 }]]) }, badSince, 1_000);
+  assert.deepEqual(r.map((x) => [x.id, x.down]), [['names', true], ['matching', false]]);
 });

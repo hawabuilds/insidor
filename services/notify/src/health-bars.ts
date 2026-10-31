@@ -44,3 +44,24 @@ export const logosBroken = (failed: number, copies: number, minCopies = LOGO_MIN
 export const tapeBroken = (coins: number | null): boolean => coins === null || coins < TAPE_MIN_COINS;
 
 export const judgingBroken = (judged: number): boolean => judged < JUDGED_MIN;
+
+/**
+ * ★ OUTPUT, NOT ONLY RUNNING (the owner, 2026-10-31: "this cant happen again with every change we
+ * make or new upgrade"). On 30 Oct a picture change left the namer naming almost nothing; every bar
+ * above stayed green because each watches whether a step runs. These watch what two steps PRODUCE —
+ * name guesses and coin-to-post ties — over the last `FLOW_WINDOW_HOURS`, against the same hours one
+ * and two days before (0155 internal.flow_counts). The larger of the two is the usual, so one bad
+ * day does not become the new normal.
+ */
+export const FLOW_WINDOW_HOURS = 3;
+/** Under this share of the usual is fallen: 30 Oct was ~10% of the usual for names, ~40% for ties. */
+export const FLOW_FALLEN_SHARE = 0.5;
+/** A usual under this is too quiet to judge (a night hour), and says nothing either way. */
+export const FLOW_MIN_USUAL = 30;
+
+export type FlowStep = 'names' | 'matching';
+
+/** The usual for a window: the larger of the same hours one and two days before. */
+export const flowUsual = (dayBefore: number, twoDaysBefore: number): number => Math.max(dayBefore, twoDaysBefore);
+
+export const flowFallen = (recent: number, usual: number): boolean => usual >= FLOW_MIN_USUAL && recent < FLOW_FALLEN_SHARE * usual;

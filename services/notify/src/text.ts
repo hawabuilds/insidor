@@ -478,6 +478,18 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `${judged ?? 'Few'} ${judged === 1 ? 'post' : 'posts'} judged in the last ${n(f['windowMinutes']) ?? 30} minutes. New posts are not judged, so nothing new reaches For You.`,
         };
       }
+      if (f['what'] === 'names' || f['what'] === 'matching') {
+        /* health-alarm.ts's output bars: a step that still runs but has stopped producing. */
+        const names = f['what'] === 'names';
+        const recent = n(f['recent']);
+        const usual = n(f['usual']);
+        const hours = n(f['windowHours']) ?? 3;
+        if (back) return { title: names ? 'Posts are named again' : 'Coins are matched to posts again', body: long === null ? 'Back to its usual output.' : `Back to its usual output after ${long}.` };
+        return {
+          title: names ? 'Posts are not being named' : 'Coins are not being matched to posts',
+          body: `${recent ?? 'Few'} ${names ? 'name guesses' : 'coin matches'} in the last ${hours} hours, against ${usual ?? 'many more'} in the same hours the day before. ${names ? 'Coins are matched by name less, and alerts come later.' : 'Fewer coins reach posts, and alerts come later.'}`,
+        };
+      }
       if (f['what'] === 'lang') {
         /* The runner's language-drop alarm (services/runner language-alarm.ts): one source's finds in
            one language (or every language, `language` null) over the last few hours, against the same
