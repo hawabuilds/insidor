@@ -5,14 +5,19 @@
  * posts are on For You now?" of every post in the day's window and takes 90 seconds on the service,
  * nearly all of it weighing coins for hundreds of passing posts (post-match.ts). The quick frame asks
  * "what do the posts that changed since the last frame began do to the For You on screen?" — a
- * judge's new answer, a coin's new link to a post the judge passed, or the owner's call on a post —
- * and weighs only those. A post that crosses the view bar on a new reading with no new answer is the
- * full frame's: readings land every few seconds and would keep this running for little.
+ * judge's new answer, a coin's new link to a post the judge passed, the owner's call on a post, or a
+ * new reading that put a post the judge passed over For You's views bar — and weighs only those.
+ * ★ A READING COUNTS ONLY WHEN IT CROSSES THE BAR (bar-cross.ts, `quickFrame.barCross`; 2026-10-30,
+ * "beat the runner"): until then such a post waited for a full frame, 6.5 min after the reading at the
+ * median (48 h to 30 Oct). Readings land every few seconds, so a post counts once — over the bar now, not over it
+ * at the cursor — only if the judge passed it, it is inside the window and off For You, and at most
+ * `barCross.maxPosts` a frame; the gap and the settle below hold as for an answer.
  *
  * What it does, in one transaction:
  *   1. the changed posts: every post with an answer filed after the cursor's answer id, every post
- *      the judge passed that a coin linked, or the owner called, after the cursor's time, and every
- *      coin-first post (coin-first.ts) whose coin was picked since — the pick is what lets it in;
+ *      the judge passed that a coin linked, or the owner called, after the cursor's time, every
+ *      coin-first post (coin-first.ts) whose coin was picked since — the pick is what lets it in —
+ *      and every passed post a reading since put over For You's views bar (bar-cross.ts);
  *   2. those posts built exactly as the full frame builds them (rising.ts `buildRising` with `only`):
  *      the same judge, kind, signal, view and coin bars, the same six hours, the same coin evidence;
  *   3. For You is the committed list with each changed post put in, re-placed or taken off, in
@@ -52,7 +57,8 @@ import { keepFeedHistory } from './feed-history.ts';
 import { changedPosts, lockForYou, type QuickCursor } from './for-you-lock.ts';
 import { loadNameIdeas, writeNameIdeas } from './post-match.ts';
 import { onePolicy, type AnswerPolicies } from './judge-cutoff.ts';
-import { buildRising, kindDetail, loadCandidates, mergeForYou, varied, writeRising, type WireRisingPost } from './rising.ts';
+import { buildRising, forYouBarCheck, kindDetail, loadCandidates, mergeForYou, varied, writeRising, type WireRisingPost } from './rising.ts';
+import { barCrossers } from './bar-cross.ts';
 import { replaceSameNameCoins } from './same-name.ts';
 import type { WireCoinLink } from './wire.ts';
 
@@ -81,6 +87,8 @@ export interface QuickProbe extends QuickCursor {
   /** The newest pick of a coin-first post (0116); absent or null when none or not readable. */
   readonly pickAtMs?: number | null;
   readonly kinds?: KindsSince | null;
+  /** Past the cursor asked about, how many passed posts a reading put over For You's views bar (bar-cross.ts); absent or null when not asked or not readable. */
+  readonly crossers?: number | null;
 }
 
 const ms = (v: Date | string | null | undefined): number | null => (v === null || v === undefined ? null : new Date(v).getTime());
@@ -104,8 +112,8 @@ async function kindsSince(db: Db, afterAnswerId: number): Promise<KindsSince | n
   }
 }
 
-/** A few index reads: cheap enough to ask every few seconds. Times are the database's, never this host's. With a cursor, its yeses' kinds too. */
-export async function readProbe(db: Db, since: QuickCursor | null = null): Promise<QuickProbe> {
+/** A few index reads: cheap enough to ask every few seconds. Times are the database's, never this host's. With a cursor, its yeses' kinds and the posts a reading put over the bar too. */
+export async function readProbe(db: Db, since: QuickCursor | null = null, policy: Policy = DEFAULT_POLICY): Promise<QuickProbe> {
   const rows = await db.query<{ answer_id: string | null; answer_at: Date | string | null; link_at: Date | string | null; call_at: Date | string | null; now: Date | string }>(
     `select a.id::text as answer_id, a.recorded_at as answer_at,
             (select max(l.found_at)
@@ -129,7 +137,17 @@ export async function readProbe(db: Db, since: QuickCursor | null = null): Promi
     callAtMs: ms(r?.call_at),
     pickAtMs: await coinFirstPickAt(db),
     kinds: since === null || answerId <= since.answerId ? null : await kindsSince(db, since.answerId),
+    crossers: since === null ? null : await crossersSince(db, since, policy),
   };
+}
+
+/** How many passed posts a reading put over For You's bar past the cursor; null when the read fails: no frame for it, the full frame still has them. */
+async function crossersSince(db: Db, since: QuickCursor, policy: Policy): Promise<number | null> {
+  try {
+    return (await barCrossers(db, since.atMs, forYouBarCheck(policy))).length;
+  } catch {
+    return null;
+  }
 }
 
 /** When a coin-first post's coin was last picked (0113, 0116); null when none, or before 0116 (looked up, never failed into). */
@@ -151,7 +169,7 @@ export const kindsAllIn = (probe: QuickProbe): boolean => probe.kinds !== undefi
 export function quickDue(cursor: QuickCursor | null, lastQuickAtMs: number | null, probe: QuickProbe, nowMs: number, p: Policy = DEFAULT_POLICY): boolean {
   const q = p.rising.quickFrame;
   if (!q.on || cursor === null) return false;
-  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs || (probe.pickAtMs ?? 0) > cursor.atMs;
+  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs || (probe.pickAtMs ?? 0) > cursor.atMs || (probe.crossers ?? 0) > 0;
   if (!changed) return false;
   /* ★ Every yes has its kind: nothing can show between its two answers, so no wait and no gap. */
   if (q.kindsInSkipsWait && kindsAllIn(probe)) return true;
@@ -177,7 +195,7 @@ async function committedStoryCoins(db: Db): Promise<ReadonlyMap<string, WireCoin
 
 /** One quick frame, in the caller's transaction. */
 export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, policy: Policy = DEFAULT_POLICY, answers: AnswerPolicies = onePolicy(policy)): Promise<QuickResult> {
-  const ids = await changedPosts(db, cursor);
+  const ids = await changedPosts(db, cursor, forYouBarCheck(policy));
   if (ids.length === 0) return { changed: 0, added: 0, removed: 0, wrote: false };
   const changed = new Set(ids);
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);

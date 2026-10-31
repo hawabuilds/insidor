@@ -15,7 +15,8 @@
  *      two frames writing the same tick.
  *   2. A NEWER ANSWER WINS. The full frame read its posts when it began, up to two minutes before it
  *      writes. Every post that changed since it began (`changedPosts` past `frameCursor`: a new
- *      answer, a coin's new link to a passed post, the owner's call) is the quick frame's to place,
+ *      answer, a coin's new link to a passed post, the owner's call, a reading that put a passed post
+ *      over For You's views bar — bar-cross.ts) is the quick frame's to place,
  *      so the full frame keeps those posts as For You shows them now — on it or off it — instead of
  *      writing its older verdict over a card the quick frame put up a minute ago.
  *
@@ -25,6 +26,8 @@
  */
 
 import type { Db } from '@insidor/store';
+
+import { barCrossers, type BarCheck } from './bar-cross.ts';
 
 /** The advisory lock key both frames take before they read and write For You: "FYP" in ASCII. Any fixed key would do; it only has to be the same in both. */
 export const FOR_YOU_LOCK = 0x465950;
@@ -72,8 +75,13 @@ export async function pickedCoinFirst(db: Db, cursor: QuickCursor): Promise<read
   return rows.map((r) => r.item_id);
 }
 
-/** The posts that changed past the cursor: every post with an answer filed after its answer id, every post the judge passed that a coin linked, or the owner called, after its time, and every coin-first post picked since. */
-export async function changedPosts(db: Db, cursor: QuickCursor): Promise<readonly string[]> {
+/**
+ * The posts that changed past the cursor: every post with an answer filed after its answer id, every post
+ * the judge passed that a coin linked, or the owner called, after its time, every coin-first post picked
+ * since, and — given For You's bar — every passed post a reading since put over that bar (bar-cross.ts).
+ * Both frames pass the bar, so the full frame defers to the quick frame on exactly the posts it places.
+ */
+export async function changedPosts(db: Db, cursor: QuickCursor, bar: BarCheck | null = null): Promise<readonly string[]> {
   const rows = await db.query<{ item_id: string }>(
     `(select distinct item_id from internal.post_judgement where id > $1 order by item_id limit $3)
      union
@@ -91,5 +99,6 @@ export async function changedPosts(db: Db, cursor: QuickCursor): Promise<readonl
     [cursor.answerId, new Date(cursor.atMs).toISOString(), MAX_CHANGED],
   );
   const picked = await pickedCoinFirst(db, cursor);
-  return [...new Set([...rows.map((r) => r.item_id), ...picked])];
+  const crossed = bar === null ? [] : await barCrossers(db, cursor.atMs, bar);
+  return [...new Set([...rows.map((r) => r.item_id), ...picked, ...crossed])];
 }
