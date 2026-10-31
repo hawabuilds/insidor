@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
+import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink, RacingCoin } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, SharedBy, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
@@ -1028,9 +1028,39 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
     ...(o['picked'] === true ? { picked: true as const } : {}),
     /* The race: a whole number of 2 or more, or nothing. */
     ...(typeof o['racing'] === 'number' && Number.isInteger(o['racing']) && o['racing'] >= 2 ? { racing: o['racing'] } : {}),
+    /* The race's coins: two or more that read whole, or nothing (racingCoinsOf). */
+    ...racingCoinsOf(o['racingCoins'], `${path}.racingCoins`),
     /* The post's trading coins: two or more distinct addresses, or nothing. */
     ...tradingCoinsOf(o['tradingCoins']),
   };
+}
+
+/**
+ * The PvP list, read leniently on purpose: one coin the wire got wrong is left out rather than failing
+ * the whole feed, and a list left with fewer than two is no list (the card then says "See N coins").
+ */
+function racingCoinsOf(raw: unknown, path: string): { readonly racingCoins?: readonly RacingCoin[] } {
+  if (!Array.isArray(raw)) return {};
+  const seen = new Set<string>();
+  const list = raw.flatMap((x, i): RacingCoin[] => {
+    try {
+      const r = obj(x, `${path}[${i}]`);
+      const coin: RacingCoin = {
+        coinId: str(r['coinId'], `${path}[${i}].coinId`),
+        address: str(r['address'], `${path}[${i}].address`),
+        ticker: str(r['ticker'], `${path}[${i}].ticker`),
+        imageUrl: optStr(r['imageUrl']),
+        marketCapUsd: measured(r['marketCapUsd'], `${path}[${i}].marketCapUsd`, 'no_market'),
+        changePct24h: delta(r['priceChange24h'], `${path}[${i}].priceChange24h`, 'not_reported'),
+      };
+      if (seen.has(coin.address)) return [];
+      seen.add(coin.address);
+      return [coin];
+    } catch {
+      return [];
+    }
+  });
+  return list.length >= 2 ? { racingCoins: list } : {};
 }
 
 function tradingCoinsOf(raw: unknown): { readonly tradingCoins?: readonly string[] } {
