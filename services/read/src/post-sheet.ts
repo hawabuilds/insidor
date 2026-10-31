@@ -259,6 +259,7 @@ export function sheetMedia(raw: unknown): { readonly kind: 'video' | 'image'; re
  * The addresses the post's own coin link names: its matched or narrative coin, or a narrative's several.
  * ★ And the post's trading coins (`evidence.tradingCoins`, services/project older-trading.ts): listed
  * after it, never marked proven — an older coin the post's coins name is not proven from the post.
+ * And the PvP's coins (`evidence.racingCoins`), the same way.
  */
 export function linkedAddresses(coins: unknown): { readonly proven: string | null; readonly addresses: readonly string[] } {
   const c = rec(coins);
@@ -268,7 +269,11 @@ export function linkedAddresses(coins: unknown): { readonly proven: string | nul
     const trading = rec(c['evidence'])['tradingCoins'];
     const listed = kind === 'matched' && Array.isArray(trading) ? trading.flatMap((x) => str(x) ?? []) : [];
     const proven = rec(c['evidence'])['picked'] === true || rec(c['evidence'])['linksPost'] === true || rec(c['evidence'])['samePicture'] === true || listed.length === 0 ? a : null;
-    return { proven, addresses: [...new Set([...(a === null ? [] : [a]), ...listed])] };
+    /* ★ The race's coins (PvP, `evidence.racingCoins`): priced here too, so the dock's rows carry this
+       sheet's caps and 24h moves; listed after the post's own, never marked proven. */
+    const racing = rec(c['evidence'])['racingCoins'];
+    const racers = kind === 'matched' && Array.isArray(racing) ? racing.flatMap((x) => str(rec(x)['address']) ?? []) : [];
+    return { proven, addresses: [...new Set([...(a === null ? [] : [a]), ...listed, ...racers])] };
   }
   if (kind === 'several') return { proven: null, addresses: (Array.isArray(c['coins']) ? c['coins'] : []).flatMap((x) => str(rec(x)['address']) ?? []) };
   return { proven: null, addresses: [] };

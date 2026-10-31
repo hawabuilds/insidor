@@ -69,3 +69,20 @@ test('★ a refused quote or a failed simulation never reaches the wallet', asyn
   assert.deepEqual(sent, { kind: 'sent', ref: 'sig' });
   assert.equal(signed, 1);
 });
+
+test('★ PvP dock: every racing coin, leader first by this sheet\'s caps, a coin the sheet lacks still listed', async () => {
+  const { decodeCoin, decodeCoinEvidence } = await import('../../shared/api/decode.ts');
+  const { measuredFrom } = await import('../../shared/format/measure.ts');
+  const { pvpDock, pvpCountText } = await import('./sheet-view.ts');
+  const racer = (address: string, cap: number) => ({ coinId: `solana:${address}`, address, ticker: address, imageUrl: null, marketCapUsd: { v: cap }, priceChange24h: { v: 5 } });
+  const coin = decodeCoin({ coinId: 'c', ticker: 'KIJ', name: 'K', address: 'KIJ', venueLabel: 'pump.fun', imageUrl: null, mintedAt: { at: null }, priceUsd: { v: 1 }, marketCapUsd: { v: 1 }, marketCapBasis: null, liquidityUsd: { v: null }, priceChange24h: { v: null }, tradable: true });
+  const link: PostCoinLink = { kind: 'matched', coin, evidence: decodeCoinEvidence({ linksPost: true, samePicture: null, launchedAfterMs: 1, picked: true, racing: 3, racingCoins: [racer('KIJ', 30_000), racer('KJI', 20_000), racer('ZED', 1_000)] }) };
+  /* The sheet read KJI higher than the frame did: it leads. ZED is not in the sheet's list. */
+  const sheet = [{ coinId: 'solana:KJI', address: 'KJI', name: 'Kji', ticker: 'KJI', imageUrl: null, launchedAt: pendingInstant('not_reported'), launchClock: { kind: 'unknown' as const }, marketCapUsd: measuredFrom(51_000, 'no_market'), changePct24h: measuredFrom(320, 'not_reported'), bonded: null, proven: false }];
+  const rows = pvpDock(link, sheet);
+  assert.deepEqual(rows?.map((r) => [r.coin.address, r.leader, r.coin.marketCapUsd.known ? r.coin.marketCapUsd.amount : null]), [['KJI', true, 51_000], ['KIJ', false, 30_000], ['ZED', false, 1_000]]);
+  assert.equal(rows?.[0]?.coin.name, 'Kji', 'the sheet\'s own coin, not the card\'s copy');
+  assert.equal(pvpCountText(rows?.length ?? 0), '3 coins');
+  /* A post without a PvP keeps its dock. */
+  assert.equal(pvpDock({ kind: 'matched', coin, evidence: decodeCoinEvidence({ linksPost: true, samePicture: null, launchedAfterMs: 1 }) }, sheet), null);
+});

@@ -140,3 +140,10 @@ test('★ a quote post with no media of its own shows the quoted post\'s, with t
   assert.equal(body.post.quote.authorPictureFile, G);
   assert.equal(body.post.quote.excerpt, 'my cat');
 });
+
+test('★ PvP: the race\'s coins are priced on the sheet too, after the post\'s own, never marked proven', async () => {
+  const payload = { ...POST, coins: { kind: 'matched', coin: { address: 'KJI' }, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 1, picked: true, racing: 2, racingCoins: [{ address: 'KJI' }, { address: 'KIJ' }] } } };
+  const rows = { [SHEET_POST_SQL]: [{ payload, media: [] }], [SHEET_LIST_SQL]: [], [SHEET_COINS_SQL]: [{ address: 'KJI', symbol: 'KJI' }, { address: 'KIJ', symbol: 'KIJ' }] };
+  const body = JSON.parse((await createPostSheet(deps(rows, new Map([['KJI', quote(51_000)], ['KIJ', quote(12_000)]]))).sheet('x:1')).body);
+  assert.deepEqual(body.coins.map((c: { address: string; proven: boolean }) => [c.address, c.proven]), [['KJI', true], ['KIJ', false]]);
+});
