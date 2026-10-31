@@ -129,6 +129,7 @@ import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { overJunkBar } from './junk-bar.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { changedPosts, frameCursor, lockForYou, type QuickCursor } from './for-you-lock.ts';
+import type { BarCheck } from './bar-cross.ts';
 import { PgCoinPostCheckRepo, PgFeedRejectionRepo, PgFinderRepo, PgViralMomentRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 import { KEY_ACCOUNTS } from '@insidor/platform-x/key-accounts.ts';
@@ -1027,6 +1028,20 @@ export function forYouBarPolicy<P extends typeof DEFAULT_POLICY>(policy: P): P {
   return { ...policy, rising: { ...policy.rising, speedBar: { ...s, minAgeMs: s.forYouMinAgeMs } } };
 }
 
+/**
+ * Whether a post's own view readings clear For You's views bar: `barReadings` held to `forYouBarPolicy`,
+ * a short video at its own scale — the readings half of `byViews` below. The quick frame asks it of a
+ * judged post with a new reading (bar-cross.ts), so a post crossing the bar between full frames is held
+ * to the very bar the full frame would hold it to.
+ */
+export function clearsForYouBar(readings: readonly ReachReading[], postedAtMs: number | null, source: string, policy = DEFAULT_POLICY): boolean {
+  const scale = source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1;
+  return clearsReachBar('fyp', barReadings(readings, policy), postedAtMs, forYouBarPolicy(policy), scale);
+}
+
+/** For You's bar as both frames hand it to `changedPosts` (for-you-lock.ts, bar-cross.ts). */
+export const forYouBarCheck = (policy = DEFAULT_POLICY): BarCheck => ({ clears: (readings, postedAtMs, source) => clearsForYouBar(readings, postedAtMs, source, policy), policy });
+
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
@@ -1531,7 +1546,7 @@ export const kindDetail = (kind: HeldKind | undefined): string | null => (kind =
  * whose same-name list this frame must not rewrite. Nothing changed: the frame as built.
  */
 export async function withNewerCards(db: Db, frame: RisingFrame, began: QuickCursor, nowMs: Millis, policy = DEFAULT_POLICY): Promise<{ readonly frame: RisingFrame; readonly deferred: readonly string[] }> {
-  const changed = new Set(await changedPosts(db, began));
+  const changed = new Set(await changedPosts(db, began, forYouBarCheck(policy)));
   if (changed.size === 0) return { frame, deferred: [] };
   const committed = (await db.query<{ payload: WireRisingPost }>(
     `select payload from public.rising_row where feed_id = 'fyp' and item_id = any($1::text[]) order by position`,
