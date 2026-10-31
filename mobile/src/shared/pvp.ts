@@ -4,7 +4,7 @@
  * card (`evidence.racingCoins`, services/project one-coin-cards.ts); this decides, once, what the
  * card, the post's dock and the token page say about them.
  *
- *   the card       a stack of the coins, the leader bright on top, one Buy (`pvpCoins`)
+ *   the card       the leading coin, a grey "PvP +N" and its Buy (`pvpCoins`)
  *   the dock       "PvP" and "N coins", one row per coin, the leader's Buy purple (`pvpCoins`)
  *   the token page "$KJI for this post is ahead at $51K, this one $12K", only while another coin
  *                  for the same post really is ahead (`pvpAhead`)
