@@ -855,6 +855,13 @@ export interface JudgePolicy {
      */
     readonly sameSourceFirst: number;
     /**
+     * ★ THE OWNER'S OWN MEMES FIRST (the owner, 2026-10-31). Up to `reserve` of the closest posts he
+     * pasted as missed or tapped Meme, taken from the `within` closest labels of any kind, are shown
+     * first (core `nearestLabelled`), so a judge sent fewer examples still sees his look-alikes.
+     * `reserve` 0 is off: the order as before.
+     */
+    readonly ownerFirst: { readonly reserve: number; readonly within: number };
+    /**
      * ★ THE OPEN JUDGE'S OWN NUMBER (the owner, 2026-10-16: "Gemma gets the 30–50 most similar
      * examples from all my history"). The open model is sent each post's `openK` closest labels,
      * the main judge its `k`; the labels are the same set (every owner tap, missed post, gold post
@@ -6374,6 +6381,8 @@ const POLICY_V1: Policy = {
          "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short
          video while a text post's ten stay almost all text posts, as now. */
       sameSourceFirst: 0,
+      /* Off until tested: the 10-example trim lost 2 of 53 missed posts without it (2026-10-31). */
+      ownerFirst: { reserve: 0, within: 40 },
       /* 40, the middle of the owner's 30 to 50. Ten posts a call share many neighbours, so a call
          carries a few hundred labelled posts, not 400. The cost is the open model's input price:
          about $0.0003 a post against $0.00012 at ten (measured on the re-tune's test posts).

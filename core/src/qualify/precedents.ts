@@ -38,6 +38,8 @@ export interface LabelledVector {
   /** The picture embedded with the words, when there was one: a test tells a post from its own label by it. */
   readonly picture?: string | null;
   readonly values: ArrayLike<number>;
+  /** Where the label came from (internal.label_embedding.label_kind): 'missed', 'tap', 'gold', 'coined', 'labels'. */
+  readonly kind?: string;
 }
 
 /**
@@ -87,14 +89,32 @@ export function ownSourceFirst<T>(sorted: readonly T[], k: number, reserve: numb
  * The `k` labelled posts closest to `v`, closest first; never the post itself. With `own`, up to
  * `own.reserve` of them are the closest from the source `own.source`, first (`ownSourceFirst`).
  */
-export function nearestLabelled(v: ArrayLike<number>, labels: readonly LabelledVector[], k: number, isSelf: (l: LabelledVector) => boolean, own?: { readonly source: string; readonly reserve: number }): readonly Neighbour[] {
+export function nearestLabelled(
+  v: ArrayLike<number>,
+  labels: readonly LabelledVector[],
+  k: number,
+  isSelf: (l: LabelledVector) => boolean,
+  own?: { readonly source: string; readonly reserve: number },
+  owner?: { readonly reserve: number; readonly within: number },
+): readonly Neighbour[] {
   if (k <= 0) return [];
   const sorted = labels
     .filter((l) => !isSelf(l))
     .map((label) => ({ label, similarity: dot(v, label.values) }))
     .sort((a, b) => b.similarity - a.similarity || (a.label.itemId < b.label.itemId ? -1 : 1));
-  return own === undefined ? sorted.slice(0, k) : ownSourceFirst(sorted, k, own.reserve, (n) => sourceOfItemId(n.label.itemId) === own.source);
+  /* ★ THE OWNER'S OWN MEMES FIRST (the owner, 2026-10-31: "learn from the missed posts so we never miss
+     posts like them again"). Up to `owner.reserve` of the closest posts he pasted as missed or called a
+     meme, from among the `owner.within` closest of all, go first — so a judge sent fewer examples still
+     sees his look-alike, and an unrelated one is never forced in. Reserve 0 is the order as before. */
+  const firsts = owner === undefined || owner.reserve <= 0 ? [] : sorted.slice(0, owner.within).filter((n) => ownerMeme(n.label)).slice(0, Math.min(owner.reserve, k));
+  const taken = new Set(firsts);
+  const rest = firsts.length === 0 ? sorted : sorted.filter((n) => !taken.has(n));
+  const tail = own === undefined ? rest.slice(0, k - firsts.length) : ownSourceFirst(rest, k - firsts.length, own.reserve, (n) => sourceOfItemId(n.label.itemId) === own.source);
+  return [...firsts, ...tail];
 }
+
+/** A label the owner made himself saying "this is a meme": a post he pasted as missed, or his Meme tap. */
+export const ownerMeme = (l: LabelledVector): boolean => l.kind === 'missed' || (l.kind === 'tap' && l.label === 'meme');
 
 /**
  * How many closest labels to find for a post: the most either feed judge reads (Policy.judge.

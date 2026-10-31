@@ -345,7 +345,7 @@ try {
     const others = coined.filter((c) => c.coinRef !== p.coinRef && c.uri !== p.picture);
     const similarity = pv === undefined || others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (pv[i] ?? 0), 0)));
     near.set(p.id, {
-      precedents: v === undefined || precedentsWanted(P) <= 0 ? [] : precedentsFor(nearestLabelled(v, labels, precedentsWanted(P), self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P),
+      precedents: v === undefined || precedentsWanted(P) <= 0 ? [] : precedentsFor(nearestLabelled(v, labels, precedentsWanted(P), self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }, P.judge.precedents.ownerFirst), P),
       closestNot: v === undefined ? null : (closestNot(v, labels, self)?.similarity ?? null),
       similarity,
     });
