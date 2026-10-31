@@ -349,7 +349,8 @@ test("this run's hold-outs (neverTeach) are tested, not taught, and nothing else
 
 test("the owner's split file: no id both taught and tested, every untaught miss tested, the six once taught now dropped", () => {
   assert.equal(OWNER_SPLIT.untaughtMisses.length, 6);
-  assert.equal(OWNER_SPLIT.teach.length, 0);
+  /* The owner, 2026-10-31 ("teach the judge now"): the five posts he pasted as missed on 30–31 Oct that the judge still said no or unsure to. */
+  assert.equal(OWNER_SPLIT.teach.length, 5);
   assert.equal(OWNER_SPLIT.dropped.length, 6);
   assert.ok(alwaysTeachIds(DEFAULT_POLICY).every((id) => !OWNER_SPLIT.dropped.includes(id)), 'a dropped post is never always-taught');
   assert.ok(OWNER_SPLIT.teach.every((id) => !OWNER_SPLIT.test.includes(id)));

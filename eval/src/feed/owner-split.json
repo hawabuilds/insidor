@@ -1,6 +1,12 @@
 {
   "about": "The owner's split of the missed posts the live judge (Nemotron 3.5 Super VL, block v10, cutoff 0.70) still missed on 2026-10-17: 12 misses out of 33 missed posts. `teach` is always taught (with Policy.learning.alwaysTeach), whatever its hash. `test` is never taught as anything (a missed post, a tap, a label, a coined post) and is always in the re-tune's test: the six misses kept back plus the ten held-out missed posts the live judge already caught. `untaughtMisses` is the six misses in `test`, whose catch rate is reported on its own. The halves were picked so each has people, catchphrases or news, and videos on both sources; the two Portuguese video clips are one in each. The owner's gate (Policy.learning.ownerGate) reads `test`. Ids live here, not in the policy, because a post id names its source. An id must never be in both `teach` and `test`. `dropped` (the owner, 2026-10-18: the six once taught made the candidate worse twice) is never taught from any source, and is not tested.",
-  "teach": [],
+  "teach": [
+    { "id":"x:2115776785283743999", "post":"@nakkkkkan (missed 29 Oct, judged not a meme at 0.95)" },
+    { "id":"x:2115834345143615606", "post":"@gracebh4t (missed 29 Oct, judged not a meme)" },
+    { "id":"x:2116033857191546907", "post":"@ham_starx (missed 30 Oct, judged not a meme)" },
+    { "id":"x:2115376771004862719", "post":"@antrofrog_ NOORDINARYLOVE (missed 28 Oct, judge unsure)" },
+    { "id":"x:2116118341610004764", "post":"@antrofrog_ SEWERMAN (missed 30 Oct, judge unsure)" }
+  ],
   "test": [
     {
       "id": "x:2109001190100849122",
