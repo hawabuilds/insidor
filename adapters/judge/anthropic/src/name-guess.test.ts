@@ -24,3 +24,10 @@ test('the request sends refs, never post ids, and a picture only for a post that
   assert.equal((text.match(/"type":"image"/g) ?? []).length, 1);
   assert.equal((body as { temperature?: number }).temperature, 0);
 });
+
+test('★ a linked picture is sent as its link, never as empty bytes (30 Oct: the namer was sent blank pictures and named nothing)', () => {
+  const body = nameRequestBody('m', 100, null, [{ ref: 'x:1', text: 'a tiger', picture: 'https://p/1.jpg', examples: [] }], new Map([['x:1', { mediaType: 'image/jpeg' as const, base64: '', url: 'https://p/1.jpg' }]]));
+  const text = JSON.stringify(body);
+  assert.equal(text.includes('"type":"url","url":"https://p/1.jpg"'), true);
+  assert.equal(text.includes('"data":""'), false);
+});

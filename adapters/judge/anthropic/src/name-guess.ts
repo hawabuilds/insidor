@@ -134,7 +134,10 @@ export function nameRequestBody(model: string, maxOutputTokens: number, effort: 
     const f = frames.get(s.ref);
     if (f === undefined) return;
     content.push({ type: 'text', text: `Picture for ref P${i + 1}:` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.base64 } });
+    /* ★ A LINKED PICTURE GOES AS ITS LINK (the open client's `linkPictures`, policy.v210): its bytes
+       are empty then. Sent as bytes, the host got an empty picture and named nothing — from 30 Oct
+       ~14:00 the namer's guesses fell from ~90 an hour to ~10, and coin matching by name with them. */
+    content.push({ type: 'image', source: f.url !== undefined ? { type: 'url', url: f.url } : { type: 'base64', media_type: f.mediaType, data: f.base64 } });
   });
   return {
     model,
