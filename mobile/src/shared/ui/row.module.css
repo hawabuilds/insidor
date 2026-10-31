@@ -191,23 +191,6 @@
   color: var(--text-2);
 }
 
-/* Across the bottom of the card: the coin status, and its buttons (two only on an unsure post). */
-.foot {
-  margin-top: 16px;
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.status {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-3);
-  line-height: 1.35;
-}
-
 /* A single post's own words, in the title's place. Up to three lines and then cut: a post is
    read by its text, and one truncated line of somebody else's sentence says nothing. */
 /* A translated post's "Translated from …" line, under its words across the words' and the
@@ -231,66 +214,27 @@
   letter-spacing: -0.01em;
 }
 
-/* An unsure post's two buttons, side by side and never shrunk under the line beside them. */
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-/* Buy on a card is the post sheet's Buy, the same size and the same purple (post-sheet.module.css
-   `.buy`), and says only "Buy": the ticker and the market cap are already on the line to its left.
-   The owner asked for it this way; a green, ticker-carrying Buy here read as a different button
-   from the one the sheet then shows. */
-.buy {
-  min-width: 96px;
-  height: 52px;
-  padding: 0 18px;
-  border-radius: 16px;
-  background: var(--sheet-action);
-  color: #fff;
-  font-weight: 800;
-  font-size: 16px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-brand);
-  transition: transform 0.12s ease;
-}
-
-.buy:active {
-  transform: scale(0.97);
-}
-
-/* With two buttons the sentence takes the full width and the buttons go under it, at the right,
-   rather than squeezing a two-line sentence into a third of a phone. */
-.footWrap {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.footWrap .status {
-  flex: 1 1 100%;
-}
-
-/* A PvP card (PostRow PvpFoot, the owner's option B): a thin divider across the card's full width,
-   then one row: the leading coin, a quiet grey "PvP +N" and the purple Buy, the two one height. */
-.pvpFoot {
+/* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`, reports/mockups/cards-clean.html): a thin
+   divider across the card's full width, then the coin or a few grey words at the left and the buttons
+   and star at the right, every button 40px with one corner. */
+.row {
   margin: 14px -18px 0;
   padding: 12px 18px 0;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.pvpLine {
+  border-top: 1px solid var(--card-line);
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1;
+}
+
+.coin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.pvpTicker {
+.ticker {
   font-size: 15px;
   font-weight: 800;
   color: var(--text-1);
@@ -299,47 +243,76 @@
   white-space: nowrap;
 }
 
-.pvpCap {
+.cap {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-2);
   white-space: nowrap;
 }
 
-/* The same height and corner as the card's Buy beside it (.buy), quiet grey, its "PvP" amber. */
-.pvpMore {
-  height: 52px;
+.note {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.buy,
+.create,
+.ghost {
+  height: 40px;
+  border-radius: 12px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: transform 0.12s ease;
+}
+
+.buy:active,
+.create:active,
+.ghost:active {
+  transform: scale(0.97);
+}
+
+/* Buy says only "Buy": the ticker and the cap are already on the row to its left. */
+.buy {
+  padding: 0 20px;
+  background: var(--sheet-action);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.create {
+  padding: 0 16px;
+  background: var(--sheet-action);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+/* The quiet buttons: See N coins, View coins, and the PvP +N with its amber "PvP". */
+.ghost {
   padding: 0 14px;
-  border-radius: 16px;
   background: #22222a;
   color: var(--text-1);
   font-weight: 700;
   font-size: 13px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .pvpTag {
   color: var(--amber);
   font-weight: 800;
-}
-
-/* The coin's logo at the head of its line, when the card names one coin (shared/ui/CoinLogo.tsx). */
-.statusLogo {
-  display: inline-flex;
-  vertical-align: middle;
-  margin-right: 8px;
-}
-
-/* Why a post's own coin is its coin, as facts, on the line under the ticker (coin-status.ts). */
-.facts {
-  display: block;
-  font-size: var(--type-caption);
-  font-weight: 400;
-  color: var(--text-3);
-  margin-top: 2px;
 }
 
 /* The narrative a post is part of (PostRow StoryTag): a small grey pill under the card's words, one

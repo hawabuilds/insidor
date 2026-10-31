@@ -21,18 +21,16 @@
  * ★ A TAP ON THE CARD'S COIN (its logo and ticker, when the card names one coin) OPENS THAT COIN'S
  * TOKEN PAGE (`openCoin`, the owner 2026-10-14): every coin tap in the app opens the coin.
  *
- * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`postCoinStatus`):
+ * ★ EVERY CARD ENDS IN ONE ROW, AND IT IS THE SERVER'S ANSWER, NOT OURS (coin-status.ts `cardRow`; the
+ * owner's cards-clean.html, 2026-10-31): under a thin divider across the card, the coin (logo, ticker,
+ * market cap) or a few grey words, then its buttons, all 40px with one corner, and the Watch star:
  *
- *   matched  → the post's own coin, settled by evidence: as `one`, with why beneath it as facts
- *              ("Links this post, Same picture, Launched 12m after"), never how sure
- *   one      → "$TICKER" and the coin's market cap when it has been read, and Buy — only ever a
- *              narrative's confident coin (the decoder refuses a coin without its narrative)
- *   none     → "No coin yet" and Create coin; the post's name was searched and nothing came back
- *   pending  → a dash with its reason: nobody has searched yet, so neither claim is made
- *   unchecked → "Couldn't check", and NO button: the search failed for minutes, so neither
- *              claim is made and nothing is guessed
- *   unsure   → the sentence saying we cannot tell, then "See 3 coins" (the real count, "10+" when
- *              the search found more than it kept) and Create coin — never Buy on an unsure match
+ *   matched / one → the coin and Buy; no sentence and no tie line ("Links this post, Same picture…"
+ *              is said in the post pop-up, PostSheet, never lost)
+ *   unsure   → "3 coins use this name" and See 3 coins (the real count, "10+" when the search found
+ *              more than it kept); never Buy on an unsure match
+ *   none     → "No coin yet" and Create coin
+ *   pending  → "— still checking", no button; unchecked → "Couldn't check", no button
  *   several  → how many, and View coins
  *
  * ★ ON TRENDING THE CARD SAYS HOW FAST IT IS GAINING (`sortLine`): "394 views a minute, up 2.1x in the last hour"
@@ -58,12 +56,10 @@
  * `sharedBy`), with that account's face, under the byline. It is why an older post is on For You,
  * said as a fact; the byline keeps the post's own age.
  *
- * ★ A POST WITH A PVP (two or more coins made for it being bought at once, shared/pvp.ts) swaps the
- * coin line for ONE row under a thin divider (the owner's option B, 2026-10-31): the leading coin's
- * (highest read cap) logo, ticker and market cap, then a quiet grey "PvP +N" (N the other racing
- * coins), which opens the sheet on its coins as "See N coins" does, and the purple Buy for the
- * leader, which opens the post sheet like every card Buy. The two buttons are one height. A tap on
- * the leader's name opens its page. Every other card keeps its coin line as it was.
+ * ★ A POST WITH A PVP (two or more coins made for it being bought at once, shared/pvp.ts) has the same
+ * row (the owner's option B, 2026-10-31): the leading coin (highest read cap), a quiet grey "PvP +N"
+ * (N the other racing coins) that opens the sheet on its coins as "See N coins" does, and Buy, which
+ * opens the post sheet like every card Buy. A tap on the coin opens its page.
  *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
@@ -71,17 +67,17 @@
 
 import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
+import type { Measured } from '../format/measure.ts';
 import { quotePictureLeads, sharedByLabel, type PostInStory } from '../api/wire/rising.ts';
 import { storyWords } from '../story-words.ts';
-import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
-import { pvpCoins, type PvpCoin } from '../pvp.ts';
+import { cardRow, seeCoinsLabel, type CardAction } from '../coin-status.ts';
+import { pvpCoins } from '../pvp.ts';
 import { formatUsd } from '../format/number.ts';
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
 import { compact, formatCount } from '../format/number.ts';
 import { tickerText } from '../format/ticker.ts';
 import { deletedLine, platformOf } from '../platform.ts';
-import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
 import { QuoteInset } from './QuoteInset.tsx';
 import { usePosterPic } from './usePosterPic.ts';
@@ -90,7 +86,6 @@ import { Thumb } from './Thumb.tsx';
 import { TranslatedLine, useShownWords } from './Translated.tsx';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
-import { Nums } from './Num.tsx';
 
 export interface PostHandlers {
   /** Opens the post sheet: a tap on the card, its title, Buy or View coins. */
@@ -119,9 +114,15 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
   const cap = useCoinCap(own?.address ?? '', own?.marketCapUsd ?? NO_COIN, false, own?.priceUsd ?? null);
   const coins = own !== null && (post.coins.kind === 'one' || post.coins.kind === 'matched') ? { ...post.coins, coin: { ...own, marketCapUsd: cap } } : post.coins;
-  const status = postCoinStatus(coins, owner);
-  /* The PvP stack (shared/pvp.ts), with this card's live cap for its own coin; null keeps the coin line. */
+  const row = cardRow(coins, owner);
+  /* ★ A PvP (shared/pvp.ts), with this card's live cap for its own coin: the row names the leader, and
+     "PvP +N" counts the others. Without the race's coins (an older server) it names the post's coin. */
   const pvp = own === null ? null : pvpCoins(post.coins, { address: own.address, cap });
+  const leader = pvp?.[0] ?? null;
+  const shown: RowCoin | null = leader !== null ? leader : row.coin;
+  /* A PvP's Buy is the leader's and opens the post sheet, where every coin has its own ticket: always drawn. */
+  const actions: readonly CardAction[] = pvp === null || own === null ? row.actions : [{ kind: 'pvp', others: pvp.length - 1 }, { kind: 'buy', coin: own }];
+  const note = pvp === null ? row.note : null;
   /* The English when the post was written in another language, with its line (Translated.tsx). */
   const words = useShownWords(post);
 
@@ -189,28 +190,27 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
 
       {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
 
-      {pvp !== null ? <PvpFoot coins={pvp} handlers={handlers} watch={watch} /> : (
-      <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
-        <span
-          className={styles['status']}
-          onClick={own !== null && handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(own.coinId); } : undefined}
-        >
-          {post.coins.kind === 'one' || post.coins.kind === 'matched' ? (
-            <span className={styles['statusLogo']}>
-              <CoinLogo small address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
-            </span>
-          ) : null}
-          <Nums text={status.line} />
-          {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}><Nums text={status.facts.join(', ')} /></span> : null}
-        </span>
-        {status.actions.length > 0 || watch !== null ? (
+      {/* ★ THE ONE ROW (coin-status.ts `cardRow`, cards-clean.html): under a thin divider, the coin or a few grey words, then the buttons and the star. */}
+      <div className={styles['row']}>
+        {shown !== null ? (
+          <span
+            className={styles['coin']}
+            onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(shown.coinId); } : undefined}
+          >
+            <CoinLogo small address={shown.address} ticker={shown.ticker} imageUrl={shown.imageUrl} size={28} />
+            <b className={styles['ticker']}>{tickerText(shown.ticker)}</b>
+            {/* A cap not read is a dash with its reason (Value), never left blank or "$0". */}
+            <Value r={formatUsd(shown.marketCapUsd)} className={styles['cap']} num />
+          </span>
+        ) : null}
+        {note !== null ? <span className={styles['note']}>{note}</span> : null}
+        {actions.length > 0 || watch !== null ? (
           <span className={styles['actions']}>
-            {status.actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}
+            {actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}
             {watch}
           </span>
         ) : null}
       </div>
-      )}
       {extra}
     </article>
   );
@@ -248,49 +248,35 @@ function StoryTag({ tag, open }: { tag: PostInStory; open: (storyId: string) => 
   );
 }
 
-/**
- * The PvP row (option B): the leader's logo, ticker and cap; then the grey "PvP +N", opening the sheet
- * on the race's coins, and the purple Buy for the leader, opening the post sheet.
- */
-function PvpFoot({ coins, handlers, watch }: { coins: readonly PvpCoin[]; handlers: PostHandlers; watch: ReactNode }) {
-  const leader = coins[0];
-  if (leader === undefined) return null;
-  const others = coins.length - 1;
-  return (
-    <div className={`${styles['foot']} ${styles['pvpFoot']}`}>
-      <span
-        className={styles['pvpLine']}
-        onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(leader.coinId); } : undefined}
-      >
-        <CoinLogo small address={leader.address} ticker={leader.ticker} imageUrl={leader.imageUrl} size={28} />
-        <b className={styles['pvpTicker']}>{tickerText(leader.ticker)}</b>
-        <Value r={formatUsd(leader.marketCapUsd)} className={styles['pvpCap']} num />
-      </span>
-      <span className={styles['actions']}>
-        <button type="button" className={styles['pvpMore']} aria-label={`PvP, ${others} more ${others === 1 ? 'coin' : 'coins'} for this post`} onClick={(e) => { e.stopPropagation(); handlers.seeCoins(); }}>
-          <span className={styles['pvpTag']}>PvP</span>+{others}
-        </button>
-        <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(leader.ticker)}`} onClick={(e) => { e.stopPropagation(); handlers.open(); }}>Buy</button>
-        {watch}
-      </span>
-    </div>
-  );
+/** What the row names of a coin: the card's own coin, or a PvP's leader. */
+interface RowCoin {
+  readonly coinId: string;
+  readonly address: string;
+  readonly ticker: string;
+  readonly imageUrl: string | null;
+  readonly marketCapUsd: Measured;
 }
 
-/** One button the coin status asked for, and never one it did not. */
-function ActionButton({ action, handlers }: { action: PostAction; handlers: PostHandlers }) {
+/** One button the row asked for, and never one it did not; all one height and corner (row.module.css). */
+function ActionButton({ action, handlers }: { action: CardAction; handlers: PostHandlers }) {
   const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     fn();
   };
   switch (action.kind) {
     case 'create':
-      return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
+      return <button type="button" className={styles['create']} onClick={tap(handlers.create)}>Create coin</button>;
     case 'buy':
       return <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(action.coin.ticker)}`} onClick={tap(handlers.open)}>Buy</button>;
     case 'view':
-      return <Button look="quiet" onClick={tap(handlers.open)}>View coins</Button>;
+      return <button type="button" className={styles['ghost']} onClick={tap(handlers.open)}>View coins</button>;
     case 'see':
-      return <Button look="quiet" onClick={tap(handlers.seeCoins)}>{seeCoinsLabel(action.count, action.more)}</Button>;
+      return <button type="button" className={styles['ghost']} onClick={tap(handlers.seeCoins)}>{seeCoinsLabel(action.count, action.more)}</button>;
+    case 'pvp':
+      return (
+        <button type="button" className={styles['ghost']} aria-label={`PvP, ${action.others} more ${action.others === 1 ? 'coin' : 'coins'} for this post`} onClick={tap(handlers.seeCoins)}>
+          <span className={styles['pvpTag']}>PvP</span>+{action.others}
+        </button>
+      );
   }
 }

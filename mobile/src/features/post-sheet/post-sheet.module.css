@@ -462,6 +462,13 @@
   text-align: right;
 }
 
+/* Why the coin is the post's, after the first fact (PostSheet): one small grey line under the coin. */
+.coinFacts {
+  margin: -4px 4px 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 /* The PvP dock (PostSheet PvpDock, the owner's clean PvP): a small grey uppercase header, "PvP" left
    and "N coins" right, over one card of identical rows. */
 .pvpHead {

@@ -35,6 +35,9 @@
  * Each Buy opens that coin's own ticket, with the PvP warning naming the biggest other coin; a row
  * opens its coin's page. A post without a PvP keeps its dock exactly as it was.
  *
+ * ★ EVERY TIE IS SAID HERE (the owner, 2026-10-31): the For You card is one row with no tie line, so
+ * under the post's coin the dock says the facts after the first (the first is green in its header).
+ *
  * `start: 'coins'` opens straight on Choose coin (a For You card's "See N coins"); its back arrow
  * still leads to the post.
  *
@@ -430,6 +433,9 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
                   onBuy(main);
                 }}>Buy</button>
               } />
+              {/* ★ The rest of why it is the post's coin ("Same picture, Launched 15m after"): the For You
+                  card no longer says them (cards-clean.html), so the pop-up says every one. */}
+              {why !== null && why.split(', ').length > 1 ? <p className={styles['coinFacts']}>{why.split(', ').slice(1).join(', ')}</p> : null}
             </>
           ) : (
             <div className={styles['coinHead']}><span>{listShown ? 'No coin with this name yet' : 'No coin for this post yet'}</span></div>

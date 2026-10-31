@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeCoin, decodeCoinEvidence, decodeCoinLink } from './api/decode.ts';
-import { cardCoinProven, coinStatus, evidenceFacts, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
+import { cardCoinProven, cardRow, coinStatus, evidenceFacts, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
   decodeCoin({
@@ -151,4 +151,36 @@ test('★ the post\'s trading coins (paws at you): the highest with Buy, "See 3 
   assert.equal(cardCoinProven({ ...coins, evidence: { ...coins.evidence, picked: true as const } }), true);
   assert.deepEqual(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, tradingCoins: ['X', 'X', 'Y', 7] }).tradingCoins, ['X', 'Y']);
   assert.equal(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, tradingCoins: ['X'] }).tradingCoins, undefined);
+});
+
+/* ── the For You card's one row (cardRow, the owner's cards-clean, 2026-10-31) ── */
+
+test('★ one row: a coin is the coin and Buy, never a sentence; the ties are not on the card', () => {
+  const c = coin({ marketCapUsd: { v: 1_900 } });
+  const r = cardRow({ kind: 'matched', coin: c, evidence: { linksPost: true, samePicture: true, launchedAfterMs: 900_000, picked: true } });
+  assert.equal(r.coin, c);
+  assert.equal(r.note, null);
+  assert.deepEqual(r.actions.map((a) => a.kind), ['buy']);
+  const stuck = cardRow({ kind: 'one', coin: coin({ tradable: false }) });
+  assert.deepEqual([stuck.note, stuck.actions.length], ["Can't be traded yet", 0]);
+});
+
+test('★ one row: a PvP is "PvP +N" before Buy; trading coins are See N coins', () => {
+  const pvp = cardRow({ kind: 'matched', coin: coin(), evidence: { linksPost: true, samePicture: null, launchedAfterMs: 1, picked: true, racing: 3 } });
+  assert.deepEqual(pvp.actions.map((a) => (a.kind === 'pvp' ? `pvp+${a.others}` : a.kind)), ['pvp+2', 'buy']);
+  const trading = cardRow({ kind: 'matched', coin: coin(), evidence: { linksPost: null, samePicture: null, launchedAfterMs: -1, tradingCoins: ['A', 'B'] } });
+  assert.deepEqual(trading.actions.map((a) => a.kind), ['see', 'buy']);
+});
+
+test('★ one row: the other states in short words, each absence with its reason, no disabled button', () => {
+  assert.deepEqual(cardRow({ kind: 'unsure', claimCount: 3 }), { coin: null, note: '3 coins use this name', actions: [{ kind: 'see', count: 3, more: false }] });
+  assert.equal(cardRow(decodeCoinLink({ kind: 'unsure', claimCount: 10, more: true })).note, '10+ coins use this name');
+  assert.equal(cardRow({ kind: 'unsure', claimCount: 1 }).note, '1 coin uses this name');
+  assert.deepEqual(cardRow({ kind: 'unsure', claimCount: 0 }), { coin: null, note: 'No coin yet', actions: [{ kind: 'create' }] });
+  assert.deepEqual(cardRow({ kind: 'none' }), { coin: null, note: 'No coin yet', actions: [{ kind: 'create' }] });
+  assert.deepEqual(cardRow({ kind: 'pending' }), { coin: null, note: '— still checking', actions: [] });
+  assert.deepEqual(cardRow({ kind: 'unchecked' }), { coin: null, note: "Couldn't check", actions: [] });
+  /* An owner-only list is "No coin yet" for everyone else. */
+  assert.equal(cardRow(decodeCoinLink({ kind: 'unsure', claimCount: 4, ownerList: true })).note, 'No coin yet');
+  assert.equal(cardRow(decodeCoinLink({ kind: 'unsure', claimCount: 4, ownerList: true }), true).note, '4 coins use this name');
 });
