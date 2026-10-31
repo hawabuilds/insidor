@@ -5383,6 +5383,47 @@ export interface RunningCoinsPolicy {
 }
 
 /**
+ * THE LAUNCH ODDS ON A TOKEN PAGE (policy.v215, the owner, 2026-10-30: show a trader the odds and the rug
+ * risk at a glance). What happened to past launches that opened like this one, read from the chain by
+ * tools/odds-backfill.ts and grouped by tools/odds-bands.ts into 0155; the read service
+ * (services/read launch-odds.ts) puts a live coin in its group. Every figure is history — "launches that
+ * opened like this one, last 30 days: 31% went on to double from there" — beside the same figure for all
+ * launches and the number of launches it rests on.
+ *
+ * These are the DEFINITIONS both sides share, so a figure on the page means what the tool counted:
+ *   multiples      a launch "hit" k when its price, within its first hour, reached k times the price at
+ *                  the signal time (never the launch price: that is not a price anyone looking then paid).
+ *   rug            it rose at least `rugRise` from that price, then gave back at least `rugGiveBack` of its
+ *                  peak's height above the curve's starting price, within the hour. Measured from the
+ *                  curve's start and not from zero because a launchpad curve cannot fall below its
+ *                  starting price: "lost 90% of its peak" would count only coins that had run tenfold.
+ *   neverMoved     its price never reached `neverMovedBelow` times the price at the signal time.
+ *   signalAfterMs  when after launch the minute signals look. The read service counts a coin's trades from
+ *                  our own one-minute candles, which end on the clock's minute, so a signal's moment is the
+ *                  end of the clock minute that holds launch + this: the first moment its count is whole.
+ *   minLaunches    a group resting on fewer sampled launches than this says "Too early to tell".
+ *   lift           a group (or a badge's fact) is green when it went on to double at least `green` times
+ *                  as often as all launches; red — a rug sign, and only that — when it was rugged at least
+ *                  `red` times as often AND `red` times as often for each launch that doubled (nearly every
+ *                  riser gives it back within the hour, so rugs alone only measure movement); dead when
+ *                  it never moved at least `dead` times as often (or
+ *                  doubled at most 1/`red` as often and mostly never moved). A rare doubler is never red.
+ *   keepMs         the groups are read from the database once this often, not on every page.
+ */
+export interface LaunchOddsPolicy {
+  readonly on: boolean;
+  readonly multiples: readonly number[];
+  readonly rugRise: number;
+  readonly rugGiveBack: number;
+  readonly neverMovedBelow: number;
+  readonly firstHourMs: number;
+  readonly signalAfterMs: { readonly minute_1: number; readonly minute_5: number };
+  readonly minLaunches: number;
+  readonly lift: { readonly green: number; readonly red: number; readonly dead: number };
+  readonly keepMs: number;
+}
+
+/**
  * THE COIN THAT RUNS, AND ITS POST (policy.v155, after the $BITCHES miss of 23 Oct): three layers
  * that tie a running coin back to the post it came from when the one-coin pick missed it.
  *
@@ -5638,6 +5679,8 @@ export interface Policy {
   readonly runnerLink: RunnerLinkPolicy;
   /** A launch's first-minute facts and the smart wallet list, recorded only (policy.v214; chainwatch launch-open.ts). */
   readonly launchSignals: LaunchSignalsPolicy;
+  /** What happened to past launches that opened like this one, on a token page (policy.v215). */
+  readonly launchOdds: LaunchOddsPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -6074,8 +6117,10 @@ const POLICY_V1: Policy = {
      v214 (2026-10-30, the owner: "beat the runner") records each launch's first-minute facts and keeps a
      nightly smart wallet list (`launchSignals`); nothing reads them to decide yet.
      v215 (2026-10-31, merged from the v213 branch) lets the quick frame place a judged post the moment a
-     reading puts it over For You's views bar (`rising.quickFrame.barCross`), instead of the next full frame. */
-  version: 'policy.v215',
+     reading puts it over For You's views bar (`rising.quickFrame.barCross`), instead of the next full frame.
+     v216 (2026-10-31, from the v215 token-odds branch; the owner: odds and rug risk at a glance on a token
+     page) adds `launchOdds`: the definitions the launch-odds tools count by and the read service shows. */
+  version: 'policy.v216',
 
   admit: {
     maxAgeMin: 240,
@@ -8827,6 +8872,19 @@ const POLICY_V1: Policy = {
     keepMs: 1_209_600_000,
     keepGraduatesMs: 2_592_000_000,
     smart: { withinMs: 2_592_000_000, minGraduates: 2, maxAccounts: 5, keepListsMs: 2_592_000_000 },
+  },
+  launchOdds: {
+    on: true,
+    multiples: [2, 3, 5, 10],
+    rugRise: 0.5,
+    rugGiveBack: 0.9,
+    neverMovedBelow: 1.1,
+    firstHourMs: 3_600_000,
+    signalAfterMs: { minute_1: 60_000, minute_5: 300_000 },
+    /* A share out of fewer launches than this moves by more than its own size from one month to the next. */
+    minLaunches: 100,
+    lift: { green: 1.5, red: 1.5, dead: 1.25 },
+    keepMs: 600_000,
   },
 
   scorers: {

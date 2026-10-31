@@ -3,7 +3,8 @@
  * stat block a trader reads before sizing (depth, day volume, cap, price, holders, what it is
  * priced in, volume over liquidity, the day's move), then the rows (pair, launchpad, where it
  * stands on the curve, whether it can be traded, the address with copy, the creator, the launch),
- * then Insidor's own part: the narrative and where the coin came from (passed in by the page that
+ * The launch history card comes first (LaunchOdds.tsx: what happened to past launches that opened like
+ * this one; the owner's layout, reports/mockups/token-page-info.html). Then Insidor's own part: the narrative and where the coin came from (passed in by the page that
  * knows them) and the feed posts that name this coin, each with its evidence as facts.
  *
  * Trador's "Holder rewards" and "Pool" rows are not ported: no launchpad coin here routes
@@ -20,7 +21,7 @@
 
 import type { ReactNode } from 'react';
 
-import type { CoinAbout, CoinMarket } from '../../shared/api/index.ts';
+import type { CoinAbout, CoinMarket, CoinOdds } from '../../shared/api/index.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -33,6 +34,7 @@ import { CheckIcon, ChevronIcon, CopyIcon, ExternalIcon } from '../../shared/ui/
 import { useCopied } from '../../shared/useCopied.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { LaunchOdds } from './LaunchOdds.tsx';
 import { pairChip, type PairRead } from './pair-view.ts';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import styles from './info.module.css';
@@ -61,13 +63,15 @@ export function standing(market: CoinMarket | null, venue: 'curve' | 'pool' | nu
 const dated = (at: number): string =>
   new Date(at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export function InfoPanel({ facts, market, about, tradable, now, insidor = null, pair = 'unread' }: {
+export function InfoPanel({ facts, market, about, odds = null, tradable, now, insidor = null, pair = 'unread' }: {
   facts: TokenFacts;
   /** The chart's pool (pair-view.ts): what the coin is priced in, and its depth when read. */
   pair?: PairRead;
   market: CoinMarket | null;
   /** Null while it loads or when it could not be read: its numbers are then dashes. */
   about: CoinAbout | null;
+  /** The launch history; null while it loads or when it could not be read, and the block is then not drawn. */
+  odds?: CoinOdds | null;
   /** Whether a quote can be got now, as the server said; null when nothing has measured it. */
   tradable: boolean | null;
   now: number;
@@ -95,6 +99,8 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null,
 
   return (
     <div className={styles['info']}>
+      <LaunchOdds odds={odds} />
+
       <dl className={styles['stats']}>
         <Stat label="Liquidity"><Value r={formatUsd(liquidity)} num /></Stat>
         <Stat label="24h volume"><Value r={formatUsd(volume)} num /></Stat>
