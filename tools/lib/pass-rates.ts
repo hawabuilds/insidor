@@ -321,7 +321,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       const v = vectors.get(p.id);
       if (v === undefined) continue;
       const self = selfOf(p);
-      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, precedentsWanted(P), self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
+      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, precedentsWanted(P), self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }, P.judge.precedents.ownerFirst), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
     }
   }
 

@@ -67,3 +67,15 @@ test('★ a post with no words is held only when its picture is near-identical: 
   assert.equal(heldAsNotMeme(P.judge.precedents.holdNotSimilarityNoWords, P, false), true, 'a near-copy of the labelled picture is still held');
   assert.equal(heldAsNotMeme(0.891, P, true), heldAsNotMeme(0.891, P), 'posts with words keep the ordinary bar');
 });
+
+test('★ the owner\'s own memes first: his missed posts and Meme taps among the closest go first, never one from far away; reserve 0 is the old order', () => {
+  const lv = (itemId: string, x: number, kind: string, label: 'meme' | 'not' = 'meme') => ({ itemId, label, text: itemId, why: null, kind, values: [x, Math.sqrt(1 - x * x)] });
+  const labels = [lv('x:1', 0.99, 'coined'), lv('x:2', 0.98, 'tap', 'not'), lv('x:3', 0.97, 'gold'), lv('x:4', 0.9, 'missed'), lv('x:5', 0.8, 'tap'), lv('x:6', 0.1, 'missed')];
+  const ids = (r: readonly { label: { itemId: string } }[]) => r.map((n) => n.label.itemId);
+  const none = () => false;
+  assert.deepEqual(ids(nearestLabelled([1, 0], labels, 3, none)), ['x:1', 'x:2', 'x:3']);
+  assert.deepEqual(ids(nearestLabelled([1, 0], labels, 3, none, undefined, { reserve: 0, within: 40 })), ['x:1', 'x:2', 'x:3']);
+  assert.deepEqual(ids(nearestLabelled([1, 0], labels, 3, none, undefined, { reserve: 2, within: 5 })), ['x:4', 'x:5', 'x:1']);
+  /* x:6 is a missed post but far away: outside `within`, so never forced in. */
+  assert.deepEqual(ids(nearestLabelled([1, 0], labels, 4, none, undefined, { reserve: 3, within: 5 })), ['x:4', 'x:5', 'x:1', 'x:2']);
+});

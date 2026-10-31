@@ -165,7 +165,7 @@ export function precedentSource(deps: PrecedentDeps) {
         const self = (l: LabelledVector): boolean => l.itemId === String(item.itemId);
         const not = closestNot(v.values, known, self);
         out.set(String(item.itemId), {
-          precedents: precedentsFor(nearestLabelled(v.values, known, k, self, { source: sourceOfItemId(String(item.itemId)), reserve: deps.policy.judge.precedents.sameSourceFirst }), deps.policy),
+          precedents: precedentsFor(nearestLabelled(v.values, known, k, self, { source: sourceOfItemId(String(item.itemId)), reserve: deps.policy.judge.precedents.sameSourceFirst }, deps.policy.judge.precedents.ownerFirst), deps.policy),
           closestNot: not?.similarity ?? null,
           closestNotId: not?.label.itemId ?? null,
           vector: { values: v.values, space: v.space },
