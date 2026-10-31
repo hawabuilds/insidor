@@ -32,7 +32,7 @@
 import type { Db } from '@insidor/store';
 import { missingTable } from '@insidor/store';
 
-import type { WireCoin, WireCoinEvidence, WirePostCoinLink } from './wire.ts';
+import type { WireCoin, WireCoinEvidence, WirePostCoinLink, WireRacingCoin } from './wire.ts';
 
 /** A post's pick as the card needs it: the coin, or none, and the ties that found it. */
 export interface CardPick {
@@ -83,22 +83,48 @@ export async function loadNarrativePicks(db: Db, narrativeIds: readonly string[]
   }
 }
 
-/** The facts that hold of the picked coin against the post, as the card says them; unknown stays null. */
-export function pickedEvidence(pick: CardPick, launchedAfterMs: number | null): WireCoinEvidence {
+/**
+ * The facts that hold of the picked coin against the post, as the card says them; unknown stays null.
+ * `racers`: the race's coins as projected (any order, any extra ignored); the card lists them (PvP).
+ */
+export function pickedEvidence(pick: CardPick, launchedAfterMs: number | null, racers: readonly WireCoin[] = []): WireCoinEvidence {
+  const racing = pick.address !== null && (pick.racing ?? []).length >= 2 && (pick.racing ?? []).includes(pick.address);
+  const listed = racing ? racingCoinsOf(pick.racing ?? [], racers) : null;
   return {
     linksPost: pick.ties.includes('link') ? true : null,
     samePicture: pick.ties.includes('picture') ? true : null,
     launchedAfterMs: pick.launchedAfterMs ?? launchedAfterMs,
     picked: true,
     /* The race is said only when the picked coin is one of the racers: "See N coins" beside it. */
-    ...(pick.address !== null && (pick.racing ?? []).length >= 2 && (pick.racing ?? []).includes(pick.address) ? { racing: (pick.racing ?? []).length } : {}),
+    ...(racing ? { racing: (pick.racing ?? []).length } : {}),
+    ...(listed !== null ? { racingCoins: listed } : {}),
   };
+}
+
+/**
+ * The race's coins the card lists, highest market cap first and an unread cap last (never ranked as
+ * $0). Null under two: a "PvP" of one coin on screen would be a race nobody can see.
+ */
+export function racingCoinsOf(addresses: readonly string[], racers: readonly WireCoin[]): readonly [WireRacingCoin, WireRacingCoin, ...WireRacingCoin[]] | null {
+  const wanted = new Set(addresses);
+  const seen = new Set<string>();
+  const out: WireRacingCoin[] = [];
+  for (const c of racers) {
+    if (!wanted.has(c.address) || seen.has(c.address)) continue;
+    seen.add(c.address);
+    out.push({ coinId: c.coinId, address: c.address, ticker: c.ticker, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, priceChange24h: c.priceChange24h });
+  }
+  const cap = (c: WireRacingCoin) => (c.marketCapUsd.v === null ? -1 : c.marketCapUsd.v);
+  out.sort((a, b) => cap(b) - cap(a));
+  const [a, b, ...rest] = out;
+  return a === undefined || b === undefined ? null : [a, b, ...rest];
 }
 
 /**
  * The card's coin line in live mode, from what the old rule would have shown (`before`), the pick,
  * and the picked coin's projection (null when we cannot project it: it waits, as any coin does).
  * `listed`: how many coins share the name (the owner's list). `wrong`: the coins the owner called wrong.
+ * `racers`: the race's coins as projected, for the PvP card's list; a coin called wrong is never listed.
  */
 export function liveCoinLine(
   before: WirePostCoinLink,
@@ -106,10 +132,11 @@ export function liveCoinLine(
   coin: WireCoin | null,
   listed: { readonly count: number; readonly more: boolean },
   wrong: ReadonlySet<string>,
+  racers: readonly WireCoin[] = [],
 ): WirePostCoinLink {
   if (pick?.outcome === 'picked' && pick.address !== null && coin !== null && !wrong.has(pick.address)) {
     const posted = before.kind === 'matched' ? before.evidence.launchedAfterMs : null;
-    return { kind: 'matched', coin, evidence: pickedEvidence(pick, posted) };
+    return { kind: 'matched', coin, evidence: pickedEvidence(pick, posted, racers.filter((r) => !wrong.has(r.address))) };
   }
   /* Not judged yet: a search still pending or failed says so, as before; never a guessed Create. */
   if (pick === undefined && (before.kind === 'pending' || before.kind === 'unchecked')) return before;

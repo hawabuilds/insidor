@@ -1140,7 +1140,8 @@ export async function buildRising(
   const picks: ReadonlyMap<string, CardPick> = live ? withCarried(await loadPostPicks(db, rowIds), promoted.byOriginal, rowIds) : new Map();
   /* ★ THE PROMOTIONS (promotions.ts): a post only pointing at another account's bigger post is on neither feed, by any route. */
   const promotions = promotionOn(policy) ? await loadPromotions(db, rowIds, ownReachOf) : new Map();
-  const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address] : [])))]) : new Map();
+  /* ★ And the race's coins (PvP, the owner 2026-10-31): the card lists each with its cap, so each is projected too. */
+  const pickedFacts = live ? await loadCoinFactsByAddress(db, [...new Set([...picks.values()].flatMap((p) => (p.outcome === 'picked' && p.address !== null ? [p.address, ...(p.racing ?? [])] : [])))]) : new Map();
   const pickOptions = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
   /* ★ AN OLDER COIN THE POST'S OWN COINS NAME, STILL TRADING (older-trading.ts, Policy.oneCoin.olderTrading). */
   const olderTrading = live ? await loadOlderTrading(db, rows.map((row) => ({ itemId: row.item_id, postedAtMs: toMs(row.posted_at) })), policy, pickOptions) : new Map();
@@ -1181,7 +1182,11 @@ export async function buildRising(
       return out;
     }
     const listed = lookup !== null && 'coins' in lookup ? { count: Math.min(madeAfter(row, lookup.coins), POST_COINS_SHOWN), more: false } : { count: 0, more: false };
-    const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set());
+    const racers = (pick?.racing ?? []).flatMap((a) => {
+      const rf = pickedFacts.get(a);
+      return rf === undefined ? [] : [projectCoin(rf, pickOptions)];
+    });
+    const coins = liveCoinLine(post.coins, pick, f === undefined ? null : projectCoin(f, pickOptions), listed, check?.wrong ?? new Set(), racers);
     const out: WireRisingPost = { ...post, coins, storyId: coins === post.coins ? post.storyId : null };
     assertNoInternalVocabulary(out, `$.rising[${row.item_id}]`);
     return out;

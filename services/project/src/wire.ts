@@ -217,10 +217,25 @@ export interface WireCoinEvidence {
       are all being bought — the card offers "See N coins" beside this one. Absent when there is no
       race; never under 2. A fact about the market, not a judgement of which coin is right. */
   readonly racing?: number;
+  /** THE RACE'S COINS, beside `racing` (the owner, 2026-10-31, the PvP card): each coin in the race as
+      the card and the post's dock draw it, highest market cap first, a cap not read after every read
+      one. Only when two or more of the racers could be projected; absent otherwise, so an old app that
+      never reads it draws "See N coins" as before. Market facts only, never why a coin leads. */
+  readonly racingCoins?: readonly [WireRacingCoin, WireRacingCoin, ...WireRacingCoin[]];
   /** THE POST'S TRADING COINS, when an older coin its own coins name is one of them (older-trading.ts):
       their addresses, highest market cap first, this coin first. The card offers "See N coins" beside
       this one and the sheet lists exactly these, whatever their age. Absent otherwise; never under 2. */
   readonly tradingCoins?: readonly [string, string, ...string[]];
+}
+
+/** One coin of a PvP as the card lists it: who it is and what the market says, nothing else. */
+export interface WireRacingCoin {
+  readonly coinId: string;
+  readonly address: string;
+  readonly ticker: string;
+  readonly imageUrl: string | null;
+  readonly marketCapUsd: WireMeasured;
+  readonly priceChange24h: WireMeasured;
 }
 
 export interface WireBoardRow {
