@@ -62,6 +62,7 @@ import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { OddsLine } from './LaunchOdds.tsx';
 import { PvpLine } from './PvpLine.tsx';
+import { useIsOwner } from '../owner/hooks.ts';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
@@ -151,9 +152,12 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
-  /* What happened to launches that opened like this one (LaunchOdds.tsx): read once when the page opens, like the about read. */
-  const [oddsLoad] = useLoad(`odds:${facts.coinId}`, (signal) => fetchCoinOdds(facts.coinId, signal), 'memory');
-  const odds: CoinOdds | null = oddsLoad.state === 'ready' ? oddsLoad.value : null;
+  /* What happened to launches that opened like this one (LaunchOdds.tsx): read once when the page opens, like the about read.
+     ★ Owner only (the owner 2026-10-31): the odds line and the Info card are still being proven, so
+     everyone else never reads them and sees the page as it was before. */
+  const owner = useIsOwner();
+  const [oddsLoad] = useLoad(`odds:${owner ? facts.coinId : ''}`, (signal) => (owner ? fetchCoinOdds(facts.coinId, signal) : Promise.resolve(null)), 'memory');
+  const odds: CoinOdds | null = owner && oddsLoad.state === 'ready' ? oddsLoad.value : null;
   /* The coin's narrative (coin-narrative.ts): the one the page came from, else the one the read
      service names for the coin, else the most-viewed naming post's. Read once it is known. */
   const narrativeId = story !== null ? null : narrativeIdFor(about);
