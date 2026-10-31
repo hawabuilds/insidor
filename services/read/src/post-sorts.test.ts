@@ -266,7 +266,7 @@ test('★ a riser needs readings that measure both spans: one inside each, half 
   assert.equal(s.before, 100);
 });
 
-test('★ Most viewed Today and This week: views GAINED in the window from each post\'s own readings, any post read in it, stale below fresh; each with its total', async () => {
+test('★ Most viewed Today and This week: views GAINED in the window from each post\'s own readings, any post read in it, by views alone (31 Oct: not stale below fresh); each with its total', async () => {
   const at = (min: number, value: number) => ({ atMs: NOW - min * MIN, value });
   const rows: Row[] = [
     /* Huge, but gained little today and a lot five days ago. */
@@ -278,12 +278,12 @@ test('★ Most viewed Today and This week: views GAINED in the window from each 
   const sorts = createSorts(() => NOW);
   const today = await sorts(fakeDb(rows), 'most_viewed', 'today');
   assert.ok(today !== null && today.gained !== undefined && today.views !== undefined);
-  assert.deepEqual(today.posts.map((p) => (p as { id: string }).id), ['climber', 'big', 'stale'], 'stale below fresh; not read today, not on Today');
+  assert.deepEqual(today.posts.map((p) => (p as { id: string }).id), ['stale', 'climber', 'big'], 'by what each gained today, however recently it was read; old was not read today, not on Today');
   assert.equal(today.gained['climber'], 390_000);
   assert.equal(today.views['big'], 9_000_200);
   assert.equal(today.undated, 0);
   const week = await sorts(fakeDb(rows), 'most_viewed', 'week');
-  assert.deepEqual(week?.posts.map((p) => (p as { id: string }).id), ['big', 'climber', 'stale', 'old'], 'both stale: by what they gained');
+  assert.deepEqual(week?.posts.map((p) => (p as { id: string }).id), ['big', 'stale', 'climber', 'old'], 'by what each gained this week');
   assert.equal(week?.gained?.['big'], 8_000_200);
 
 });
@@ -296,6 +296,13 @@ test('★ Most viewed All time: every For You post by its total, the card\'s own
   ];
   const all = await createSorts(() => NOW)(fakeDb([], [], viewed.map((r) => ({ ...r, first_seen_at: r['first_seen_at'] ?? new Date(NOW - 99 * 24 * 60 * MIN) }))), 'most_viewed', 'all');
   assert.deepEqual(all?.posts.map((p) => (p as { id: string }).id), ['b', 'c', 'a']);
+  /* ★ 31 Oct: a big post read long ago stays above a small one read just now (a 97M-view post had sunk to 88th). */
+  const old: Row[] = [
+    { item_id: 'huge-old', views: '97000000', read_ms: String(NOW - 10 * 24 * 60 * MIN), posted_at: new Date(NOW - 15 * 24 * 60 * MIN), first_seen_at: null },
+    { item_id: 'small-new', views: '50000', read_ms: String(NOW - MIN), posted_at: new Date(NOW - 60 * MIN), first_seen_at: null },
+  ];
+  const ranked = await createSorts(() => NOW)(fakeDb([], [], old.map((r) => ({ ...r, first_seen_at: new Date(NOW - 99 * 24 * 60 * MIN) }))), 'most_viewed', 'all');
+  assert.deepEqual(ranked?.posts.map((p) => (p as { id: string }).id), ['huge-old', 'small-new']);
   assert.equal(all?.views?.['b'], 9_000_000);
   assert.equal(all?.gained, undefined);
 });
