@@ -35,6 +35,9 @@
  * tagged "Stock"), the venue chip the pool's dex when that says something new, and "Liq" the pool's
  * depth. A SOL-paired coin on the launchpad looks as it did. See pair-view.ts.
  *
+ * ★ A PVP LINE UNDER THE ODDS LINE (PvpLine.tsx, the owner 2026-10-31): only while another coin made for
+ * the same post is ahead of this one; it opens the post.
+ *
  * What breaks if changed carelessly: liquidity is the chart's pool's when read, else the coin's own
  * read, else the market profile's; an absent one is a dash with its reason, and only once the
  * profile has answered.
@@ -58,6 +61,7 @@ import { defaultView, fetchTimeframe, type ChartView } from './chart-view.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { OddsLine } from './LaunchOdds.tsx';
+import { PvpLine } from './PvpLine.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
@@ -220,6 +224,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {/* What similar launches did, one line (LaunchOdds.tsx); it opens Info. */}
       <OddsLine odds={odds} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
+      {/* ★ Another coin for the same post ahead of this one (PvpLine.tsx): only while true; it opens the post. */}
+      {about !== null ? <PvpLine posts={about.posts} address={facts.address} cap={cap} /> : null}
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 

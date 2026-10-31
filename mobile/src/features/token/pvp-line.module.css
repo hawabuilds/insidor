@@ -1,0 +1,40 @@
+/* The token page's PvP line (PvpLine.tsx, reports/mockups/pvp.html right panel): one row under the odds
+   line on an amber wash, the amber "PvP" tag, the sentence with its two caps in the number face, and a
+   grey chevron. One line: a longer ticker is cut, never wrapped onto a second. */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--amber-wash);
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tag {
+  flex: none;
+  color: var(--amber);
+  font-weight: 800;
+}
+
+.words {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figure {
+  font-weight: 700;
+}
+
+.end {
+  flex: none;
+  display: flex;
+  color: var(--text-3);
+}
