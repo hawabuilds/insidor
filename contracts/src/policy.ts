@@ -4018,6 +4018,13 @@ export interface NotifyPolicy {
    *                     the launch push the only push there is
    */
   readonly launch: {
+    /**
+     * ★ ANY SWITCH TO A COIN MADE FOR THE POST IS PUSHED (the owner, 2026-10-31). When a post already pushed
+     * (or spent) has its pick moved by the one-coin rule to a coin the creators made for it (a link or the
+     * post naming it), launched after the post was on For You and worth at least `minCapUsd`, that coin is
+     * pushed as a runner hand-over is, once per coin. Off: only the hand-over's own picks are pushed.
+     */
+    readonly switchPush: { readonly on: boolean; readonly minCapUsd: number };
     readonly perDay: number;
     readonly dayMs: number;
     readonly maxLaunchAgeMs: number;
@@ -6135,8 +6142,9 @@ const POLICY_V1: Policy = {
      v216 (2026-10-31, from the v215 token-odds branch; the owner: odds and rug risk at a glance on a token
      page) adds `launchOdds`: the definitions the launch-odds tools count by and the read service shows.
      v217 (2026-10-31, the owner: "why are we being notified of coins so late") adds
-     `rising.quickFrame.pickChange`: a For You card whose pick changed is redrawn by the quick frame at once. */
-  version: 'policy.v217',
+     `rising.quickFrame.pickChange`: a For You card whose pick changed is redrawn by the quick frame at once.
+     v218 (2026-10-31) adds `notify.launch.switchPush`: a post's switch to a coin made for it is pushed. */
+  version: 'policy.v218',
 
   admit: {
     maxAgeMin: 240,
@@ -7747,6 +7755,8 @@ const POLICY_V1: Policy = {
        like the one I just sent get coined, so do my friends"). On 23 Oct a person with a phone was
        sent ~21 coin pushes and six reached them, all by 16:50 London; the rest only listed. */
     launch: {
+      /* Replayed 19-31 Oct: about 2 pushes a day more; 9 runners never pushed before (Peekhole, ZI among them). */
+      switchPush: { on: true, minCapUsd: 25_000 },
       perDay: 15,
       dayMs: 86_400_000,
       maxLaunchAgeMs: 10_800_000, // three hours

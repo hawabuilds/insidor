@@ -144,3 +144,30 @@ test('★ the post that started a narrative: the same one push says so, and a la
   assert.deepEqual(await deliver(), ['push', 'push']);
   assert.deepEqual(sent, ['$DOGZILLA launched from the post that started Dogzilla', '$DOGZ launched for a post you may have seen']);
 });
+
+test('★ a switch to a coin the creators made for the post is pushed once; a switch to a coin only matched by name is not (31 Oct)', async () => {
+  const { db, sent, post, launches, deliver } = await setup();
+  await db.query(`insert into people.alert_prefs (user_id, prefs) values ('u1', '{"perHour": 60}')`);
+  assert.equal(await launches(), 0, 'the first look');
+  await post('x:sw', { address: mint(81), ticker: 'FIRST', cap: 15_000, launchedAgoMin: 30 });
+  assert.equal(await launches(), 1);
+  await deliver();
+  const pick = (address: string) => db.query(`insert into internal.post_coin_pick (item_id, address, outcome, decided_at, evidence, updated_at) values ('x:sw', $1, 'picked', now(), '{}'::jsonb, now())
+    on conflict (item_id) do update set address = excluded.address`, [address]);
+  const tie = (address: string, ties: string[]) => db.query(`insert into internal.one_coin_candidate (item_id, address, path, evidence, launched_at, found_at, updated_at) values ('x:sw', $1, 'launch', $2, now(), now(), now())`, [address, JSON.stringify({ ties })]);
+  /* The pick moves to a coin linked from the post, at $40K, launched after For You had the post. */
+  const made = mint(82);
+  await post('x:sw', { address: made, ticker: 'MADE', cap: 40_000, launchedAgoMin: 10 });
+  await pick(made);
+  await tie(made, ['link', 'name_judge']);
+  assert.equal(await launches(), 1, 'the made coin is pushed');
+  assert.deepEqual(await deliver(), ['push']);
+  assert.match(sent.at(-1) ?? '', /MADE/);
+  assert.equal(await launches(), 0, 'once');
+  /* A later switch to a coin tied only by a name guess is not pushed. */
+  const guessed = mint(83);
+  await post('x:sw', { address: guessed, ticker: 'GUESS', cap: 60_000, launchedAgoMin: 5 });
+  await pick(guessed);
+  await tie(guessed, ['name_guess']);
+  assert.equal(await launches(), 0);
+});

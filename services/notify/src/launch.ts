@@ -378,6 +378,33 @@ async function runnerPicks(db: Db, itemIds: readonly string[]): Promise<Readonly
  * with its pick right now (the pick's evidence `racing`, core coin-race.ts). The first push names
  * them, so nobody buys one coin of a PvP without knowing there is another. Empty without the grant.
  */
+/**
+ * ★ ANY SWITCH TO A COIN MADE FOR THE POST (the owner, 2026-10-31, "build both"). The one-coin rule moves a
+ * post's pick to a rival that runs, by its ordinary hand-over or its race, but only a pick carrying
+ * `runner_handover` or `crash_handover` evidence was pushed: replayed 19-31 Oct, 23 picks moved to the
+ * coin that ran 2-11 minutes in and only 5 were ever pushed. These are the current picks of these posts
+ * that the creators made for the post (a link from the coin, or the post naming it: the candidate's
+ * `link` or `name_stated` tie). The caller pushes one only for a post already spent on another coin,
+ * launched after the post was on For You, at least `switchPush.minCapUsd`: as a runner hand-over is pushed.
+ */
+async function madeForPostPicks(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  if (itemIds.length === 0) return new Map();
+  let rows: { item_id: string; address: string }[];
+  try {
+    rows = await db.query(
+      `select k.item_id, k.address from internal.post_coin_pick k
+         join internal.one_coin_candidate c on c.item_id = k.item_id and c.address = k.address
+        where k.item_id = any($1::text[]) and k.outcome = 'picked' and k.address is not null
+          and (c.evidence -> 'ties' ? 'link' or c.evidence -> 'ties' ? 'name_stated')`,
+      [[...itemIds]],
+    );
+  } catch (e) {
+    if ((e as { code?: unknown }).code !== '42501') throw e;
+    return new Map();
+  }
+  return new Map(rows.map((r) => [r.item_id, r.address] as const));
+}
+
 async function pvpRivals(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
   if (itemIds.length === 0) return new Map();
   const [r] = await db.query<{ ok: boolean | null }>(
@@ -448,7 +475,12 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     await remember([...[...withLaunch, ...narratives].flatMap((p) => [p.key, `c:${p.address}`]), SEEDED]);
     return 0;
   }
-  const runners = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
+  const handovers = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
+  /* ★ Any switch to a coin made for the post (madeForPostPicks): a post already spent, the card's coin a later one, made after For You had it, big enough. */
+  const S = L.switchPush;
+  const spent = withLaunch.filter((p) => S.on && seen.has(p.key) && !handovers.has(p.itemId) && p.launchedMs !== null && p.launchedMs >= p.onForYouMs && (p.capUsd ?? 0) >= S.minCapUsd);
+  const made = spent.length === 0 ? new Map<string, string>() : await madeForPostPicks(db, spent.map((p) => p.itemId));
+  const runners = new Map([...handovers, ...spent.flatMap((p) => (made.get(p.itemId) === p.address ? [[p.itemId, p.address] as const] : []))]);
   /* ★ Late picks (past maxLaunchAgeMs, inside lateRunningMs): each coin's last hour, read only for these. */
   const nowMs = ports.now();
   const late = [...withLaunch, ...narratives].filter((p) => p.launchedMs !== null && (p.revival === true || nowMs - p.launchedMs > L.maxLaunchAgeMs) && nowMs - p.launchedMs <= L.lateRunningMs);
