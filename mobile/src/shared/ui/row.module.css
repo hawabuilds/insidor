@@ -214,13 +214,11 @@
   letter-spacing: -0.01em;
 }
 
-/* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`, reports/mockups/cards-clean.html): a thin
-   divider across the card's full width, then the coin or a few grey words at the left and the buttons
-   and star at the right, every button 40px with one corner. */
+/* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`): no divider, the card stays one smooth
+   surface as before; the coin or a few grey words at the left and the buttons and star at the right,
+   every button 40px with one corner. */
 .row {
-  margin: 14px -18px 0;
-  padding: 12px 18px 0;
-  border-top: 1px solid var(--card-line);
+  margin-top: 16px;
   min-height: 40px;
   display: flex;
   align-items: center;

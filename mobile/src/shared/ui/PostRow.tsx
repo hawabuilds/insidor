@@ -22,7 +22,7 @@
  * TOKEN PAGE (`openCoin`, the owner 2026-10-14): every coin tap in the app opens the coin.
  *
  * ★ EVERY CARD ENDS IN ONE ROW, AND IT IS THE SERVER'S ANSWER, NOT OURS (coin-status.ts `cardRow`; the
- * owner's cards-clean.html, 2026-10-31): under a thin divider across the card, the coin (logo, ticker,
+ * owner's cards-clean.html, 2026-10-31): at the foot of the card (no divider), the coin (logo, ticker,
  * market cap) or a few grey words, then its buttons, all 40px with one corner, and the Watch star:
  *
  *   matched / one → the coin and Buy; no sentence and no tie line ("Links this post, Same picture…"
@@ -190,7 +190,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
 
       {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
 
-      {/* ★ THE ONE ROW (coin-status.ts `cardRow`, cards-clean.html): under a thin divider, the coin or a few grey words, then the buttons and the star. */}
+      {/* ★ THE ONE ROW (coin-status.ts `cardRow`, cards-clean.html): at the foot of the card, no divider, the coin or a few grey words, then the buttons and the star. */}
       <div className={styles['row']}>
         {shown !== null ? (
           <span

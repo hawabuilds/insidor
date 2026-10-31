@@ -147,7 +147,7 @@ export type CardAction = PostAction | { readonly kind: 'pvp'; readonly others: n
 
 /**
  * ★ A FOR YOU CARD'S ONE ROW (the owner, 2026-10-31, reports/mockups/cards-clean.html): every card ends
- * in one row under a thin divider, the coin or a few grey words at the left and its buttons at the
+ * in one row at the foot of the card (no divider), the coin or a few grey words at the left and its buttons at the
  * right. No sentence and no tie line: why a coin is the post's is said in the post pop-up (PostSheet).
  *
  *   one / matched → the coin (logo, ticker, cap) + Buy; a PvP adds "PvP +N" before Buy, a post's trading
