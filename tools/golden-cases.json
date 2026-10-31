@@ -10,7 +10,13 @@
     { "post": "x:2115508893799383392", "at": "2026-10-28T18:30:00Z", "expect": "off", "why": "a coin's promotion (Jenny the bear, 34 views): never on For You on its coin alone" },
     { "post": "x:2115508132042444827", "at": "2026-10-28T18:40:00Z", "expect": "off", "why": "a pointer the coin-first walk recorded (the datacenter for sale): the promotion, not the original" },
     { "post": "x:2115489205685985663", "at": "2026-10-28T17:30:00Z", "expect": "off", "why": "Brazil election news (Flavio Bolsonaro): politics is held" },
-    { "post": "x:2115447792340480463", "at": "2026-10-28T15:00:00Z", "expect": "off", "why": "Brazil election news (Flavio's passport): politics is held" }
+    { "post": "x:2115447792340480463", "at": "2026-10-28T15:00:00Z", "expect": "off", "why": "Brazil election news (Flavio's passport): politics is held" },
+    { "post": "x:2115765008546382203", "at": "2026-10-29T15:17:00Z", "expect": "on", "why": "@imnogue, missed 29 Oct (owner pasted 30 Oct)" },
+    { "post": "x:2115824399660044443", "at": "2026-10-29T19:13:00Z", "expect": "on", "why": "@Ajayfizzy slow burn, missed 29 Oct (owner pasted 30 Oct): on once found" },
+    { "post": "x:2115848768109047982", "at": "2026-10-29T20:50:00Z", "expect": "on", "why": "@Briagowsky, missed 29 Oct (owner pasted 30 Oct)" },
+    { "post": "x:2115634727516266782", "at": "2026-10-29T06:40:00Z", "expect": "on", "why": "@nocontextscats, missed 29 Oct (owner pasted 30 Oct)" },
+    { "post": "x:2115848622822838294", "at": "2026-10-29T20:49:00Z", "expect": "on", "why": "@ayeciza, missed 29 Oct (owner pasted 30 Oct)" },
+    { "post": "x:2116228697761943566", "at": "2026-10-30T22:00:00Z", "expect": "on", "why": "@dexerto Sonic, missed 30 Oct (owner pasted 30 Oct)" }
   ],
   "coins": [
     { "post": "x:2115715264528675106", "coin": "55WJkT2DFozHTS32ZZrXhrRGvQuESo1tuv2oDc9Fpump", "expect": "no", "why": "$vanilla linking @AFP's vanilla video, on a Yokohama post about a dog called Vanilla (the owner, 29 Oct)" },
