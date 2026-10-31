@@ -14,8 +14,10 @@
  * offered only for a post's own coin (`one` or `matched`), never for an unsure list.
  */
 
-import type { Coin, CoinEvidence, PostCoinLink } from '../../shared/api/index.ts';
+import type { Coin, CoinEvidence, PostCoinLink, SheetCoin } from '../../shared/api/index.ts';
 import type { Instant } from '../../shared/format/measure.ts';
+import { instantFrom } from '../../shared/format/measure.ts';
+import { pvpCoins } from '../../shared/pvp.ts';
 import { compact } from '../../shared/format/number.ts';
 
 const MINUTE = 60_000;
@@ -148,4 +150,49 @@ export function cardFoot(coins: PostCoinLink, facts: (e: CoinEvidence) => readon
     case 'unchecked':
       return { kind: 'line', line: "Couldn't check for a coin" };
   }
+}
+
+/** One row of the post's PvP dock: the coin as the sheet holds it, and whether it leads. */
+export interface PvpDockRow {
+  readonly coin: SheetCoin;
+  readonly leader: boolean;
+}
+
+/**
+ * ★ THE POST'S PVP DOCK (the owner's clean PvP, 2026-10-31): every coin of the race as identical rows,
+ * leader (highest read cap) first. Each coin is this sheet's own reading of it when the reply priced
+ * it (fresher than the frame's), else the frame's: a coin the sheet could not read is still listed,
+ * its Buy built from what the card carried. Null on a post with no PvP: the dock stays as it was.
+ *
+ * Not the live cap per row on purpose: rows re-ranked by a few-second price would let the purple Buy
+ * sit beside a lower cap than the grey one under it. One reading, one order.
+ */
+export function pvpDock(coins: PostCoinLink, sheetCoins: readonly SheetCoin[]): readonly PvpDockRow[] | null {
+  if (coins.kind !== 'matched' || coins.evidence.racingCoins === undefined) return null;
+  const held = new Map(sheetCoins.map((c) => [c.address, c] as const));
+  /* The sheet's caps first, then the card's rule decides the order and the leader (shared/pvp.ts). */
+  const priced: PostCoinLink = {
+    ...coins,
+    evidence: {
+      ...coins.evidence,
+      racingCoins: coins.evidence.racingCoins.map((r) => {
+        const s = held.get(r.address);
+        return s === undefined ? r : { ...r, marketCapUsd: s.marketCapUsd.known ? s.marketCapUsd : r.marketCapUsd, changePct24h: s.changePct24h.known ? s.changePct24h : r.changePct24h };
+      }),
+    },
+  };
+  const ranked = pvpCoins(priced);
+  if (ranked === null) return null;
+  return ranked.map((r) => {
+    const s = held.get(r.address);
+    const coin: SheetCoin = s !== undefined
+      ? { ...s, marketCapUsd: r.marketCapUsd, changePct24h: r.changePct24h }
+      : { coinId: r.coinId, address: r.address, name: null, ticker: r.ticker, imageUrl: r.imageUrl, launchedAt: instantFrom(null, 'not_reported'), launchClock: { kind: 'unknown' }, marketCapUsd: r.marketCapUsd, changePct24h: r.changePct24h, bonded: null, proven: false };
+    return { coin, leader: r.leader };
+  });
+}
+
+/** "2 coins" in the dock's header. */
+export function pvpCountText(n: number): string {
+  return n === 1 ? '1 coin' : `${n} coins`;
 }

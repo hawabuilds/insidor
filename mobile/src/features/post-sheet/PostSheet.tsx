@@ -29,6 +29,12 @@
  * Buy opens the existing ticket unchanged (BuyOpen.tsx); there is no quick buy here — that is on
  * Choose coin only. Tapping the coin row anywhere else opens that coin's token page.
  *
+ * ★ A PVP POST'S DOCK (the owner's clean PvP, 2026-10-31): "PvP" and "N coins" over one card that
+ * lists every coin of the race as identical rows (logo, ticker, cap and 24h move, a Buy of one size),
+ * the leader (highest cap) on top with the purple Buy and the others grey (sheet-view.ts `pvpDock`).
+ * Each Buy opens that coin's own ticket, with the PvP warning naming the biggest other coin; a row
+ * opens its coin's page. A post without a PvP keeps its dock exactly as it was.
+ *
  * `start: 'coins'` opens straight on Choose coin (a For You card's "See N coins"); its back arrow
  * still leads to the post.
  *
@@ -71,7 +77,7 @@ import { CoinLine } from './CoinLine.tsx';
 import { PostMedia } from './PostMedia.tsx';
 import { tiktokVideoId } from './tiktok-player.ts';
 import { OpenIcon } from './sheet-icons.tsx';
-import { followersText, listIsOwners, provenWhy } from './sheet-view.ts';
+import { followersText, listIsOwners, provenWhy, pvpCountText, pvpDock, type PvpDockRow } from './sheet-view.ts';
 import { useIsOwner } from '../owner/hooks.ts';
 import { GainChart, type ChartMarker } from './GainChart.tsx';
 import { firstWords, hm, lastGain, launchTime, plus, postSlots } from './gain-chart.ts';
@@ -290,6 +296,8 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const age = formatAge(post.postedAt, now);
 
   const proven = data.coins.find((c) => c.proven) ?? null;
+  /* The race's coins as one list (sheet-view.ts `pvpDock`); null keeps the dock as it was. */
+  const pvp = pvpDock(post.coins, data.coins);
   /* ★ One post, one coin: the coins that only share the name are the owner's list (listIsOwners). */
   const owner = useIsOwner();
   const listShown = owner || !listIsOwners(post.coins);
@@ -399,6 +407,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
       </SheetBody>
 
       <SheetFoot>
+        {pvp !== null ? <PvpDock rows={pvp} onBuy={onBuy} onOpenCoin={onOpenCoin} /> : (
         <section className={styles['coinArea']}>
           {main !== null ? (
             <>
@@ -444,8 +453,42 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             </div>
           ) : null}
         </section>
+        )}
       </SheetFoot>
     </>
+  );
+}
+
+/**
+ * The PvP dock (the owner's clean PvP, middle panel): a small header, then one card of identical rows.
+ * The leader's Buy is purple, the others' grey, all one size; every Buy opens its own coin's ticket.
+ */
+function PvpDock({ rows, onBuy, onOpenCoin }: { rows: readonly PvpDockRow[]; onBuy: (c: SheetCoin) => void; onOpenCoin: (c: SheetCoin) => void }) {
+  return (
+    <section className={styles['coinArea']}>
+      <div className={styles['pvpHead']}>
+        <span>PvP</span>
+        <span>{pvpCountText(rows.length)}</span>
+      </div>
+      <div className={styles['pvpList']}>
+        {rows.map(({ coin, leader }) => (
+          <div key={coin.address} className={styles['pvpRow']} role="button" tabIndex={0} onClick={() => onOpenCoin(coin)} onKeyDown={(e) => {
+            if (e.key === 'Enter') onOpenCoin(coin);
+          }}>
+            <CoinLogo small address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={36} />
+            <b className={styles['pvpTicker']}>{tickerText(coin.ticker ?? coin.name ?? coin.address.slice(0, 4))}</b>
+            <span className={styles['pvpNums']}>
+              <Value r={formatUsd(coin.marketCapUsd)} num />
+              {coin.changePct24h.known ? <Num className={coin.changePct24h.amount >= 0 ? styles['up'] : styles['down']}>{pctText(coin.changePct24h.amount)}</Num> : null}
+            </span>
+            <button type="button" className={leader ? styles['pvpBuy'] : `${styles['pvpBuy']} ${styles['pvpBuyQuiet']}`} aria-label={`Buy ${tickerText(coin.ticker ?? coin.name ?? '')}`} onClick={(e) => {
+              e.stopPropagation();
+              onBuy(coin);
+            }}>Buy</button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
