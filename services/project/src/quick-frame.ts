@@ -86,6 +86,8 @@ export interface QuickProbe extends QuickCursor {
   readonly callAtMs: number | null;
   /** The newest pick of a coin-first post (0116); absent or null when none or not readable. */
   readonly pickAtMs?: number | null;
+  /** The newest pick change on a post For You shows (for-you-lock.ts `pickChanged`); absent or null when none or not asked. */
+  readonly cardPickAtMs?: number | null;
   readonly kinds?: KindsSince | null;
   /** Past the cursor asked about, how many passed posts a reading put over For You's views bar (bar-cross.ts); absent or null when not asked or not readable. */
   readonly crossers?: number | null;
@@ -136,6 +138,7 @@ export async function readProbe(db: Db, since: QuickCursor | null = null, policy
     linkAtMs: ms(r?.link_at),
     callAtMs: ms(r?.call_at),
     pickAtMs: await coinFirstPickAt(db),
+    cardPickAtMs: policy.rising.quickFrame.pickChange ? await cardPickAt(db) : null,
     kinds: since === null || answerId <= since.answerId ? null : await kindsSince(db, since.answerId),
     crossers: since === null ? null : await crossersSince(db, since, policy),
   };
@@ -148,6 +151,18 @@ async function crossersSince(db: Db, since: QuickCursor, policy: Policy): Promis
   } catch {
     return null;
   }
+}
+
+/** When a post For You shows last had its pick changed (internal.coin_pick_change's time index); null when none. */
+async function cardPickAt(db: Db): Promise<number | null> {
+  const rows = await db.query<{ at: Date | string | null }>(
+    `select max(ch.changed_at) as at
+       from (select subject_id, changed_at from internal.coin_pick_change
+              where subject_kind = 'post' and mode = 'live' order by changed_at desc limit $1) ch
+       join public.rising_row r on r.feed_id = 'fyp' and r.item_id = ch.subject_id`,
+    [RECENT_LINKS],
+  );
+  return ms(rows[0]?.at);
 }
 
 /** When a coin-first post's coin was last picked (0113, 0116); null when none, or before 0116 (looked up, never failed into). */
@@ -169,7 +184,7 @@ export const kindsAllIn = (probe: QuickProbe): boolean => probe.kinds !== undefi
 export function quickDue(cursor: QuickCursor | null, lastQuickAtMs: number | null, probe: QuickProbe, nowMs: number, p: Policy = DEFAULT_POLICY): boolean {
   const q = p.rising.quickFrame;
   if (!q.on || cursor === null) return false;
-  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs || (probe.pickAtMs ?? 0) > cursor.atMs || (probe.crossers ?? 0) > 0;
+  const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs || (probe.pickAtMs ?? 0) > cursor.atMs || (probe.cardPickAtMs ?? 0) > cursor.atMs || (probe.crossers ?? 0) > 0;
   if (!changed) return false;
   /* ★ Every yes has its kind: nothing can show between its two answers, so no wait and no gap. */
   if (q.kindsInSkipsWait && kindsAllIn(probe)) return true;
@@ -195,7 +210,7 @@ async function committedStoryCoins(db: Db): Promise<ReadonlyMap<string, WireCoin
 
 /** One quick frame, in the caller's transaction. */
 export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, policy: Policy = DEFAULT_POLICY, answers: AnswerPolicies = onePolicy(policy)): Promise<QuickResult> {
-  const ids = await changedPosts(db, cursor, forYouBarCheck(policy));
+  const ids = await changedPosts(db, cursor, forYouBarCheck(policy), policy.rising.quickFrame.pickChange);
   if (ids.length === 0) return { changed: 0, added: 0, removed: 0, wrote: false };
   const changed = new Set(ids);
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);

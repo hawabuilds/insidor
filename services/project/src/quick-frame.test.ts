@@ -11,7 +11,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { mergeForYou, quickDue, type QuickProbe } from './quick-frame.ts';
 
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 } } } };
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 }, pickChange: true } } };
 const NOW = 1_800_000_000_000;
 const probe = (answerId: number, answerAgoMs: number | null, linkAtMs: number | null = null, callAtMs: number | null = null): QuickProbe => ({ answerId, atMs: NOW, answerAtMs: answerAgoMs === null ? null : NOW - answerAgoMs, linkAtMs, callAtMs });
 
@@ -71,4 +71,13 @@ test('a changed post that no longer passes is taken off; one that still does is 
   const showing = [card('a', 30), card('b', 20), card('c', 10)];
   const merged = mergeForYou(showing, new Set(['b', 'c']), [card('c', 10, 'new')], at);
   assert.deepEqual(merged.map((c) => `${c.id}:${c.v}`), ['a:old', 'c:new']);
+});
+
+test('★ a For You card whose pick changed is due at once, past the gap and the settle; off, it waits for the full frame (31 Oct)', () => {
+  const cursor = { answerId: 10, atMs: NOW - 60_000 };
+  const picked: QuickProbe = { answerId: 10, atMs: NOW, answerAtMs: NOW - 120_000, linkAtMs: null, callAtMs: null, cardPickAtMs: NOW - 2_000 };
+  assert.equal(quickDue(cursor, null, picked, NOW, P), true);
+  assert.equal(quickDue(cursor, null, { ...picked, cardPickAtMs: NOW - 120_000 }, NOW, P), false, 'a pick before the cursor is not news');
+  const off = { ...P, rising: { ...P.rising, quickFrame: { ...P.rising.quickFrame, pickChange: false } } };
+  assert.equal(quickDue(cursor, null, { ...picked, cardPickAtMs: null }, NOW, off), false);
 });

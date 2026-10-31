@@ -3379,6 +3379,13 @@ export interface RisingPolicy {
       readonly on: boolean;
       readonly maxPosts: number;
     };
+    /**
+     * ★ A CARD WHOSE PICK CHANGED IS REDRAWN AT ONCE (the owner, 2026-10-31: "why are we being
+     * notified of coins so late"): a post on For You whose coin pick changed counts as changed, so
+     * its card, and the launch push that reads it, follow the pick in seconds, not at the next full
+     * frame (8-70 minutes on 30-31 Oct). Off: the full frame alone redraws it.
+     */
+    readonly pickChange: boolean;
   };
 }
 
@@ -6126,8 +6133,10 @@ const POLICY_V1: Policy = {
      v215 (2026-10-31, merged from the v213 branch) lets the quick frame place a judged post the moment a
      reading puts it over For You's views bar (`rising.quickFrame.barCross`), instead of the next full frame.
      v216 (2026-10-31, from the v215 token-odds branch; the owner: odds and rug risk at a glance on a token
-     page) adds `launchOdds`: the definitions the launch-odds tools count by and the read service shows. */
-  version: 'policy.v216',
+     page) adds `launchOdds`: the definitions the launch-odds tools count by and the read service shows.
+     v217 (2026-10-31, the owner: "why are we being notified of coins so late") adds
+     `rising.quickFrame.pickChange`: a For You card whose pick changed is redrawn by the quick frame at once. */
+  version: 'policy.v217',
 
   admit: {
     maxAgeMin: 240,
@@ -8070,7 +8079,7 @@ const POLICY_V1: Policy = {
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and
        311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
        hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
-    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 } },
+    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 }, pickChange: true },
     /* policy.v167, replayed read-only over 21-24 Oct: 24 For You posts (2 Popular) would have left
        (the @Infinitidigits promotion of @prtygal777's 6-day-old "Light Baby" among them); of 784 posts
        picked a coin, 239 were promotions: 136 originals take the coin, 19 older ones wait for it to run,
