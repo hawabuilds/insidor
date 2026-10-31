@@ -150,6 +150,7 @@ import { loadStoryCoins } from './story-coins.ts';
 import { withPlausibleLists } from './coin-list.ts';
 import { liveCoinLine, loadPostPicks, type CardPick } from './one-coin-cards.ts';
 import { writeSameNameCoins } from './same-name.ts';
+import { copyCandidates, loadCopyFacts, withoutDeadCopies } from './dead-copies.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { loadOlderTrading, olderTradingLine } from './older-trading.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -1129,6 +1130,12 @@ export async function buildRising(
     if (!coinVouchesFor(facts, policy) || facts.firstCoinAddress === null || facts.firstCoinAddress === undefined) continue;
     const listed = withVouchingCoin(lookups.get(id), facts.firstCoinAddress, checks.get(id));
     if (listed !== undefined) lookups.set(id, listed);
+  }
+  /* ★ A COPY THAT NEVER TOOK OFF IS OFF THE LIST (dead-copies.ts, Policy.oneCoin.deadCopies): after the
+     weighing, which supplies each coin's picture verdict, and before anything counts the list. */
+  if (policy.oneCoin.deadCopies.on) {
+    const trimmed = withoutDeadCopies(lookups, await loadCopyFacts(db, copyCandidates(lookups), nowMs), nowMs, policy.oneCoin.deadCopies);
+    for (const [id, l] of trimmed) lookups.set(id, l);
   }
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
   /* The posts these quote (quoted.ts): the card draws each inside it. */
