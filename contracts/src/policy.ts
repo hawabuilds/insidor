@@ -2800,6 +2800,14 @@ export interface OneCoinPolicy {
    * cap is about $0.40. Candidates found within `withinMs` only: an older tie is no longer on a feed.
    */
   readonly postCheck: { readonly on: boolean; readonly perDay: number; readonly perPass: number; readonly everyMs: number; readonly withinMs: number };
+  /**
+   * A copy that never took off is off "See N coins" (policy.v220; the owner, 2026-10-31: "the image
+   * doesnt match the post at all"; services/project dead-copies.ts). A listed coin whose picture differs
+   * from the post's and that does not link it leaves the list once it is `minAgeMs` old and every cap we
+   * read for it is under `underCapUsd`. The replay kept all 151 owner-confirmed coins and every coin past
+   * $100K, and hid 584 copies.
+   */
+  readonly deadCopies: { readonly on: boolean; readonly minAgeMs: number; readonly underCapUsd: number };
 }
 
 /**
@@ -6147,8 +6155,10 @@ const POLICY_V1: Policy = {
      `rising.quickFrame.pickChange`: a For You card whose pick changed is redrawn by the quick frame at once.
      v218 (2026-10-31) adds `notify.launch.switchPush`: a post's switch to a coin made for it is pushed.
      v219 (2026-10-31, the owner's PvP alert) narrows `notify.launch.switchPush`: the switch is a PvP alert to the
-     people the post's first coin push reached, once per post, only when the made coin is worth more than the first. */
-  version: 'policy.v219',
+     people the post's first coin push reached, once per post, only when the made coin is worth more than the first.
+     v220 (2026-10-31, the owner: "see n coins ... the image doesnt match the post") adds `oneCoin.deadCopies`: a
+     copy with a different picture that never passed $5K by an hour old is off "See N coins". */
+  version: 'policy.v220',
 
   admit: {
     maxAgeMin: 240,
@@ -7955,6 +7965,8 @@ const POLICY_V1: Policy = {
     /* 2,000 a day: the replay's 64 pairs cost $0.014, so the cap is about $0.45 a day at the most. Six a
        pass every 20 s is 1,080 an hour, far over the feed's new name-only ties; the cap is the brake. */
     postCheck: { on: true, perDay: 2_000, perPass: 6, everyMs: 20_000, withinMs: 86_400_000 },
+    /* An hour, and $5K: the 31 Oct replay's line that cut no owner-confirmed coin and no coin past $100K. */
+    deadCopies: { on: true, minAgeMs: 3_600_000, underCapUsd: 5_000 },
   },
 
   search: {
