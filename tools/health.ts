@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
 /* The same bars the alert service checks every five minutes (services/notify health-alarm.ts). */
-import { JUDGED_MIN, judgingBroken, logoFailPct, LOGO_FAIL_PCT, picturesBroken, TAPE_MIN_COINS, tapeBroken } from '../services/notify/src/health-bars.ts';
+import { FLOW_WINDOW_HOURS, flowFallen, flowUsual, JUDGED_MIN, judgingBroken, logoFailPct, LOGO_FAIL_PCT, picturesBroken, TAPE_MIN_COINS, tapeBroken } from '../services/notify/src/health-bars.ts';
 
 const READ = process.env.READ_URL ?? 'https://read-production-a6c0.up.railway.app';
 const DIR = new URL('../reports/health/', import.meta.url);
@@ -36,6 +36,13 @@ now.popularPosts = p.n; now.popularFreshPct = p.n ? Math.round((100 * p.fresh) /
 now.lastFypJoinMin = Math.round(Number((await one(`select extract(epoch from now() - max(first_shown_at)) / 60 m from public.feed_post where feed_id = 'fyp'`)).m ?? -1));
 now.newestFypPostMin = Math.round(Number((await one(`select extract(epoch from now() - max(i.posted_at)) / 60 m from public.rising_row r join public.item i using (item_id) where r.feed_id = 'fyp'`)).m ?? -1));
 now.judgedLast30m = (await one(`select count(*)::int n from internal.post_judgement where judged_at > now() - interval '30 minutes'`)).n;
+/* ★ OUTPUT, NOT ONLY RUNNING (31 Oct): name guesses and coin-to-post ties in the last hours, against the same hours one and two days before. */
+const flowWin = (table, col, fromH, toH) => one(`select count(*)::int n from internal.${table} where ${col} > now() - interval '${fromH} hours' and ${col} <= now() - interval '${toH} hours'`);
+now.flow = {};
+for (const [step, table, col] of [['names', 'name_guess', 'guessed_at'], ['matching', 'one_coin_candidate', 'found_at']]) {
+  const H = FLOW_WINDOW_HOURS;
+  now.flow[step] = { recent: (await flowWin(table, col, H, 0)).n, dayBefore: (await flowWin(table, col, 24 + H, 24)).n, twoDaysBefore: (await flowWin(table, col, 48 + H, 48)).n };
+}
 const shed = await one(`select count(*) filter (where reason = 'T2_budget_shed')::int shed, count(*) filter (where verdict = 'pass')::int pass from internal.decisions where stage = 'track' and decided_at > now() - interval '15 minutes'`);
 now.rereadShedPct = shed.shed + shed.pass ? Math.round((100 * shed.shed) / (shed.shed + shed.pass)) : 0;
 const langs = (await db.query(`select i.lang, count(*) filter (where f.found_at > now() - interval '3 hours')::int now3, count(*) filter (where f.found_at between now() - interval '27 hours' and now() - interval '24 hours')::int yday3
@@ -71,6 +78,7 @@ const floor = (k, min) => { if (now[k] < min) red.push(`${k} ${now[k]} under ${m
 floor('fypPosts', 40); floor('fypFreshPct', 80); floor('popularFreshPct', 50);
 if (tapeBroken(now.tapeCoins < 0 ? null : now.tapeCoins)) red.push(`tapeCoins ${now.tapeCoins} under ${TAPE_MIN_COINS}`);
 if (judgingBroken(now.judgedLast30m)) red.push(`judgedLast30m ${now.judgedLast30m} under ${JUDGED_MIN}`);
+for (const [step, c] of Object.entries(now.flow)) { const usual = flowUsual(c.dayBefore, c.twoDaysBefore); if (flowFallen(c.recent, usual)) red.push(`${step} output fell: ${c.recent} in the last ${FLOW_WINDOW_HOURS} h, usual ${usual}`); }
 if (now.lastFypJoinMin > 60) red.push(`For You has added no post for ${now.lastFypJoinMin} min`);
 if (picturesBroken(now.pictureStorage === -1 ? null : now.pictureStorage)) red.push(`picture storage answers ${now.pictureStorage}: coin logos, poster and post pictures are not loading`);
 if (now.logoCopyFailPct > LOGO_FAIL_PCT) red.push(`coin-logo copies failing: ${now.logoCopyFailPct}% in the last hour`);
