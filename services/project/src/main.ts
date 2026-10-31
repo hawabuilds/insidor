@@ -28,6 +28,7 @@ import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
 import { projectNarrativeFrame } from './narrative-frame.ts';
 import { loadAnswerPolicies } from './judge-cutoff.ts';
+import { holdLogoHoursIn } from './post-match.ts';
 import { projectRisingFeeds } from './rising.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { announceBoard } from './notify.ts';
@@ -105,6 +106,8 @@ async function main(): Promise<void> {
      transaction — so DATABASE_URL may be the transaction-mode pooler (6543), and is on
      Railway. A session advisory lock added here later must open its pool with
      `session: true`; withAdvisoryLock refuses a transaction-mode pool either way. */
+  /* The picture search's logo hours outlive this frame's process (post-match.ts holdLogoHoursIn). */
+  holdLogoHoursIn(connectionUrl(process.env));
   const pool = createPool(DB_ROLE.service, {
     applicationName: 'insidor-project',
     /* Two minutes a statement (2026-10-28): the full frame's reads over a day of posts and readings

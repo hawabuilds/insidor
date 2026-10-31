@@ -94,11 +94,11 @@ const DUE = `(l.address is null
 /* After 0102: a stored original not yet resized, asked again after NONE_RETRY_MS when it could not be. */
 const UNSIZED = `(l.outcome = 'stored' and l.sized_at is null and l.checked_at < $1)`;
 
-const COLUMNS = `a.declared_social ->> 'metadata' as metadata_uri, m.image_uri as metadata_image, l.outcome as last_outcome, l.attempts`;
+/* The wide columns, joined for the pass's own coins only: see `shownSql`. */
+const COLUMNS = `a.declared_social ->> 'metadata' as metadata_uri, m.image_uri as metadata_image, d.last_outcome, d.attempts`;
 const JOINS = `
-  left join public.asset a on a.chain = 'solana' and a.address = s.address
-  left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
-  left join internal.coin_logo l on l.address = s.address`;
+  left join public.asset a on a.chain = 'solana' and a.address = d.address
+  left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'`;
 
 /**
  * Every table the app draws a coin from, one address column each. The `people` parts are read only
@@ -140,17 +140,32 @@ export function shownSetSql(withPeople: boolean): string {
 /**
  * The shown coins whose logo is missing, retryable or never tried, and (`sized`, after 0102) those
  * still stored as the original: never-tried first, the originals last. `$6` limit.
+ *
+ * ★ THE PASS'S COINS ARE CHOSEN FROM THE LEDGER ALONE, THEN JOINED TO THE COIN. Until 2026-10-30
+ * the coin and its metadata were joined to every due shown coin before the sort took 180: on 30
+ * Oct about 60,000 shown addresses (31,000 from alerts, 15,000 from "See N coins" lists) against
+ * 4,103 ledger rows, so tens of thousands due, two random heap reads each, and the statement took
+ * 6–125 s a pass on a disk-bound database. The order reads only the ledger
+ * (`internal.coin_logo`), and the coin and metadata joins are on unique keys (asset's
+ * chain+address, metadata's asset_key), so they neither add nor drop a row: taking the 180 first
+ * is the same 180 (ties between never-tried coins were in no fixed order before either).
  */
 export function shownSql(withPeople: boolean, sized: boolean): string {
   return `
 with shown(address) as (
   ${shownSetSql(withPeople)}
+),
+due as (
+  select s.address, l.outcome as last_outcome, l.attempts, l.checked_at
+    from shown s
+    left join internal.coin_logo l on l.address = s.address
+   where s.address ~ '${ADDRESS}' and (${DUE}${sized ? ` or ${UNSIZED}` : ''})
+   order by l.outcome = 'stored' nulls first, l.checked_at asc nulls first
+   limit $6
 )
-select s.address, ${COLUMNS}
-  from shown s ${JOINS}
- where s.address ~ '${ADDRESS}' and (${DUE}${sized ? ` or ${UNSIZED}` : ''})
- order by l.outcome = 'stored' nulls first, l.checked_at asc nulls first
- limit $6`;
+select d.address, ${COLUMNS}
+  from due d ${JOINS}
+ order by d.last_outcome = 'stored' nulls first, d.checked_at asc nulls first`;
 }
 
 export async function peopleReadable(db: Db): Promise<boolean> {
