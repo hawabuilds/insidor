@@ -36,3 +36,12 @@ test('a post\'s views come through as read', () => {
 test('a reply carrying an internal word is refused loudly, not drawn', () => {
   assert.throws(() => decodeCoinAbout({ links: [], score: 3 }), WireLeakError);
 });
+
+test('★ a post\'s PvP rides on its evidence, so the token page can say another coin for it is ahead', () => {
+  const race = [
+    { coinId: 'solana:KJI', address: 'KJI', ticker: 'KJI', imageUrl: null, marketCapUsd: { v: 51_000 }, priceChange24h: { v: 320 } },
+    { coinId: 'solana:KIJ', address: 'KIJ', ticker: 'KIJ', imageUrl: null, marketCapUsd: { v: 12_000 }, priceChange24h: { v: -14 } },
+  ];
+  const a = decodeCoinAbout({ links: [], posts: [{ postId: 'x:1', evidence: { linksPost: null, samePicture: null, launchedAfterMs: null, racingCoins: race } }] });
+  assert.deepEqual(a.posts[0]?.evidence.racingCoins?.map((c) => c.address), ['KJI', 'KIJ']);
+});

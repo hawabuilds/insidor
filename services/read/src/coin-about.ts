@@ -16,7 +16,8 @@
  *                  list holds it (public.same_name_coin, 0058), each with its narrative when it is
  *                  on one, and its views as its card last read them (the token page's viral
  *                  post is the most-viewed). Facts only: links this post, same picture,
- *                  launched this long after.
+ *                  launched this long after. A post whose PvP this coin is in (its card's
+ *                  `racingCoins`) is listed too, carrying that race, for the page's "PvP" line.
  *   storyId        the narrative on the board whose coin this is (its settled coin first, else its
  *                  top coin, which the page then calls not checked), for the token page's narrative
  *                  card; null when no narrative on the board names it. Read from public.story_view,
@@ -66,6 +67,10 @@ with named as (
     from public.same_name_coin c
     join public.rising_row r on r.item_id = c.subject_id
    where c.subject_kind = 'post' and c.address = $1
+  union all
+  select distinct on (r.item_id) r.item_id, r.payload, false, null::boolean, null::boolean, null::bigint
+    from public.rising_row r
+   where r.payload #> '{coins,evidence,racingCoins}' @> jsonb_build_array(jsonb_build_object('address', $1::text))
 )
 select distinct on (n.item_id) n.item_id, n.payload, n.own, n.links_post, n.same_picture, n.launched_after_ms,
        s.payload ->> 'title' as story_title,
@@ -201,6 +206,14 @@ const views = (v: unknown) => {
   return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? { v: n } : { v: null, why: 'not_reported' };
 };
 
+/** The card's race (`coins.evidence.racingCoins`), passed on as it is when it is a list of two or more. */
+function racingCoinsOf(payload: Record<string, unknown>): { readonly racingCoins?: readonly unknown[] } {
+  const coins = payload['coins'];
+  const evidence = typeof coins === 'object' && coins !== null ? (coins as Record<string, unknown>)['evidence'] : null;
+  const list = typeof evidence === 'object' && evidence !== null ? (evidence as Record<string, unknown>)['racingCoins'] : null;
+  return Array.isArray(list) && list.length >= 2 ? { racingCoins: list } : {};
+}
+
 /** The post's own facts, read from its feed payload: only the fields the card already shows. */
 function postOf(r: Row): Record<string, unknown> | null {
   const p = typeof r['payload'] === 'object' && r['payload'] !== null ? (r['payload'] as Record<string, unknown>) : null;
@@ -224,7 +237,14 @@ function postOf(r: Row): Record<string, unknown> | null {
        page leads with the most-viewed post, so a missing count must stay missing, not zero. */
     views: views(p['reach']),
     story: storyId !== null && title !== null ? { storyId, title } : null,
-    evidence: { linksPost: fact(r['links_post']), samePicture: fact(r['same_picture']), launchedAfterMs: after !== null && Number.isFinite(after) ? after : null },
+    evidence: {
+      linksPost: fact(r['links_post']),
+      samePicture: fact(r['same_picture']),
+      launchedAfterMs: after !== null && Number.isFinite(after) ? after : null,
+      /* ★ The post's PvP, as its card carries it (services/project one-coin-cards.ts): the token page
+         says when another coin for the same post is ahead of this one. Market facts only. */
+      ...racingCoinsOf(p),
+    },
   };
 }
 

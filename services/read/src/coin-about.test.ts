@@ -67,3 +67,10 @@ test('the narrative whose coin this is rides along by id, and none is null, neve
   const none = await coinAbout(`solana:${MINT}`, deps(held, async () => null, null));
   assert.equal(JSON.parse(none?.body ?? '{}').storyId, null);
 });
+
+test('★ a post whose PvP this coin is in carries the race on its evidence, for the token page\'s line', async () => {
+  const race = [{ address: 'KJI', ticker: 'KJI', marketCapUsd: { v: 51_000 } }, { address: MINT, ticker: 'KIJ', marketCapUsd: { v: 12_000 } }];
+  const post = { item_id: 'x:1', payload: { sourceLabel: 'X', excerpt: 'post', coins: { kind: 'matched', coin: { address: 'KJI' }, evidence: { picked: true, racingCoins: race } } }, own: false, links_post: null, same_picture: null, launched_after_ms: null, story_title: null };
+  const r = await coinAbout(`solana:${MINT}`, deps({ [ASSET_SQL]: [{ chain: 'solana', address: MINT }], [POSTS_SQL]: [post] }, async () => null, null));
+  assert.deepEqual(JSON.parse(r?.body ?? '{}').posts[0].evidence.racingCoins, race);
+});
