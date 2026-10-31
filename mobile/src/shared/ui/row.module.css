@@ -274,26 +274,19 @@
   flex: 1 1 100%;
 }
 
-/* A PvP card (PostRow PvpFoot, the owner's option C): a thin divider across the card's full width,
-   then the race's coins stacked small, leader bright on top, and one Buy. */
+/* A PvP card (PostRow PvpFoot, the owner's option B): a thin divider across the card's full width,
+   then one row: the leading coin, a quiet grey "PvP +N" and the purple Buy, the two one height. */
 .pvpFoot {
   margin: 14px -18px 0;
   padding: 12px 18px 0;
   border-top: 1px solid var(--border-subtle);
 }
 
-.pvpStack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
 .pvpLine {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -310,19 +303,27 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
-/* The coins behind the leader: the same line, quieter and a size smaller. */
-.pvpDim {
-  opacity: 0.55;
-}
-
-.pvpDim .pvpTicker {
-  font-size: 14px;
-}
-
-.pvpDim .pvpCap {
+/* The same height and corner as the card's Buy beside it (.buy), quiet grey, its "PvP" amber. */
+.pvpMore {
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: #22222a;
+  color: var(--text-1);
+  font-weight: 700;
   font-size: 13px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pvpTag {
+  color: var(--amber);
+  font-weight: 800;
 }
 
 /* The coin's logo at the head of its line, when the card names one coin (shared/ui/CoinLogo.tsx). */

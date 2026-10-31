@@ -59,10 +59,11 @@
  * said as a fact; the byline keeps the post's own age.
  *
  * ★ A POST WITH A PVP (two or more coins made for it being bought at once, shared/pvp.ts) swaps the
- * coin line for a stack under a thin divider (the owner's option C, 2026-10-31): each coin's logo,
- * ticker and market cap, the leader (highest read cap) bright on top, the others dimmed, and ONE
- * Buy, for the leader, which opens the post sheet like every card Buy, where each coin has its own.
- * A tap on a coin's line opens that coin's page. Every other card keeps its coin line as it was.
+ * coin line for ONE row under a thin divider (the owner's option B, 2026-10-31): the leading coin's
+ * (highest read cap) logo, ticker and market cap, then a quiet grey "PvP +N" (N the other racing
+ * coins), which opens the sheet on its coins as "See N coins" does, and the purple Buy for the
+ * leader, which opens the post sheet like every card Buy. The two buttons are one height. A tap on
+ * the leader's name opens its page. Every other card keeps its coin line as it was.
  *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
@@ -248,30 +249,28 @@ function StoryTag({ tag, open }: { tag: PostInStory; open: (storyId: string) => 
 }
 
 /**
- * The PvP stack (option C): every coin of the race on its own small line, leader first and bright, the
- * others dimmed; one Buy for the leader at the right, opening the post sheet. A line opens its coin.
+ * The PvP row (option B): the leader's logo, ticker and cap; then the grey "PvP +N", opening the sheet
+ * on the race's coins, and the purple Buy for the leader, opening the post sheet.
  */
 function PvpFoot({ coins, handlers, watch }: { coins: readonly PvpCoin[]; handlers: PostHandlers; watch: ReactNode }) {
   const leader = coins[0];
+  if (leader === undefined) return null;
+  const others = coins.length - 1;
   return (
     <div className={`${styles['foot']} ${styles['pvpFoot']}`}>
-      <span className={styles['pvpStack']}>
-        {coins.map((c) => (
-          <span
-            key={c.address}
-            className={c.leader ? styles['pvpLine'] : `${styles['pvpLine']} ${styles['pvpDim']}`}
-            onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(c.coinId); } : undefined}
-          >
-            <CoinLogo small address={c.address} ticker={c.ticker} imageUrl={c.imageUrl} size={22} />
-            <b className={styles['pvpTicker']}>{tickerText(c.ticker)}</b>
-            <Value r={formatUsd(c.marketCapUsd)} className={styles['pvpCap']} num />
-          </span>
-        ))}
+      <span
+        className={styles['pvpLine']}
+        onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(leader.coinId); } : undefined}
+      >
+        <CoinLogo small address={leader.address} ticker={leader.ticker} imageUrl={leader.imageUrl} size={28} />
+        <b className={styles['pvpTicker']}>{tickerText(leader.ticker)}</b>
+        <Value r={formatUsd(leader.marketCapUsd)} className={styles['pvpCap']} num />
       </span>
       <span className={styles['actions']}>
-        {leader !== undefined ? (
-          <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(leader.ticker)}`} onClick={(e) => { e.stopPropagation(); handlers.open(); }}>Buy</button>
-        ) : null}
+        <button type="button" className={styles['pvpMore']} aria-label={`PvP, ${others} more ${others === 1 ? 'coin' : 'coins'} for this post`} onClick={(e) => { e.stopPropagation(); handlers.seeCoins(); }}>
+          <span className={styles['pvpTag']}>PvP</span>+{others}
+        </button>
+        <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(leader.ticker)}`} onClick={(e) => { e.stopPropagation(); handlers.open(); }}>Buy</button>
         {watch}
       </span>
     </div>
