@@ -287,7 +287,9 @@ async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, po
       const one = viewedPlace(r['item_id'], v, msOf(r['read_ms']), msOf(r['posted_at']), msOf(r['first_seen_at']), Infinity, nowMs, policy);
       return one === null ? [] : [one];
     });
-    return { list: sortOrder(places, places.length), scales, totals };
+    /* ★ Most viewed is by views alone (the owner, 2026-10-31: "fyp week most viewed doesnt show full week"):
+       an older post read less recently is not listed after newer ones, or a 97M-view post sank to 88th. */
+    return { list: sortOrder(places, places.length, true), scales, totals };
   }
   const legacy = isLegacy(window);
   const r = p.risers;
@@ -318,7 +320,8 @@ async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, po
     return fill === null || !fill.fresh ? [] : [fill];
   });
   if (!legacy && by === 'trending') return { list: trendingList(risers, places, policy), scales, totals };
-  return { list: sortOrder(places, places.length), scales, totals };
+  /* Most viewed Today and This week: by views alone, as All time (above). The old windows keep freshness. */
+  return { list: sortOrder(places, places.length, !legacy && by === 'most_viewed'), scales, totals };
 }
 
 /** The 1h rule's window, the one the fill comes from: the trending floor's 1h entry. */
