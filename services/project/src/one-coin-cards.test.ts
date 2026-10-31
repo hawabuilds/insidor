@@ -41,3 +41,15 @@ test('★ the race reaches the card as a count beside the picked coin, only when
   assert.equal(pickedEvidence(picked({ racing: ['A', 'B'] }), null).racing, undefined);
   assert.equal(pickedEvidence(picked(), null).racing, undefined);
 });
+
+test('★ PvP: the race\'s coins ride beside the count, highest cap first, an unread cap last, never one alone', () => {
+  const c = (address: string, cap: number | null): WireCoin => ({ coinId: `solana:${address}`, address, ticker: address, imageUrl: null, marketCapUsd: cap === null ? { v: null, why: 'not_read_yet' } : { v: cap }, priceChange24h: { v: 3 } }) as unknown as WireCoin;
+  const e = pickedEvidence(picked({ racing: ['PICK', 'KJI', 'NOCAP'] }), null, [c('PICK', 12_000), c('NOCAP', null), c('KJI', 51_000), c('ELSE', 90_000)]);
+  assert.deepEqual(e.racingCoins?.map((r) => r.address), ['KJI', 'PICK', 'NOCAP']);
+  assert.deepEqual(Object.keys(e.racingCoins?.[0] ?? {}).sort(), ['address', 'coinId', 'imageUrl', 'marketCapUsd', 'priceChange24h', 'ticker']);
+  /* One projected racer is no list: the card keeps "See N coins". */
+  assert.equal(pickedEvidence(picked({ racing: ['PICK', 'KJI'] }), null, [c('PICK', 1)]).racingCoins, undefined);
+  /* A coin the owner called wrong is never listed. */
+  const line = liveCoinLine(unsure, picked({ racing: ['PICK', 'KJI'] }), c('PICK', 1), { count: 2, more: false }, new Set(['KJI']), [c('PICK', 1), c('KJI', 2)]);
+  assert.equal(line.kind === 'matched' ? line.evidence.racingCoins : 'x', undefined);
+});
