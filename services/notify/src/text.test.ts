@@ -284,3 +284,9 @@ test('★ a held coin passed in a PvP says which coin passed it and both caps', 
   assert.equal(t.title, 'PvP: the other $Marvin for this post just passed yours');
   assert.equal(t.body, '$Marvin $75K, yours $Marvin $58K.');
 });
+
+test('★ a PvP on a post already pushed: the new coin passed the first, both caps, tap to see both (31 Oct)', () => {
+  const t = alertText('coin_launched', { pvpSwitch: true, symbol: 'KJI', mcUsd: 51_000, firstSymbol: 'KIJ', firstMcUsd: 12_000, author: '@cb_doge', excerpt: 'kim jong un just said this' });
+  assert.equal(t.title, "PvP on @cb_doge's post: $KJI just passed $KIJ");
+  assert.equal(t.body, '$KJI $51K, $KIJ $12K. Tap to see both.');
+});

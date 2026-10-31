@@ -30,7 +30,7 @@ async function setup() {
   await db.query(`insert into people.profile (user_id, name) values ('u1', 'u1')`);
   await db.query(`insert into people.push_subscription (endpoint, user_id, p256dh, auth) values ('https://push.example/u1', 'u1', 'p', 'a')`);
   /* A post first on For You an hour ago; its card's coin as the projector writes a pick. */
-  const post = async (id: string, coin: { address: string; ticker: string; cap: number; launchedAgoMin: number; launchpad?: false } | null) => {
+  const post = async (id: string, coin: { address: string; ticker: string; cap: number; launchedAgoMin: number; launchpad?: false; racingCoins?: readonly unknown[] } | null) => {
     /* The launchpad's own row for the coin (notify coin-gate.ts): only a coin it saw launch is pushed. */
     if (coin !== null && coin.launchpad !== false) {
       await db.query(
@@ -39,7 +39,7 @@ async function setup() {
         [coin.address, `solana:${coin.address}`, iso(NOW - coin.launchedAgoMin * MIN), coin.ticker],
       );
     }
-    const coins = coin === null ? { kind: 'none' } : { kind: 'matched', coin: { address: coin.address, ticker: coin.ticker, marketCapUsd: { v: coin.cap }, mintedAt: { at: NOW - coin.launchedAgoMin * MIN } }, evidence: { picked: true } };
+    const coins = coin === null ? { kind: 'none' } : { kind: 'matched', coin: { address: coin.address, ticker: coin.ticker, marketCapUsd: { v: coin.cap }, mintedAt: { at: NOW - coin.launchedAgoMin * MIN } }, evidence: { picked: true, ...(coin.racingCoins !== undefined ? { racingCoins: coin.racingCoins } : {}) } };
     await db.query(
       `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at) values ('fyp', $1, $2, $3, $4, $3)
        on conflict (feed_id, item_id) do update set payload = excluded.payload`,
@@ -145,26 +145,35 @@ test('★ the post that started a narrative: the same one push says so, and a la
   assert.deepEqual(sent, ['$DOGZILLA launched from the post that started Dogzilla', '$DOGZ launched for a post you may have seen']);
 });
 
-test('★ a switch to a coin the creators made for the post is pushed once; a switch to a coin only matched by name is not (31 Oct)', async () => {
+test('★ a PvP on a post already pushed: only whom the first push reached are told, once, when the made coin is ahead; a name guess is not (31 Oct)', async () => {
   const { db, sent, post, launches, deliver } = await setup();
   await db.query(`insert into people.alert_prefs (user_id, prefs) values ('u1', '{"perHour": 60}')`);
+  /* u2 joins after the first push: never told of the PvP. */
   assert.equal(await launches(), 0, 'the first look');
   await post('x:sw', { address: mint(81), ticker: 'FIRST', cap: 15_000, launchedAgoMin: 30 });
   assert.equal(await launches(), 1);
-  await deliver();
+  assert.deepEqual(await deliver(), ['push']);
+  await db.query(`insert into people.profile (user_id, name) values ('u2', 'u2')`);
+  await db.query(`insert into people.push_subscription (endpoint, user_id, p256dh, auth) values ('https://push.example/u2', 'u2', 'p', 'a')`);
   const pick = (address: string) => db.query(`insert into internal.post_coin_pick (item_id, address, outcome, decided_at, evidence, updated_at) values ('x:sw', $1, 'picked', now(), '{}'::jsonb, now())
     on conflict (item_id) do update set address = excluded.address`, [address]);
   const tie = (address: string, ties: string[]) => db.query(`insert into internal.one_coin_candidate (item_id, address, path, evidence, launched_at, found_at, updated_at) values ('x:sw', $1, 'launch', $2, now(), now(), now())`, [address, JSON.stringify({ ties })]);
-  /* The pick moves to a coin linked from the post, at $40K, launched after For You had the post. */
+  const race = (made: string, madeCap: number, firstCap: number) => [{ address: made, marketCapUsd: { v: madeCap } }, { address: mint(81), marketCapUsd: { v: firstCap } }];
+  /* The pick moves to a coin linked from the post, at $40K, launched after For You had the post — but the first is still ahead. */
   const made = mint(82);
-  await post('x:sw', { address: made, ticker: 'MADE', cap: 40_000, launchedAgoMin: 10 });
+  await post('x:sw', { address: made, ticker: 'MADE', cap: 40_000, launchedAgoMin: 10, racingCoins: race(made, 40_000, 45_000) });
   await pick(made);
   await tie(made, ['link', 'name_judge']);
-  assert.equal(await launches(), 1, 'the made coin is pushed');
+  assert.equal(await launches(), 0, 'not ahead of the first: nothing, and the post is not spent');
+  /* Now it is ahead: one PvP alert, to u1 alone, opening the post. */
+  await post('x:sw', { address: made, ticker: 'MADE', cap: 51_000, launchedAgoMin: 10, racingCoins: race(made, 51_000, 12_000) });
+  assert.equal(await launches(), 1, 'u1 only');
   assert.deepEqual(await deliver(), ['push']);
-  assert.match(sent.at(-1) ?? '', /MADE/);
-  assert.equal(await launches(), 0, 'once');
-  /* A later switch to a coin tied only by a name guess is not pushed. */
+  assert.equal(sent.at(-1), "PvP on @x:sw's post: $MADE just passed $FIRST");
+  const [row] = await db.query<{ user_id: string; body: string; href: string }>(`select user_id, body, href from people.alert where facts ->> 'pvpSwitch' = 'true'`);
+  assert.deepEqual(row, { user_id: 'u1', body: '$MADE $51K, $FIRST $12K. Tap to see both.', href: '/#/post/x%3Asw' });
+  assert.equal(await launches(), 0, 'once per post');
+  /* A later switch to a coin tied only by a name guess is not told. */
   const guessed = mint(83);
   await post('x:sw', { address: guessed, ticker: 'GUESS', cap: 60_000, launchedAgoMin: 5 });
   await pick(guessed);
