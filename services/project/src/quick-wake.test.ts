@@ -13,7 +13,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { QuickCursor, QuickProbe } from './quick-frame.ts';
 import { quickWake } from './quick-wake.ts';
 
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 } } } };
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true, barCross: { on: true, maxPosts: 40 }, pickChange: true } } };
 
 function setup(ok = true) {
   const clock = { now: 1_000_000 };

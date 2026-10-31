@@ -1546,7 +1546,7 @@ export const kindDetail = (kind: HeldKind | undefined): string | null => (kind =
  * whose same-name list this frame must not rewrite. Nothing changed: the frame as built.
  */
 export async function withNewerCards(db: Db, frame: RisingFrame, began: QuickCursor, nowMs: Millis, policy = DEFAULT_POLICY): Promise<{ readonly frame: RisingFrame; readonly deferred: readonly string[] }> {
-  const changed = new Set(await changedPosts(db, began, forYouBarCheck(policy)));
+  const changed = new Set(await changedPosts(db, began, forYouBarCheck(policy), policy.rising.quickFrame.pickChange));
   if (changed.size === 0) return { frame, deferred: [] };
   const committed = (await db.query<{ payload: WireRisingPost }>(
     `select payload from public.rising_row where feed_id = 'fyp' and item_id = any($1::text[]) order by position`,

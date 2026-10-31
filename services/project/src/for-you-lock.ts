@@ -76,12 +76,30 @@ export async function pickedCoinFirst(db: Db, cursor: QuickCursor): Promise<read
 }
 
 /**
+ * ★ A CARD WHOSE PICK CHANGED (the owner, 2026-10-31: "why are we being notified of coins so late").
+ * A post on For You whose coin pick the one-coin rule changed past the cursor (internal.coin_pick_change,
+ * its own index on the time). Until 31 Oct its card showed the new coin only at the next full frame,
+ * 8-70 minutes later, and the launch push (services/notify launch.ts), which reads the card, waited with it.
+ */
+export async function pickChanged(db: Db, cursor: QuickCursor): Promise<readonly string[]> {
+  const rows = await db.query<{ item_id: string }>(
+    `select distinct ch.subject_id as item_id
+       from internal.coin_pick_change ch
+       join public.rising_row r on r.feed_id = 'fyp' and r.item_id = ch.subject_id
+      where ch.subject_kind = 'post' and ch.mode = 'live' and ch.changed_at > $1
+      limit $2`,
+    [new Date(cursor.atMs).toISOString(), MAX_CHANGED],
+  );
+  return rows.map((r) => r.item_id);
+}
+
+/**
  * The posts that changed past the cursor: every post with an answer filed after its answer id, every post
  * the judge passed that a coin linked, or the owner called, after its time, every coin-first post picked
  * since, and — given For You's bar — every passed post a reading since put over that bar (bar-cross.ts).
  * Both frames pass the bar, so the full frame defers to the quick frame on exactly the posts it places.
  */
-export async function changedPosts(db: Db, cursor: QuickCursor, bar: BarCheck | null = null): Promise<readonly string[]> {
+export async function changedPosts(db: Db, cursor: QuickCursor, bar: BarCheck | null = null, picks = false): Promise<readonly string[]> {
   const rows = await db.query<{ item_id: string }>(
     `(select distinct item_id from internal.post_judgement where id > $1 order by item_id limit $3)
      union
@@ -100,5 +118,6 @@ export async function changedPosts(db: Db, cursor: QuickCursor, bar: BarCheck | 
   );
   const picked = await pickedCoinFirst(db, cursor);
   const crossed = bar === null ? [] : await barCrossers(db, cursor.atMs, bar);
-  return [...new Set([...rows.map((r) => r.item_id), ...picked, ...crossed])];
+  const repicked = picks ? await pickChanged(db, cursor) : [];
+  return [...new Set([...rows.map((r) => r.item_id), ...picked, ...crossed, ...repicked])];
 }
