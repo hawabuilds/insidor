@@ -1,11 +1,11 @@
 /* The Watch star (WatchStar.tsx): an outlined square like the post sheet's head buttons, filled
-   purple while the post is watched (a state the owner reads at a glance). 36px drawn on a card
-   (the card's row height), 44px in the sheet; the card's tap reaches a 44px square either way
+   purple while the post is watched (a state the owner reads at a glance). 40px drawn on a card
+   (the card's row height and every card button's, cards-clean.html), 44px in the sheet; the card's tap reaches a 44px square either way
    through ::after. */
 .star {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   flex: none;
   border: 0;
   border-radius: 12px;
@@ -20,7 +20,7 @@
 .star::after {
   content: '';
   position: absolute;
-  inset: calc((36px - var(--tap)) / 2);
+  inset: calc((40px - var(--tap)) / 2);
 }
 
 .big {

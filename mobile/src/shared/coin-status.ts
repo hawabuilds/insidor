@@ -142,6 +142,60 @@ export function postCoinStatus(shown: PostCoinLink, owner = false): PostCoinStat
   };
 }
 
+/** A For You card's one row's buttons: the post's actions, and the grey "PvP +N" (N the other racing coins). */
+export type CardAction = PostAction | { readonly kind: 'pvp'; readonly others: number };
+
+/**
+ * ★ A FOR YOU CARD'S ONE ROW (the owner, 2026-10-31, reports/mockups/cards-clean.html): every card ends
+ * in one row under a thin divider, the coin or a few grey words at the left and its buttons at the
+ * right. No sentence and no tie line: why a coin is the post's is said in the post pop-up (PostSheet).
+ *
+ *   one / matched → the coin (logo, ticker, cap) + Buy; a PvP adds "PvP +N" before Buy, a post's trading
+ *                   coins "See N coins"; a coin that cannot be traded says "Can't be traded yet", no Buy
+ *   unsure        → "3 coins use this name" + See 3 coins (no list to open: "No coin yet" + Create coin)
+ *   none          → "No coin yet" + Create coin
+ *   pending       → "— still checking" and no button; unchecked → "Couldn't check" and no button
+ *   several       → "13 coins on pump.fun" + View coins
+ *
+ * Every absence keeps its reason in short words; nothing here is a disabled button.
+ */
+export interface CardRow {
+  /** The coin the row names; null when the row is words. */
+  readonly coin: Coin | null;
+  /** Short grey words: the state with no coin, or a fact about the coin ("Can't be traded yet"). */
+  readonly note: string | null;
+  /** In the order drawn, Buy or Create last. Empty is no button at all. */
+  readonly actions: readonly CardAction[];
+}
+
+export function cardRow(shown: PostCoinLink, owner = false): CardRow {
+  const coins = forViewer(shown, owner);
+  switch (coins.kind) {
+    case 'unsure': {
+      const more = coins.more === true;
+      if (coins.claimCount <= 0) return { coin: null, note: 'No coin yet', actions: [{ kind: 'create' }] };
+      const one = coins.claimCount === 1 && !more;
+      return { coin: null, note: `${coins.claimCount}${more ? '+' : ''} ${one ? 'coin uses' : 'coins use'} this name`, actions: [{ kind: 'see', count: coins.claimCount, more }] };
+    }
+    case 'one':
+    case 'matched': {
+      const racing = coins.kind === 'matched' ? coins.evidence.racing ?? null : null;
+      const trading = coins.kind === 'matched' ? coins.evidence.tradingCoins ?? null : null;
+      const actions: CardAction[] = [];
+      if (racing !== null) actions.push({ kind: 'pvp', others: racing - 1 });
+      else if (trading !== null) actions.push({ kind: 'see', count: trading.length, more: false });
+      if (coins.coin.tradable) actions.push({ kind: 'buy', coin: coins.coin });
+      return { coin: coins.coin, note: coins.coin.tradable ? null : "Can't be traded yet", actions };
+    }
+    case 'pending':
+      return { coin: null, note: '— still checking', actions: [] };
+    default: {
+      const status = coinStatus(coins);
+      return { coin: null, note: status.line, actions: status.action === null ? [] : [status.action] };
+    }
+  }
+}
+
 /** Minutes, hours or days, the way the card says a gap: "12m", "3h", "2d". */
 function gap(ms: number): string {
   const minutes = Math.round(ms / 60_000);
