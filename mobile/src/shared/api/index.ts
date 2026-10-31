@@ -4,7 +4,7 @@
  */
 
 export type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-export type { Coin, CoinEvidence, CoinLink, PostCoinLink } from './wire/coin.ts';
+export type { Coin, CoinEvidence, CoinLink, PostCoinLink, RacingCoin } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade, PairToken } from './wire/market.ts';
 export type { DiscussionPost, Evidence, InWindow, NarrativeStage, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 export type { OlderCoin, PostSortBy, PostSortWindow, PostSpeeds, RisingFeed, RisingFeedId, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';

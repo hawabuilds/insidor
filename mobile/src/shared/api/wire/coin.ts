@@ -139,6 +139,17 @@ export type PostCoinLink =
    */
   | { readonly kind: 'matched'; readonly coin: Coin; readonly evidence: CoinEvidence };
 
+/** One coin of a PvP: who it is and what the market says of it, nothing about why it leads. */
+export interface RacingCoin {
+  readonly coinId: string;
+  readonly address: string;
+  readonly ticker: string;
+  readonly imageUrl: string | null;
+  readonly marketCapUsd: Measured;
+  /** The trailing day's price move, in percent; the one field coloured, by sign. */
+  readonly changePct24h: Delta;
+}
+
 /**
  * What is known about a coin against one post, each a fact true without us. Null is "not
  * known" (not read, not compared), never "no", and is never said on screen.
@@ -158,6 +169,9 @@ export interface CoinEvidence {
   readonly picked?: true;
   /** This many coins made for the post are being bought together: "See N coins". Absent, or 2 or more. */
   readonly racing?: number;
+  /** The race's coins (2 or more), highest market cap first, an unread cap last: the PvP card and the
+      post's dock list exactly these. Absent from an older server, or when fewer than two could be read. */
+  readonly racingCoins?: readonly RacingCoin[];
   /** The post's trading coins (2 or more, this one first) when an older coin its own coins name is one
       of them: "See N coins" lists exactly these, whatever their age. Absent otherwise. */
   readonly tradingCoins?: readonly string[];

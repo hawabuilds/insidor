@@ -58,6 +58,12 @@
  * `sharedBy`), with that account's face, under the byline. It is why an older post is on For You,
  * said as a fact; the byline keeps the post's own age.
  *
+ * ★ A POST WITH A PVP (two or more coins made for it being bought at once, shared/pvp.ts) swaps the
+ * coin line for a stack under a thin divider (the owner's option C, 2026-10-31): each coin's logo,
+ * ticker and market cap, the leader (highest read cap) bright on top, the others dimmed, and ONE
+ * Buy, for the leader, which opens the post sheet like every card Buy, where each coin has its own.
+ * A tap on a coin's line opens that coin's page. Every other card keeps its coin line as it was.
+ *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
@@ -67,6 +73,8 @@ import type { RisingPost } from '../api/index.ts';
 import { quotePictureLeads, sharedByLabel, type PostInStory } from '../api/wire/rising.ts';
 import { storyWords } from '../story-words.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
+import { pvpCoins, type PvpCoin } from '../pvp.ts';
+import { formatUsd } from '../format/number.ts';
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
 import { compact, formatCount } from '../format/number.ts';
@@ -111,6 +119,8 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
   const cap = useCoinCap(own?.address ?? '', own?.marketCapUsd ?? NO_COIN, false, own?.priceUsd ?? null);
   const coins = own !== null && (post.coins.kind === 'one' || post.coins.kind === 'matched') ? { ...post.coins, coin: { ...own, marketCapUsd: cap } } : post.coins;
   const status = postCoinStatus(coins, owner);
+  /* The PvP stack (shared/pvp.ts), with this card's live cap for its own coin; null keeps the coin line. */
+  const pvp = own === null ? null : pvpCoins(post.coins, { address: own.address, cap });
   /* The English when the post was written in another language, with its line (Translated.tsx). */
   const words = useShownWords(post);
 
@@ -178,6 +188,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
 
       {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
 
+      {pvp !== null ? <PvpFoot coins={pvp} handlers={handlers} watch={watch} /> : (
       <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
         <span
           className={styles['status']}
@@ -198,6 +209,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
           </span>
         ) : null}
       </div>
+      )}
       {extra}
     </article>
   );
@@ -232,6 +244,37 @@ function StoryTag({ tag, open }: { tag: PostInStory; open: (storyId: string) => 
       <span className={styles['storyTagName']}>{w.name ?? 'Part of a'}</span>
       <span className={styles['storyTagRest']}>{` story${w.count !== null ? `, ${w.count}` : ''}`}</span>
     </button>
+  );
+}
+
+/**
+ * The PvP stack (option C): every coin of the race on its own small line, leader first and bright, the
+ * others dimmed; one Buy for the leader at the right, opening the post sheet. A line opens its coin.
+ */
+function PvpFoot({ coins, handlers, watch }: { coins: readonly PvpCoin[]; handlers: PostHandlers; watch: ReactNode }) {
+  const leader = coins[0];
+  return (
+    <div className={`${styles['foot']} ${styles['pvpFoot']}`}>
+      <span className={styles['pvpStack']}>
+        {coins.map((c) => (
+          <span
+            key={c.address}
+            className={c.leader ? styles['pvpLine'] : `${styles['pvpLine']} ${styles['pvpDim']}`}
+            onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(c.coinId); } : undefined}
+          >
+            <CoinLogo small address={c.address} ticker={c.ticker} imageUrl={c.imageUrl} size={22} />
+            <b className={styles['pvpTicker']}>{tickerText(c.ticker)}</b>
+            <Value r={formatUsd(c.marketCapUsd)} className={styles['pvpCap']} num />
+          </span>
+        ))}
+      </span>
+      <span className={styles['actions']}>
+        {leader !== undefined ? (
+          <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(leader.ticker)}`} onClick={(e) => { e.stopPropagation(); handlers.open(); }}>Buy</button>
+        ) : null}
+        {watch}
+      </span>
+    </div>
   );
 }
 

@@ -274,6 +274,57 @@
   flex: 1 1 100%;
 }
 
+/* A PvP card (PostRow PvpFoot, the owner's option C): a thin divider across the card's full width,
+   then the race's coins stacked small, leader bright on top, and one Buy. */
+.pvpFoot {
+  margin: 14px -18px 0;
+  padding: 12px 18px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pvpStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pvpLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pvpTicker {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pvpCap {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* The coins behind the leader: the same line, quieter and a size smaller. */
+.pvpDim {
+  opacity: 0.55;
+}
+
+.pvpDim .pvpTicker {
+  font-size: 14px;
+}
+
+.pvpDim .pvpCap {
+  font-size: 13px;
+}
+
 /* The coin's logo at the head of its line, when the card names one coin (shared/ui/CoinLogo.tsx). */
 .statusLogo {
   display: inline-flex;
