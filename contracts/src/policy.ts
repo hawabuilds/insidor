@@ -4019,10 +4019,12 @@ export interface NotifyPolicy {
    */
   readonly launch: {
     /**
-     * ★ ANY SWITCH TO A COIN MADE FOR THE POST IS PUSHED (the owner, 2026-10-31). When a post already pushed
-     * (or spent) has its pick moved by the one-coin rule to a coin the creators made for it (a link or the
-     * post naming it), launched after the post was on For You and worth at least `minCapUsd`, that coin is
-     * pushed as a runner hand-over is, once per coin. Off: only the hand-over's own picks are pushed.
+     * ★ A SWITCH TO A COIN MADE FOR THE POST IS A PVP ALERT (the owner, 2026-10-31; v219). When a post already
+     * pushed (or spent) has its pick moved by the one-coin rule to a coin the creators made for it (a link or
+     * the post naming it), launched after the post was on For You, worth at least `minCapUsd` and more than
+     * the post's first pushed coin, the people that first push reached are told once per post: "PvP on @X's
+     * post: $NEW just passed $FIRST" (notify launch.ts). v218 pushed it to everyone as a hand-over. Off:
+     * nothing is said of the switch; the hand-over's own picks are pushed as ever.
      */
     readonly switchPush: { readonly on: boolean; readonly minCapUsd: number };
     readonly perDay: number;
@@ -6143,8 +6145,10 @@ const POLICY_V1: Policy = {
      page) adds `launchOdds`: the definitions the launch-odds tools count by and the read service shows.
      v217 (2026-10-31, the owner: "why are we being notified of coins so late") adds
      `rising.quickFrame.pickChange`: a For You card whose pick changed is redrawn by the quick frame at once.
-     v218 (2026-10-31) adds `notify.launch.switchPush`: a post's switch to a coin made for it is pushed. */
-  version: 'policy.v218',
+     v218 (2026-10-31) adds `notify.launch.switchPush`: a post's switch to a coin made for it is pushed.
+     v219 (2026-10-31, the owner's PvP alert) narrows `notify.launch.switchPush`: the switch is a PvP alert to the
+     people the post's first coin push reached, once per post, only when the made coin is worth more than the first. */
+  version: 'policy.v219',
 
   admit: {
     maxAgeMin: 240,

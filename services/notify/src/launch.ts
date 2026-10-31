@@ -61,6 +61,16 @@
  * coin made for the post worth twice it took the pick (core one-coin.ts, the pick's evidence
  * `crash_handover`), that coin is pushed exactly as a runner hand-over is, with the same words.
  *
+ * ★ AND A PVP ON A POST ALREADY PUSHED (the owner, 2026-10-31; Policy.notify.launch.switchPush, policy.v219).
+ * When a post's pick moves to a coin the creators made for it (a link, or the post naming it), launched
+ * after For You had the post, worth at least `minCapUsd` AND more than the post's first pushed coin, the
+ * people that first push reached — and only they — are told once per post (`s:<item>`, the deliverer's
+ * claim `<item>|#pvp`): "PvP on @X's post: $NEW just passed $FIRST" / "$NEW $51K, $FIRST $12K. Tap to see
+ * both.", opening the post. Not a hand-over to everyone (v218 pushed it so): to anyone else the new coin
+ * is one more coin, and to the people holding the first coin's push it is the news that they may be
+ * on the wrong one. Both caps are the card's own reading of the race when it has one, so they are of
+ * one moment; else a fresh read; a cap not read on either side sends nothing and spends nothing.
+ *
  * ★ EXCEPT AN ORIGINAL BROUGHT BACK BY ITS PROMOTION'S COIN (the owner, 2026-10-24; Policy.rising
  * .promotion, services/project promotions.ts). A caller's post quoting an older viral post is never
  * shown; its coin goes to the original, and an original older than the coin-link age at the launch
@@ -173,6 +183,30 @@ export function isRevival(c: { readonly launchedMs: number | null; readonly post
 export const runnerKey = (itemId: string, address: string): string => `h:${itemId}|${address}`;
 /** The deliverer's claim for a hand-over push: one per person, post and coin (0044), beside the coin's own. */
 export const runnerSubject = (itemId: string, address: string): string => `${itemId}|#runner|${address}`;
+
+/** A post's PvP alert (the header), remembered once per post whatever coin passed. */
+export const pvpSwitchKey = (itemId: string): string => `s:${itemId}`;
+/** The deliverer's claim for it: one per person and post. */
+export const pvpSwitchSubject = (itemId: string): string => `${itemId}|#pvp`;
+/** Where a tap on it lands: the post, where both coins are. */
+export const postHref = (itemId: string): string => `/#/post/${encodeURIComponent(itemId)}`;
+
+/** The post's first pushed coin, as the people it reached were told of it, and its cap now (null: not read). */
+export interface FirstPushed {
+  readonly address: string;
+  readonly symbol: string;
+  readonly capUsd: number | null;
+}
+
+/**
+ * Whether a switch is a PvP alert now (the header): another coin than the one first pushed, both caps
+ * read, the new one at least `minCapUsd` and strictly above the first. Pure, so its edges are tested.
+ */
+export function pvpSwitchDue(p: Pick<Picked, 'address' | 'capUsd'>, first: FirstPushed | undefined, minCapUsd: number): boolean {
+  if (first === undefined || first.address === p.address) return false;
+  if (p.capUsd === null || first.capUsd === null) return false;
+  return p.capUsd >= minCapUsd && p.capUsd > first.capUsd;
+}
 
 /** A hand-over push's timing: the coin launched after the post was on For You, and is still just launched. No coin-first exception: the new coin always came after. */
 export function runnerEarlyEnough(p: Pick<Picked, 'launchedMs' | 'onForYouMs' | 'runningNow'>, nowMs: number, rule: LaunchAges): boolean {
@@ -384,8 +418,9 @@ async function runnerPicks(db: Db, itemIds: readonly string[]): Promise<Readonly
  * `runner_handover` or `crash_handover` evidence was pushed: replayed 19-31 Oct, 23 picks moved to the
  * coin that ran 2-11 minutes in and only 5 were ever pushed. These are the current picks of these posts
  * that the creators made for the post (a link from the coin, or the post naming it: the candidate's
- * `link` or `name_stated` tie). The caller pushes one only for a post already spent on another coin,
- * launched after the post was on For You, at least `switchPush.minCapUsd`: as a runner hand-over is pushed.
+ * `link` or `name_stated` tie). The caller tells of one only for a post already spent on another coin,
+ * launched after the post was on For You, at least `switchPush.minCapUsd` and above the first pushed coin:
+ * a PvP alert to whom the first push reached (the header), no longer a hand-over pushed to everyone.
  */
 async function madeForPostPicks(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
   if (itemIds.length === 0) return new Map();
@@ -403,6 +438,34 @@ async function madeForPostPicks(db: Db, itemIds: readonly string[]): Promise<Rea
     return new Map();
   }
   return new Map(rows.map((r) => [r.item_id, r.address] as const));
+}
+
+/**
+ * Each post's first coin push and who it reached (people.alert: `coin_launched`, delivered 'push', the
+ * post in its facts as `item`, never a PvP alert itself): the coin and its symbol from the earliest.
+ */
+async function firstPushes(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly address: string; readonly symbol: string }>> {
+  if (itemIds.length === 0) return new Map();
+  const rows = await db.query<{ item: string; address: string; symbol: string | null }>(
+    `select distinct on (facts ->> 'item') facts ->> 'item' as item, facts ->> 'address' as address, facts ->> 'symbol' as symbol
+       from people.alert
+      where kind = 'coin_launched' and delivery = 'push' and facts ->> 'item' = any($1::text[])
+        and facts ->> 'address' is not null and coalesce(facts ->> 'pvpSwitch', '') <> 'true'
+      order by facts ->> 'item', at, alert_id`,
+    [[...itemIds]],
+  );
+  return new Map(rows.map((r) => [r.item, { address: r.address, symbol: r.symbol ?? '' }] as const));
+}
+
+/** The race's caps the card carries (`evidence.racingCoins`, services/project one-coin-cards.ts), by address. */
+function cardRaceCaps(coins: unknown): ReadonlyMap<string, number> {
+  const c = parse(coins) as { evidence?: { racingCoins?: unknown } } | null;
+  const list = Array.isArray(c?.evidence?.racingCoins) ? c.evidence.racingCoins : [];
+  return new Map(list.flatMap((x) => {
+    const r = x as { address?: unknown; marketCapUsd?: { v?: unknown } } | null;
+    const v = r?.marketCapUsd?.v;
+    return typeof r?.address === 'string' && typeof v === 'number' && Number.isFinite(v) ? [[r.address, v] as const] : [];
+  }));
 }
 
 async function pvpRivals(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
@@ -476,11 +539,14 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     return 0;
   }
   const handovers = (ports.runnerPush ?? (DEFAULT_POLICY.runnerLink.handover.on && DEFAULT_POLICY.runnerLink.handover.push)) ? await runnerPicks(db, withLaunch.map((p) => p.itemId)) : new Map<string, string>();
-  /* ★ Any switch to a coin made for the post (madeForPostPicks): a post already spent, the card's coin a later one, made after For You had it, big enough. */
+  const runners = handovers;
+  /* ★ A PvP on a post already pushed (the header, madeForPostPicks): a post already spent, the card's coin
+     a later one made for it after For You had it, big enough; told only to whom the first push reached. */
   const S = L.switchPush;
-  const spent = withLaunch.filter((p) => S.on && seen.has(p.key) && !handovers.has(p.itemId) && p.launchedMs !== null && p.launchedMs >= p.onForYouMs && (p.capUsd ?? 0) >= S.minCapUsd);
+  const spent = withLaunch.filter((p) => S.on && p.key.startsWith('p:') && seen.has(p.key) && !seen.has(pvpSwitchKey(p.itemId)) && !handovers.has(p.itemId)
+    && p.launchedMs !== null && p.launchedMs >= p.onForYouMs && (p.capUsd ?? 0) >= S.minCapUsd);
   const made = spent.length === 0 ? new Map<string, string>() : await madeForPostPicks(db, spent.map((p) => p.itemId));
-  const runners = new Map([...handovers, ...spent.flatMap((p) => (made.get(p.itemId) === p.address ? [[p.itemId, p.address] as const] : []))]);
+  const switches = spent.filter((p) => made.get(p.itemId) === p.address);
   /* ★ Late picks (past maxLaunchAgeMs, inside lateRunningMs): each coin's last hour, read only for these. */
   const nowMs = ports.now();
   const late = [...withLaunch, ...narratives].filter((p) => p.launchedMs !== null && (p.revival === true || nowMs - p.launchedMs > L.maxLaunchAgeMs) && nowMs - p.launchedMs <= L.lateRunningMs);
@@ -526,6 +592,63 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
       queued += rows[0]?.n ?? 0;
     }
   }
+  queued += await queuePvpSwitches(db, ports, switches, [...postRows, ...(frame?.rows ?? [])], S.minCapUsd);
   await remember(keys);
+  return queued;
+}
+
+/**
+ * The PvP alerts of one pass (the header): for each switch, the post's first push, both caps of one
+ * moment (the card's race, else a fresh read), and — when the new coin is ahead — one alert to each
+ * person the first push reached. A post with no first push to anyone is spent (nobody to tell, ever);
+ * one whose new coin is not ahead yet is left for a later pass.
+ */
+async function queuePvpSwitches(db: Db, ports: LaunchPorts, switches: readonly Picked[], cards: readonly { itemId: string; coins: unknown }[], minCapUsd: number): Promise<number> {
+  if (switches.length === 0) return 0;
+  const firsts = await firstPushes(db, switches.map((p) => p.itemId));
+  const raceOf = new Map(cards.map((r) => [r.itemId, cardRaceCaps(r.coins)] as const));
+  const unread = switches.flatMap((p) => {
+    const f = firsts.get(p.itemId);
+    return f !== undefined && raceOf.get(p.itemId)?.get(f.address) === undefined ? [f.address] : [];
+  });
+  const fresh = await coinFacts(db, ports.quotes, unread);
+  const spend: string[] = [];
+  let queued = 0;
+  for (const p of switches) {
+    const f = firsts.get(p.itemId);
+    if (f === undefined) {
+      spend.push(pvpSwitchKey(p.itemId));
+      continue;
+    }
+    const race = raceOf.get(p.itemId);
+    const first: FirstPushed = { ...f, capUsd: race?.get(f.address) ?? fresh.get(f.address)?.mcUsd ?? null };
+    const now: Picked = { ...p, capUsd: race?.get(p.address) ?? p.capUsd };
+    if (!pvpSwitchDue(now, first, minCapUsd)) continue;
+    const facts = {
+      pvpSwitch: true,
+      symbol: now.ticker,
+      address: now.address,
+      mcUsd: now.capUsd,
+      firstSymbol: first.symbol,
+      firstAddress: first.address,
+      firstMcUsd: first.capUsd,
+      excerpt: now.excerpt,
+      author: now.author,
+      image: now.image,
+      logo: now.logo,
+      item: now.itemId,
+    };
+    /* ★ Only the people the first push reached: the post's first coin, delivered to their phone. */
+    const rows = await db.query<{ n: number }>(
+      `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href)
+         select distinct user_id, 'coin_launched', $1, 0, $2::jsonb, $3 from people.alert
+          where kind = 'coin_launched' and delivery = 'push' and facts ->> 'item' = $4 and facts ->> 'address' = $5
+         returning 1) select count(*)::int as n from q`,
+      [pvpSwitchSubject(now.itemId), JSON.stringify(facts), postHref(now.itemId), now.itemId, first.address],
+    );
+    queued += rows[0]?.n ?? 0;
+    spend.push(pvpSwitchKey(p.itemId));
+  }
+  if (spend.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [LAUNCH_STREAM, spend]);
   return queued;
 }

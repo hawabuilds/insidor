@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { postOfRow } from './faces.ts';
-import { isRevival, launchEvents, launchHref, onLaunchpad, type Picked } from './launch.ts';
+import { isRevival, launchEvents, launchHref, onLaunchpad, pvpSwitchDue, type Picked } from './launch.ts';
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;
@@ -167,4 +167,14 @@ test('a revival is a picked coin that is not the post own pick and launched past
   assert.equal(isRevival({ launchedMs: 6 * day, postedMs: 0, ownPick: true }), false, 'the post own pick keeps the ordinary rules');
   assert.equal(isRevival({ launchedMs: 2 * day, postedMs: 0, ownPick: false }), false, 'a young original is pushed by the ordinary rules');
   assert.equal(isRevival({ launchedMs: null, postedMs: 0, ownPick: false }), false);
+});
+
+test('★ a PvP alert only when the new coin is another coin, both caps read, past the floor and above the first', () => {
+  const first = { address: 'FIRST', symbol: 'KIJ', capUsd: 12_000 };
+  assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 51_000 }, first, 25_000), true);
+  assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 11_000 }, { ...first, capUsd: 10_000 }, 25_000), false, 'under the floor');
+  assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 30_000 }, { ...first, capUsd: 40_000 }, 25_000), false, 'not ahead of the first');
+  assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 51_000 }, { ...first, capUsd: null }, 25_000), false, 'an unread first cap is no claim');
+  assert.equal(pvpSwitchDue({ address: 'FIRST', capUsd: 51_000 }, first, 25_000), false, 'the same coin');
+  assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 51_000 }, undefined, 25_000), false, 'no first push to anyone');
 });

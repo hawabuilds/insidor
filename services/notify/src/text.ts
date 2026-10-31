@@ -304,6 +304,18 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         const said = words !== null ? `"${words}".` : who === '' ? 'A post on For You.' : `A post by ${who}.`;
         return { title: `A new coin from ${from} is running: ${ticker(f)}${v === null || v <= 0 ? '' : `, $${compact(v)} cap`}`, body: said };
       }
+      /* ★ PvP on a post already pushed (launch.ts queuePvpSwitches): "PvP on @cb_doge's post: $KJI just passed $KIJ" / "$KJI $51K, $KIJ $12K. Tap to see both." */
+      if (f['pvpSwitch'] === true) {
+        const from = who === '' ? 'a post on For You' : `${possessive(who)} post`;
+        const sym = (v: unknown, other: string): string => (typeof v === 'string' && v.trim() !== '' ? `$${v.trim().replace(/^\$/, '')}` : other);
+        const now = sym(f['symbol'], 'A new coin');
+        const first = sym(f['firstSymbol'], 'the first coin');
+        const at = (usd: unknown): string => {
+          const v = n(usd);
+          return v === null || v <= 0 ? '' : ` $${compact(v)}`;
+        };
+        return { title: `PvP on ${from}: ${now} just passed ${first}`, body: `${now}${at(f['mcUsd'])}, ${first}${at(f['firstMcUsd'])}. Tap to see both.` };
+      }
       /* ★ PvP (launch.ts pvpRivals): "PvP on @cb_doge's post: 2 coins" / "$Marvin $132K vs $Marvin the Martian $35K. Tap to see both." */
       if (Array.isArray(f['pvp']) && f['pvp'].length > 0) {
         const from = who === '' ? 'a post on For You' : `${possessive(who)} post`;
