@@ -18,6 +18,7 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
+import { decodeCoinOdds, type CoinOdds } from './odds.ts';
 import { decodeCatches, type Catches } from './catches.ts';
 import { decodeRunningCoins, type RunningCoin } from './running.ts';
 import { decodeSellCard, type SellCard } from './sell-card.ts';
@@ -258,6 +259,11 @@ export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe
 /** A coin's links, day numbers, holders, creator and the feed posts naming it: the token page's Info tab. */
 export async function fetchCoinAbout(coinId: string, signal?: AbortSignal): Promise<CoinAbout> {
   return decodeCoinAbout(await read(`/coin/${encodeURIComponent(coinId)}/about`, signal));
+}
+
+/** What happened to past launches that opened like this coin, beside all launches: the Info tab's odds block. */
+export async function fetchCoinOdds(coinId: string, signal?: AbortSignal): Promise<CoinOdds> {
+  return decodeCoinOdds(await read(`/coin/${encodeURIComponent(coinId)}/odds`, signal));
 }
 
 /** One feed post as its post sheet shows it: the post, its author, its media and every coin with its name. */

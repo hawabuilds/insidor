@@ -42,7 +42,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { fetchCoinAbout, fetchCoinMarket, fetchStory, type CoinAbout, type CoinMarket, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
+import { fetchCoinAbout, fetchCoinMarket, fetchCoinOdds, fetchStory, type CoinAbout, type CoinMarket, type CoinOdds, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
 import { LIVE_POLL_MS, noteMarket } from '../../shared/coin-cap.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -57,6 +57,7 @@ import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultView, fetchTimeframe, type ChartView } from './chart-view.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
+import { OddsLine } from './LaunchOdds.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
@@ -146,6 +147,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
+  /* What happened to launches that opened like this one (LaunchOdds.tsx): read once when the page opens, like the about read. */
+  const [oddsLoad] = useLoad(`odds:${facts.coinId}`, (signal) => fetchCoinOdds(facts.coinId, signal), 'memory');
+  const odds: CoinOdds | null = oddsLoad.state === 'ready' ? oddsLoad.value : null;
   /* The coin's narrative (coin-narrative.ts): the one the page came from, else the one the read
      service names for the coin, else the most-viewed naming post's. Read once it is known. */
   const narrativeId = story !== null ? null : narrativeIdFor(about);
@@ -214,6 +218,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
         </span>
       </div>
 
+      {/* What similar launches did, one line (LaunchOdds.tsx); it opens Info. */}
+      <OddsLine odds={odds} onOpen={() => { setPanel('info'); tabs.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
+
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
       <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
@@ -240,7 +247,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       <div className={styles['panel']}>
         {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} /> : null}
         {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={named.ticker !== null ? tickerText(named.ticker) : 'this coin'} about={ticker} /> : null}
-        {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
+        {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} odds={odds} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
       </div>
 
       <TradeBar mint={facts.address} ticker={ticker} priceUsd={latestPrice(market) ?? facts.price} subline={pairShown.kind === 'token' && pairShown.stock ? `paired with ${pairShown.ticker}` : named.name} off={offBar} />

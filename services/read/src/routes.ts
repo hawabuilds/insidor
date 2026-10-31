@@ -29,6 +29,7 @@ import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_Y
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
+import { createLaunchOdds } from './launch-odds.ts';
 import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-pics.ts';
 import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { withStoryTags } from './story-tags.ts';
@@ -86,6 +87,8 @@ export interface Deps {
   readonly narrativeLists?: ReturnType<typeof createNarrativeLists>;
   /** The running coins strip (running-coins.ts), kept `runningCoins.keepMs`. Absent: read on every request. */
   readonly runningCoins?: ReturnType<typeof createRunningCoins>;
+  /** A coin's launch odds (launch-odds.ts), its groups kept `launchOdds.keepMs`. Absent: the groups are read on every request. */
+  readonly launchOdds?: ReturnType<typeof createLaunchOdds>;
 }
 
 /*
@@ -567,6 +570,12 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
       const about = deps.about;
       return (await orOpened(param, deps, () => coinAbout(param, { ...about, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
+    }
+
+    /* What happened to past launches that opened like this one: the Info tab's odds block (launch-odds.ts). */
+    if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'odds') {
+      const odds = await (deps.launchOdds ?? createLaunchOdds())(param, deps.db);
+      return odds === null ? NOT_FOUND : json(200, odds);
     }
 
     if (deps.tradeCard !== undefined && segments.length === 3 && head === 'sell' && param !== undefined && segments[2] === 'card') {
