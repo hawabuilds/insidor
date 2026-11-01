@@ -83,7 +83,7 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
   return (
     <>
       <PullIndicator pull={pull} refreshing={refreshing} />
-      <section className={alerts['page']} style={pullStyle(pull)}>
+      <section className={alerts['page']}>
         <header className={alerts['sticky']}>
           <ScreenHeader className={styles['titleRow']}>
             <ScreenTitle>Feed</ScreenTitle>
@@ -101,6 +101,8 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
           </div>
         </header>
 
+        {/* Only the list follows the pull, never the sticky header (as on Notifications). */}
+        <div style={pullStyle(pull)}>
         {tab === 'top' ? (
           <div className={styles['windowRow']}>
             <div className={styles['windows']} role="group">
@@ -118,6 +120,7 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
         ) : (
           <Listed feed={feed} now={now} empty={empty} {...(tab === 'top' && period === 'week' ? { emptyAction: { label: 'See all time', onAct: () => setPeriod('all') } } : {})} />
         )}
+        </div>
       </section>
     </>
   );
