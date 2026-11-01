@@ -6,7 +6,8 @@
  *                   picture over its bottom-left, the round buttons over it, the name with its small
  *                   X button, @handle, bio, "N Following  N Followers", and the buttons under them
  *   PortfolioBlock  your own only: "Portfolio", the total, "+$X this week", the purple line, 1D–All
- *   StatsStrip      Caught early, Best catch, Hit rate (profile-words.ts statCells)
+ *   StatsStrip      Caught early, Best catch, Hit rate (profile-words.ts statCells); hidden on both
+ *                   profiles for now (`STATS_SHOWN`, the owner, 2026-11-01: "maybe we bring it back later")
  *   CoinLists       "Holdings N" and "Created N" as two headings that switch the list under them
  *
  * Split from the screens because the two profiles differ only in what sits around these: your own
@@ -220,7 +221,13 @@ export function PortfolioBlock({ total, asOf, points, range, onRange }: {
 
 /* ── the stats strip ────────────────────────────────────────────────── */
 
+/* ★ OFF FOR NOW (the owner, 2026-11-01): the strip read "0 Caught early, None yet, None yet" on most
+   profiles. Kept whole so turning it back on is this one flag; the catches are still read, for the
+   holdings' "Early" tags. */
+const STATS_SHOWN = false;
+
 export function StatsStrip({ catches, state }: { catches: Catches | null; state: 'shown' | 'hidden' | 'no_wallet' }) {
+  if (!STATS_SHOWN) return null;
   return (
     <div className={styles['stats']}>
       {statCells(catches, state).map((c) => (
