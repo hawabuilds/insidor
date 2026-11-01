@@ -61,6 +61,7 @@ import { ScreenActive, ShownEntry } from './shared/screen-active.ts';
 import { preloadWhenQuiet } from './shared/preload.ts';
 import { later } from './shared/ui/later.ts';
 import { EdgeBack } from './shared/ui/EdgeBack.tsx';
+import { noteShown, pageWrapper, tabWrapper } from './shared/under-page.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
 import { LateFlex } from './features/trade/late-flex.tsx';
@@ -129,7 +130,7 @@ function KeptTabs({ shown, entry, ...props }: ScreenProps & { shown: KeptTab | n
   return (
     <>
       {KEPT_TABS.filter((t) => opened.includes(t)).map((t) => (
-        <div key={t} style={{ display: t === shown ? 'contents' : 'none' }}>
+        <div key={t} data-kept={tabWrapper(t)} style={{ display: t === shown ? 'contents' : 'none' }}>
           <ScreenActive.Provider value={t === shown}>
             <ShownEntry.Provider value={t === shown ? entry : null}>
               <Suspense fallback={null}>
@@ -158,7 +159,7 @@ function KeptPages({ place, page, ...props }: ScreenProps & { place: Place; page
       {next.map((p) => {
         const on = page && p.id === place.id;
         return (
-          <div key={p.id} style={{ display: on ? 'contents' : 'none' }}>
+          <div key={p.id} data-kept={pageWrapper(p.id)} style={{ display: on ? 'contents' : 'none' }}>
             <ScreenActive.Provider value={on}>
               <ShownEntry.Provider value={on ? p.id : null}>
                 <Suspense fallback={null}>
@@ -332,6 +333,8 @@ export function App() {
   /* The other screens' code and the chart library, fetched once the app is quiet. */
   useEffect(() => preloadWhenQuiet(Object.values(SCREENS).map((x) => x.load)), []);
   useScrollPerEntry(place, keptTab);
+  /* What is on screen at each step of history, for the back swipe's page underneath (shared/under-page.ts). */
+  useLayoutEffect(() => noteShown(place.at, keptTab !== null ? tabWrapper(keptTab) : pageWrapper(place.id), place.id), [place.at, place.id, keptTab]);
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
   const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered, access: access.access, signUp: signUp.signUp });
