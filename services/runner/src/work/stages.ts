@@ -950,7 +950,8 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
     if (grouping === null || block.length === 0) return { similarity, inputs: { itemNames, storyNames, confirmed, denied } };
 
     const space = policy.group.image.space;
-    const best = await grouping.images.bestMatches(item.itemId, block.map((s) => s.storyId), space);
+    /* The block is sent only for a post that has a picture vector (Policy.group.image.matchOnlyWithVector). */
+    const best = await grouping.images.bestMatches(item.itemId, block.map((s) => s.storyId), space, { onlyWithVector: policy.group.image.matchOnlyWithVector });
     const mine = new Set(itemNames.map(nameKey).filter((n) => n !== ''));
     for (const [storyId, match] of best) {
       similarity[storyId] = { [space]: match.similarity };
