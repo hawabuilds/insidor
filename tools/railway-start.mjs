@@ -80,11 +80,15 @@ if (service in MAIN) {
     /* Copies the logos of coins on screen into our storage (services/project/src/logos-main.ts).
        Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this service; without them it says so and exits. */
     { name: 'logos', everyMs: 120_000, args: ['services/project/src/logos-main.ts'] },
-    { name: 'label', everyMs: 3_600_000, args: ['tools/db.mjs', 'label'] },
+    /* `offUntil` 01:00 UTC 2 Nov (the owner, 2026-11-01: "i want the app working and fixes made same time"):
+       the label job and the archive each read the 13 GB backlog of the decision log, and on 1 Nov every
+       restart started both at once while For You's full frame was being cut off by the slow disk. They
+       wait for the night; then the archive clears the backlog one day an hour and both run hourly again. */
+    { name: 'label', everyMs: 3_600_000, offUntil: Date.parse('2026-11-02T01:00:00Z'), args: ['tools/db.mjs', 'label'] },
     /* The decision log's days older than one move to the private decision-archive bucket, checked
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
-    { name: 'archive', everyMs: 3_600_000, args: ['tools/archive-decisions.ts'] },
+    { name: 'archive', everyMs: 3_600_000, offUntil: Date.parse('2026-11-02T01:00:00Z'), args: ['tools/archive-decisions.ts'] },
     /* Coin picture vectors: an untraded coin's deleted once nothing can read it, and days older than
        30 to the private vector-archive bucket, read back and counted before they are deleted
        (tools/archive-coin-vectors.ts, Policy.coinVectors). Hourly; seconds when nothing is due. */
