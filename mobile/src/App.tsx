@@ -60,6 +60,7 @@ import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
 import { ScreenActive, ShownEntry } from './shared/screen-active.ts';
 import { preloadWhenQuiet } from './shared/preload.ts';
 import { later } from './shared/ui/later.ts';
+import { EdgeBack } from './shared/ui/EdgeBack.tsx';
 import { TabBar } from './shared/ui/TabBar.tsx';
 import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
 import { LateFlex } from './features/trade/late-flex.tsx';
@@ -388,6 +389,8 @@ export function App() {
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />
+      {/* The iPhone back swipe from the left edge, in the home-screen app only (shared/ui/EdgeBack.tsx). */}
+      <EdgeBack />
       <RankUp signedIn={inside} />
       {/* Trador's ask for notifications, after sign-in, when push-ask.ts says this phone can and has not answered. */}
       <PushAsk signedIn={signedIn} />
