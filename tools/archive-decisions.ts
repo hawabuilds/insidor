@@ -102,6 +102,34 @@ const lineCount = (gz: Buffer): number => {
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-archive-decisions' });
 const db = asDb(pool);
 
+/*
+ * ★ THE WHOLE-DAY COUNTS GET THEIR OWN TIME LIMIT (2026-11-01). A day's partition is 1.3-2.1 GB and
+ * each count reads all of it; on a disk-bound database that takes longer than the login's 5-minute
+ * statement limit (`alter role postgres set statement_timeout = 300s`), and the limit this pool asks
+ * for at connect is dropped by the pooler (store client.ts). From 24 Oct every hourly run was
+ * cancelled at its first count (ok=false ms=300527), nothing was archived, and eight days (13 GB)
+ * piled up in the database, which made the next count slower still. The counts are the safety check
+ * (step 4), so they are kept and given time instead: each runs in its own short transaction with the
+ * limit raised by SET LOCAL, which holds in the pooler's transaction mode (the server's) and session
+ * mode (a laptop's) alike, and ends with the count.
+ */
+const COUNT_LIMIT = '30min';
+const longCount = async <T extends Record<string, string>>(sql: string, params: unknown[] = []): Promise<T[]> => {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(`set local statement_timeout = '${COUNT_LIMIT}'`);
+    const rows = (await client.query(sql, params)).rows as T[];
+    await client.query('commit');
+    return rows;
+  } catch (e) {
+    await client.query('rollback').catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+};
+
 try {
   const todayMs = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate());
   const cutoffMs = todayMs - keepDays * 86_400_000;
@@ -121,7 +149,7 @@ try {
 
   for (const { name, day } of due) {
     const t0 = Date.now();
-    const [{ n: counted = '0', bytes = '0' } = {}] = await db.query<{ n: string; bytes: string }>(`select count(*)::text as n, pg_total_relation_size('internal.${name}')::text as bytes from internal.${name}`);
+    const [{ n: counted = '0', bytes = '0' } = {}] = await longCount<{ n: string; bytes: string }>(`select count(*)::text as n, pg_total_relation_size('internal.${name}')::text as bytes from internal.${name}`);
     const expected = Number(counted);
     if (dry) {
       console.log(`  ${day}: ${expected} rows, ${(Number(bytes) / 1e6).toFixed(0)} MB on disk; would archive and drop`);
@@ -161,7 +189,7 @@ try {
     await flush();
 
     /* The label job's copy, checked against the partition's own counts before anything is removed. */
-    const [{ graded = '-1' } = {}] = await db.query<{ graded: string }>(`select count(*)::text as graded from internal.${name} where subject_kind = any($1::text[])`, [LABEL_BASIS_KINDS]);
+    const [{ graded = '-1' } = {}] = await longCount<{ graded: string }>(`select count(*)::text as graded from internal.${name} where subject_kind = any($1::text[])`, [LABEL_BASIS_KINDS]);
     if (basis.logRows !== expected || basis.decisions !== Number(graded)) {
       throw new Error(`${day}: read ${basis.logRows} rows (${basis.decisions} graded) for the label basis, the partition holds ${expected} (${graded}); nothing removed`);
     }
@@ -177,7 +205,7 @@ try {
       if (n !== f.rows) throw new Error(`${day}: ${f.path} holds ${n} lines, ${f.rows} written; nothing removed`);
       verified += n;
     }
-    const [{ n: again = '-1' } = {}] = await db.query<{ n: string }>(`select count(*)::text as n from internal.${name}`);
+    const [{ n: again = '-1' } = {}] = await longCount<{ n: string }>(`select count(*)::text as n from internal.${name}`);
     if (verified !== expected || Number(again) !== expected) {
       throw new Error(`${day}: the bucket holds ${verified} rows, the database ${expected} (now ${again}); nothing removed`);
     }
