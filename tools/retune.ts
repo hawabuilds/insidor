@@ -177,6 +177,7 @@ import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/pl
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { runStop } from './lib/stop-on-fail.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, openGradeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
 import { answerCutoff } from '../core/src/qualify/post-score.ts';
@@ -615,11 +616,14 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const precedents = labelled.length === 0 ? null : { labels: labelled };
       /* One grading on the learning book. The kind labels it learns are kept, so a later grading
          this run splits gold exactly as this one did and does not pay to ask again. */
+      /* ★ ONE FAILED GRADING STOPS ITS SIBLINGS' SPEND (tools/lib/stop-on-fail.ts): the run is failed
+         the moment one rejects, and the others' answers are never read. Until then the meter is the meter. */
+      const stop = runStop();
       const grade = async (of: readonly EvalPost<G>[], block: string | null) => {
         const examples = [block, opts.extraInstructions ?? null].filter((x): x is string => x !== null && x.trim() !== '').join('\n\n') || null;
         const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning', LEARNING_USE);
         try {
-          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, precedents, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
+          const out = await gradePosts(of, { env, meter: stop.meter(shared.meter), examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, precedents, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
           for (const r of out.rows) if (r.postKind !== null) kinds.set(r.id, r.postKind);
           return out;
         } finally {
@@ -648,9 +652,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const compare = opts.rulesOnly !== true && inUse?.text !== block.text;
       const wantBase = opts.baseline === true && opts.rulesOnly !== true;
       const [tested, nowGraded, baseGraded] = await Promise.all([
-        grade(posts, opts.rulesOnly === true ? null : block.text),
-        compare ? grade(posts, inUse?.text ?? null) : Promise.resolve(null),
-        wantBase && !(compare && inUse === null) ? grade(posts, null) : Promise.resolve(null),
+        stop.watch(grade(posts, opts.rulesOnly === true ? null : block.text)),
+        compare ? stop.watch(grade(posts, inUse?.text ?? null)) : Promise.resolve(null),
+        wantBase && !(compare && inUse === null) ? stop.watch(grade(posts, null)) : Promise.resolve(null),
       ]);
       const rows = tested.rows;
       /* `--baseline`: the same test posts graded by the judge's rules alone (no learned examples),
