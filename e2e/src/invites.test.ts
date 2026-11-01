@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite/vector';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Person } from '@insidor/contracts/ports/people.ts';
@@ -72,7 +73,9 @@ test('★ everyone signed in before invites keeps access; someone new does not',
   const all = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'store', 'migrations');
   const before = await mkdtemp(join(tmpdir(), 'insidor-0119-'));
   for (const f of await readdir(all)) if (/^\d{4}_.*\.sql$/.test(f) && f < '0120') await copyFile(join(all, f), join(before, f));
-  const pg = await PGlite.create({ extensions: { vector } });
+  const pg = await PGlite.create({ extensions: { vector, pg_trgm } });
+  /* Supabase keeps extensions in their own schema; 0160 installs pg_trgm there. */
+  await pg.exec('create schema if not exists extensions');
   const raw = dbOf(pg);
   await migrate(raw, (fn) => pg.transaction((tx) => fn(dbOf(tx))), before);
   await raw.query(`insert into people.profile (user_id, handle) values ('did:privy:old', 'old')`);
