@@ -87,7 +87,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
   return (
     <>
       <PullIndicator pull={pull} refreshing={refreshing} />
-      <section className={styles['page']} style={pullStyle(pull)}>
+      <section className={styles['page']}>
         <header className={styles['sticky']}>
           <ScreenHeader className={`${styles['titleRow']} ${styles['titleOnly']}`}>
             <button type="button" className={`${styles['iconButton']} ${styles['backButton']}`} aria-label="Back" onClick={() => goBack({ screen: 'alerts' })}>
@@ -100,6 +100,9 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
           </ScreenHeader>
         </header>
 
+        {/* ★ Only the list follows the pull, never the sticky header: a moved header let rows show
+            above it while a refresh held the page down (the owner, 2026-11-01). */}
+        <div style={pullStyle(pull)}>
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
         {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications just now. Trying again.</p> : null}
         {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>First coins on what you saved or starred, posts blowing up, your coins, and people following or replying to you land here.</p> : null}
@@ -134,6 +137,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
           </section>
         ))}
         {list.state === 'ready' && list.value.cursor !== null ? <LoadMore onLoad={loadMore} loading={loadingMore} /> : null}
+        </div>
       </section>
       {sheet ? <SettingsSheet onClose={closeSheet} /> : null}
     </>
