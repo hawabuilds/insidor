@@ -864,11 +864,17 @@ interface MarketReadingRow {
 /**
  * The LATEST reading for each of these coins, and only the latest.
  *
- * `distinct on (asset_key) … order by asset_key, taken_at desc` walks
- * `market_reading_latest_idx` backwards and stops at the first row per key, so the cost
- * is one seek per coin rather than a scan of every reading a coin has ever had. The
- * index is declared descending for exactly this; an ascending one would make the
- * planner read the whole series and discard all but the last row of each.
+ * One `limit 1` per coin, walking `market_reading_latest_idx` (asset_key, taken_at desc)
+ * from its newest row: one seek per coin rather than a read of every reading a coin has
+ * ever had.
+ *
+ * ★ IT WAS `distinct on (asset_key) … order by asset_key, taken_at desc` (until 1 Nov 2026),
+ * on the belief that it stopped at each coin's first row. Postgres has no skip scan: it read
+ * every reading of every coin through the index and kept the newest. Measured 1 Nov, the
+ * evening For You's full frame took over 30 minutes on a disk-bound database: 62 coins took
+ * 4.8 s that way and 61 ms this way, with identical rows. A coin's readings are unique per
+ * instant (the table's key is chain, address, taken_at), so the newest row is the same row
+ * either way.
  *
  * ★ NOTE WHAT IS NOT IN THE COLUMN LIST. `source_vendor` and `source_endpoint` are
  * columns on this table and are not selected, deliberately: `source_vendor` names who
@@ -892,17 +898,21 @@ async function loadMarketReadings(
   if (assetKeys.length === 0) return byAsset;
 
   const rows = await db.query<MarketReadingRow>(
-    `select distinct on (asset_key)
-            asset_key, taken_at,
-            price_usd, price_absent,
-            market_cap_usd, market_cap_absent, market_cap_basis,
-            liquidity_usd, liquidity_absent,
-            price_change_24h_pct, price_change_24h_absent,
-            volume_1h_usd, buys_1h, sells_1h, last_hour_absent,
-            tradable
-       from public.market_reading
-      where asset_key = any($1::text[])
-      order by asset_key, taken_at desc`,
+    `select m.*
+       from unnest($1::text[]) as k(asset_key)
+       cross join lateral (
+         select asset_key, taken_at,
+                price_usd, price_absent,
+                market_cap_usd, market_cap_absent, market_cap_basis,
+                liquidity_usd, liquidity_absent,
+                price_change_24h_pct, price_change_24h_absent,
+                volume_1h_usd, buys_1h, sells_1h, last_hour_absent,
+                tradable
+           from public.market_reading r
+          where r.asset_key = k.asset_key
+          order by r.taken_at desc
+          limit 1
+       ) m`,
     [assetKeys],
   );
 
