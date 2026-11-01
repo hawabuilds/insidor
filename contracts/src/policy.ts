@@ -6169,8 +6169,10 @@ const POLICY_V1: Policy = {
      v219 (2026-10-31, the owner's PvP alert) narrows `notify.launch.switchPush`: the switch is a PvP alert to the
      people the post's first coin push reached, once per post, only when the made coin is worth more than the first.
      v220 (2026-10-31, the owner: "see n coins ... the image doesnt match the post") adds `oneCoin.deadCopies`: a
-     copy with a different picture that never passed $5K by an hour old is off "See N coins". */
-  version: 'policy.v220',
+     copy with a different picture that never passed $5K by an hour old is off "See N coins".
+     v221 (2026-11-01, the owner: "only ship zero change") adds `group.image.matchOnlyWithVector`: a post
+     with no picture vector is not sent every open story's id, ~15 GB a day less database egress. */
+  version: 'policy.v221',
 
   admit: {
     maxAgeMin: 240,
