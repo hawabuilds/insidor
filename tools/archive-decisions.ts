@@ -114,6 +114,7 @@ const db = asDb(pool);
  * mode (a laptop's) alike, and ends with the count.
  */
 const COUNT_LIMIT = '30min';
+const DAYS_PER_RUN = 1;
 const longCount = async <T extends Record<string, string>>(sql: string, params: unknown[] = []): Promise<T[]> => {
   const client = await pool.connect();
   try {
@@ -147,7 +148,11 @@ try {
   console.log(`archive-decisions: ${due.length} day(s) older than ${keepDays} days: ${due.map((d) => d.day).join(', ') || 'none'}${dry ? ' (dry run)' : ''}`);
   if (due.length > 0 && !dry) await ensureBucket();
 
-  for (const { name, day } of due) {
+  /* ★ ONE DAY PER RUN (the owner, 2026-11-01: "i want the app working and fixes made same time"). After
+     the 24 Oct - 1 Nov stall, seven 1.3-2.1 GB days were due at once; moving them in one run would hold
+     the disk for hours while the runner competes for it. One day per hourly run spreads the catch-up
+     over the day. Caught up, one day falls due a day, so this changes nothing in normal running. */
+  for (const { name, day } of due.slice(0, DAYS_PER_RUN)) {
     const t0 = Date.now();
     const [{ n: counted = '0', bytes = '0' } = {}] = await longCount<{ n: string; bytes: string }>(`select count(*)::text as n, pg_total_relation_size('internal.${name}')::text as bytes from internal.${name}`);
     const expected = Number(counted);
