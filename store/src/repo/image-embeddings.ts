@@ -184,10 +184,26 @@ export class PgImageEmbeddingRepo {
   /**
    * For one post, its best image similarity against each candidate story's member images,
    * in one space. A story whose posts have no vectors is absent — not compared, never zero.
+   *
+   * ★ `onlyWithVector` (Policy.group.image.matchOnlyWithVector): the match query starts from the
+   * post's own vector (`a`), so a post with no vector in `space` gets no rows whatever stories are
+   * named. GROUP names every open story (~9,880 ids, ~345 KB on the wire, once per post decided),
+   * and most posts are decided before they are embedded. With it on, a one-row probe on the same
+   * predicate as `a` (the primary key's prefix) goes first, and the list is sent only when the post
+   * has a vector: the answer is the same map, and the query that answers it is the same query.
    */
-  async bestMatches(itemId: ItemId, storyIds: readonly StoryId[], space: string): Promise<ReadonlyMap<StoryId, ImageMatch>> {
+  async bestMatches(itemId: ItemId, storyIds: readonly StoryId[], space: string, opts: { readonly onlyWithVector?: boolean } = {}): Promise<ReadonlyMap<StoryId, ImageMatch>> {
     const found = new Map<StoryId, ImageMatch>();
     if (storyIds.length === 0) return found;
+    if (opts.onlyWithVector === true) {
+      const own = await this.#db.query<{ one: number }>(
+        `select 1 as one from internal.image_embedding
+          where subject_kind = 'item' and subject_id = $1 and space = $2
+          limit 1`,
+        [itemId, space],
+      );
+      if (own.length === 0) return found;
+    }
     const rows = await this.#db.query<{ story_id: string; similarity: number; item_uri: string; member_uri: string }>(
       `select distinct on (m.story_id)
               m.story_id, 1 - (a.embedding <=> b.embedding) as similarity, a.uri as item_uri, b.uri as member_uri

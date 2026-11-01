@@ -691,6 +691,18 @@ export interface GroupPolicy {
      * switches it on.
      */
     readonly reuseContentAddressed: boolean;
+    /**
+     * ★ A POST WITH NO PICTURE VECTOR IS NOT SENT THE WHOLE BLOCK (the owner, 2026-11-01: "only ship
+     * zero change"). GROUP asks, for every post it decides, the post's best picture match in each
+     * candidate story, and the question carries every open story's id: ~9,880 ids, ~345 KB a post,
+     * ~45,000 posts a day — ~15 GB a day of the runner's ~25 GB a day to the database (the host's
+     * network-flow logs, 1 Nov 2026: 99% of the runner's outbound bytes go to the database pooler). The answer
+     * starts from the post's own vector, so a post with none answers nothing whatever the list; on
+     * 1 Nov none of 586 posts decided in 40 minutes had one when decided. On: a one-row probe for the
+     * post's vector goes first, and the list is sent only when it exists — the same answer, the same
+     * rows, every caller. Off: the list is sent every time, as before.
+     */
+    readonly matchOnlyWithVector: boolean;
   };
   /**
    * The judge's name for a post, as a carrier (core/src/group/name-span.ts). A post's
@@ -6359,6 +6371,7 @@ const POLICY_V1: Policy = {
       borderline: 0.85,
       pairChecksPerDay: 200,
       reuseContentAddressed: true,
+      matchOnlyWithVector: true,
     },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
