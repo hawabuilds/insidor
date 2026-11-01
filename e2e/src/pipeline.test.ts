@@ -26,6 +26,7 @@ import { before, test } from 'node:test';
 
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite/vector';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
@@ -235,7 +236,9 @@ function buildLoops() {
 const ctx = { signal: new AbortController().signal, now: () => clock };
 
 before(async () => {
-  const pg = await PGlite.create({ extensions: { vector } });
+  const pg = await PGlite.create({ extensions: { vector, pg_trgm } });
+  /* Supabase keeps extensions in their own schema; 0160 installs pg_trgm there. */
+  await pg.exec('create schema if not exists extensions');
   db = dbOf(pg);
   await migrate(db, (fn) => pg.transaction((tx) => fn(dbOf(tx))));
 
