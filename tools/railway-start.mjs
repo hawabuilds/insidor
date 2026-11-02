@@ -71,8 +71,12 @@ if (service in MAIN) {
      every five minutes it would overwrite the runner's declaration with "dormant". On Railway
      the runner, which holds the keys, declares at boot (declare-sources.ts explains the split). */
   const FRAME = { name: 'project', everyMs: 60_000, args: ['tools/db.mjs', 'project'] };
+  /* ★ THE FULL MARKET PASS RUNS IN A LANE OF ITS OWN (2 Nov): in the shared lane below, the weekly
+     one-coin refit ran over an hour on the slow database and no price was read for any coin off For
+     You in that time — the Tape (public.tape_coin, freshest reading within the hour) emptied to the
+     one coin the light pass still priced. A slow job in the shared lane must never stop prices. */
+  const MARKET = { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] };
   const JOBS = [
-    { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] },
     /* `pairs` is off (the owner, 2026-10-27, "turn off pairs"): no screen of the app reads
        public.pair_view, and its count walked every market reading on each run — it timed out on
        every run that evening while the database was disk-bound. `tools/db.mjs pairs` still runs it by hand. */
@@ -196,8 +200,11 @@ if (service in MAIN) {
     if (due(FRAME, Date.now())) await runJob(FRAME);
   });
   void lane(async () => {
+    for (const job of JOBS) if (due(job, Date.now())) await runJob(job);
+  });
+  void lane(async () => {
     /* The full market pass waits for a light one to finish, as the light pass waits for it. */
-    for (const job of JOBS) if (due(job, Date.now()) && !(job.name === 'market' && running.has(LIGHT.name))) await runJob(job);
+    if (due(MARKET, Date.now()) && !running.has(LIGHT.name)) await runJob(MARKET);
   });
   void lane(async () => {
     if (due(LIGHT, Date.now()) && !running.has('market')) await runJob(LIGHT);
