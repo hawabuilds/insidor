@@ -53,7 +53,11 @@ these kinds. Judge what the post shows, never who posted it.
            feature, an exchange or a token; a
            company joining an index or going public; a company doing something nobody would
            expect
-  POLITICS a politician's statement, a policy, an election, a party, an ideology
+  POLITICS a politician's statement, a policy, an election, a party, an ideology.
+           NOT POLITICS, this is OTHER: a well-known film, show or game character recast as a joke
+           about politics or culture that many people are posting ("Anakin, we are a GALAXY of
+           IMMIGRANTS", "experts are concerned Anakin is becoming a symbol of …") — the character
+           is the subject, the politics is the joke
   OTHER    none of the above
 
 Answer with the fields of the structured output like this:
