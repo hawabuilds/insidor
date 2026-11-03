@@ -176,3 +176,23 @@ test('a coin whose pool a source named is never read from its curve, and a finis
   const done = await freshCoin({ address: 'Curve1', progress: 1, complete: true, untouched: false });
   assert.equal(done.body.venue, null);
 });
+
+test('★ a coin seconds old that the market source fails on outright is still read from its curve', async () => {
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL } = await import('./own-market.ts');
+  const db = { query: async (sql: string) => (sql === ASSET_SQL ? [{ chain: 'solana', address: LAURA }] : sql === CHART_SQL ? [] : []) };
+  const deps = (curve: { address: string; progress: number; complete: boolean; untouched: boolean } | null) => ({
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => { throw new Error('source does not know the coin'); }, pool: async () => null },
+    curveProgress: async () => 0,
+    curveOfMint: async () => curve,
+    heldTrades: async () => ({ held: false, whole: false, trades: [] }),
+  });
+  const fresh = JSON.parse(((await coinMarket(`solana:${LAURA}`, '1m', deps({ address: 'Curve1', progress: 0, complete: false, untouched: true }))) as { body: string }).body);
+  assert.equal(fresh.kind, 'read');
+  assert.equal(fresh.venue, 'curve');
+  assert.deepEqual(fresh.candles, []);
+  const none = JSON.parse(((await coinMarket(`solana:${LAURA}`, '1m', deps(null))) as { body: string }).body);
+  assert.equal(none.kind, 'unavailable');
+});
