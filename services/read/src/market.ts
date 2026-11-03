@@ -46,6 +46,9 @@ import type { Db } from './queries.ts';
 import type { Logger } from './log.ts';
 import { ownMarket, type HeldTrades } from './own-market.ts';
 
+/** A launchpad curve's quote side: the curve trades the coin for SOL. */
+const SOL_QUOTE: NonNullable<Pool['quote']> = { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Wrapped SOL', imageUrl: null };
+
 /* A coin we hold: its full row, or the name index (0037) once the keep rule has deleted that. */
 export const ASSET_SQL = `
 select chain, address from public.asset where asset_key = $1
@@ -67,6 +70,12 @@ export interface MarketDeps {
   readonly heldTrades?: ((mint: string) => Promise<HeldTrades>) | null;
   /** A curve's progress from its account, 0..1; null when the address holds no curve. Null reader: no RPC configured. */
   readonly curveProgress: ((address: string) => Promise<number | null>) | null;
+  /**
+   * A launchpad coin's own curve, read from the chain by its mint (the curve's address is derived from
+   * it): its address, its progress 0..1, and whether anything was ever bought on it. Null: not a curve
+   * coin, or no RPC. Read only when neither our data nor the market source named the coin's pool.
+   */
+  readonly curveOfMint?: ((mint: string) => Promise<{ readonly address: string; readonly progress: number; readonly complete: boolean; readonly untouched: boolean } | null>) | null;
   /** True for an address a recent search returned (search.ts): openable without being in the universe. */
   readonly recent?: (address: string) => boolean;
 }
@@ -169,7 +178,23 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
   const mint = typeof asset?.['address'] === 'string' && asset['chain'] === 'solana' ? asset['address'] : (searched ?? '');
 
   try {
-    const market = await marketOf(mint, timeframe, deps);
+    let market = await marketOf(mint, timeframe, deps);
+    /* ★ A COIN SECONDS OLD (the owner, 2026-11-03: a coin just created showed "Price history could not
+       be read", no picture and no venue until the first buy). Neither our trade stream nor the market
+       source knows a coin nobody has traded, so neither names its pool. The launchpad's own curve
+       account does, on the chain: it is the coin's pool while the coin is on the curve. And when the
+       curve was never bought from (its real reserves untouched), the coin has no trades: an empty
+       chart and an empty tape are then facts ("No trades yet"), not an outage. A curve that was
+       bought from but that we hold nothing for stays "could not be read". */
+    if (market.pool === null && deps.curveOfMint) {
+      const curve = await deps.curveOfMint(mint).catch(() => null);
+      if (curve !== null && !curve.complete) {
+        const pool: Pool = { address: curve.address, dex: 'pump-fun', dexName: 'Pump.fun', reserveUsd: null, base: { address: mint, symbol: null, name: null, imageUrl: null }, quote: SOL_QUOTE };
+        market = curve.untouched
+          ? { ...market, pool, candles: market.candles ?? [], trades: market.trades ?? [] }
+          : { ...market, pool };
+      }
+    }
     const onCurve = market.pool?.dex === 'pump-fun';
     let progress: number | null = null;
     let progressWhy = onCurve ? (deps.curveProgress === null ? 'not_reported' : 'unreadable') : 'not_reported';

@@ -322,6 +322,7 @@ export { IPFS_GATEWAYS, documentPicture, launchpadPicture, metadataPicture, pict
 export type { LogoFetchConfig } from './logo-picture.ts';
 /* A curve read straight from its account: reserves, and progress as the launchpad measures it. */
 export { INITIAL_REAL_TOKEN_UNITS, PROGRAM_ID, curveProgressOf, readCurveAccount } from './curve-account.ts';
+export { curveAddress } from './curve-rpc.ts';
 export type { CurveAccount } from './curve-account.ts';
 /* A launch's name, ticker and metadata link from its token account, many coins a call. */
 export { ACCOUNTS_PER_CALL, readTokenMetadata, tokenMetadata, TOKEN_2022_PROGRAM } from './token-metadata.ts';

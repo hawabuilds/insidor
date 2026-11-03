@@ -26,7 +26,7 @@ import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { geckoterminalHolders, keyHeaders } from '@insidor/market-geckoterminal/holders.ts';
 import { geckoterminalTokenPrices } from '@insidor/market-geckoterminal/prices.ts';
-import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
+import { chainClient, curveAddress, curveProgressOf, INITIAL_REAL_TOKEN_UNITS } from '@insidor/venue-solana-pumpfun';
 
 import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
@@ -231,6 +231,22 @@ async function main(): Promise<void> {
             const progress = account === null ? null : curveProgressOf(account);
             curves.set(address, { at: Date.now(), progress });
             return progress;
+          },
+    /* A coin no source names a pool for yet: its own curve, by its mint (market.ts `curveOfMint`).
+       Not kept: it is asked only for a coin with no pool, usually in its first minute. */
+    curveOfMint:
+      chain === null
+        ? null
+        : async (mint: string) => {
+            const address = curveAddress(mint);
+            const account = await chain.curveAccount(address);
+            if (account === null) return null;
+            return {
+              address,
+              progress: curveProgressOf(account),
+              complete: account.complete,
+              untouched: account.realSolLamports === 0n && account.realTokenUnits === INITIAL_REAL_TOKEN_UNITS,
+            };
           },
   };
 
