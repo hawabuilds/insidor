@@ -1,0 +1,25 @@
+-- 0166_asset_minted_names_idx.sql
+--
+-- THE COINS MINTED IN A POST'S WINDOW, BY NAME, READ FROM ONE INDEX IN MINT ORDER (2026-11-03; the
+-- owner, demoing in person that week: "trending fyp not working").
+--
+-- The full frame's name candidates (services/project post-match.ts `nameCandidates`) ask, for every
+-- post on the frame, which coins minted in that post's window carry a form of its names. The window
+-- is found by mint time, but each coin's name and ticker were then fetched from the table, one page
+-- per coin, tens of thousands a post. pg_stat_statements had it as the database's most-called heavy
+-- statement (1.3 million calls, 334 ms on average), and it is why a full frame took 18 minutes that
+-- evening — long enough that its own view readings passed Trending's 30-minute freshness before the
+-- next frame, and Trending emptied between frames.
+--
+-- This index holds the coins in mint order with the three columns the statement reads, so a post's
+-- window is one contiguous run of index pages. Same rows, same order: an index changes how they are
+-- found, never which. 0147's logo index stays: it carries other columns for another read.
+--
+-- HOW IT IS APPLIED: as 0146, 0160, 0161, 0164 and 0165, built first by hand with CREATE INDEX
+-- CONCURRENTLY (the migrator runs each file in a transaction, where CONCURRENTLY cannot run, and a
+-- plain build would hold the mint stream's writes). This file then finds it built and does nothing.
+--
+-- What breaks if changed carelessly: the INCLUDE list must hold every column `nameCandidates` reads
+-- (address, name, symbol; minted_at is the key), or each coin goes back to the table.
+
+create index if not exists asset_minted_names_idx on public.asset (minted_at) include (address, name, symbol) where minted_at is not null;
