@@ -12,8 +12,19 @@ import { handle, type TradeDeps } from './routes.ts';
 
 /** A quote with the router's reply inside is a few kilobytes; a signed transaction is under 2 KB. */
 const MAX_BODY_BYTES = 64 * 1024;
+/**
+ * ★ A LAUNCH'S BUILD CARRIES THE COIN'S PICTURE (2026-11-03: "create token on pf not working" — "The
+ * launch could not be prepared just now."). `/launch/build` sends the picture as a data URL; a post's
+ * picture is usually well over 64 KB, so the body was dropped and every such launch refused. Under
+ * the phone app's /api function's own request limit (4.5 MB), for that one route only.
+ */
+const MAX_LAUNCH_BODY_BYTES = 4 * 1024 * 1024;
+
+/** The most body bytes read for a request to `url`. */
+export const bodyLimitFor = (url: string): number => (url.split('?')[0] === '/launch/build' ? MAX_LAUNCH_BODY_BYTES : MAX_BODY_BYTES);
 
 function readBody(req: IncomingMessage): Promise<string | null> {
+  const limit = bodyLimitFor(req.url ?? '');
   return new Promise((resolve) => {
     if (req.method !== 'POST') {
       req.resume();
@@ -24,7 +35,7 @@ function readBody(req: IncomingMessage): Promise<string | null> {
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         req.destroy();
         resolve(null);
         return;
