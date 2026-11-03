@@ -33,6 +33,7 @@
  * Any failure is one short line saying why, and nothing is signed.
  */
 
+import { noteLaunchedPicture } from '../../shared/launched-picture.ts';
 import { useEffect, useState } from 'react';
 
 import {
@@ -356,6 +357,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   };
 
   if (outcome !== null && outcome !== 'working' && outcome.kind === 'created') {
+    noteLaunchedPicture(outcome.mint, f.picked ?? from.thumbUrl);
     return <Launched mint={outcome.mint} ticker={f.ticker} imageUrl={f.picked ?? from.thumbUrl} onClose={onClose} />;
   }
 

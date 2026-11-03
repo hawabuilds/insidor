@@ -52,6 +52,7 @@ import { useLoad, useNow } from '../../shared/hooks.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import { launchedPicture } from '../../shared/launched-picture.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { BackIcon, CheckIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
 import { useCopied } from '../../shared/useCopied.ts';
@@ -199,7 +200,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       {notice}
 
       <div className={styles['head']}>
-        <CoinLogo address={facts.address} ticker={named.ticker ?? named.name} imageUrl={facts.imageUrl} size={44} />
+        <CoinLogo address={facts.address} ticker={named.ticker ?? named.name} imageUrl={facts.imageUrl ?? launchedPicture(facts.address)} size={44} />
         <div className={styles['headText']}>
           <h1>{ticker}</h1>
           <div className={styles['name']}>{named.name ?? ''}</div>
