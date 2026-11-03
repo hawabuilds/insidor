@@ -182,11 +182,21 @@ export class PgChartRepo {
     );
   }
 
+  /**
+   * ★ ONLY DAYS ALREADY COPIED (0163, the owner 2026-11-03: "i want to keep candles never delete"). A
+   * minute row older than `beforeMs` is deleted only when its UTC day is in internal.candle_archive_day,
+   * written by tools/archive-candles.ts after the bucket's copy was read back and counted. A day not
+   * copied stays in the database however old; without 0163 the query fails and nothing is deleted.
+   */
   async prune(beforeMs: number, limit: number): Promise<number> {
     const rows = await this.#db.query<{ n: string }>(
       `with gone as (
          delete from internal.coin_candle_1m
-          where ctid = any (array(select ctid from internal.coin_candle_1m where bucket < $1 limit $2))
+          where ctid = any (array(
+            select m.ctid from internal.coin_candle_1m m
+             where m.bucket < $1
+               and (m.bucket at time zone 'UTC')::date in (select day from internal.candle_archive_day)
+             limit $2))
          returning 1)
        select count(*)::text as n from gone`,
       [iso(beforeMs), limit],
