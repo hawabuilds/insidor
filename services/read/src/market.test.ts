@@ -134,3 +134,45 @@ test('★ an older coin our recording joined mid-life: our chart, labelled where
   assert.deepEqual(body.chartFrom, { at: from });
   assert.equal(body.trades.length, 1, 'the latest trades we hold, though not the whole list');
 });
+
+/* ★ A COIN SECONDS OLD (2026-11-03): no source names its pool, so its own curve does. */
+const freshCoin = async (curve: { address: string; progress: number; complete: boolean; untouched: boolean } | null, sourceReply: unknown = { pool: null, candles: null, trades: null }) => {
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL } = await import('./own-market.ts');
+  const db = { query: async (sql: string) => (sql === ASSET_SQL ? [{ chain: 'solana', address: LAURA }] : sql === CHART_SQL ? [] : []) };
+  const asked: string[] = [];
+  const r = await coinMarket(`solana:${LAURA}`, '1m', {
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => sourceReply as never, pool: async () => null },
+    curveProgress: async () => curve?.progress ?? null,
+    curveOfMint: async (mint) => { asked.push(mint); return curve; },
+    heldTrades: async () => ({ held: false, whole: false, trades: [] }),
+  });
+  return { body: JSON.parse((r as { body: string }).body), asked };
+};
+
+test('★ a curve never bought from: on the curve at 0%, and no trades is a fact (an empty chart and tape, not "could not be read")', async () => {
+  const { body, asked } = await freshCoin({ address: 'Curve1', progress: 0, complete: false, untouched: true });
+  assert.deepEqual(asked, [LAURA]);
+  assert.equal(body.venue, 'curve');
+  assert.deepEqual(body.candles, []);
+  assert.deepEqual(body.trades, []);
+  assert.deepEqual(body.curveProgress, { v: 0 });
+  assert.equal(body.pair.venue.launchpad, true);
+});
+
+test('★ a curve that was bought from, with nothing held: on the curve, but its chart and tape stay "could not be read"', async () => {
+  const { body } = await freshCoin({ address: 'Curve1', progress: 0.02, complete: false, untouched: false });
+  assert.equal(body.venue, 'curve');
+  assert.equal(body.candles, null);
+  assert.equal(body.trades, null);
+});
+
+test('a coin whose pool a source named is never read from its curve, and a finished curve names no pool', async () => {
+  const named = await freshCoin({ address: 'Curve1', progress: 0, complete: false, untouched: true }, { pool: { address: 'Pool9', dex: 'pumpswap', dexName: 'PumpSwap', reserveUsd: 10, base: { address: LAURA, symbol: null, name: null, imageUrl: null }, quote: SOL }, candles: [], trades: [] });
+  assert.deepEqual(named.asked, []);
+  assert.equal(named.body.venue, 'pool');
+  const done = await freshCoin({ address: 'Curve1', progress: 1, complete: true, untouched: false });
+  assert.equal(done.body.venue, null);
+});
