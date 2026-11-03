@@ -84,19 +84,24 @@ if (service in MAIN) {
     /* Copies the logos of coins on screen into our storage (services/project/src/logos-main.ts).
        Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this service; without them it says so and exits. */
     { name: 'logos', everyMs: 120_000, args: ['services/project/src/logos-main.ts'] },
-    /* `offUntil` 01:00 UTC 2 Nov (the owner, 2026-11-01: "i want the app working and fixes made same time"):
-       the label job and the archive each read the 13 GB backlog of the decision log, and on 1 Nov every
-       restart started both at once while For You's full frame was being cut off by the slow disk. They
-       wait for the night; then the archive clears the backlog one day an hour and both run hourly again. */
-    { name: 'label', everyMs: 3_600_000, offUntil: Date.parse('2026-11-02T01:00:00Z'), args: ['tools/db.mjs', 'label'] },
+    /* ★ NIGHT ONLY, 02:00–06:00 UTC (the owner, 2026-11-03, demoing in person every day that week: "make
+       sure the app is fast"): the label job and the archive are among the heaviest readers of the
+       disk-bound database and nothing on screen waits for them, so they run while nobody is demoing. */
+    { name: 'label', everyMs: 3_600_000, nightOnly: true, args: ['tools/db.mjs', 'label'] },
     /* The decision log's days older than one move to the private decision-archive bucket, checked
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
-    { name: 'archive', everyMs: 3_600_000, offUntil: Date.parse('2026-11-02T01:00:00Z'), args: ['tools/archive-decisions.ts'] },
+    { name: 'archive', everyMs: 3_600_000, nightOnly: true, args: ['tools/archive-decisions.ts'] },
+    /* Every finished day of minute candles copied to the private candle-archive bucket and checked
+       (tools/archive-candles.ts, 0163): never deletes; a copied day is what lets chainwatch's weekly
+       clean-up remove it from the database. Night only, two days a run. */
+    { name: 'candles', everyMs: 3_600_000, nightOnly: true, args: ['tools/archive-candles.ts', 'run'] },
     /* Coin picture vectors: an untraded coin's deleted once nothing can read it, and days older than
        30 to the private vector-archive bucket, read back and counted before they are deleted
        (tools/archive-coin-vectors.ts, Policy.coinVectors). Hourly; seconds when nothing is due. */
-    { name: 'coin-vectors', everyMs: 3_600_000, args: ['tools/archive-coin-vectors.ts', 'run'] },
+    /* ★ OFF (2026-11-03): every run failed (ok=false, ten of ten on 2 Nov) on the disk-bound database,
+       and each failed run was still one of its heavier reads. Back on once its read is indexed. */
+    // { name: 'coin-vectors', everyMs: 3_600_000, args: ['tools/archive-coin-vectors.ts', 'run'] },
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
     { name: 'recall', everyMs: 86_400_000, args: ['tools/recall-check.ts', 'daily', '--yes', '--detach'] },
@@ -133,7 +138,9 @@ if (service in MAIN) {
   const QUICK_KILL_AFTER_MS = 120_000;
   const last = new Map();
   const started = new Map();
-  const due = (job, now) => (job.offUntil === undefined || now >= job.offUntil) && now - (started.get(job.name) ?? 0) >= job.everyMs;
+  /* `nightOnly`: started only from 02:00 to 06:00 UTC; a run begun then may finish after. */
+  const night = (now) => { const h = new Date(now).getUTCHours(); return h >= 2 && h < 6; };
+  const due = (job, now) => (job.offUntil === undefined || now >= job.offUntil) && (job.nightOnly !== true || night(now)) && now - (started.get(job.name) ?? 0) >= job.everyMs;
   const once = (job, killAfterMs = null) =>
     new Promise((resolve) => {
       const child = run(job.args);
