@@ -37,7 +37,8 @@ const FLUSH_MS = 5_000;
 const KEEP_UNWRITTEN_FAILURES = 60;
 /** How often the product's watched coins are reread. */
 const LIST_EVERY_MS = 60_000;
-/** Minute rows older than this are deleted; the hourly rows stay. */
+/** Minute rows older than this leave the database once their day is copied to the candle archive
+ * (0163, store coin-chart.ts `prune`; a day not copied stays however old); the hourly rows stay. */
 export const MINUTE_RETENTION_MS = 7 * 86_400_000;
 /** How long a launch's first-minute row is kept (0150), and a graduate's (0154): the policy's. */
 const OPENS_KEEP_MS = DEFAULT_POLICY.launchSignals.keepMs;
