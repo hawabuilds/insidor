@@ -219,6 +219,22 @@ export function withWarUnit(rows: readonly NumbersRow[]): { readonly units: read
 }
 
 /** The list for a ranked sort, in order: ids only. */
+/** How far behind the clock the lists may be ranked (see `rankedAsOf`): longer than a slow full frame, short of an outage. */
+const AS_OF_MAX_LAG_MS = 40 * 60_000;
+
+/**
+ * ★ THE LISTS AS OF THE NEWEST PAGE THE PROJECTOR WROTE, NOT THE CLOCK (2026-11-03, the owner: "same with
+ * trending narratives"). Each page's numbers are as of the frame that wrote it; a full frame took about
+ * 19 minutes that evening, so Trending's 30-minute freshness ran out between frames and the list
+ * emptied. Ranked as of the newest page, the lists say what was rising then, which stays true. Past
+ * AS_OF_MAX_LAG_MS the projector has stalled and the clock is used: empty lists, never old numbers as now.
+ */
+export function rankedAsOf(rows: readonly NumbersRow[], nowMs: number): number {
+  let newest = Number.NEGATIVE_INFINITY;
+  for (const r of rows) if (r.projectedMs !== null && r.projectedMs > newest && r.projectedMs <= nowMs) newest = r.projectedMs;
+  return Number.isFinite(newest) && nowMs - newest <= AS_OF_MAX_LAG_MS ? newest : nowMs;
+}
+
 export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY, noCoin = false): readonly string[] {
   const mine = rows.filter((r) => (on === null || r.on.has(on)) && (!noCoin || r.noCoin));
   if (sort === 'trending') {
@@ -288,7 +304,7 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     let hit = kept.get(key);
     if (hit === undefined || hit.tick !== tick || nowMs - hit.at >= KEEP_MS) {
       const rows = (await db.query(LIST_NUMBERS_SQL, [policy.narrative.trend.listWindowHours])).flatMap((r) => numbersOf(r) ?? []);
-      hit = { tick, at: nowMs, ids: rankNarratives(rows, ask.sort, ask.on, nowMs, policy, ask.noCoin) };
+      hit = { tick, at: nowMs, ids: rankNarratives(rows, ask.sort, ask.on, rankedAsOf(rows, nowMs), policy, ask.noCoin) };
       kept.set(key, hit);
     }
     const ids = hit.ids.slice(ask.offset, ask.offset + size);

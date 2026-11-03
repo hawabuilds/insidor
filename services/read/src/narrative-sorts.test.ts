@@ -186,3 +186,13 @@ test('★ each card carries its "See N coins" count, one statement a tick for th
   fail = true;
   assert.deepEqual((await list(fake, 5, ask)).stories, [{ id: 'a' }, { id: 'b' }]);
 });
+
+test('★ the narratives lists are ranked as of the newest page the projector wrote, within 40 minutes of the clock (2026-11-03)', async () => {
+  const { rankedAsOf } = await import('./narrative-sorts.ts');
+  const T = 1_800_000_000_000;
+  const row = (projectedMs: number | null) => ({ projectedMs }) as never;
+  assert.equal(rankedAsOf([row(T - 25 * 60_000), row(T - 30 * 60_000), row(null)], T), T - 25 * 60_000);
+  assert.equal(rankedAsOf([row(T - 50 * 60_000)], T), T, 'a stalled projector: the clock, so the lists empty');
+  assert.equal(rankedAsOf([], T), T);
+  assert.equal(rankedAsOf([row(T + 60_000)], T), T, 'a page stamped ahead of the clock is never taken as now');
+});
