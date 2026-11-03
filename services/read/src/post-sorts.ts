@@ -272,6 +272,9 @@ export function createSorts(now: () => number = Date.now, policy: Policy = DEFAU
 }
 
 /** The whole list for a sort and window, in order, with each post's ranking scale and its total views. */
+/** How far behind the clock Trending may be ranked (see `rankAll`): longer than a slow full frame, short of an outage. */
+const TRENDING_AS_OF_MAX_LAG_MS = 40 * 60_000;
+
 async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, policy: Policy): Promise<{ readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly totals: ReadonlyMap<string, number> }> {
   const p = policy.rising.forYouSorts;
   const scales = new Map<string, number>();
@@ -299,7 +302,20 @@ async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, po
       ? (window === 'week' ? p.mostViewedSpansMs.week : p.mostViewedSpansMs.today)
       /* Trending now reads back over both spans and the 1h rule's window, whichever is longer. */
       : Math.max(r.nowSpanMs + r.beforeSpanMs, trendingFillWindowMs(policy)) + r.maxMarkGapMs;
-  const rows = await db.query(SORT_READINGS_SQL, [new Date(nowMs - windowMs).toISOString()]);
+  const trendingNow = !legacy && by === 'trending';
+  const rows = await db.query(SORT_READINGS_SQL, [new Date(nowMs - windowMs - (trendingNow ? TRENDING_AS_OF_MAX_LAG_MS : 0)).toISOString()]);
+  /* ★ TRENDING AS OF THE NEWEST READING THE CARDS HOLD, NOT THE CLOCK (2026-11-03, the owner: "trending
+     fyp broke again why"). The cards' readings are the projector's, as of each full frame's start; a
+     frame took about 19 minutes that evening, so ten minutes after one landed the last 30 minutes had
+     no reading in them and Trending emptied until the next. Ranked as of the newest reading instead,
+     the list says what was rising at that moment, which stays true. Past TRENDING_AS_OF_MAX_LAG_MS the
+     projector has stalled, and the clock is used again: an empty list, never old risers as current. */
+  let rankAt = nowMs;
+  if (trendingNow) {
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const row of rows) for (const x of readingsOf(row['views'])) if (x.atMs > newest && x.atMs <= nowMs) newest = x.atMs;
+    if (Number.isFinite(newest) && nowMs - newest <= TRENDING_AS_OF_MAX_LAG_MS) rankAt = newest;
+  }
   const risers: Ranked[] = [];
   const places = rows.flatMap((row: Row) => {
     const id = row['item_id'];
@@ -314,9 +330,9 @@ async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, po
       return one === null ? [] : [one];
     }
     /* Trending now: fresh posts only, a riser or the 1h rule's pick. */
-    const riser = riserPlace(id, readings, msOf(row['posted_ms']), nowMs, policy, scale);
+    const riser = riserPlace(id, readings, msOf(row['posted_ms']), rankAt, policy, scale);
     if (riser !== null && riser.fresh) risers.push(riser);
-    const fill = rankPost(id, readings, msOf(row['posted_ms']), 'trending', trendingFillWindowMs(policy), nowMs, scale, policy);
+    const fill = rankPost(id, readings, msOf(row['posted_ms']), 'trending', trendingFillWindowMs(policy), rankAt, scale, policy);
     return fill === null || !fill.fresh ? [] : [fill];
   });
   if (!legacy && by === 'trending') return { list: trendingList(risers, places, policy), scales, totals };
