@@ -178,7 +178,13 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
   const mint = typeof asset?.['address'] === 'string' && asset['chain'] === 'solana' ? asset['address'] : (searched ?? '');
 
   try {
-    let market = await marketOf(mint, timeframe, deps);
+    /* A source that failed outright is not yet an unavailable page: the curve below may still name the
+       coin. Only when it cannot either is the failure the answer. */
+    let failed: unknown = null;
+    let market: Awaited<ReturnType<typeof marketOf>> = await marketOf(mint, timeframe, deps).catch((e: unknown) => {
+      failed = e;
+      return { pool: null, candles: null, trades: null };
+    });
     /* ★ A COIN SECONDS OLD (the owner, 2026-11-03: a coin just created showed "Price history could not
        be read", no picture and no venue until the first buy). Neither our trade stream nor the market
        source knows a coin nobody has traded, so neither names its pool. The launchpad's own curve
@@ -195,6 +201,7 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
           : { ...market, pool };
       }
     }
+    if (failed !== null && market.pool === null) throw failed;
     const onCurve = market.pool?.dex === 'pump-fun';
     let progress: number | null = null;
     let progressWhy = onCurve ? (deps.curveProgress === null ? 'not_reported' : 'unreadable') : 'not_reported';
