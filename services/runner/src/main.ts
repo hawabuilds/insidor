@@ -224,7 +224,11 @@ async function main(): Promise<void> {
       }),
       /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
          never holds up the search. */
-      universeLoop(runtime.universe, runtime.lookUpCoins, runtime.keepCoins),
+      /* ★ COIN KEEP OFF (the owner, 2026-11-03: "i dont want to delete anything"). Its read (store
+         coin-universe.ts NAMED_COINS / KEPT_ALWAYS) ran into the 300 s limit and was cancelled on
+         every pass that night — never finishing, one of the database's heaviest readers while it was
+         pinned at 99% — and what it exists to do is delete coins. Nothing is deleted while it is off. */
+      universeLoop(runtime.universe, runtime.lookUpCoins, null),
       /* The owner's pasted missed posts, on the learning book: its own loop so a paste is worked
          within a minute whether discovery is on or not (loops/missed.ts). */
       missedLoop(runtime.missedPosts),

@@ -87,7 +87,7 @@ if (service in MAIN) {
     /* ★ NIGHT ONLY, 02:00–06:00 UTC (the owner, 2026-11-03, demoing in person every day that week: "make
        sure the app is fast"): the label job and the archive are among the heaviest readers of the
        disk-bound database and nothing on screen waits for them, so they run while nobody is demoing. */
-    { name: 'label', everyMs: 3_600_000, nightOnly: true, args: ['tools/db.mjs', 'label'] },
+    { name: 'label', everyMs: 3_600_000, nightOnly: true, offUntil: Date.parse('2026-11-04T02:00:00Z'), args: ['tools/db.mjs', 'label'] },
     /* The decision log's days older than one move to the private decision-archive bucket, checked
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
