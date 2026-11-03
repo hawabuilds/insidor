@@ -864,7 +864,7 @@ interface MarketReadingRow {
 /**
  * The LATEST reading for each of these coins, and only the latest.
  *
- * One `limit 1` per coin, walking `market_reading_latest_idx` (asset_key, taken_at desc)
+ * One `limit 1` per coin, walking `market_reading_latest_cover_idx` (asset_key, taken_at desc; 0165, was 0010's latest_idx)
  * from its newest row: one seek per coin rather than a read of every reading a coin has
  * ever had.
  *
@@ -1906,7 +1906,7 @@ export interface PairWindow {
 /**
  * The latest reading of ONE asset `a`, as a lateral subquery both statements below share verbatim.
  *
- * Each coin in the window seeks 0010's `market_reading_latest_idx (asset_key, taken_at desc)`
+ * Each coin in the window seeks 0165's `market_reading_latest_cover_idx (asset_key, taken_at desc)`
  * once and takes its first row: the cost is one index probe per coin in the window.
  *
  * ★ IT WAS A CTE, `distinct on (asset_key) … order by asset_key, taken_at desc` over the whole

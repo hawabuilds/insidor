@@ -547,7 +547,7 @@ async function onScreenThenNewest(db: Db, chain: string, limit: number): Promise
  * reuse it instead of asking again (reading.ts `reusableRoute`) or keep it when it cannot ask
  * (`keptRoute`). Only `pool` rows: a "nobody asked" or kept row after it must not hide it, and a kept
  * row must never pass for an answer. The same latest-per-asset seek the
- * projector makes, on `market_reading_latest_idx`.
+ * projector makes, on `market_reading_latest_cover_idx` (0165).
  */
 export async function lastAnswers(db: Db, assetKeys: readonly string[]): Promise<ReadonlyMap<string, LastAnswer>> {
   const out = new Map<string, LastAnswer>();
