@@ -4,9 +4,8 @@
  * launchpad and fact chips; the address chip with copy and explorer; curve progress while on the
  * curve; the price, chart and timeframe rail; then, right under the interval row, the coin's main
  * viral post as a slim card (ViralPost, which opens the post sheet: the post the coin links, else
- * the most-viewed post naming it; the owner, 2026-11-04), or with no post known the coin's narrative
- * at the same slim size (NarrativeCard, which opens the narrative page), or nothing when there is
- * neither; then Trades, Comments and Info under tabs that stick to the top
+ * the most-viewed post from before the launch; the owner, 2026-11-04), or nothing: never the
+ * narrative card (the owner, 2026-11-04: "no narrative card under chart at all"); then Trades, Comments and Info under tabs that stick to the top
  * once the chart scrolls away, with the trades' small "All" filter menu at the right of that row; and
  * Buy and Sell pinned above the tab bar.
  *
@@ -46,7 +45,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { fetchCoinAbout, fetchCoinMarket, fetchCoinOdds, fetchStory, type CoinAbout, type CoinMarket, type CoinOdds, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
+import { fetchCoinAbout, fetchCoinMarket, fetchCoinOdds, type CoinAbout, type CoinMarket, type CoinOdds, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
 import { LIVE_POLL_MS, noteMarket } from '../../shared/coin-cap.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -71,8 +70,6 @@ import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
 import type { TapeFilter } from './trades-view.ts';
 import { ViralPost } from './ViralPost.tsx';
 import { viralPost } from './viral-post.ts';
-import { NarrativeCard } from './NarrativeCard.tsx';
-import { narrativeIdFor } from './coin-narrative.ts';
 import { pairChip, pairFrom, poolLiquidity, shownName, venueChip, type CoinListing, type PairChip, type PairRead } from './pair-view.ts';
 
 export type { TokenFacts } from './token-facts.ts';
@@ -105,7 +102,7 @@ export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMa
   return 'No trades yet.';
 }
 
-export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar, back = { screen: 'search' }, story = null }: {
+export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar, back = { screen: 'search' } }: {
   facts: TokenFacts;
   /** Fact chips after the pair and launchpad: "Created on Insidor" and the like. */
   chips?: readonly string[];
@@ -118,6 +115,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /** Where Back goes when nothing of ours is under this page (opened from a link or a notification). */
   back?: Route;
   /** The narrative the page was opened from, when it was; otherwise the coin's own is read. */
+  /** Kept for the callers that pass it; the page no longer shows the narrative card. */
   story?: Story | null;
 }) {
   const now = useNow();
@@ -161,14 +159,9 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const owner = useIsOwner();
   const [oddsLoad] = useLoad(`odds:${owner ? facts.coinId : ''}`, (signal) => (owner ? fetchCoinOdds(facts.coinId, signal) : Promise.resolve(null)), 'memory');
   const odds: CoinOdds | null = owner && oddsLoad.state === 'ready' ? oddsLoad.value : null;
-  /* The coin's narrative (coin-narrative.ts): the one the page came from, else the one the read
-     service names for the coin, else the most-viewed naming post's. Read once it is known. */
-  const narrativeId = story !== null ? null : narrativeIdFor(about);
-  const [storyLoad] = useLoad(`coin-story:${narrativeId ?? ''}`, (signal) => (narrativeId === null ? Promise.resolve(null) : fetchStory(narrativeId, signal)));
-  const narrative: Story | null = story ?? (storyLoad.state === 'ready' ? storyLoad.value : null);
   /* ★ THE COIN'S MAIN VIRAL POST FIRST (the owner, 2026-11-04: "meme token chart page should show the
      main viral post rather than narrative story pop up"): the post the coin links, else the
-     most-viewed post naming it (viral-post.ts); the narrative card only when no post is known. */
+     most-viewed post from before the launch (viral-post.ts); with neither, nothing. */
   const viral = about === null ? null : viralPost(about.posts, { launchedAt });
   const read = market?.kind === 'read' ? market : null;
   const venue = read?.venue ?? facts.venue;
@@ -240,7 +233,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
-      {viral !== null && about !== null ? <ViralPost posts={about.posts} launchedAt={launchedAt} /> : narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : null}
+      {viral !== null && about !== null ? <ViralPost posts={about.posts} launchedAt={launchedAt} /> : null}
 
       {/* Stuck under the top once the chart scrolls away; a second tap on the open tab returns to it. */}
       <div ref={tabs} className={styles['panelTabs']} role="tablist" aria-label="Coin">
