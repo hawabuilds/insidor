@@ -6185,7 +6185,7 @@ const POLICY_V1: Policy = {
      copy with a different picture that never passed $5K by an hour old is off "See N coins".
      v221 (2026-11-01, the owner: "only ship zero change") adds `group.image.matchOnlyWithVector`: a post
      with no picture vector is not sent every open story's id, ~15 GB a day less database egress. */
-  version: 'policy.v223',
+  version: 'policy.v224',
 
   admit: {
     maxAgeMin: 240,
@@ -8358,8 +8358,11 @@ const POLICY_V1: Policy = {
     everyMs: 120_000,
     windowMs: 172_800_000, // two days, the board's own window
     /* The day of 2026-10-16 held 1,900 judged-yes posts with a vector in two days; the pass compares
-       every pair in memory (about 2 s at 1,500). */
-    maxPosts: 1_500,
+       every pair in memory (about 2 s at 1,500).
+       3,000 from policy.v224 (the owner, 2026-11-04: "raise the limit now"): after the database upgrade
+       and Thai search, a pass held ~2,600 good posts and left 1,029 over the cap, ungrouped. Pairs grow
+       with the square: about 8 s a pass at 3,000, every two minutes; no call is paid for it. */
+    maxPosts: 3_000,
     /* 30 of the 594 good posts had no vector on 2026-10-16; a post with its picture is about 1,500
        tokens at $0.12 a million, so a full pass of 25 is under half a cent. */
     embedPerPass: 25,
