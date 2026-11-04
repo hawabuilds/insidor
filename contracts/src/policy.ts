@@ -4609,6 +4609,19 @@ export interface NarrativePolicy {
    */
   readonly sameVideo: { readonly on: boolean; readonly maxGapMs: number };
   /**
+   * ★ ONE DISTINCTIVE NAME (the owner, 2026-11-04: Elon's "Prophetic" over a Tolkien page on Gondor's
+   * fallen kings and the Education Department's Aragorn clip "Get up, patriots", both judged ARAGORN,
+   * never one narrative: a page of text and a film still share no picture and no words). Two good
+   * posts the judge gave the same name (narrative-same.ts `subjectName`: compacted, generic names
+   * out), each at least `minConfidence`, link whatever their words or pictures, within `maxGapMs`
+   * — but only while at most `maxPosts` of the pass's good posts carry that name: a name many posts
+   * carry is a kind of thing (another cat), and joining on it alone is the centroid merge that folded
+   * 89 narratives into one on 16-18 Oct. When both posts have a vector, they must be at least
+   * `minMeaning` alike: a floor against wholly unrelated posts only, as the space cannot confirm a
+   * story told in different forms. The owner's "keep apart" and the average linkage still hold.
+   */
+  readonly rareName: { readonly on: boolean; readonly maxPosts: number; readonly minConfidence: number; readonly maxGapMs: number; readonly minMeaning: number };
+  /**
    * A group (or a post) whose posts are on average at least this alike to another group's average
    * vector, and that shares a detail with it — a link between their posts, or a name — is one story
    * told in parts, and joins it; a post under this from its own narrative's average leaves it.
@@ -6172,7 +6185,7 @@ const POLICY_V1: Policy = {
      copy with a different picture that never passed $5K by an hour old is off "See N coins".
      v221 (2026-11-01, the owner: "only ship zero change") adds `group.image.matchOnlyWithVector`: a post
      with no picture vector is not sent every open story's id, ~15 GB a day less database egress. */
-  version: 'policy.v221',
+  version: 'policy.v222',
 
   admit: {
     maxAgeMin: 240,
@@ -8365,6 +8378,11 @@ const POLICY_V1: Policy = {
     minLinkShare: 0.5,
     /* Two days, the span a narrative may cover: further apart, the newer post joins through the live narrative's own path. */
     sameVideo: { on: true, maxGapMs: 172_800_000 },
+    /* Six: a story's own name (ARAGORN, ANAKIN, PNUT) is on a handful of a pass's ~1,500 good posts,
+       a kind's name (CAT, DOG) on dozens. 0.8: the judge sure of the name. Two days, as the video's. */
+    /* 0.5: measured 4 Nov in the post space, the Aragorn pair 0.647 and two random posts 0.686 at the
+       median, so meaning cannot tell them; the floor only stops posts with nothing in common (~0.1). */
+    rareName: { on: true, maxPosts: 6, minConfidence: 0.8, maxGapMs: 172_800_000, minMeaning: 0.5 },
     /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
        average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49

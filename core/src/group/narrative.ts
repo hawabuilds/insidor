@@ -305,6 +305,8 @@ export interface NarrativePair {
   readonly samePicture: boolean;
   /** Both posts carry the same uploaded video (the caller's video key): links whatever the words (`narrative.sameVideo`). */
   readonly sameVideo?: boolean;
+  /** Both posts carry the same distinctive judge name (the caller counts it, `narrative.rareName`): links whatever the words. */
+  readonly sameName?: boolean;
 }
 
 export interface FormedNarrative {
@@ -360,9 +362,12 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
   const n = p.narrative;
   const details = new Map<string, PostDetail>();
   const atOf = new Map<string, number>();
+  /* ★ A thin post (a few words, no picture of its own: "Prophetic" over a quoted page) still joins
+     through a same-name pair: the judge's sure, distinctive name is the strong detail it lacks. */
+  const named = new Set(n.rareName.on ? input.pairs.flatMap((x) => (x.sameName === true ? [x.a, x.b] : [])) : []);
   for (const post of input.posts) {
     const d = detailOf(post, p);
-    if (!groupable(d)) continue;
+    if (!groupable(d) && !named.has(post.itemId)) continue;
     details.set(post.itemId, d);
     atOf.set(post.itemId, post.atMs);
   }
@@ -377,6 +382,15 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
       if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.sameVideo.maxGapMs) continue;
       if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
       links.picture += 1;
+      edges.push([pair.a, pair.b]);
+      continue;
+    }
+    /* ★ The same distinctive name links whatever the words or pictures (Aragorn, 2026-11-04). */
+    if (n.rareName.on && pair.sameName === true && pair.a !== pair.b) {
+      if (!details.has(pair.a) || !details.has(pair.b)) continue;
+      if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.rareName.maxGapMs) continue;
+      if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
+      links.name += 1;
       edges.push([pair.a, pair.b]);
       continue;
     }
@@ -597,7 +611,8 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
       if (sum === null) continue;
       const drifted = group.members.filter((m) => {
         const v = vectors.get(m);
-        return v !== undefined && !ownerMerged.has(m) && cosine(v, sum) < n.mergeMeaning;
+        /* A post joined by its distinctive name stays too: its words were never what joined it. */
+        return v !== undefined && !ownerMerged.has(m) && !named.has(m) && cosine(v, sum) < n.mergeMeaning;
       });
       for (const m of drifted) {
         group.members = group.members.filter((x) => x !== m);
