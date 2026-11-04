@@ -219,8 +219,8 @@ export function withWarUnit(rows: readonly NumbersRow[]): { readonly units: read
 }
 
 /** The list for a ranked sort, in order: ids only. */
-/** How far behind the clock the lists may be ranked (see `rankedAsOf`): longer than a slow full frame, short of an outage. */
-const AS_OF_MAX_LAG_MS = 40 * 60_000;
+/** How far behind the clock the lists may be ranked (see `rankedAsOf`): longer than a slow full frame (its numbers are as of its start, so up to two frames old), short of an outage. */
+const AS_OF_MAX_LAG_MS = 60 * 60_000;
 
 /**
  * ★ THE LISTS AS OF THE NEWEST PAGE THE PROJECTOR WROTE, NOT THE CLOCK (2026-11-03, the owner: "same with
