@@ -74,3 +74,23 @@ test('★ a post whose PvP this coin is in carries the race on its evidence, for
   const r = await coinAbout(`solana:${MINT}`, deps({ [ASSET_SQL]: [{ chain: 'solana', address: MINT }], [POSTS_SQL]: [post] }, async () => null, null));
   assert.deepEqual(JSON.parse(r?.body ?? '{}').posts[0].evidence.racingCoins, race);
 });
+
+test('★ the post the coin links is on its page, first and marked linked, though it never made a feed ($Donkey, 2026-11-04)', async () => {
+  const { linkedPostOf, withLinkedPost } = await import('./coin-about.ts');
+  const linked = linkedPostOf({ item_id: 'x:2117989886926164261', body: 'JUST IN: Over $900,000,000,000 added https://t.co/abc', media: [{ uri: 'https://pbs.twimg.com/media/a.jpg', kind: 'image' }], posted_at: '2026-11-04T14:38:34Z', first_seen_at: '2026-11-04T14:39:40Z', reach: 265059, handle: 'WatcherGuru' });
+  assert.ok(linked !== null);
+  assert.equal(linked['permalink'], 'https://x.com/WatcherGuru/status/2117989886926164261');
+  assert.equal(linked['excerpt'], 'JUST IN: Over $900,000,000,000 added', 'a trailing short link is not words');
+  assert.deepEqual(linked['views'], { v: 265059 });
+  assert.equal((linked['evidence'] as { linksPost: boolean }).linksPost, true);
+  const shrek = { postId: 'x:1', evidence: { linksPost: false }, views: { v: 633952 } };
+  assert.deepEqual(withLinkedPost([shrek], linked).map((p) => p['postId']), ['x:2117989886926164261', 'x:1']);
+  /* A feed card of the linked post keeps its card, marked linked, and is not listed twice. */
+  const card = { postId: 'x:2117989886926164261', excerpt: 'card words', evidence: { linksPost: false, samePicture: true } };
+  const out = withLinkedPost([shrek, card], linked);
+  assert.deepEqual(out.map((p) => p['postId']), ['x:2117989886926164261', 'x:1']);
+  assert.equal(out[0]?.['excerpt'], 'card words');
+  assert.deepEqual(out[0]?.['evidence'], { linksPost: true, samePicture: true });
+  assert.equal(linkedPostOf(undefined), null);
+  assert.deepEqual(withLinkedPost([shrek], null), [shrek]);
+});
