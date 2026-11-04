@@ -82,6 +82,64 @@ select distinct on (n.item_id) n.item_id, n.payload, n.own, n.links_post, n.same
  limit ${POSTS_SHOWN}`;
 
 /**
+ * ★ THE POST THE COIN ITSELF LINKS (the owner, 2026-11-04: $Donkey's launch linked @WatcherGuru's "Over
+ * $900,000,000,000 added to the US stock market…", and the page showed an unrelated Shrek post instead):
+ * the X status its launch links (public.coin_link, the creator's own claim), when we hold the post. Read
+ * whether or not the post ever made a feed — that one was held as politics — so the coin's own post is
+ * never missing from its page. `$1` the asset key.
+ */
+export const LINKED_POST_SQL = `
+with l as (
+  select substring(coalesce(social_link, '') || ' ' || coalesce(website, '') from '/status(?:es)?/([0-9]{15,20})') as sid
+    from public.coin_link where asset_key = $1
+)
+select i.item_id, i.body, i.media, i.posted_at, i.first_seen_at, (i.counters #>> '{reach,value}')::float8 as reach, a.handle
+  from l
+  join public.item i on i.item_id = 'x:' || l.sid
+  left join public.author a on a.author_key = i.author_key
+ where l.sid is not null
+ limit 1`;
+
+/** A linked post's words on its card: the post's own, without trailing short links, at most this long. */
+const LINKED_EXCERPT_CHARS = 140;
+
+/** The coin's linked post (LINKED_POST_SQL) in the shape of the page's posts, marked as linked; null when none is held. */
+export function linkedPostOf(r: Row | undefined): Record<string, unknown> | null {
+  const id = text(r?.['item_id']);
+  if (r === undefined || id === null) return null;
+  const at = (v: unknown): number | null => (v instanceof Date ? v.getTime() : typeof v === 'string' ? Date.parse(v) : null);
+  const posted = at(r['posted_at']);
+  const found = at(r['first_seen_at']);
+  const media = Array.isArray(r['media']) ? (r['media'] as Record<string, unknown>[]) : [];
+  const handle = text(r['handle']);
+  const body = (text(r['body']) ?? '').replace(/(\s*https?:\/\/t\.co\/\S+)+\s*$/u, '').trim();
+  const reach = typeof r['reach'] === 'number' && Number.isFinite(r['reach']) && r['reach'] >= 0 ? r['reach'] : null;
+  const sid = id.slice('x:'.length);
+  return {
+    postId: id,
+    own: true,
+    sourceLabel: 'X',
+    authorLabel: handle === null ? '' : `@${handle}`,
+    permalink: handle === null ? `https://x.com/i/status/${sid}` : `https://x.com/${handle}/status/${sid}`,
+    excerpt: body.length > LINKED_EXCERPT_CHARS ? `${body.slice(0, LINKED_EXCERPT_CHARS - 1).trimEnd()}…` : body,
+    thumbUrl: text(media[0]?.['uri']),
+    postedAt: posted !== null && Number.isFinite(posted) ? { at: posted } : { at: null, why: 'not_reported' },
+    foundAt: found !== null && Number.isFinite(found) ? { at: found } : null,
+    views: reach === null ? { v: null, why: 'not_reported' } : { v: reach },
+    story: null,
+    evidence: { linksPost: true, samePicture: null, launchedAfterMs: null },
+  };
+}
+
+/** The page's posts with the coin's linked post first: a feed card of it keeps its card and is marked linked. */
+export function withLinkedPost(posts: readonly Record<string, unknown>[], linked: Record<string, unknown> | null): readonly Record<string, unknown>[] {
+  if (linked === null) return posts;
+  const card = posts.find((p) => p['postId'] === linked['postId']);
+  const first = card === undefined ? linked : { ...card, evidence: { ...(card['evidence'] as Record<string, unknown>), linksPost: true } };
+  return [first, ...posts.filter((p) => p['postId'] !== linked['postId'])];
+}
+
+/**
  * The board narrative this coin belongs to: one whose settled coin it is, else one whose top coin it
  * is. Eighty-odd pages, read whole; `$1` the address.
  */
@@ -262,7 +320,7 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
   if ((held === undefined || held['chain'] !== 'solana' || typeof held['address'] !== 'string') && !searched) return null;
   const address = typeof held?.['address'] === 'string' ? held['address'] : assetKey.slice('solana:'.length);
 
-  const [rows, posts, story, profile, holders, notified] = await Promise.all([
+  const [rows, posts, story, profile, holders, notified, linked] = await Promise.all([
     deps.db.query(ABOUT_SQL, [assetKey]),
     deps.db.query(POSTS_SQL, [address]),
     deps.db.query(COIN_STORY_SQL, [address]),
@@ -280,6 +338,7 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
           () => ({ ok: false as const, n: null }),
         ),
     deps.db.query(NOTIFIED_SQL, [address]).catch(() => []),
+    deps.db.query(LINKED_POST_SQL, [assetKey]).catch(() => []),
   ]);
   /* No narrative names the coin: the one its posts are in, if one has formed. */
   const postIds = posts.flatMap((r) => (typeof r['item_id'] === 'string' ? [r['item_id']] : []));
@@ -300,10 +359,13 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
       holders: measured(holders.n, holders.ok ? 'not_reported' : 'unreadable'),
       creator: text(row?.['creator']),
       launchedAt: minted !== null && Number.isFinite(minted) ? { at: minted } : { at: null, why: 'not_reported' },
-      posts: posts.flatMap((r) => {
-        const p = postOf(r);
-        return p === null ? [] : [p];
-      }),
+      posts: withLinkedPost(
+        posts.flatMap((r) => {
+          const p = postOf(r);
+          return p === null ? [] : [p];
+        }),
+        linkedPostOf(linked[0]),
+      ),
       storyId: text(story[0]?.['story_id']) ?? postsStory,
       /* When we first pushed it to phones and at what market cap; null when we never did. */
       notified: toldAt === null ? null : { at: toldAt, marketCapUsd: toldCap },
