@@ -24,7 +24,7 @@ import { fetchCatches, type Portfolio } from '../../shared/api/index.ts';
 import type { ProfileCard } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { CopyIcon } from '../../shared/ui/icons.tsx';
+import { CheckIcon, CopyIcon } from '../../shared/ui/icons.tsx';
 import { shortAddress } from '../portfolio/MenuSheets.tsx';
 import type { BalancePoint } from '../portfolio/balance-points.ts';
 import { EditProfileSheet } from './EditProfileSheet.tsx';
@@ -63,10 +63,13 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
   const [catches] = useLoad(`catches:${address}`, (signal) => fetchCatches(address, signal), 'memory');
   const shown: Who = card ?? who;
   const key = shown.handle ?? (card === null ? null : card.userId);
+  const [copied, setCopied] = useState(false);
   const copyAddress = async () => {
     try {
       await navigator.clipboard.writeText(address);
-      toast('Address copied');
+      /* ★ The copy icon turns to a green tick for a moment (the owner, 2026-11-04: option 1). */
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
     } catch {
       toast("Couldn't copy", 'Your address is whole in Deposit.');
     }
@@ -102,8 +105,8 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
         ) : null}
         /* ★ Your wallet address beside your handle, and Deposit at the right (the owner, 2026-11-04). */
         besideHandle={onDeposit !== null ? (
-          <button type="button" className={styles['addressChip']} aria-label="Copy your wallet address" onClick={() => void copyAddress()}>
-            {shortAddress(address)}<CopyIcon size={12} />
+          <button type="button" className={styles['addressChip']} aria-label={copied ? 'Address copied' : 'Copy your wallet address'} onClick={() => void copyAddress()}>
+            {shortAddress(address)}{copied ? <span className={styles['copiedTick']}><CheckIcon size={12} /></span> : <CopyIcon size={12} />}
           </button>
         ) : null}
         actions={null}

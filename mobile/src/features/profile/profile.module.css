@@ -149,6 +149,11 @@
   font-size: 12.5px;
 }
 
+.copiedTick {
+  display: inline-flex;
+  color: var(--up);
+}
+
 .besideRow {
   display: flex;
   gap: 8px;
