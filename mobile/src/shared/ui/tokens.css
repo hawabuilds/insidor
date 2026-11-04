@@ -199,10 +199,22 @@ a {
   text-decoration: none;
 }
 
-/* The app is a phone column. On a wider screen it stays one, centred, rather than stretching
-   rows into lines nobody can read across. */
+/* The app is a phone column. On a computer it is 1200px wide, centred (the owner, 2026-11-04:
+   "make the desktop site version 1200px width"); a phone and a tablet keep the 480px column.
+   Every bar fixed to the screen (tab bar, Buy and Sell, sheets) reads the same --app-max, so they
+   line up with the page. */
+:root {
+  --app-max: 480px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-max: 1200px;
+  }
+}
+
 #root {
-  max-width: 480px;
+  max-width: var(--app-max);
   height: 100%;
   margin: 0 auto;
   position: relative;
