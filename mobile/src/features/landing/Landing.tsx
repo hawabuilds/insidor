@@ -27,7 +27,7 @@ import { CodeBox, useCodeCheck } from '../invites/CodeBox.tsx';
 import { cleanCode, pendingCode } from '../invites/invite-code.ts';
 import inv from '../invites/invites.module.css';
 import { Avatar } from '../portfolio/Avatar.tsx';
-import { CheckMark, Frame, Line, Mark as SignUpMark, Primary, Question, Secondary, TextLink } from '../onboarding/Frame.tsx';
+import { CheckMark, Frame, Line, Mark as SignUpMark, Primary, Question, Secondary } from '../onboarding/Frame.tsx';
 import { progressOf, type DoorStep } from '../onboarding/flow.ts';
 import { Legal, type LegalPage } from '../onboarding/Legal.tsx';
 import styles from '../onboarding/signup.module.css';
@@ -398,9 +398,9 @@ function InviteDoorScreen({ invite }: { invite: InviteDoor }) {
       foot={
         <>
           {invite.unchecked ? <Primary onClick={invite.retry}>Try again</Primary> : <Primary busy={busy} onClick={() => void enter()}>{busy ? 'Checking' : 'Enter'}</Primary>}
-          <TextLink strong onClick={() => void toWaitlist()}>
-            No code? Join the waitlist
-          </TextLink>
+          {/* ★ A button, not a line of text (the owner, 2026-11-04: "make join the waitlist button a
+              visible button"): the secondary button under Enter, so Enter stays the main action. */}
+          <Secondary onClick={() => void toWaitlist()}>Join the waitlist</Secondary>
           <p className={inv['signedAs']}>
             {invite.signedInAs !== null ? <Avatar name={invite.signedInAs.replace(/^@/, '')} seed={invite.signedInAs} src={invite.picture} size={18} /> : null}
             <span>Signed in{invite.signedInAs !== null ? ` as ${invite.signedInAs}` : ''}</span>
