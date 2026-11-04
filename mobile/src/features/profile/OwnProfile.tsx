@@ -24,7 +24,7 @@ import { fetchCatches, type Portfolio } from '../../shared/api/index.ts';
 import type { ProfileCard } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { CopyIcon, PlusIcon } from '../../shared/ui/icons.tsx';
+import { CopyIcon } from '../../shared/ui/icons.tsx';
 import { shortAddress } from '../portfolio/MenuSheets.tsx';
 import type { BalancePoint } from '../portfolio/balance-points.ts';
 import { EditProfileSheet } from './EditProfileSheet.tsx';
@@ -97,7 +97,7 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
         beside={card !== null || onDeposit !== null ? (
           <div className={styles['besideRow']}>
             {card !== null ? <button type="button" className={styles['editSmall']} onClick={() => setEditing(true)}>Edit profile</button> : null}
-            {onDeposit !== null ? <button type="button" className={styles['deposit']} onClick={onDeposit}><PlusIcon size={14} />Deposit</button> : null}
+            {onDeposit !== null ? <button type="button" className={styles['deposit']} onClick={onDeposit}>Deposit</button> : null}
           </div>
         ) : null}
         /* ★ Your wallet address beside your handle, and Deposit at the right (the owner, 2026-11-04). */
