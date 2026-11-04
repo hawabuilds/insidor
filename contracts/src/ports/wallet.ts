@@ -212,6 +212,8 @@ export interface WalletIdentity {
   readonly name: string | null;
   readonly handle: string | null;
   readonly pictureUrl: string | null;
+  /** How they signed in, for the menu's "Signed in with" line; absent or null when not known. */
+  readonly signedInWith?: SignInVia | 'email' | null;
 }
 
 export interface Wallet {
