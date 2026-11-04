@@ -70,6 +70,7 @@
  * subject id that collided would file one post's answer under another.
  */
 
+import { withQuoted, type QuotedPost } from './quoted-context.ts';
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
@@ -110,6 +111,8 @@ const notMatchAnswer = (kindLabel: string, at: Millis, similarity: number, looke
 });
 
 export interface ScoringDeps {
+  /** What posts quote, shown to the judge with them (work/quoted-context.ts); none when absent. */
+  readonly quotedOf?: QuotedOf;
   /** null when the judge is dormant: nothing is asked and every post waits. */
   readonly judge: JudgePort | null;
   /**
@@ -166,12 +169,14 @@ export function subjectIdFor(item: Item): StoryId {
   return storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`);
 }
 
-export function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrecedent[] = []): JudgeSubject {
-  const text = item.text.trim().slice(0, p.judge.maxCharsPerText);
+export function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrecedent[] = [], quoted: QuotedPost | null = null): JudgeSubject {
+  /* A quote post is shown with what it quotes (work/quoted-context.ts). */
+  const shown = withQuoted({ text: item.text, media: item.media }, quoted);
+  const text = shown.text.trim().slice(0, p.judge.maxCharsPerText);
   return {
     storyId: subjectIdFor(item),
     texts: text === '' ? [] : [text],
-    media: item.media,
+    media: shown.media,
     distinctAuthors: 1,
     distinctSources: 1,
     ...(precedents.length === 0 ? {} : { precedents }),
@@ -183,6 +188,21 @@ export const withShare = (subject: JudgeSubject, share: JudgeShare | undefined):
 
 /** The source held to the short-video bars (Policy.rising.shortVideoReachScale): the projector applies the same. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
+
+/** The store's read of what posts quote (PgItemRepo.quotedOf). */
+export type QuotedOf = (itemIds: readonly string[]) => Promise<ReadonlyMap<string, QuotedPost>>;
+
+/** What these posts quote, for the judge (work/quoted-context.ts); empty when it cannot be read. */
+async function quotedFor(deps: Pick<ScoringDeps, 'log'> & { readonly quotedOf?: QuotedOf }, items: readonly Item[]): Promise<ReadonlyMap<string, QuotedPost>> {
+  const ids = items.filter((i) => i.reproductionOf !== null).map((i) => String(i.itemId));
+  if (ids.length === 0 || deps.quotedOf === undefined) return new Map();
+  try {
+    return await deps.quotedOf(ids);
+  } catch (e) {
+    deps.log.warn('quoted posts could not be read; these quotes are judged on their own words', { posts: ids.length, err: errorText(e) });
+    return new Map();
+  }
+}
 
 /** The post's words without its links: what a quote says of its own. */
 const ownWords = (text: string): string => text.replace(/https?:\/\/\S+/gi, '').trim();
@@ -325,9 +345,10 @@ export async function kindCatchUp(
   if (due.length === 0) return 0;
   const near: ReadonlyMap<string, PostPrecedents> =
     deps.precedents === undefined || deps.precedents === null ? new Map() : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(due.map((f) => f.item)));
+  const quotedDue = await quotedFor(deps, due.map((f) => f.item));
   const asks: KindAsk[] = due.map((f) => ({
     itemId: f.item.itemId,
-    subject: subjectFor(f.item, deps.policy, near.get(String(f.item.itemId))?.precedents),
+    subject: subjectFor(f.item, deps.policy, near.get(String(f.item.itemId))?.precedents, quotedDue.get(String(f.item.itemId)) ?? null),
     lookedAt: f.answer.lookedAt,
     answerJudgedAt: f.answer.judgedAt,
   }));
@@ -383,7 +404,7 @@ export async function judgeQueue(
       await deps.scores.recordCopy(item.itemId, { ...answer.judgement, judgedAt: now, costUsd: 0, rationaleRef: null }, answer.sourceId);
       copied += 1;
       /* A copied answer is still asked the kind: the source's kind answer is not copied with it. */
-      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy), lookedAt: answer.judgement.lookedAt, answerJudgedAt: now });
+      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy, [], null), lookedAt: answer.judgement.lookedAt, answerJudgedAt: now });
     } catch (e) {
       deps.log.warn('could not file a reused answer; the post is judged instead', { post: String(item.itemId), err: errorText(e) });
       toJudge.push(item);
@@ -431,7 +452,8 @@ export async function judgeQueue(
   let firstReason: string | null = null;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
     const batch = toJudge.slice(i, i + judge.maxBatch);
-    const subjects = batch.map((item) => withShare(subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents), shareOf(item)));
+    const quoted = await quotedFor(deps, batch);
+    const subjects = batch.map((item) => withShare(subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents, quoted.get(String(item.itemId)) ?? null), shareOf(item)));
     const byKey = new Map<string, ItemId>(batch.map((item) => [String(subjectIdFor(item)), item.itemId]));
     const estimate = judge.estimate(subjects);
 

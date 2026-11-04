@@ -60,7 +60,8 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { MediaRef } from '../contracts/src/vocabulary.ts';
 import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector } from '../core/src/qualify/precedents.ts';
-import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo } from '../store/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgItemRepo, PgLabelEmbeddingRepo, PgLearningRepo } from '../store/src/index.ts';
+import { withQuoted } from '../services/runner/src/work/quoted-context.ts';
 import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 import { anthropicJudge, httpClient as anthropicClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
@@ -204,7 +205,21 @@ async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string
   const fresh = (id: string) => !inTest.has(id) && !taught.has(id);
   for (const c of block.testMemes.filter((c) => fresh(c.itemId) && !/^teaching example/i.test(c.why ?? ''))) { posts.push(make('gold', c.itemId, c.text, c.imageUri)); inTest.add(c.itemId); }
   for (const h of await repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh))) posts.push(make('gold', h.itemId, h.body, pictureOf(h.media)?.uri ?? null, coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId));
-  return { posts, examples: inUse?.text ?? null, cutoff: inUse?.cutoff ?? null, version: inUse?.versionId ?? null };
+  return { posts: await withQuotes(posts), examples: inUse?.text ?? null, cutoff: inUse?.cutoff ?? null, version: inUse?.versionId ?? null };
+}
+
+/**
+ * Each quote post shown with what it quotes, exactly as the runner's post judge shows it
+ * (services/runner work/quoted-context.ts, 2026-11-03), so the test asks what is asked live.
+ */
+async function withQuotes<P extends OpenEvalPost & { picture: string | null }>(posts: P[]): Promise<P[]> {
+  const quoted = await new PgItemRepo(db).quotedOf(posts.map((p) => p.id));
+  return posts.map((p) => {
+    const q = quoted.get(p.id);
+    if (q === undefined) return p;
+    const shown = withQuoted({ text: p.text, media: p.media }, q);
+    return { ...p, text: shown.text, media: shown.media, picture: p.picture ?? postPicture(shown.media) };
+  });
 }
 
 /** A media array as the store holds it, as the judge's MediaRefs. */
@@ -238,7 +253,7 @@ async function composeFyp(): Promise<{ posts: (OpenEvalPost & { coinRef: string;
     const kind = answers.find((x) => x.item_id === a.item_id && x.prompt_id.startsWith('post-kind@'));
     stored.set(a.item_id, { coinable: a.coinable, confidence: Number(a.confidence), lookedAt: a.looked_at as Stored['lookedAt'], proposedName: a.proposed_name, kind: kind === undefined ? null : (kind.proposed_name ?? '').trim().toUpperCase() || null });
   }
-  return { posts: rows.map((r) => { const media = mediaOf(r.media); return { group: 'fyp' as const, id: r.item_id, text: r.body ?? '', media, coinRef: r.item_id, picture: postPicture(media) }; }), stored };
+  return { posts: await withQuotes(rows.map((r) => { const media = mediaOf(r.media); return { group: 'fyp' as const, id: r.item_id, text: r.body ?? '', media, coinRef: r.item_id, picture: postPicture(media) }; })), stored };
 }
 
 const gate = await composeGate();

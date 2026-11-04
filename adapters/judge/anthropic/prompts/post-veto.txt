@@ -57,7 +57,9 @@ these kinds. Judge what the post shows, never who posted it.
            NOT POLITICS, this is OTHER: a well-known film, show or game character recast as a joke
            about politics or culture that many people are posting ("Anakin, we are a GALAXY of
            IMMIGRANTS", "experts are concerned Anakin is becoming a symbol of …") — the character
-           is the subject, the politics is the joke
+           is the subject, the politics is the joke; and so is a famous film, show or game character,
+           scene or line that a world-famous person or an official account posts as its own political
+           message (Aragorn's speech as "Get up, patriots", a Tolkien passage captioned "Prophetic")
   OTHER    none of the above
 
 Answer with the fields of the structured output like this:
