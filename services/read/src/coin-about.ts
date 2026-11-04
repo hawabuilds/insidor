@@ -222,11 +222,6 @@ export function linkLabel(kind: LinkKind, url: string): string {
  * The market source's links, then the launch links for any kind it lacks; one per kind, in the
  * page's order, never the same link twice, only https, nothing the app's censor would refuse.
  */
-/** A link to one X post (a status), not an account or a community: the post a coin was launched for. */
-export function isPostLink(url: string): boolean {
-  return linkKind(url.trim()) === 'x' && /\/status(?:es)?\/[0-9]{15,20}/.test(url);
-}
-
 export function mergeLinks(market: readonly ProfileLink[], launch: readonly (string | null)[]): readonly AboutLink[] {
   const byKind = new Map<LinkKind, string>();
   const seen = new Set<string>();
@@ -242,13 +237,8 @@ export function mergeLinks(market: readonly ProfileLink[], launch: readonly (str
     seen.add(key);
     byKind.set(kind, clean);
   };
-  /* ★ THE LAUNCH'S POST LINK FIRST (the owner, 2026-11-04: a market site's X link "is usually just an
-     x community account", and it doesn't say which post the coin is about — $Donkey's launch linked
-     @WatcherGuru's post, the market's @thedemocrats). A launch link to an X post takes the X button
-     before any market link; every other launch link still only fills a gap the market left. */
-  for (const l of launch) if (l !== null && isPostLink(l)) take(l);
   for (const l of market) if (l.kind !== 'discord') take(l.url);
-  /* Every other market link is in before the remaining launch links: a launch link only fills a gap. */
+  /* Every market link is in before the first launch link: a launch link only fills a gap. */
   for (const l of launch) take(l);
   return LINK_KINDS.flatMap((kind) => {
     const url = byKind.get(kind);
