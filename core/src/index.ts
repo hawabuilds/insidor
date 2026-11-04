@@ -50,6 +50,7 @@
 export { decide } from './decide.ts';
 
 export { admit } from './admit/stage.ts';
+export { reskinned } from './admit/reskin.ts';
 export { track } from './track/stage.ts';
 export { detect } from './detect/stage.ts';
 export { group, joinTarget } from './group/stage.ts';

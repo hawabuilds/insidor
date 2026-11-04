@@ -3441,6 +3441,17 @@ export interface IngestPolicy {
    * `internal.source_health` is where the measurement will come from.
    */
   readonly failingAfterFailures: number;
+  /**
+   * ★ A RESKINNED ACCOUNT'S POSTS ARE NOT STORED (core/src/admit/reskin.ts, the owner 2026-11-04:
+   * "larp zoo accounts ... pretending to be an official zoo account"). An account at least
+   * `minAgeMs` old that has made fewer than `maxPostsEver` posts, fewer than `maxPostsPerYear` a
+   * year of its life, and liked fewer than `maxApprovalsGiven` posts was emptied and dressed up: a real
+   * account that old has posted and liked far more. Its posts never reach the feed, a narrative or
+   * an alert. Measured on 300 accounts from the week's feed (2026-11-04): it held one, @ThailandZoo
+   * (made 2008, 30 posts), the same scheme, and @honolulu_zoo (2009, 60 posts, no likes). An account
+   * whose history the source did not give is never held. `on: false` stores every post as before.
+   */
+  readonly reskin: { readonly on: boolean; readonly minAgeMs: number; readonly maxPostsEver: number; readonly maxPostsPerYear: number; readonly maxApprovalsGiven: number };
 }
 
 /* ── RANK ─────────────────────────────────────────────────────────────── */
@@ -6184,8 +6195,10 @@ const POLICY_V1: Policy = {
      v220 (2026-10-31, the owner: "see n coins ... the image doesnt match the post") adds `oneCoin.deadCopies`: a
      copy with a different picture that never passed $5K by an hour old is off "See N coins".
      v221 (2026-11-01, the owner: "only ship zero change") adds `group.image.matchOnlyWithVector`: a post
-     with no picture vector is not sent every open story's id, ~15 GB a day less database egress. */
-  version: 'policy.v224',
+     with no picture vector is not sent every open story's id, ~15 GB a day less database egress.
+     v225 (2026-11-04, the owner: larp zoo accounts) adds `ingest.reskin`: an old account emptied and
+     dressed up as someone else has its posts left unstored, so they reach no feed, narrative or alert. */
+  version: 'policy.v225',
 
   admit: {
     maxAgeMin: 240,
@@ -6773,6 +6786,9 @@ const POLICY_V1: Policy = {
        we choose to spend money, which is a different quantity entirely. */
     sourceFreshnessMs: 1_800_000,
     failingAfterFailures: 3,
+    /* Two years old, under 200 posts ever and 20 a year, under 100 likes given: on the week's feed
+       (300 accounts, 2026-11-04) only the two reskinned zoos are under all four. */
+    reskin: { on: true, minAgeMs: 63_072_000_000, maxPostsEver: 200, maxPostsPerYear: 20, maxApprovalsGiven: 100 },
   },
 
   /* The earlier build's numbers, kept: a 30-minute window, floors starting at 100, never

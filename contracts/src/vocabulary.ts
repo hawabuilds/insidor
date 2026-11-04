@@ -274,6 +274,21 @@ export interface Author {
    * read (internal.author_bio_reading, 0080): the coin match reads coin addresses out of it.
    */
   readonly bio?: string | null;
+  /**
+   * The account's own life on the source, as the source said it on this read: when it was made,
+   * how many posts it has ever made, and how many posts it has ever liked. Used only to hold back an
+   * old account emptied and dressed up as someone else (core/src/admit/reskin.ts, the owner
+   * 2026-11-04: @honolulu_zoo, made 2009, 60 posts, no likes). ★ NEVER STORED: it rides on the read
+   * and is let go, so it adds no database work. Absent or a null field when the source gave none,
+   * and a missing field is never read as zero.
+   */
+  readonly history?: AccountHistory;
+}
+
+export interface AccountHistory {
+  readonly createdAt: Millis | null;
+  readonly postsEver: number | null;
+  readonly approvalsGiven: number | null;
 }
 
 /* ── ITEM ─────────────────────────────────────────────────────────────── */

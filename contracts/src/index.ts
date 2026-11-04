@@ -37,6 +37,7 @@ export {
 
 /* ── the nouns ────────────────────────────────────────────────────────── */
 export type {
+  AccountHistory,
   Author,
   CensorReason,
   Counter,

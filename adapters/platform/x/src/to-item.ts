@@ -284,5 +284,13 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
        the same picture, sharp at any size the app draws it. */
     pictureUri: picture !== null && picture.startsWith('https://') ? picture.replace(/_normal(\.[a-z]+)$/i, '_400x400$1') : null,
     bio,
+    /* When the account was made, its posts ever and its likes given ride on every post's author
+       (`createdAt`, `statusesCount`, `favouritesCount`), for the reskinned-account check
+       (core admit/reskin.ts). Never stored; a field that did not come back stays null. */
+    history: {
+      createdAt: dateToMillis(author.createdAt) ?? dateToMillis(author.created_at),
+      postsEver: num(author.statusesCount) ?? num(author.statuses_count),
+      approvalsGiven: num(author.favouritesCount) ?? num(author.favourites_count),
+    },
   };
 }

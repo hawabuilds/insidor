@@ -23,6 +23,9 @@ export const MS_PER_HOUR = 3_600_000;
 
 export const MS_PER_DAY = 86_400_000;
 
+/** A calendar year in days, for a rate per year of an account's life (admit/reskin.ts). */
+export const DAYS_PER_YEAR = 365;
+
 /** For bucketing an instant by hour of day, which is what a cohort baseline is keyed on. */
 export const HOURS_PER_DAY = 24;
 
