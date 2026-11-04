@@ -71,6 +71,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
 }) {
   const [range, setRange] = useState<ProfileRange>('1w');
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
+  const [editing, setEditing] = useState(false);
   const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
   const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
   /* Your profile card (banner, bio, counts): for you, not for a linked wallet's view. */
@@ -102,15 +103,20 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
     }
   };
 
+  const myCard = canAct && card.state === 'ready' ? card.value : null;
   /* Over the banner, before the gear: Send in a trading build. Receive is in the gear's wallet card. */
   const over = (
     <>
       {canAct && TRADING ? <button type="button" className={profile['glass']} aria-label="Send" onClick={() => setSheet('send')}><Arrow up /></button> : null}
       <NotificationBell className={profile['glass']} />
       <ProfileMenu
-        name={who.name ?? who.handle ?? 'Your wallet'}
-        handle={who.handle}
-        pictureUrl={who.pictureUrl}
+        /* ★ Your profile as you set it (the card), not the sign-in's: the menu showed your old
+           name and picture beside the new ones (the owner, 2026-11-04). */
+        name={myCard?.name ?? who.name ?? who.handle ?? 'Your wallet'}
+        handle={myCard?.handle ?? who.handle}
+        pictureUrl={myCard?.pictureUrl ?? who.pictureUrl}
+        pictureFile={myCard?.pictureFile ?? null}
+        onEdit={myCard !== null ? () => setEditing(true) : null}
         address={ownAddress ?? who.address}
         onCopy={() => void copy()}
         exportKey={exportKey}
@@ -149,6 +155,8 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         now={now}
         signInName={who.name}
         onDeposit={canAct ? () => setSheet('receive') : null}
+        editOpen={editing}
+        onEditOpen={setEditing}
       />
       {sheet === 'send' ? <SendSheet holdings={holdings} onClose={() => setSheet(null)} /> : null}
       {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}

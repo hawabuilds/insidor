@@ -62,6 +62,11 @@
 
 /* Your picture, name and @handle: one tap target that opens your profile. */
 .who {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
   flex: 1;
   min-width: 0;
   display: flex;
