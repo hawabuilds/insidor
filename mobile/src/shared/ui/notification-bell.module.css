@@ -1,0 +1,41 @@
+/*
+ * The bell at the right of every tab's title row (NotificationBell.tsx): the Feed's round bell
+ * (44px, the tap size), pushed to the row's right edge, with the unread count in the brand colour.
+ *
+ * What breaks if changed carelessly: green and red mean price direction (tokens.css rule 1), so
+ * the count is never either.
+ */
+.bell {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text-1);
+}
+
+.positioned {
+  position: relative;
+}
+
+.count {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--card);
+}

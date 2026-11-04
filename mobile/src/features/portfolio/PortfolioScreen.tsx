@@ -20,6 +20,7 @@
  * build with TRADING on, never as a disabled button.
  */
 
+import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
@@ -105,6 +106,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const over = (
     <>
       {canAct && TRADING ? <button type="button" className={profile['glass']} aria-label="Send" onClick={() => setSheet('send')}><Arrow up /></button> : null}
+      <NotificationBell className={profile['glass']} />
       <ProfileMenu
         name={who.name ?? who.handle ?? 'Your wallet'}
         handle={who.handle}

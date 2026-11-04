@@ -63,6 +63,7 @@
  * a hidden post back; and, on For You, "Add a missed post" with its coin's address.
  */
 
+import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type PostSpeeds, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
@@ -329,6 +330,7 @@ export function Feed({
             <Mark size={26} />
             <span className={styles['wordmark']}>INSIDOR</span>
           </span>
+          <NotificationBell />
         </ScreenHeader>
 
         {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}

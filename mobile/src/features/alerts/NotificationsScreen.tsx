@@ -55,10 +55,25 @@ import styles from './alerts.module.css';
 
 const ASK = { list: 'notifications' } as const;
 
+/* ★ ALL, PUSHED, ACTIVITY (the owner, 2026-11-04: "a way to separate and see the notifications you
+   receive as push and the app"). Pushed is what came to this person's phone (`Alert.pushed`, the
+   service's own record); Activity is the rest, seen only in the app (follows, replies, saved posts). */
+type Show = 'all' | 'pushed' | 'activity';
+const SHOWS: readonly { readonly key: Show; readonly label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pushed', label: 'Pushed' },
+  { key: 'activity', label: 'Activity' },
+];
+const EMPTY_FOR: Record<Exclude<Show, 'all'>, string> = {
+  pushed: 'Nothing has been sent to your phone yet. Coins you starred going live and posts blowing up are pushed here.',
+  activity: 'Follows, replies and saved posts land here.',
+};
+
 export function NotificationsScreen({ settings, onSeen }: { settings: boolean; onSeen: () => void }) {
   const now = useNow();
   const { list, fresh, refresh, loadMore, loadingMore } = useAlertList(ASK, 'notifications');
   const [sheet, setSheet] = useState(settings);
+  const [show, setShow] = useState<Show>('all');
   /* Before any effect (the sheet's history entry is added in one): the address becomes the list's. */
   useLayoutEffect(() => {
     if (!settings) return;
@@ -82,7 +97,8 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
   }, [list.state, fresh, onSeen]);
 
   const closeSheet = () => setSheet(false);
-  const items = list.state === 'ready' ? list.value.alerts : [];
+  const all = list.state === 'ready' ? list.value.alerts : [];
+  const items = show === 'all' ? all : all.filter((a) => (show === 'pushed') === (a.pushed === true));
 
   return (
     <>
@@ -98,6 +114,13 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
               <GearIcon size={19} />
             </button>
           </ScreenHeader>
+          <div className={styles['chips']} role="group" aria-label="Show">
+            {SHOWS.map((o) => (
+              <button key={o.key} type="button" className={o.key === show ? styles['chipOn'] : styles['chip']} aria-pressed={o.key === show} onClick={() => setShow(o.key)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
         </header>
 
         {/* ★ Only the list follows the pull, never the sticky header: a moved header let rows show
@@ -105,7 +128,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
         <div style={pullStyle(pull)}>
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
         {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications just now. Trying again.</p> : null}
-        {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>First coins on what you saved or starred, posts blowing up, your coins, and people following or replying to you land here.</p> : null}
+        {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>{show === 'all' ? 'First coins on what you saved or starred, posts blowing up, your coins, and people following or replying to you land here.' : EMPTY_FOR[show]}</p> : null}
         {grouped(items, now).map((g) => (
           <section key={g.section}>
             <h2 className={styles['section']}>{g.section}</h2>

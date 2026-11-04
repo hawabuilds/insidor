@@ -37,6 +37,7 @@ import { fetchUnread } from './shared/api/following.ts';
 import { RankUp } from './features/people/RankUp.tsx';
 import { resavePush, standalone } from './features/alerts/push.ts';
 import { PushAsk } from './features/alerts/PushAsk.tsx';
+import { UnreadContext } from './shared/unread.ts';
 import { fetchAlertSettings, notifyCall, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
@@ -251,7 +252,7 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps
     case 'learn':
       return <Learn />;
     case 'alerts':
-      return <FollowingScreen unread={unread} onRefreshed={readUnread} />;
+      return <FollowingScreen onRefreshed={readUnread} />;
     case 'notifications':
     case 'alert-settings':
       return <NotificationsScreen settings={route.screen === 'alert-settings'} onSeen={onAlertsSeen} />;
@@ -387,8 +388,10 @@ export function App() {
   return (
     <ComingSoonProvider>
       <main>
+        <UnreadContext.Provider value={unread}>
         <KeptTabs shown={keptTab} entry={place.id} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
         <KeptPages place={place} page={keptTab === null} route={route} create={setCreating} unread={unread} onAlertsSeen={onAlertsSeen} readUnread={readUnread} />
+        </UnreadContext.Provider>
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />
