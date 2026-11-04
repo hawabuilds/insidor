@@ -337,6 +337,31 @@ p.caution,
   font-weight: 600;
 }
 
+/* With Deposit: the words at the left, the button at the right (the owner, 2026-11-04). */
+.shortWithDeposit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortWords {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.deposit {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 /* Confirm: Trador's full-width purple button. Where Trador greys it out, the reason stands in
    its place as text — never a button that cannot be pressed. */
 .confirm,
