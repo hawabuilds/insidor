@@ -169,7 +169,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* ★ THE COIN'S MAIN VIRAL POST FIRST (the owner, 2026-11-04: "meme token chart page should show the
      main viral post rather than narrative story pop up"): the post the coin links, else the
      most-viewed post naming it (viral-post.ts); the narrative card only when no post is known. */
-  const viral = about === null ? null : viralPost(about.posts);
+  const viral = about === null ? null : viralPost(about.posts, { launchedAt });
   const read = market?.kind === 'read' ? market : null;
   const venue = read?.venue ?? facts.venue;
   const progress = read?.curveProgress?.known ? Math.min(100, Math.max(0, read.curveProgress.amount * 100)) : null;
@@ -240,7 +240,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
-      {viral !== null && about !== null ? <ViralPost posts={about.posts} /> : narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : null}
+      {viral !== null && about !== null ? <ViralPost posts={about.posts} launchedAt={launchedAt} /> : narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : null}
 
       {/* Stuck under the top once the chart scrolls away; a second tap on the open tab returns to it. */}
       <div ref={tabs} className={styles['panelTabs']} role="tablist" aria-label="Coin">

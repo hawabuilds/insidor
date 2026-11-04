@@ -20,11 +20,18 @@ export interface ViralPost {
   readonly proven: boolean;
 }
 
-export function viralPost(posts: readonly AboutPost[]): ViralPost | null {
+/** `shown`: the post is to be shown under the chart, so only the original may lead (the rule below).
+ *  Without it the ranking alone, as the narrative card's choice of story has always used it. */
+export function viralPost(posts: readonly AboutPost[], shown?: { readonly launchedAt: number | null }): ViralPost | null {
   /* ★ The post the coin itself links comes first (the coin's own claim to it), the most-viewed of
-     those whose views we read; only with none, the most-viewed post naming it (2026-11-04). */
+     those whose views we read; only with none, the original post: the most-viewed one posted before
+     the coin launched (the owner, 2026-11-04: "we show the og viral post", never a promotion, and
+     promotion comes after a launch). A post whose time against the launch is unknown is not shown. */
+  const launchedAt = shown?.launchedAt ?? null;
   const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known);
-  const pool = linked.length > 0 ? linked : posts;
+  const before = (p: AboutPost): boolean =>
+    p.evidence.launchedAfterMs !== null ? p.evidence.launchedAfterMs >= 0 : launchedAt !== null && p.postedAt.known && p.postedAt.at <= launchedAt;
+  const pool = linked.length > 0 ? linked : shown === undefined ? posts : posts.filter(before);
   let best: AboutPost | null = null;
   for (const p of pool) {
     if (best === null) best = p;
