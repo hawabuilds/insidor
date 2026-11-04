@@ -323,11 +323,11 @@ test('the new lists come a page at a time from one ranking, and say where the ne
   assert.equal(calls.filter((s) => s === SORT_VIEWED_SQL).length, 1, 'the second page is cut from the kept ranking');
 });
 
-test('★ Trending now is ranked as of the newest reading the cards hold: a frame 20 minutes behind still lists its risers; one an hour behind lists none (2026-11-03)', async () => {
+test('★ Trending now is ranked as of the newest reading the cards hold: a frame 20 minutes behind still lists its risers; one 70 minutes behind lists none (2026-11-03)', async () => {
   const floor = DEFAULT_POLICY.rising.forYouSorts.risers.floorPerMin;
   const shifted = (lagMin: number) => [2, 3, 4, 5, 6].map((k) => ({ item_id: `r${k}`, views: rise(floor * k, floor).map((x) => ({ ...x, atMs: x.atMs - lagMin * MIN })), posted_ms: null, source: 'x' }));
   const behind = await createSorts(() => NOW)(fakeDb(shifted(20)), 'trending', 'now');
   assert.deepEqual(behind?.posts.map((p) => (p as { id: string }).id), ['r6', 'r5', 'r4', 'r3', 'r2']);
-  const stalled = await createSorts(() => NOW)(fakeDb(shifted(60)), 'trending', 'now');
+  const stalled = await createSorts(() => NOW)(fakeDb(shifted(70)), 'trending', 'now');
   assert.deepEqual(stalled?.posts, []);
 });

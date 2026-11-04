@@ -273,7 +273,7 @@ export function createSorts(now: () => number = Date.now, policy: Policy = DEFAU
 
 /** The whole list for a sort and window, in order, with each post's ranking scale and its total views. */
 /** How far behind the clock Trending may be ranked (see `rankAll`): longer than a slow full frame, short of an outage. */
-const TRENDING_AS_OF_MAX_LAG_MS = 40 * 60_000;
+const TRENDING_AS_OF_MAX_LAG_MS = 60 * 60_000;
 
 async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, policy: Policy): Promise<{ readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly totals: ReadonlyMap<string, number> }> {
   const p = policy.rising.forYouSorts;
