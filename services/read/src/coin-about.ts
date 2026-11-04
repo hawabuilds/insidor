@@ -37,6 +37,8 @@ import type { CoinProfile, ProfileLink } from '@insidor/market-dexscreener';
 
 import type { Logger } from './log.ts';
 import { ASSET_SQL } from './market.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts';
+import { isShillText } from '@insidor/core';
 import type { Db, Row } from './queries.ts';
 
 /** Feed posts listed per coin. A coin named by more posts than this is rare; past it, the newest are not promised. */
@@ -362,7 +364,12 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
       posts: withLinkedPost(
         posts.flatMap((r) => {
           const p = postOf(r);
-          return p === null ? [] : [p];
+          /* ★ NEVER A PROMOTION (the owner, 2026-11-04: "make sure we dont show promotional posts under
+             chart"): a post whose own words name a coin (a cashtag, an address, "CA": core's shill
+             rule) is someone selling it, not the viral post it was made for. The coin's own linked
+             post is kept whatever it says: the coin claims it. */
+          const linksIt = (p?.['evidence'] as { linksPost?: unknown } | undefined)?.linksPost === true;
+          return p === null || (!linksIt && isShillText(String(p['excerpt'] ?? ''), DEFAULT_POLICY.attention)) ? [] : [p];
         }),
         linkedPostOf(linked[0]),
       ),

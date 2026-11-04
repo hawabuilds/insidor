@@ -94,3 +94,17 @@ test('★ the post the coin links is on its page, first and marked linked, thoug
   assert.equal(linkedPostOf(undefined), null);
   assert.deepEqual(withLinkedPost([shrek], null), [shrek]);
 });
+
+test('★ a post selling a coin (cashtag, address, CA) is not on its page; the post the coin links is, whatever it says (2026-11-04)', async () => {
+  const post = (id: string, excerpt: string, links: boolean) => ({ item_id: id, payload: { sourceLabel: 'X', excerpt, reach: { v: 1 } }, own: true, links_post: links, same_picture: null, launched_after_ms: null, story_title: null });
+  const held = { [ASSET_SQL]: [{ chain: 'solana', address: MINT }], [POSTS_SQL]: [
+    post('x:1', 'Happy Shrek Washing Day', false),
+    post('x:2', '$DONKEY is sending, get in', false),
+    post('x:3', 'CA: G8Lf8uthQp5YHoswQZDRdeRxaWiUqnNFNoZ45y68pump', false),
+    post('x:4', 'JUST IN: Over $900,000,000,000 added', false),
+    post('x:5', '$DONKEY launched for this', true),
+  ] };
+  const r = await coinAbout(`solana:${MINT}`, deps(held, async () => null, null));
+  assert.ok(r);
+  assert.deepEqual(JSON.parse(r.body).posts.map((p: { postId: string }) => p.postId), ['x:1', 'x:4', 'x:5'], 'a dollar amount is not a cashtag');
+});
