@@ -50,6 +50,8 @@ interface WhoAmI {
   readonly handle: string | null;
   readonly pictureUrl: string | null;
   readonly address: string;
+  /** How you signed in, for the menu's line under your name; null when not known. */
+  readonly signedInWith?: 'x' | 'google' | 'apple' | 'email' | null;
 }
 
 /* Read once, at build time, like the trade bar: a deploy turns Send on, never a page. */
@@ -117,6 +119,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         pictureUrl={myCard?.pictureUrl ?? who.pictureUrl}
         pictureFile={myCard?.pictureFile ?? null}
         onEdit={myCard !== null ? () => setEditing(true) : null}
+        signIn={canAct && who.signedInWith != null ? { with: who.signedInWith, handle: who.handle } : null}
         address={ownAddress ?? who.address}
         onCopy={() => void copy()}
         exportKey={exportKey}
@@ -245,8 +248,8 @@ export function PortfolioScreen() {
     const shown = viewing !== null && linked.includes(viewing) ? viewing : state.account;
     const own = shown === state.account;
     const who: WhoAmI = own
-      ? { name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null, address: state.account }
-      : { name: 'Linked wallet', handle: null, pictureUrl: null, address: shown };
+      ? { name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null, address: state.account, signedInWith: id?.signedInWith ?? null }
+      : { name: 'Linked wallet', handle: null, pictureUrl: null, address: shown, signedInWith: null };
     const switcher =
       linked.length === 0 ? null : (
         <div className={box['switcher']} role="group" aria-label="Wallet shown">

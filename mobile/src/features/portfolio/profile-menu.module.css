@@ -272,6 +272,24 @@
 }
 
 /* "Show my trades to followers": a menu row with a switch at its right. */
+/* "Signed in as @handle" with the X mark: a flex line, so the mark keeps its gap. */
+.whoText .signedIn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.whoText .signedIn svg {
+  flex: none;
+}
+
+.rowNote {
+  display: block;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .switchRow {
   gap: 12px;
 }

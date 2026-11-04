@@ -5,15 +5,18 @@
  * row each now sits in the sheet its row opens (menu-rows.ts lists it all, and its test holds that
  * nothing was removed, only grouped).
  *
- *   header           your picture, name and @handle; a tap opens your profile, the pencil edits it
+ *   header           your picture and name, and how you signed in ("Signed in as @handle" with the
+ *                    X mark, "Signed in with Google", "Signed in with email"); the pencil edits it
  *   the wallet card  "Your Insidor wallet", the green Active pill, the address, copy and Solscan
  *   Wallets          a sheet: Export private key, Import a wallet, Link a wallet to view, the linked
  *                    wallets (MenuSheets.tsx). The key is only ever shown in the wallet provider's
  *                    own window; our code never sees, stores or logs one
  *   Invites          the green "N joined" pill; a sheet of my codes and who joined with them
  *                    (features/invites/InvitesSheet.tsx)
- *   Settings         a sheet: Show my trades to followers, Notifications
- *   Leaderboard, How Insidor works   links, as before
+ *   Notifications    a link to the notification settings
+ *   Show my trades   the switch itself, in the menu (2026-11-04: no Settings sheet inside it; the
+ *                    owner found settings inside settings a headache). Leaderboard is off the menu
+ *                    since the same day; its page stays for a direct link
  *   Owner tools      the owner only: Add missed posts, the invite numbers and controls
  *   Sign out         in red; it returns to the front door (shared/sign-in.ts)
  *
@@ -27,24 +30,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchMyInvites } from '../../shared/api/invites.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { CapIcon, ChevronIcon, CopyIcon, ExternalIcon, GearIcon, LogoutIcon, PlusIcon, TrophyIcon, WalletIcon } from '../../shared/ui/icons.tsx';
+import { BellIcon, CapIcon, ChevronIcon, CopyIcon, ExternalIcon, GearIcon, LogoutIcon, PlusIcon, WalletIcon, XLogoIcon } from '../../shared/ui/icons.tsx';
 import { InvitesSheet } from '../invites/InvitesSheet.tsx';
 import { OwnerToolsSheet } from '../invites/OwnerTools.tsx';
 import { MissedPostsSheet } from '../missed/MissedPosts.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { Avatar } from './Avatar.tsx';
-import { SettingsSheet, WalletsSheet, shortAddress } from './MenuSheets.tsx';
+import { ShareTrades, WalletsSheet, shortAddress } from './MenuSheets.tsx';
 import { joinedPill, menuRows, type MenuRow } from './menu-rows.ts';
 import styles from './profile-menu.module.css';
 
-type Open = 'wallets' | 'invites' | 'settings' | 'owner' | 'missed' | null;
+type Open = 'wallets' | 'invites' | 'owner' | 'missed' | null;
 
-export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEdit = null, address, onCopy, exportKey, profileKey, linked, leave, onBanner = false, onReceive = null }: {
+export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEdit = null, signIn = null, address, onCopy, exportKey, profileKey, linked, leave, onBanner = false, onReceive = null }: {
   name: string;
   /** The X handle without "@"; null for a sign-in without one. */
   handle: string | null;
   /** Your X picture; null draws your initial. */
   pictureUrl: string | null;
+  /** How you signed in, and the X handle when it was X; null when not known (the line then shows your @handle). */
+  signIn?: { readonly with: 'x' | 'google' | 'apple' | 'email'; readonly handle: string | null } | null;
   /** The picture you uploaded, which wins over the link. */
   pictureFile?: string | null;
   /** Opens Edit profile on this page. With it, the head and the pencil stay here: this page is your
@@ -110,6 +115,12 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
     window.setTimeout(() => setCopied(false), 1_600);
   };
   const pill = joinedPill(joined);
+  /* ★ How you signed in, under your name (the owner, 2026-11-04): so nobody has to guess which
+     account they used. Only the kind is known here, never an email address. */
+  const signedInLine =
+    signIn === null ? <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+    : signIn.with === 'x' ? <span className={styles['signedIn']}><XLogoIcon size={11} />{signIn.handle !== null ? `Signed in as @${signIn.handle}` : 'Signed in with X'}</span>
+    : <span className={styles['signedIn']}>{signIn.with === 'google' ? 'Signed in with Google' : signIn.with === 'apple' ? 'Signed in with Apple' : 'Signed in with email'}</span>;
 
   const row = (r: MenuRow) => {
     switch (r) {
@@ -117,14 +128,15 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
         return <Row key={r} icon={<WalletIcon size={16} />} label="Wallets" onClick={then('wallets')} more />;
       case 'invites':
         return <Row key={r} icon={<InvitesIcon />} label="Invites" onClick={then('invites')} more pill={pill} />;
-      case 'settings':
-        return <Row key={r} icon={<GearIcon size={16} />} label="Settings" onClick={then('settings')} more />;
-      case 'leaderboard':
+      case 'notifications':
         return (
-          <a key={r} className={styles['row']} role="menuitem" href={hrefFor({ screen: 'leaderboard' })} onClick={() => setOpen(false)}>
-            <TrophyIcon size={16} /> <span className={styles['rowLabel']}>Leaderboard</span>
+          <a key={r} className={styles['row']} role="menuitem" href={hrefFor({ screen: 'alert-settings' })} onClick={() => setOpen(false)}>
+            <BellIcon size={16} /> <span className={styles['rowLabel']}>Notifications</span>
+            <span className={styles['more']}><ChevronIcon size={14} /></span>
           </a>
         );
+      case 'show-trades':
+        return <ShareTrades key={r} />;
       case 'learn':
         return (
           <a key={r} className={styles['row']} role="menuitem" href={hrefFor({ screen: 'learn' })} onClick={() => setOpen(false)}>
@@ -165,7 +177,7 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
                 <Avatar name={name} seed={handle ?? address} src={pictureUrl} file={pictureFile} size={36} />
                 <span className={styles['whoText']}>
                   <b>{name}</b>
-                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                  {signedInLine}
                 </span>
               </button>
             ) : member ? (
@@ -173,7 +185,7 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
                 <Avatar name={name} seed={handle ?? address} src={pictureUrl} file={pictureFile} size={36} />
                 <span className={styles['whoText']}>
                   <b>{name}</b>
-                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                  {signedInLine}
                 </span>
               </a>
             ) : (
@@ -181,7 +193,7 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
                 <Avatar name={name} seed={handle ?? address} src={pictureUrl} size={36} />
                 <span className={styles['whoText']}>
                   <b>{name}</b>
-                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                  {signedInLine}
                 </span>
               </span>
             )}
@@ -216,7 +228,6 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
       ) : null}
       {sheet === 'wallets' ? <WalletsSheet onClose={() => setSheet(null)} exportKey={exportKey} linked={linked} /> : null}
       {sheet === 'invites' ? <InvitesSheet onClose={() => setSheet(null)} onRead={onRead} /> : null}
-      {sheet === 'settings' ? <SettingsSheet onClose={() => setSheet(null)} member={member} /> : null}
       {sheet === 'owner' ? <OwnerToolsSheet onClose={() => setSheet(null)} onMissed={() => setSheet('missed')} /> : null}
       {sheet === 'missed' ? <MissedPostsSheet onClose={() => setSheet(null)} /> : null}
     </div>
