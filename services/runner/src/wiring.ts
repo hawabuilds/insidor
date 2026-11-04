@@ -1435,7 +1435,7 @@ export async function withRuntime<T>(
           platforms,
           watch,
           meter,
-          store: storeArrivals(repos, policy, () => Date.now() as Millis),
+          store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
           feedFloors: new PgFeedFloorRepo(db),
           /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
           /* The whole X day: search, re-reads and replies on one bill, as the owner's $7 means. */
@@ -1475,7 +1475,7 @@ export async function withRuntime<T>(
             const war = await fightWordsPass({
               sources: () => platforms.all(),
               narratives: new PgNarrativeRepo(db),
-              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
               uncredited: (ids) => repos.items.uncredited(ids),
               ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'fight-words-lane' })),
               searchDay: {
@@ -1506,7 +1506,7 @@ export async function withRuntime<T>(
               {
                 sources: () => platforms.all(),
                 narratives: new PgNarrativeRepo(db),
-                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                 uncredited: (ids) => repos.items.uncredited(ids),
                 ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'name-search-lane' })),
                 meter,
@@ -1524,7 +1524,7 @@ export async function withRuntime<T>(
               {
                 sources: () => platforms.all(),
                 targets: new PgQuoteTargetRepo(db),
-                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                 uncredited: (ids) => repos.items.uncredited(ids),
                 ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'quote-lane' })),
                 meter,
@@ -1540,7 +1540,7 @@ export async function withRuntime<T>(
               {
                 sources: () => platforms.all(),
                 accounts: new PgWatchAccountRepo(db),
-                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                 uncredited: (ids) => repos.items.uncredited(ids),
                 ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'account-lane' })),
                 meter,
@@ -1572,7 +1572,7 @@ export async function withRuntime<T>(
             authors: repos.authors,
             postScores: new PgPostJudgementRepo(db),
             images: new PgImageEmbeddingRepo(db),
-            store: storeArrivals(repos, policy, () => Date.now() as Millis),
+            store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
             postJudge,
             shadow,
             embed:
@@ -1673,7 +1673,7 @@ export async function withRuntime<T>(
                 const sources = resolvePlatforms(cfg.sourceEnv, { meter: learning, now: () => Date.now() as Millis, fetch: globalThis.fetch, handles: (source, id) => handles(String(source), id) });
                 return { sources: sources.all(), meter: learning, close: () => book.drain() };
               },
-              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
               coinSearch: lookupSources,
               settings: async () => (await measureDiscovery({ recall: new PgRecallRepo(db), floors: new PgFeedFloorRepo(db) }, Date.now() as Millis, policy))?.settings ?? null,
               outages: () => readOutages(new PgMissedPostRepo(db), policy, Date.now()),
@@ -1755,7 +1755,7 @@ export async function withRuntime<T>(
                 sources: finderSources,
                 follow: (url) => followLink(url, globalThis.fetch),
                 items: repos.items,
-                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                 meter,
                 mode: cfg.spend.kind,
                 policy,
@@ -1794,7 +1794,7 @@ export async function withRuntime<T>(
                     repo: new PgCoinFirstRepo(db),
                     items: repos.items,
                     sources: finderSources,
-                    store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                    store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                     score: (queue) =>
                       scorePosts({
                         judge: postJudge,
@@ -1825,7 +1825,7 @@ export async function withRuntime<T>(
                 sources: finderSources,
                 follow: (url) => followLink(url, globalThis.fetch),
                 items: repos.items,
-                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                 meter,
                 mode: cfg.spend.kind,
                 policy,
@@ -1837,7 +1837,7 @@ export async function withRuntime<T>(
                 {
                   finders: new PgFinderRepo(db),
                   sources: () => platforms.all(),
-                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                   meter,
                   mode: cfg.spend.kind,
                   policy,
@@ -1856,7 +1856,7 @@ export async function withRuntime<T>(
               trendingFeedPass(
                 {
                   sources: () => platforms.all(),
-                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                   meter,
                   mode: cfg.spend.kind,
                   policy,
@@ -1881,7 +1881,7 @@ export async function withRuntime<T>(
               names: new PgJudgementRepo(db),
               items: repos.items,
               backfill: new PgBackfillRepo(db),
-              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
               meter,
               mode: cfg.spend.kind,
               policy,
@@ -2001,7 +2001,7 @@ export async function withRuntime<T>(
                 {
                   sources: () => platforms.all(),
                   narratives: new PgNarrativeRepo(db),
-                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis, log),
                   uncredited: (ids) => repos.items.uncredited(ids),
                   ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'name-back-lane' })),
                   meter,

@@ -190,3 +190,9 @@ test('a quote whose payload names only the id, an empty post or no account carri
   assert.equal(toItem({ ...base, quoted_tweet: { id: '9', text: '', author: { id: '8' } } }, AT).reproducedPost, undefined);
   assert.equal(toItem({ ...base, quoted_tweet: { id: '9', text: 'words' } }, AT).reproducedPost, undefined);
 });
+
+test('★ the account\'s history rides on the author, never stored; a field not given stays null (2026-11-04)', () => {
+  const zoo = toAuthor({ author: { id: '24979446', userName: 'honolulu_zoo', createdAt: 'Tue Mar 17 23:24:23 +0000 2009', statusesCount: 60, favouritesCount: 0 } }, AT);
+  assert.deepEqual(zoo?.history, { createdAt: Date.parse('2009-03-17T23:24:23Z'), postsEver: 60, approvalsGiven: 0 });
+  assert.deepEqual(toAuthor({ author: { id: '2' } }, AT)?.history, { createdAt: null, postsEver: null, approvalsGiven: null });
+});

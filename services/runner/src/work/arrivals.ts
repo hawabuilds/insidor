@@ -7,11 +7,17 @@
  *
  * What breaks if the order changes: a post stored before its author would create a bare
  * author row with no handle, and a story page could not cite that post until the next read.
+ *
+ * ★ A RESKINNED ACCOUNT'S POSTS STOP HERE (core admit/reskin.ts, the owner 2026-11-04: larp zoo
+ * accounts). Every read of every lane passes through this one function, so a post from an old
+ * account emptied and dressed up as someone else is never stored: it reaches no feed, narrative
+ * or alert, and costs no database work. The account row is still written as before. The hold is
+ * logged with the account, so it can be checked; nothing already stored is touched.
  */
 
 import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { FeedLane } from '@insidor/contracts/ports/platform.ts';
-import { latestCounters, observationsFrom, withTextHash } from '@insidor/core';
+import { latestCounters, observationsFrom, reskinned, withTextHash } from '@insidor/core';
 import type { PgAuthorRepo, PgItemRepo, PgObservationRepo } from '@insidor/store';
 
 const MS_PER_HOUR = 3_600_000;
@@ -23,9 +29,17 @@ export function storeArrivals(
   repos: { readonly authors: PgAuthorRepo; readonly items: PgItemRepo; readonly observations: PgObservationRepo },
   policy: Policy,
   now: () => Millis,
+  log?: { readonly info: (msg: string, fields?: Record<string, unknown>) => void },
 ): (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number> {
-  return async (items, authors, lane = null) => {
+  return async (all, authors, lane = null) => {
     await repos.authors.upsert(authors);
+    const held = new Set(authors.filter((a) => reskinned(a.history, now(), policy.ingest.reskin)).map((a) => a.authorKey));
+    const items = held.size === 0 ? all : all.filter((item) => !held.has(item.authorKey));
+    if (items.length < all.length) {
+      for (const a of authors.filter((x) => held.has(x.authorKey))) {
+        log?.info('reskinned account: its posts not stored', { author: a.authorKey, handle: a.handle, lane, posts: all.filter((i) => i.authorKey === a.authorKey).map((i) => i.itemId) });
+      }
+    }
     const stored = await repos.items.upsert(items.map((item) => withTextHash(item, policy)));
     /* Which catch-all lane found these, for the per-post score and the For You feed (0025).
        A keyword search writes nothing here, and that is what keeps its posts off the feed.
