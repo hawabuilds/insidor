@@ -187,10 +187,12 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
   const name = x?.name ?? user?.google?.name ?? null;
   const handle = x?.username ?? null;
   const pictureUrl = x?.profilePictureUrl ?? null;
+  /* Which sign-in this account has, in this order: only the kind is passed on, never the address. */
+  const signedInWith = x != null ? 'x' : user?.google != null ? 'google' : user?.apple != null ? 'apple' : user?.email != null ? 'email' : null;
 
   useEffect(() => {
-    bridge.snapshot({ ready, signedIn: authenticated, address, identity: { name, handle, pictureUrl }, token: identityToken, linked: linkedKey === '' ? [] : linkedKey.split(',') });
-  }, [bridge, ready, authenticated, address, name, handle, pictureUrl, identityToken, linkedKey]);
+    bridge.snapshot({ ready, signedIn: authenticated, address, identity: { name, handle, pictureUrl, signedInWith }, token: identityToken, linked: linkedKey === '' ? [] : linkedKey.split(',') });
+  }, [bridge, ready, authenticated, address, name, handle, pictureUrl, signedInWith, identityToken, linkedKey]);
 
   return null;
 }
