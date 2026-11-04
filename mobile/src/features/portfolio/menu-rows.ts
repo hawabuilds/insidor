@@ -8,11 +8,15 @@
  * Notifications (Settings), Leaderboard, Add missed posts (Owner tools), Sign out. How Insidor works
  * was taken off the menu by the owner on 2026-10-26; its page (#/learn) stays for a direct link.
  *
+ * ★ ONE MENU, NO SETTINGS INSIDE IT (the owner, 2026-11-04: "settings within settings is headache").
+ * Notifications and Show my trades are rows of their own; the Settings sheet is gone. Leaderboard was
+ * taken off the menu by the owner the same day; its page (#/leaderboard) stays for a direct link.
+ *
  * What breaks if changed carelessly: a row dropped from both lists is a feature nobody can reach.
  * menu.test.ts lists every one of them; add a new place to it when adding a row.
  */
 
-export type MenuRow = 'wallets' | 'invites' | 'settings' | 'leaderboard' | 'learn' | 'owner' | 'leave';
+export type MenuRow = 'wallets' | 'invites' | 'notifications' | 'show-trades' | 'learn' | 'owner' | 'leave';
 export type Place =
   | 'profile'
   | 'edit-profile'
@@ -42,8 +46,7 @@ export interface MenuFor {
 export function menuRows(m: MenuFor): readonly MenuRow[] {
   return [
     'wallets',
-    ...(m.member ? (['invites', 'settings'] as const) : (['settings'] as const)),
-    'leaderboard',
+    ...(m.member ? (['invites', 'notifications', 'show-trades'] as const) : (['notifications'] as const)),
     ...(m.owner ? (['owner'] as const) : []),
     'leave',
   ];
@@ -54,8 +57,8 @@ export function placesOf(m: MenuFor): readonly Place[] {
   const inRow: Record<MenuRow, readonly Place[]> = {
     wallets: [...(m.canExport ? (['export-key'] as const) : []), 'import-wallet', 'link-wallet', 'linked-wallets'],
     invites: ['invites'],
-    settings: [...(m.member ? (['show-trades'] as const) : []), 'notifications'],
-    leaderboard: ['leaderboard'],
+    notifications: ['notifications'],
+    'show-trades': ['show-trades'],
     learn: ['learn'],
     owner: ['missed-posts', 'invite-controls'],
     leave: ['leave'],
