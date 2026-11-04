@@ -81,7 +81,7 @@ function Banner({ file }: { file: string | null }) {
 
 /* ── the head ───────────────────────────────────────────────────────── */
 
-export function ProfileHead({ who, back = false, over, beside = null, actions, countsFor }: {
+export function ProfileHead({ who, back = false, over, beside = null, besideHandle = null, actions, countsFor }: {
   who: Who;
   /** A back button at the top left (a profile reached from somewhere); none on the Portfolio tab. */
   back?: boolean;
@@ -89,6 +89,8 @@ export function ProfileHead({ who, back = false, over, beside = null, actions, c
   over: ReactNode;
   /** A small button at the right, level with the picture (your own Edit profile, as X draws it). */
   beside?: ReactNode;
+  /** Drawn on the @handle line, after it: your own wallet address on your own profile. */
+  besideHandle?: ReactNode;
   /** The buttons under the counts; null for none. */
   actions: ReactNode;
   /** Whose follow lists the counts open (handle or id); null draws them as plain text. */
@@ -125,7 +127,9 @@ export function ProfileHead({ who, back = false, over, beside = null, actions, c
             </a>
           ) : null}
         </div>
-        {at !== null ? <div className={styles['handle']}>{at}</div> : null}
+        {besideHandle !== null ? (
+          <div className={`${styles['handle']} ${styles['handleRow']}`}>{at !== null ? <span>{at}</span> : null}{besideHandle}</div>
+        ) : at !== null ? <div className={styles['handle']}>{at}</div> : null}
         {who.bio !== '' ? <p className={styles['bio']}>{who.bio}</p> : null}
         <div className={styles['counts']}>
           {countsFor !== null ? (
