@@ -6,7 +6,8 @@
  * nothing was removed, only grouped).
  *
  *   header           your picture and name, and how you signed in ("Signed in as @handle" with the
- *                    X mark, "Signed in with Google", "Signed in with email"); the pencil edits it
+ *                    X mark, "Signed in with Google", "Signed in with email"). No pencil since
+ *                    2026-11-04 (the owner): Edit profile is on the profile itself
  *   the wallet card  "Your Insidor wallet", the green Active pill, the address, copy and Solscan
  *   Wallets          a sheet: Export private key, Import a wallet, Link a wallet to view, the linked
  *                    wallets (MenuSheets.tsx). The key is only ever shown in the wallet provider's
@@ -197,15 +198,6 @@ export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEd
                 </span>
               </span>
             )}
-            {onEdit !== null ? (
-              <button type="button" className={styles['edit']} onClick={() => { setOpen(false); onEdit(); }} aria-label="Edit profile">
-                <PenIcon />
-              </button>
-            ) : member ? (
-              <a className={styles['edit']} href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)} aria-label="Edit profile">
-                <PenIcon />
-              </a>
-            ) : null}
           </div>
 
           <div className={styles['card']}>
@@ -251,15 +243,6 @@ function QrMark() {
       <rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="3" y="14" width="7" height="7" rx="1" />
       <path d="M14 14h3v3h-3zM20 14v1M14 20h1M17 17h4v4h-4" />
-    </svg>
-  );
-}
-
-function PenIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
     </svg>
   );
 }
