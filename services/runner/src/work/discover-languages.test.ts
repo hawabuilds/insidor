@@ -139,9 +139,9 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
   const r = await result;
   assert.equal(r.failed, 0);
   /* The fresh bands (6, 50 minutes) in all five languages; the late band (five hours) in its own
-     (`fresh.late.langs`: the slow lane's, Arabic and Korean from policy.v185, Indonesian from v203). */
+     (`fresh.late.langs`: the slow lane's, Arabic and Korean from policy.v185, Indonesian from v203, Thai from v223). */
   const lateLangs = P5.feed.fresh.late.langs ?? P5.feed.slow.langs ?? LANGS;
-  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme', 'in']);
+  assert.deepEqual(lateLangs, ['en', 'fr', 'ja', 'tr', 'zh', 'es', 'pt', 'ar', 'ko', 'zxx', 'qme', 'in', 'th']);
   /* Every late band (five hours; eight from policy.v196) asks the late languages. */
   const lateBands = P5.feed.fresh.late.bands.length;
   assert.equal(seen.length, 2 * LANGS.length + lateBands * lateLangs.length);
