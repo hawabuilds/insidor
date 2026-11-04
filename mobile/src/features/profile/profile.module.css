@@ -128,6 +128,47 @@
   font-size: var(--type-body);
 }
 
+/* Your own profile: the @handle, then your wallet address as a chip that copies it (2026-11-04). */
+.handleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.addressChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--follow-line);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.besideRow {
+  display: flex;
+  gap: 8px;
+}
+
+.deposit {
+  position: relative;
+  height: 34px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: var(--type-secondary);
+  font-weight: 700;
+}
+
 .bio {
   margin: 10px 0 0;
   color: var(--text-1);

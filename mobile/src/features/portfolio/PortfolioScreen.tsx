@@ -148,6 +148,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         }
         now={now}
         signInName={who.name}
+        onDeposit={canAct ? () => setSheet('receive') : null}
       />
       {sheet === 'send' ? <SendSheet holdings={holdings} onClose={() => setSheet(null)} /> : null}
       {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}

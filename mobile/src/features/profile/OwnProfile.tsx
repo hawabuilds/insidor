@@ -24,13 +24,15 @@ import { fetchCatches, type Portfolio } from '../../shared/api/index.ts';
 import type { ProfileCard } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import { CopyIcon, PlusIcon } from '../../shared/ui/icons.tsx';
+import { shortAddress } from '../portfolio/MenuSheets.tsx';
 import type { BalancePoint } from '../portfolio/balance-points.ts';
 import { EditProfileSheet } from './EditProfileSheet.tsx';
 import { CoinLists, PortfolioBlock, ProfileHead, ShareGlyph, StatsStrip, shareProfile, type Who } from './ProfileParts.tsx';
 import type { ProfileRange } from './profile-words.ts';
 import styles from './profile.module.css';
 
-export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, rowsAsOf = null, points, range, onRange, over, below = null, back = false, now, signInName }: {
+export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, rowsAsOf = null, points, range, onRange, over, below = null, back = false, now, signInName, onDeposit = null }: {
   /** What the sign-in knows, drawn until the card is read. */
   who: Who;
   card: ProfileCard | null;
@@ -53,12 +55,22 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
   back?: boolean;
   now: number;
   signInName: string | null;
+  /** Opens Receive (your address and its QR code); null for a wallet you cannot act for. */
+  onDeposit?: (() => void) | null;
 }) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [catches] = useLoad(`catches:${address}`, (signal) => fetchCatches(address, signal), 'memory');
   const shown: Who = card ?? who;
   const key = shown.handle ?? (card === null ? null : card.userId);
+  const copyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      toast('Address copied');
+    } catch {
+      toast("Couldn't copy", 'Your address is whole in Deposit.');
+    }
+  };
   const share = () => {
     if (key === null) return;
     void shareProfile(key, shown.name ?? `@${key}`).then((r) => {
@@ -82,7 +94,18 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
         }
         /* Share is the banner's share button; Edit profile sits level with the picture, so the
            first screen reaches Holdings and Created (the owner, 2026-10-23). */
-        beside={card !== null ? <button type="button" className={styles['editSmall']} onClick={() => setEditing(true)}>Edit profile</button> : null}
+        beside={card !== null || onDeposit !== null ? (
+          <div className={styles['besideRow']}>
+            {card !== null ? <button type="button" className={styles['editSmall']} onClick={() => setEditing(true)}>Edit profile</button> : null}
+            {onDeposit !== null ? <button type="button" className={styles['deposit']} onClick={onDeposit}><PlusIcon size={14} />Deposit</button> : null}
+          </div>
+        ) : null}
+        /* ★ Your wallet address beside your handle, and Deposit at the right (the owner, 2026-11-04). */
+        besideHandle={onDeposit !== null ? (
+          <button type="button" className={styles['addressChip']} aria-label="Copy your wallet address" onClick={() => void copyAddress()}>
+            {shortAddress(address)}<CopyIcon size={12} />
+          </button>
+        ) : null}
         actions={null}
       />
       <PortfolioBlock total={total} asOf={asOf} points={points} range={range} onRange={onRange} />
