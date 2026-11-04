@@ -83,61 +83,110 @@ export class PgAuthorRepo implements AuthorRepo {
           `authorKey '${author.authorKey}' is not '<source>:<stable id>'; the adapter must namespace it`,
         );
       }
-      await this.#db.query(
-        `insert into public.author (
-           author_key, source, source_author_id, first_seen_at, last_seen_at,
-           follower_count, follower_count_observed_at, handle, display_name
-         ) values ($1, $2, $3, $4, $4, $5, $6, $7, $8)
-         on conflict (author_key) do update
-            set last_seen_at = greatest(public.author.last_seen_at, excluded.last_seen_at),
-                handle = coalesce(excluded.handle, public.author.handle),
-                display_name = coalesce(excluded.display_name, public.author.display_name),
-                follower_count = coalesce(excluded.follower_count, public.author.follower_count),
-                follower_count_observed_at = coalesce(
-                  excluded.follower_count_observed_at,
-                  public.author.follower_count_observed_at
-                )`,
-        [
-          author.authorKey,
-          author.source,
-          author.authorKey.slice(separator + 1),
-          toTimestamp(author.firstSeenAt),
-          author.audience?.value ?? null,
-          toTimestamp(author.audience?.observedAt ?? null),
-          author.handle,
-          author.displayName ?? null,
-        ],
-      );
-      if (author.pictureUri != null && this.#pictures) await this.#picture(author.authorKey, author.pictureUri);
-      if (author.bio != null && this.#bios) await this.#bio(author.authorKey, author.bio, author.firstSeenAt);
     }
+    if (authors.length === 0) return 0;
+    /* ★ ONE STATEMENT A BATCH, NOT ONE TO THREE AN ACCOUNT (2026-11-03: a discovery pass's accounts
+       were written one after another on the disk-bound database, part of a pass taking 15 to 75
+       minutes). An account seen twice in one call ends as the loop left it: first seen at its first
+       sighting, last seen at its latest, and each of handle, name, followers, picture the latest one
+       a read carried — a read that carried none leaves the known one in place, as before. */
+    const merged = new Map<string, { a: Author; last: Millis | null; handle: string | null; name: string | null; followers: number | null; followersAt: Millis | null; picture: string | null }>();
+    const bios = new Map<string, { key: string; bio: string; first: Millis; last: Millis }>();
+    for (const author of authors) {
+      const had = merged.get(author.authorKey);
+      const at = author.firstSeenAt;
+      if (had === undefined) {
+        merged.set(author.authorKey, {
+          a: author, last: at, handle: author.handle ?? null, name: author.displayName ?? null,
+          followers: author.audience?.value ?? null, followersAt: author.audience?.observedAt ?? null, picture: author.pictureUri ?? null,
+        });
+      } else {
+        if (at !== null && (had.last === null || at > had.last)) had.last = at;
+        if (author.handle != null) had.handle = author.handle;
+        if (author.displayName != null) had.name = author.displayName;
+        if (author.audience?.value != null) had.followers = author.audience.value;
+        if (author.audience?.observedAt != null) had.followersAt = author.audience.observedAt;
+        if (author.pictureUri != null) had.picture = author.pictureUri;
+      }
+      if (author.bio != null) {
+        const k = `${author.authorKey}\u0000${author.bio}`;
+        const b = bios.get(k);
+        if (b === undefined) bios.set(k, { key: author.authorKey, bio: author.bio, first: at, last: at });
+        else {
+          if (at < b.first) b.first = at;
+          if (at > b.last) b.last = at;
+        }
+      }
+    }
+    const rows = [...merged.values()];
+    await this.#db.query(
+      `insert into public.author (
+         author_key, source, source_author_id, first_seen_at, last_seen_at,
+         follower_count, follower_count_observed_at, handle, display_name
+       )
+       select * from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::timestamptz[],
+                            $6::float8[], $7::timestamptz[], $8::text[], $9::text[])
+       on conflict (author_key) do update
+          set last_seen_at = greatest(public.author.last_seen_at, excluded.last_seen_at),
+              handle = coalesce(excluded.handle, public.author.handle),
+              display_name = coalesce(excluded.display_name, public.author.display_name),
+              follower_count = coalesce(excluded.follower_count, public.author.follower_count),
+              follower_count_observed_at = coalesce(
+                excluded.follower_count_observed_at,
+                public.author.follower_count_observed_at
+              )`,
+      [
+        rows.map((r) => r.a.authorKey),
+        rows.map((r) => r.a.source),
+        rows.map((r) => r.a.authorKey.slice(r.a.authorKey.indexOf(':') + 1)),
+        rows.map((r) => toTimestamp(r.a.firstSeenAt)),
+        rows.map((r) => toTimestamp(r.last)),
+        rows.map((r) => r.followers),
+        rows.map((r) => toTimestamp(r.followersAt)),
+        rows.map((r) => r.handle),
+        rows.map((r) => r.name),
+      ],
+    );
+    const pictured = rows.filter((r) => r.picture !== null);
+    if (pictured.length > 0 && this.#pictures) await this.#pictureAll(pictured.map((r) => [r.a.authorKey, r.picture as string] as const));
+    if (bios.size > 0 && this.#bios) await this.#bioAll([...bios.values()]);
     return authors.length;
   }
 
-  /** Whether internal.author_bio_reading exists (0080); false after the first write finds it missing. */
-  #bios = true;
-
-  /**
-   * The account's profile text as this read showed it (0080): a text seen before moves its last
-   * read, a new one is a new row, so an address the creator later took down is still on record.
-   * `at` is the read's instant (the adapters stamp `firstSeenAt` with it). A missing table (42P01)
-   * is remembered and the text skipped until a restart, as the picture's missing column is.
-   */
-  async #bio(key: string, bio: string, at: Millis): Promise<void> {
+  /** Every account's profile text as this read showed it (0080), in one statement: a text seen before moves its last read, a new one is a new row. A missing table (42P01) is remembered and the texts skipped until a restart. */
+  async #bioAll(list: readonly { key: string; bio: string; first: Millis; last: Millis }[]): Promise<void> {
     try {
       await this.#db.query(
         `insert into internal.author_bio_reading (author_key, bio, first_read_at, last_read_at)
-         values ($1, $2, $3, $3)
+         select * from unnest($1::text[], $2::text[], $3::timestamptz[], $4::timestamptz[])
          on conflict (author_key, bio_md5) do update
             set first_read_at = least(internal.author_bio_reading.first_read_at, excluded.first_read_at),
                 last_read_at = greatest(internal.author_bio_reading.last_read_at, excluded.last_read_at)`,
-        [key, bio, toTimestamp(at)],
+        [list.map((x) => x.key), list.map((x) => x.bio), list.map((x) => toTimestamp(x.first)), list.map((x) => toTimestamp(x.last))],
       );
     } catch (e) {
       if ((e as { code?: unknown } | null)?.code !== '42P01') throw e;
       this.#bios = false;
     }
   }
+
+  /** Every account's picture, in its own statement so a database without 0067 still takes the authors: the missing column (42703) is remembered and the pictures skipped until a restart. */
+  async #pictureAll(list: readonly (readonly [string, string])[]): Promise<void> {
+    try {
+      await this.#db.query(
+        `update public.author a set picture_url = u.uri from unnest($1::text[], $2::text[]) as u(key, uri) where a.author_key = u.key`,
+        [list.map((x) => x[0]), list.map((x) => x[1])],
+      );
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code !== '42703') throw e;
+      this.#pictures = false;
+    }
+  }
+
+  /** Whether internal.author_bio_reading exists (0080); false after the first write finds it missing. */
+  #bios = true;
+
+
 
   /**
    * Every profile text each account showed, newest read first, with when (0080). An account never
@@ -168,19 +217,7 @@ export class PgAuthorRepo implements AuthorRepo {
   /** Whether `picture_url` exists (0067); false after the first write finds it missing. */
   #pictures = true;
 
-  /**
-   * The account's picture, in its own statement so a database without 0067 still takes the
-   * author: the missing column (42703) is remembered and the picture skipped until a restart.
-   * Any other failure is the database's, and is thrown as the upsert's would be.
-   */
-  async #picture(key: string, uri: string): Promise<void> {
-    try {
-      await this.#db.query(`update public.author set picture_url = $2 where author_key = $1`, [key, uri]);
-    } catch (e) {
-      if ((e as { code?: unknown } | null)?.code !== '42703') throw e;
-      this.#pictures = false;
-    }
-  }
+
 
   async byKey(key: AuthorKey): Promise<Author | null> {
     const rows = await this.#db.query<AuthorRow>(`${SELECT_AUTHOR} where a.author_key = $1`, [key]);

@@ -121,6 +121,9 @@ const ITEM_VERSION = `public.item.xmin::text || '/' || (select count(*) from pub
 /** A held post unused this long is dropped: the stages read the last day's posts, and a post leaves that window. */
 const HELD_ITEM_IDLE_MS = 60 * 60_000;
 
+/** Posts written per statement by `upsert`. */
+const UPSERT_BATCH = 500;
+
 export class PgItemRepo implements ItemRepo {
   readonly #db: Db;
   /**
@@ -182,43 +185,24 @@ export class PgItemRepo implements ItemRepo {
   async upsert(items: readonly Item[]): Promise<number> {
     if (items.length === 0) return 0;
 
+    /* ★ IN BATCHES, NOT ONE STATEMENT A POST (2026-11-03): a discovery pass of ~660 posts sent three to
+       five statements a post one after another (its author, the post, each fingerprint), and on the
+       disk-bound database a pass took 15 to 75 minutes where it took 90 seconds a week before. The
+       end state is exactly the sequential one's: a post seen twice in one call is inserted with its
+       first sighting's fields and updated with its last's, as the loop did. */
     for (const item of items) {
-      await this.#ensureAuthor(item);
-      await this.#db.query(
-        `insert into public.item (
-           item_id, source, source_item_id, author_key, posted_at, first_seen_at,
-           lang, body, media, counters, counters_observed_at,
-           rebroadcast_of, reproduction_of, format_ids, raw_ref, origin
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16)
-         on conflict (item_id) do update set
-           lang            = excluded.lang,
-           body            = excluded.body,
-           media           = excluded.media,
-           counters        = excluded.counters,
-           counters_observed_at = excluded.counters_observed_at,
-           rebroadcast_of  = excluded.rebroadcast_of,
-           reproduction_of = excluded.reproduction_of,
-           format_ids      = excluded.format_ids`,
-        [
-          item.itemId,
-          item.source,
-          item.sourceItemId,
-          item.authorKey,
-          toTimestamp(item.postedAt),
-          toTimestamp(item.firstSeenAt),
-          item.lang,
-          item.text,
-          JSON.stringify(item.media),
-          JSON.stringify(item.counters),
-          toTimestamp(item.firstSeenAt),
-          item.rebroadcastOf,
-          item.reproductionOf,
-          item.formatIds,
-          item.rawRef,
-          item.origin,
-        ],
-      );
-      await this.#writeFingerprints(item);
+      const separator = item.authorKey.indexOf(':');
+      if (separator <= 0) {
+        throw new TypeError(
+          `authorKey '${item.authorKey}' is not '<source>:<stable id>'; the adapter must namespace it`,
+        );
+      }
+    }
+    for (let i = 0; i < items.length; i += UPSERT_BATCH) {
+      const batch = items.slice(i, i + UPSERT_BATCH);
+      await this.#ensureAuthors(batch);
+      await this.#upsertItems(batch);
+      await this.#writeFingerprintsOf(batch);
     }
     await this.#writeReferences(items);
     await this.#writeReproduced(items);
@@ -950,22 +934,80 @@ export class PgItemRepo implements ItemRepo {
    * by the adapter; splitting on the first colon is the store's only assumption
    * about it, and it is asserted rather than assumed.
    */
-  async #ensureAuthor(item: Item): Promise<void> {
-    const separator = item.authorKey.indexOf(':');
-    if (separator <= 0) {
-      throw new TypeError(
-        `authorKey '${item.authorKey}' is not '<source>:<stable id>'; the adapter must namespace it`,
-      );
+  /** Each post's author row, once per author: first seen as its first post here was, last seen as its latest. */
+  async #ensureAuthors(items: readonly Item[]): Promise<void> {
+    const byKey = new Map<string, { source: string; sourceId: string; first: Millis | null; last: Millis | null }>();
+    for (const item of items) {
+      const had = byKey.get(item.authorKey);
+      const at = item.firstSeenAt;
+      if (had === undefined) {
+        byKey.set(item.authorKey, { source: item.source, sourceId: item.authorKey.slice(item.authorKey.indexOf(':') + 1), first: at, last: at });
+      } else if (at !== null && (had.last === null || at > had.last)) {
+        had.last = at;
+      }
     }
+    const keys = [...byKey.keys()];
+    const v = [...byKey.values()];
     await this.#db.query(
       `insert into public.author (author_key, source, source_author_id, first_seen_at, last_seen_at)
-       values ($1, $2, $3, $4, $4)
+       select * from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::timestamptz[])
        on conflict (author_key) do update set last_seen_at = greatest(public.author.last_seen_at, excluded.last_seen_at)`,
+      [keys, v.map((x) => x.source), v.map((x) => x.sourceId), v.map((x) => toTimestamp(x.first)), v.map((x) => toTimestamp(x.last))],
+    );
+  }
+
+  /** The posts, one row each: inserted with the first sighting's fields, updated with the last's. */
+  async #upsertItems(items: readonly Item[]): Promise<void> {
+    const first = new Map<string, Item>();
+    const last = new Map<string, Item>();
+    for (const item of items) {
+      if (!first.has(item.itemId)) first.set(item.itemId, item);
+      last.set(item.itemId, item);
+    }
+    const ids = [...first.keys()];
+    const f = ids.map((id) => first.get(id)!);
+    const l = ids.map((id) => last.get(id)!);
+    await this.#db.query(
+      `insert into public.item (
+         item_id, source, source_item_id, author_key, posted_at, first_seen_at,
+         lang, body, media, counters, counters_observed_at,
+         rebroadcast_of, reproduction_of, format_ids, raw_ref, origin
+       )
+       select u.item_id, u.source, u.source_item_id, u.author_key, u.posted_at, u.first_seen_at,
+              u.lang, u.body, u.media::jsonb, u.counters::jsonb, u.counters_observed_at,
+              u.rebroadcast_of, u.reproduction_of, (select array(select jsonb_array_elements_text(u.format_ids::jsonb))), u.raw_ref, u.origin
+         from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::timestamptz[],
+                     $7::text[], $8::text[], $9::text[], $10::text[], $11::timestamptz[],
+                     $12::text[], $13::text[], $14::text[], $15::text[], $16::text[])
+           as u(item_id, source, source_item_id, author_key, posted_at, first_seen_at,
+                lang, body, media, counters, counters_observed_at,
+                rebroadcast_of, reproduction_of, format_ids, raw_ref, origin)
+       on conflict (item_id) do update set
+         lang            = excluded.lang,
+         body            = excluded.body,
+         media           = excluded.media,
+         counters        = excluded.counters,
+         counters_observed_at = excluded.counters_observed_at,
+         rebroadcast_of  = excluded.rebroadcast_of,
+         reproduction_of = excluded.reproduction_of,
+         format_ids      = excluded.format_ids`,
       [
-        item.authorKey,
-        item.source,
-        item.authorKey.slice(separator + 1),
-        toTimestamp(item.firstSeenAt),
+        ids,
+        f.map((x) => x.source),
+        f.map((x) => x.sourceItemId),
+        f.map((x) => x.authorKey),
+        f.map((x) => toTimestamp(x.postedAt)),
+        f.map((x) => toTimestamp(x.firstSeenAt)),
+        l.map((x) => x.lang),
+        l.map((x) => x.text),
+        l.map((x) => JSON.stringify(x.media)),
+        l.map((x) => JSON.stringify(x.counters)),
+        l.map((x) => toTimestamp(x.firstSeenAt)),
+        l.map((x) => x.rebroadcastOf),
+        l.map((x) => x.reproductionOf),
+        l.map((x) => JSON.stringify(x.formatIds)),
+        f.map((x) => x.rawRef),
+        f.map((x) => x.origin),
       ],
     );
   }
@@ -973,27 +1015,28 @@ export class PgItemRepo implements ItemRepo {
   /**
    * Carriers are append-only in practice: a fingerprint that once matched must keep
    * matching, or a story's membership stops being reproducible. Hence
-   * `do nothing` rather than an update, and no delete path.
+   * `do nothing` rather than an update, and no delete path. All the batch's in one statement.
    */
-  async #writeFingerprints(item: Item): Promise<void> {
-    for (const fingerprint of item.fingerprints) {
-      const width = fingerprint.bits;
-      const imageBits =
-        width !== undefined && fingerprint.kind === 'imageHash'
-          ? toBitLiteral(fingerprint.key, width)
-          : null;
-      const textBits =
-        width !== undefined && fingerprint.kind === 'textShingle'
-          ? toBitLiteral(fingerprint.key, width)
-          : null;
-
-      await this.#db.query(
-        `insert into public.item_fingerprint (item_id, kind, key, image_bits, text_bits)
-         values ($1, $2, $3, $4::bit varying, $5::bit varying)
-         on conflict (item_id, kind, key) do nothing`,
-        [item.itemId, fingerprint.kind, fingerprint.key, imageBits, textBits],
-      );
+  async #writeFingerprintsOf(items: readonly Item[]): Promise<void> {
+    const cols: (string | null)[][] = [[], [], [], [], []];
+    for (const item of items) {
+      for (const fingerprint of item.fingerprints) {
+        const width = fingerprint.bits;
+        cols[0]!.push(item.itemId);
+        cols[1]!.push(fingerprint.kind);
+        cols[2]!.push(fingerprint.key);
+        cols[3]!.push(width !== undefined && fingerprint.kind === 'imageHash' ? toBitLiteral(fingerprint.key, width) : null);
+        cols[4]!.push(width !== undefined && fingerprint.kind === 'textShingle' ? toBitLiteral(fingerprint.key, width) : null);
+      }
     }
+    if (cols[0]!.length === 0) return;
+    await this.#db.query(
+      `insert into public.item_fingerprint (item_id, kind, key, image_bits, text_bits)
+       select u.item_id, u.kind, u.key, u.image_bits::bit varying, u.text_bits::bit varying
+         from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) as u(item_id, kind, key, image_bits, text_bits)
+       on conflict (item_id, kind, key) do nothing`,
+      cols,
+    );
   }
 
   async #fingerprintsFor(itemIds: readonly string[]): Promise<Map<string, Fingerprint[]>> {
