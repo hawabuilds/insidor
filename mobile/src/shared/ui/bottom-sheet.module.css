@@ -25,7 +25,7 @@
 .panel {
   position: relative;
   width: 100%;
-  max-width: 480px;
+  max-width: var(--app-max);
   height: calc(100dvh - var(--sheet-top));
   display: flex;
   flex-direction: column;
