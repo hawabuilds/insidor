@@ -21,8 +21,12 @@ export interface ViralPost {
 }
 
 export function viralPost(posts: readonly AboutPost[]): ViralPost | null {
+  /* ★ The post the coin itself links comes first (the coin's own claim to it), the most-viewed of
+     those whose views we read; only with none, the most-viewed post naming it (2026-11-04). */
+  const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known);
+  const pool = linked.length > 0 ? linked : posts;
   let best: AboutPost | null = null;
-  for (const p of posts) {
+  for (const p of pool) {
     if (best === null) best = p;
     else if (p.views.known && (!best.views.known || p.views.amount > best.views.amount)) best = p;
   }

@@ -33,3 +33,9 @@ test('★ proven only when the post\'s evidence says the coin links it; unknown 
 test('no post naming the coin, no card', () => {
   assert.equal(viralPost([]), null);
 });
+
+test('★ the post the coin links comes first, though another naming post has more views (2026-11-04)', () => {
+  const post = (id: string, views: number, links: boolean) => ({ postId: id, views: { known: true, amount: views }, evidence: { linksPost: links } }) as never;
+  assert.equal(viralPost([post('big', 9_000_000, false), post('linked', 400_000, true)])?.post.postId, 'linked');
+  assert.equal(viralPost([post('big', 9_000_000, false), post('small', 10, false)])?.post.postId, 'big', 'no linked post: the most viewed');
+});
