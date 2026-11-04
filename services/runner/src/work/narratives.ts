@@ -240,13 +240,33 @@ export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: 
   const pairs: NarrativePair[] = [];
   /* ★ Each post's uploaded video, for the same-video link (adapters/platform/x video-key.ts). */
   const videoOf = new Map(posts.flatMap((x) => { const k = videoKeyOf(x.media); return k === null ? [] : [[x.itemId, k] as const]; }));
+  /* ★ Each sure post's distinctive judge name, and how many of these posts carry it (`narrative.rareName`). */
+  const nameOf = new Map(posts.flatMap((x) => {
+    const k = n.rareName.on && x.coinable === true && (x.confidence ?? 0) >= n.rareName.minConfidence ? subjectName(x.proposedName, p) : null;
+    return k === null ? [] : [[x.itemId, k] as const];
+  }));
+  const carrying = new Map<string, number>();
+  for (const k of nameOf.values()) carrying.set(k, (carrying.get(k) ?? 0) + 1);
+  const rareName = (a: string, b: string): boolean => {
+    const k = nameOf.get(a);
+    return k !== undefined && k === nameOf.get(b) && (carrying.get(k) ?? 0) <= n.rareName.maxPosts;
+  };
   for (let i = 0; i < posts.length; i += 1) {
     const a = posts[i];
-    const va = a === undefined ? undefined : postVectors.get(a.itemId);
-    if (a === undefined || va === undefined) continue;
+    if (a === undefined) continue;
+    const va = postVectors.get(a.itemId);
     for (let j = i + 1; j < posts.length; j += 1) {
       const b = posts[j];
       if (b === undefined) continue;
+      if (rareName(a.itemId, b.itemId) && Math.abs(a.atMs - b.atMs) <= n.rareName.maxGapMs) {
+        const vb0 = postVectors.get(b.itemId);
+        const m = va !== undefined && vb0 !== undefined ? dot(va, vb0) : null;
+        if (m === null || m >= n.rareName.minMeaning) {
+          pairs.push({ a: a.itemId, b: b.itemId, meaning: m ?? 0, samePicture: false, sameName: true });
+          continue;
+        }
+      }
+      if (va === undefined) continue;
       const sameVideo = n.sameVideo.on && videoOf.get(a.itemId) !== undefined && videoOf.get(a.itemId) === videoOf.get(b.itemId);
       if (Math.abs(a.atMs - b.atMs) > (sameVideo ? Math.max(n.maxGapMs, n.sameVideo.maxGapMs) : n.maxGapMs)) continue;
       const vb = postVectors.get(b.itemId);
