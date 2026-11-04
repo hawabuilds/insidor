@@ -57,6 +57,7 @@ import {
 } from './order-flow.ts';
 import { sellLanded } from './sell-landed.ts';
 import { ShareTradeSheet } from './ShareTradeSheet.tsx';
+import { ReceiveSheet } from '../portfolio/ReceiveSheet.tsx';
 import styles from './sheet.module.css';
 import { handOffSell, type LateSell } from './late-flex.tsx';
 
@@ -119,6 +120,7 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
     if (!picked.current) setSlippage(readSlippage(limits.defaultSlippageBps, limits.maxSlippageBps));
   }, [limits]);
   const [configOpen, setConfigOpen] = useState(false);
+  const [depositing, setDepositing] = useState(false);
   const [held, setHeld] = useState<{ readonly amount: bigint; readonly decimals: number } | null | 'loading'>('loading');
   const [sol, setSol] = useState<Measured | 'loading'>('loading');
   const [quoted, setQuoted] = useState<Quoted>({ kind: 'none' });
@@ -405,9 +407,14 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
             {impact === 'caution' && impactPct !== null ? <p role="alert" className={styles['caution']}>Price impact is {Math.abs(impactPct).toFixed(1)}%. This pool is thin, so you pay more than the price shown.</p> : null}
 
             {overSol && sol !== 'loading' && sol.known ? (
-              <div className={styles['short']}>
-                <b>Not enough SOL</b>
-                <span>You have {Number(sol.amount.toFixed(4))} SOL</span>
+              /* ★ Deposit right where it says so (the owner, 2026-11-04): it opens Receive, your address
+                 and its QR code. The box says it once; there is no grey "Not enough SOL" bar under it. */
+              <div className={`${styles['short']} ${account !== null ? styles['shortWithDeposit'] : ''}`}>
+                <div className={styles['shortWords']}>
+                  <b>Not enough SOL</b>
+                  <span>You have {Number(sol.amount.toFixed(4))} SOL</span>
+                </div>
+                {account !== null ? <button type="button" className={styles['deposit']} onClick={() => setDepositing(true)}>Deposit</button> : null}
               </div>
             ) : null}
 
@@ -422,13 +429,14 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
               <div className={styles['confirmWait']} role="status">{status.line}</div>
             ) : quote !== null && blockReason === null && !overSol ? (
               <button type="button" className={styles['confirm']} onClick={() => void confirm(quote)}>{buying ? 'Buy' : 'Sell'} {ticker}</button>
-            ) : (
+            ) : blockReason === null && overSol && sol !== 'loading' && sol.known ? null : (
               <div className={styles['confirmWait']}>{blockReason ?? (overSol ? 'Not enough SOL' : `${buying ? 'Buy' : 'Sell'} ${ticker}`)}</div>
             )}
 
             <p className={styles['foot']}>Max slippage {slippageBps / 100}%&nbsp;&nbsp;&nbsp;One signature, no approval step</p>
           </>
         )}
+        {depositing && account !== null ? <ReceiveSheet address={account} onClose={() => setDepositing(false)} /> : null}
       </div>
     </div>
   );
