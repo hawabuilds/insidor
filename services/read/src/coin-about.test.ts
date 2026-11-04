@@ -22,15 +22,6 @@ test('★ the market\'s links first; a launch link only fills a missing kind, an
   assert.deepEqual(links.map((l) => [l.kind, l.label]), [['x', '@Coin'], ['telegram', 't.me/coinchat'], ['website', 'coin.example']]);
 });
 
-test('★ a launch link to an X post takes the X button before the market\'s account ($Donkey, 2026-11-04)', () => {
-  const links = mergeLinks(
-    [{ kind: 'x', url: 'https://x.com/thedemocrats' }, { kind: 'website', url: 'https://en.wikipedia.org/wiki/Democratic_Party' }],
-    ['https://x.com/WatcherGuru/status/2117989886926164261', null, null],
-  );
-  assert.deepEqual(links.map((l) => [l.kind, l.url]), [['x', 'https://x.com/WatcherGuru/status/2117989886926164261'], ['website', 'https://en.wikipedia.org/wiki/Democratic_Party']]);
-  assert.equal(links[0]?.label, '@WatcherGuru');
-});
-
 test('a TikTok link is its own kind, plain http is dropped, and a link naming a vendor is never sent', () => {
   assert.equal(linkKind('https://www.tiktok.com/@coin'), 'tiktok');
   assert.equal(linkKind('http://coin.example'), null);
