@@ -31,9 +31,9 @@ import { PostSheet } from '../post-sheet/index.ts';
 import { viralPost } from './viral-post.ts';
 import styles from './slim.module.css';
 
-export function ViralPost({ posts }: { posts: readonly AboutPost[] }) {
+export function ViralPost({ posts, launchedAt = null }: { posts: readonly AboutPost[]; launchedAt?: number | null }) {
   const [open, setOpen] = useState(false);
-  const viral = viralPost(posts);
+  const viral = viralPost(posts, { launchedAt });
   if (viral === null) return null;
   const { post, proven } = viral;
   /* The two sites the feed shows, whose marks are white on black; any other site keeps its name only. */
