@@ -317,6 +317,26 @@ export class PgItemRepo implements ItemRepo {
     return rows.map((r) => r.item_id);
   }
 
+  /**
+   * What each of these posts quotes, as the judge is shown it (runner work/quoted-context.ts): the
+   * quoted post's words and media from the quoting post's payload (0128 public.reproduced_post), or
+   * from the quoted post itself when we hold it. A post that quotes nothing is absent.
+   */
+  async quotedOf(itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly text: string; readonly media: readonly MediaRef[] }>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; body: string | null; media: unknown }>(
+      `select i.item_id, coalesce(r.body, q.body) as body, coalesce(r.media, q.media) as media
+         from public.item i
+         left join public.reproduced_post r on r.item_id = i.reproduction_of
+         left join public.item q on q.item_id = i.reproduction_of
+        where i.item_id = any($1::text[]) and i.reproduction_of is not null`,
+      [[...itemIds]],
+    );
+    const out = new Map<string, { text: string; media: readonly MediaRef[] }>();
+    for (const r of rows) if (r.body !== null) out.set(r.item_id, { text: r.body, media: (Array.isArray(r.media) ? r.media : []) as MediaRef[] });
+    return out;
+  }
+
   async markFoundBy(itemIds: readonly ItemId[], lane: string, at: Millis): Promise<void> {
     if (itemIds.length === 0) return;
     await this.#db.query(

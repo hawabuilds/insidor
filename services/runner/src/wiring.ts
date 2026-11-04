@@ -1211,6 +1211,7 @@ export async function withRuntime<T>(
       });
       const earlyAlone = earlyJudge({
         judge: postJudge,
+        quotedOf: (ids) => repos.items.quotedOf(ids),
         kindJudge,
         precedents: earlyPrecedents,
         junkFilter: new PgJunkFilterRepo(db),
@@ -1229,6 +1230,7 @@ export async function withRuntime<T>(
          first on the same loop, so a young original meets the share before the quote boost asks it blind. */
       const shared = resurface({
         judge: postJudge,
+        quotedOf: (ids) => repos.items.quotedOf(ids),
         kindJudge,
         precedents: earlyPrecedents,
         items: repos.items,
@@ -1682,6 +1684,7 @@ export async function withRuntime<T>(
                 const queue = [...(await repos.items.byIds(ids.map((id) => id as ItemId))).values()];
                 const r = await scorePosts({
                   judge: postJudge,
+                  quotedOf: (ids) => repos.items.quotedOf(ids),
                   kindJudge,
                   precedents,
                   items: instantItems(queue, repos.items),
@@ -1767,6 +1770,7 @@ export async function withRuntime<T>(
               score: (queue) =>
                 scorePosts({
                   judge: postJudge,
+                  quotedOf: (ids) => repos.items.quotedOf(ids),
                   kindJudge,
                   precedents,
                   items: instantItems(queue, repos.items),
@@ -1794,6 +1798,7 @@ export async function withRuntime<T>(
                     score: (queue) =>
                       scorePosts({
                         judge: postJudge,
+                        quotedOf: (ids) => repos.items.quotedOf(ids),
                         kindJudge,
                         precedents,
                         items: instantItems(queue, repos.items),
@@ -1886,6 +1891,7 @@ export async function withRuntime<T>(
           scorePosts: () =>
             scorePosts({
               judge: postJudge,
+              quotedOf: (ids) => repos.items.quotedOf(ids),
               kindJudge,
               precedents,
               shadow,
