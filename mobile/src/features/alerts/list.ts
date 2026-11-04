@@ -35,6 +35,8 @@ export type AlertList = { readonly alerts: readonly Alert[]; readonly cursor: st
 /** What each list read last, for this page's life (keep.ts). */
 const KEPT = listKeeper<AlertList>();
 const who = (): string | null => tokenSubject(sessionToken());
+/** How often a list waiting for the sign-in's token looks again: the token lands a few seconds after the app opens. */
+const SIGN_IN_WAIT_MS = 1_000;
 
 export function useAlertList(
   ask: AlertListAsk,
@@ -70,6 +72,22 @@ export function useAlertList(
       clearTimeout(retry.current.timer);
       retry.current.timer = null;
     }
+    /* ★ NOT SIGNED IN YET IS NOT A FAILURE (the owner, 2026-11-04: "i receive a bug that says no
+       notifications and i have to close the app again and again until it works"). The sign-in's token
+       arrives a few seconds after the app opens; a read sent before it was refused ("Sign in first",
+       401), shown as a failed list and retried only on the slow backoff, so only a reopen fixed it.
+       Without a token, or refused for one, the list stays as it is (Loading the first time) and is
+       read again every SIGN_IN_WAIT_MS until the token is there. */
+    const waitForSignIn = (): void => {
+      retry.current.timer = setTimeout(() => {
+        retry.current.timer = null;
+        if (alive.current && asked === current.current) void refresh();
+      }, SIGN_IN_WAIT_MS);
+    };
+    if (sessionToken() === null) {
+      waitForSignIn();
+      return;
+    }
     try {
       const page = await fetchAlerts(askRef.current);
       if (!alive.current || asked !== current.current) return;
@@ -78,6 +96,10 @@ export function useAlertList(
       setList({ state: 'ready', value: { alerts: page.alerts, cursor: page.cursor ?? null, seenAt: page.seenAt ?? null } });
     } catch (error) {
       if (!alive.current || asked !== current.current) return;
+      if ((error as { status?: unknown } | null)?.status === 401) {
+        waitForSignIn();
+        return;
+      }
       /* What is on screen stays; with nothing read yet, what this person read last time; only then the error. */
       setList((prev) => {
         if (prev.state === 'ready') return prev;

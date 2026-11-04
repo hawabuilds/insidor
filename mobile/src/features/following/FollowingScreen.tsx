@@ -3,8 +3,8 @@
  * sells and comments of the people you follow, newest first.
  *
  * Trador's page, piece by piece, in Insidor's look (the owner's design, 2026-10-18): a sticky
- * "Feed" title with a round bell at its right (it opens Notifications; a purple dot while anything
- * there is unread, from the same count App reads for it), Trador's three tabs, Following, Top calls
+ * "Feed" title with the bell at its right (shared/ui/NotificationBell.tsx, on every tab since
+ * 2026-11-04, with the unread count), Trador's three tabs, Following, Top calls
  * and Latest, as For You's sort chips, Top calls' This week / All time, rows with no box
  * (FeedTradeRow and FeedCommentRow), four skeleton rows while loading, twenty rows at a time with
  * Load more, "You have seen everything" at the end, Trador's sentence on an empty tab ("See all
@@ -34,7 +34,8 @@ import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { ArrowUpIcon, BellIcon, PlayIcon, ReplyIcon } from '../../shared/ui/icons.tsx';
+import { ArrowUpIcon, PlayIcon, ReplyIcon } from '../../shared/ui/icons.tsx';
+import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
@@ -63,7 +64,7 @@ const WINDOWS: readonly { readonly key: FeedWindow; readonly label: string }[] =
 
 const age = (at: number, now: number) => <Value r={formatAge({ known: true, at: at as never }, now as never)} />;
 
-export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRefreshed: () => void }) {
+export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
   const now = useNow();
   const { state } = useWallet();
   const account = state.kind === 'connected' ? state.account : 'signed-out';
@@ -87,10 +88,7 @@ export function FollowingScreen({ unread, onRefreshed }: { unread: number; onRef
         <header className={alerts['sticky']}>
           <ScreenHeader className={styles['titleRow']}>
             <ScreenTitle>Feed</ScreenTitle>
-            <a className={styles['bell']} href={hrefFor({ screen: 'notifications' })} aria-label={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}>
-              <BellIcon size={20} />
-              {unread > 0 ? <span className={styles['dot']} /> : null}
-            </a>
+            <NotificationBell />
           </ScreenHeader>
           <div className={styles['chips']} role="tablist" aria-label="Feed">
             {TABS.map((t) => (

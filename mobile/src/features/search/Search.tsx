@@ -15,6 +15,7 @@
  * results". Searching too fast is answered with a request to wait, not with nothing.
  */
 
+import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
 import { useEffect, useState } from 'react';
 import { ReadError, fetchSearch, type SearchCoin, type SearchNarrative, type SearchPost, type SearchResults } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
@@ -49,6 +50,7 @@ export function Search() {
     <section className={styles['screen']}>
       <ScreenHeader as="header" gutter>
         <ScreenTitle>Search</ScreenTitle>
+        <NotificationBell />
       </ScreenHeader>
       <input
         className={styles['input']}

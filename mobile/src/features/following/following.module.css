@@ -9,34 +9,11 @@
  */
 
 /* The title row is the shared one (shared/ui/screen-header.module.css): "Feed" in the same place and face as
-   every tab, the round bell at its right (44px, the tap size) with a purple dot when something is
-   unread. The chips
+   every tab, the shared bell at its right (shared/ui/NotificationBell.tsx). The chips
    start 15px under the title, as they did. */
 .titleRow {
   justify-content: space-between;
   margin-bottom: 8px;
-}
-
-.bell {
-  position: relative;
-  width: var(--tap);
-  height: var(--tap);
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--text-1);
-}
-
-.dot {
-  position: absolute;
-  top: 10px;
-  right: 11px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--brand);
-  box-shadow: 0 0 0 2px var(--card);
 }
 
 /* The tabs as For You's sort chips (features/feed/feed.module.css): the chosen one white on a lighter grey. */

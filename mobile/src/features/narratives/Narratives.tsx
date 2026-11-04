@@ -31,6 +31,7 @@
  * span, never a total; a total always climbs and would make every narrative look like it is rising.
  */
 
+import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
@@ -109,6 +110,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         <ScreenTitle>Narratives</ScreenTitle>
         {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
         {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
+        <NotificationBell />
       </ScreenHeader>
       {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}
       <RunningCoins />
