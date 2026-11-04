@@ -39,12 +39,17 @@ import styles from './profile-menu.module.css';
 
 type Open = 'wallets' | 'invites' | 'settings' | 'owner' | 'missed' | null;
 
-export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportKey, profileKey, linked, leave, onBanner = false, onReceive = null }: {
+export function ProfileMenu({ name, handle, pictureUrl, pictureFile = null, onEdit = null, address, onCopy, exportKey, profileKey, linked, leave, onBanner = false, onReceive = null }: {
   name: string;
   /** The X handle without "@"; null for a sign-in without one. */
   handle: string | null;
   /** Your X picture; null draws your initial. */
   pictureUrl: string | null;
+  /** The picture you uploaded, which wins over the link. */
+  pictureFile?: string | null;
+  /** Opens Edit profile on this page. With it, the head and the pencil stay here: this page is your
+   *  profile, and the link to it drew an older copy for a moment before the fresh one (2026-11-04). */
+  onEdit?: (() => void) | null;
   address: string;
   onCopy: () => void;
   /** Opens the provider's key export window; null where there is none to open. */
@@ -155,9 +160,17 @@ export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportK
       {open ? (
         <div className={styles['panel']} role="menu" aria-label="Profile and settings">
           <div className={styles['head']}>
-            {member ? (
+            {onEdit !== null ? (
+              <button type="button" className={styles['who']} onClick={() => setOpen(false)} aria-label="Your profile">
+                <Avatar name={name} seed={handle ?? address} src={pictureUrl} file={pictureFile} size={36} />
+                <span className={styles['whoText']}>
+                  <b>{name}</b>
+                  <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
+                </span>
+              </button>
+            ) : member ? (
               <a className={styles['who']} href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)} aria-label="Your profile">
-                <Avatar name={name} seed={handle ?? address} src={pictureUrl} size={36} />
+                <Avatar name={name} seed={handle ?? address} src={pictureUrl} file={pictureFile} size={36} />
                 <span className={styles['whoText']}>
                   <b>{name}</b>
                   <span>{handle !== null ? `@${handle}` : 'Signed in'}</span>
@@ -172,7 +185,11 @@ export function ProfileMenu({ name, handle, pictureUrl, address, onCopy, exportK
                 </span>
               </span>
             )}
-            {member ? (
+            {onEdit !== null ? (
+              <button type="button" className={styles['edit']} onClick={() => { setOpen(false); onEdit(); }} aria-label="Edit profile">
+                <PenIcon />
+              </button>
+            ) : member ? (
               <a className={styles['edit']} href={hrefFor({ screen: 'profile', key: profileKey })} onClick={() => setOpen(false)} aria-label="Edit profile">
                 <PenIcon />
               </a>

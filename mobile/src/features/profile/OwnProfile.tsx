@@ -32,7 +32,7 @@ import { CoinLists, PortfolioBlock, ProfileHead, ShareGlyph, StatsStrip, sharePr
 import type { ProfileRange } from './profile-words.ts';
 import styles from './profile.module.css';
 
-export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, rowsAsOf = null, points, range, onRange, over, below = null, back = false, now, signInName, onDeposit = null }: {
+export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, rowsAsOf = null, points, range, onRange, over, below = null, back = false, now, signInName, onDeposit = null, editOpen, onEditOpen }: {
   /** What the sign-in knows, drawn until the card is read. */
   who: Who;
   card: ProfileCard | null;
@@ -55,11 +55,16 @@ export function OwnProfile({ who, card, reloadCard, address, data, total, asOf, 
   back?: boolean;
   now: number;
   signInName: string | null;
+  /** Edit profile held by the caller, so the settings menu's pencil opens it here; else held here. */
+  editOpen?: boolean;
+  onEditOpen?: (open: boolean) => void;
   /** Opens Receive (your address and its QR code); null for a wallet you cannot act for. */
   onDeposit?: (() => void) | null;
 }) {
   const toast = useToast();
-  const [editing, setEditing] = useState(false);
+  const [ownEditing, setOwnEditing] = useState(false);
+  const editing = editOpen ?? ownEditing;
+  const setEditing = onEditOpen ?? setOwnEditing;
   const [catches] = useLoad(`catches:${address}`, (signal) => fetchCatches(address, signal), 'memory');
   const shown: Who = card ?? who;
   const key = shown.handle ?? (card === null ? null : card.userId);
