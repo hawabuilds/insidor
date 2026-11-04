@@ -49,6 +49,9 @@ const SELECT_OBSERVATION = `
 /** A held series unused this long is dropped: a post leaves every stage's page within the hour. */
 const HELD_SERIES_IDLE_MS = 30 * 60_000;
 
+/** Readings written in one statement by `append`. */
+const APPEND_BATCH = 1_000;
+
 export class PgObservationRepo implements ObservationRepo {
   readonly #db: Db;
   /**
@@ -71,32 +74,32 @@ export class PgObservationRepo implements ObservationRepo {
    * tracking fan-out makes it not, the replacement is COPY into this same table,
    * not a batching layer above it.
    */
+  /**
+   * ★ ONE STATEMENT PER BATCH, NOT ONE PER READING (2026-11-03). Each reading was its own INSERT: a
+   * discovery pass storing ~660 posts sent ~4,000 of them one after another, and on the disk-bound
+   * database that night a pass took 15 to 75 minutes where it took 90 seconds a week before — posts
+   * reached For You hours old. The rows, the values and `on conflict do nothing` are exactly as before;
+   * only the round trips are fewer. The count is still the rows actually written.
+   */
   async append(observations: readonly Observation[]): Promise<number> {
     let written = 0;
-    for (const observation of observations) {
-      // toStoredRate is the ONLY sanctioned flattening of the union, and this is the
-      // only place in the system allowed to perform one. The remaining fields of
-      // whichever branch it was are written beside it, so the reading round-trips
-      // whole instead of being reassembled by guesswork on the way out.
-      const stored = toStoredRate(observation.rate);
-      const rate = observation.rate;
-      const rows = await this.#db.query<{ item_id: string }>(
-        `insert into public.observation (
-           item_id, kind, captured_at, value, fidelity_kind, fidelity_digits,
-           observed_at, lag_ms, rate_per_min, censored,
-           rate_over_ms, rate_level, rate_last_level
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         on conflict (item_id, kind, captured_at) do nothing
-         returning item_id`,
-        [
+    for (let i = 0; i < observations.length; i += APPEND_BATCH) {
+      const batch = observations.slice(i, i + APPEND_BATCH);
+      const cols: unknown[][] = Array.from({ length: 13 }, () => []);
+      for (const observation of batch) {
+        // toStoredRate is the ONLY sanctioned flattening of the union, and this is the
+        // only place in the system allowed to perform one. The remaining fields of
+        // whichever branch it was are written beside it, so the reading round-trips
+        // whole instead of being reassembled by guesswork on the way out.
+        const stored = toStoredRate(observation.rate);
+        const rate = observation.rate;
+        const row = [
           observation.itemId,
           observation.kind,
           toTimestamp(observation.capturedAt),
           observation.counter.value,
           observation.counter.fidelity.kind,
-          observation.counter.fidelity.kind === 'quantized'
-            ? observation.counter.fidelity.significantDigits
-            : null,
+          observation.counter.fidelity.kind === 'quantized' ? observation.counter.fidelity.significantDigits : null,
           toTimestamp(observation.counter.observedAt),
           observation.counter.lagMs ?? null,
           stored.ratePerMin,
@@ -104,7 +107,20 @@ export class PgObservationRepo implements ObservationRepo {
           rate.kind === 'measured' ? rate.overMs : null,
           rate.kind === 'measured' ? rate.level : null,
           rate.kind === 'censored' ? rate.lastLevel : null,
-        ],
+        ];
+        row.forEach((v, k) => cols[k]!.push(v));
+      }
+      const rows = await this.#db.query<{ item_id: string }>(
+        `insert into public.observation (
+           item_id, kind, captured_at, value, fidelity_kind, fidelity_digits,
+           observed_at, lag_ms, rate_per_min, censored,
+           rate_over_ms, rate_level, rate_last_level
+         )
+         select * from unnest($1::text[], $2::text[], $3::timestamptz[], $4::float8[], $5::text[], $6::int4[],
+                              $7::timestamptz[], $8::int4[], $9::float8[], $10::text[], $11::int4[], $12::float8[], $13::float8[])
+         on conflict (item_id, kind, captured_at) do nothing
+         returning item_id`,
+        cols,
       );
       written += rows.length;
     }

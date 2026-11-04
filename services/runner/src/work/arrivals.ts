@@ -47,14 +47,15 @@ export function storeArrivals(
        pass gets a second reading the same way, against the first. */
     const ids = items.map((item) => item.itemId);
     const earlier = await repos.observations.seriesForItems(ids, (now() - policy.track.maxTrackedHours * MS_PER_HOUR) as Millis);
-    for (const item of items) {
+    /* All posts' readings in one append (one statement a thousand readings, store observations.ts),
+       not one call a post: the same rows, ~660 round trips fewer a pass (2026-11-03). */
+    const readings = items.flatMap((item) => {
       const counters = Object.values(item.counters).filter((c) => c !== undefined);
-      if (counters.length === 0) continue;
+      if (counters.length === 0) return [];
       const capturedAt = Math.max(...counters.map((c) => c.observedAt)) as Millis;
-      await repos.observations.append(
-        observationsFrom(item.itemId, item.counters, latestCounters(earlier.get(item.itemId) ?? []), capturedAt, policy.kinetics),
-      );
-    }
+      return observationsFrom(item.itemId, item.counters, latestCounters(earlier.get(item.itemId) ?? []), capturedAt, policy.kinetics);
+    });
+    if (readings.length > 0) await repos.observations.append(readings);
     return stored;
   };
 }
