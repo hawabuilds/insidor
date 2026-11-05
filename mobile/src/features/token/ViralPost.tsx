@@ -42,14 +42,17 @@ export function ViralPost({ posts, launchedAt = null }: { posts: readonly AboutP
   return (
     <>
       <button type="button" className={styles['card']} onClick={() => setOpen(true)} aria-label="Open the viral post with this name">
-        <span className={styles['pic']}>
-          <Thumb url={post.thumbUrl} size={48} radius={12} />
-          {platform !== null ? (
-            <span className={styles['badge']} title={post.sourceLabel} aria-label={post.sourceLabel}>
-              <PlatformMark platform={platform} size={10} />
-            </span>
-          ) : null}
-        </span>
+        {/* A post with no picture has no picture box (the owner, 2026-11-05), as on the narratives. */}
+        {post.thumbUrl !== null ? (
+          <span className={styles['pic']}>
+            <Thumb url={post.thumbUrl} size={48} radius={12} hideEmpty />
+            {platform !== null ? (
+              <span className={styles['badge']} title={post.sourceLabel} aria-label={post.sourceLabel}>
+                <PlatformMark platform={platform} size={10} />
+              </span>
+            ) : null}
+          </span>
+        ) : null}
         <span className={styles['text']}>
           <b className={styles['title']}>{post.excerpt !== '' ? post.excerpt : 'Viral post with this name'}</b>
           <span className={styles['line']}>
