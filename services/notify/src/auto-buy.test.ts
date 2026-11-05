@@ -9,7 +9,7 @@ import { strict as assert } from 'node:assert';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Person } from '@insidor/contracts/ports/people.ts';
 
-import { allowedWallet, autoBuyRoute, isOwner, readSettings } from './auto-buy.ts';
+import { allowedWallet, autoBuyRoute, feeLamports, isOwner, readSettings } from './auto-buy.ts';
 
 const P = DEFAULT_POLICY.notify.autoBuy;
 const OWNER = { wallets: ['OwnerWallet111'], xHandles: ['hawabuilds'] };
@@ -38,7 +38,7 @@ test('★ every number is checked against the policy: the amount cap, the choice
   assert.ok('settings' in readSettings(good, P, NOW));
   const r = readSettings(good, P, NOW);
   assert.ok('settings' in r && r.settings.activeUntil === NOW + 259_200_000);
-  assert.ok('refused' in readSettings({ ...good, lamports: P.maxLamports + 1 }, P, NOW), 'over the test cap');
+  assert.ok('refused' in readSettings({ ...good, lamports: 500_000_001 }, P, NOW), 'over the test cap');
   assert.ok('refused' in readSettings({ ...good, lamports: 0.5 }, P, NOW), 'not whole lamports');
   assert.ok('refused' in readSettings({ ...good, slippageBps: 4_000 }, P, NOW), 'slippage not a choice');
   assert.ok('refused' in readSettings({ ...good, pvpCoins: 9 }, P, NOW));
@@ -61,4 +61,10 @@ test('★ a stranger is refused; the owner saves with their own wallet, whatever
   assert.equal(saved?.status, 200);
   const insert = calls.find((c) => c.sql.includes('insert into people.auto_buy'));
   assert.equal(insert?.params[2], 'OwnerWallet111');
+});
+
+test('the fee estimate is the base fee plus the priority fee over the buy\'s compute units', () => {
+  assert.equal(feeLamports(P, 'normal'), 5_000 + 25_000);
+  assert.equal(feeLamports(P, 'fast'), 5_000 + 250_000);
+  assert.equal(feeLamports(P, 'turbo'), 5_000 + 1_250_000);
 });
