@@ -88,6 +88,7 @@ const deps = {
   pace: pacer(P.perClient, P.windowMs),
   answers,
   log: (msg: string, fields: Record<string, unknown>) => log('info', msg, fields),
+  owner: DEFAULT_POLICY.owner,
 };
 
 serve(cfg.allowedOrigins, async (req) => {
