@@ -1142,6 +1142,13 @@ export async function withRuntime<T>(
         () => (mainStoryJudge?.sameSubject === undefined ? null : (mainStoryJudge as SameSubjectPart)),
       );
       const translator = pick<TranslatePort>(askWith.translate, () => ((p) => (p === null ? null : failoverTranslator(p)))(openPair((q) => q.translator(), 'translate')), () => buildTranslator(cfg, meter, policy));
+      /* ★ THE ECHO'S SECOND OPINION (Policy.translate.echoModel, work/translate-posts.ts): a post the
+         translator gives back in its own words is put to this model on the same router, the router
+         choosing its supplier. Unpriced or unlisted: none, and echoes are kept as before. */
+      const echoModelId = policy.translate.echoModel;
+      const echoSetup = translator === null || echoModelId === null || cfg.openJudge.state !== 'configured' ? null : { ...cfg.openJudge, model: echoModelId, providers: [] };
+      const echoModel = echoSetup === null ? null : await openHostModel(echoSetup, policy.judge.timeoutMs, log.child({ step: 'translate-echo' }));
+      const echoTranslator: TranslatePort | null = echoSetup === null || echoModel === null ? null : buildOpenQuestions({ setup: echoSetup, model: echoModel }, meter, policy).translator();
       const namer = pick<NamePort>(askWith.names, () => ((p) => (p === null ? null : failoverNamer(p)))(openPair((q) => q.namer(), 'names')), () => buildNamer(cfg, meter, policy));
       log.info('the judge\'s other questions: who asks each', {
         askWith,
@@ -1149,6 +1156,7 @@ export async function withRuntime<T>(
         backup: backupSide?.model.id ?? null,
         names: namer?.model ?? null,
         translate: translator?.model ?? null,
+        translateEcho: echoTranslator?.model ?? null,
         kind: kindJudge?.id ?? null,
         viral: viralJudge?.id ?? null,
         stories: judge?.id ?? null,
@@ -2045,7 +2053,7 @@ export async function withRuntime<T>(
               { db, platforms, authors: repos.authors, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'bio-refresh' }), now: () => Date.now() as Millis, onlySources: cfg.bioRefreshSources },
               bioReads,
             );
-            const translated = await translatePosts({ translator, translations, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'translate-posts' }), now: () => Date.now() as Millis }).catch((e: unknown) => {
+            const translated = await translatePosts({ translator, echoTranslator, translations, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'translate-posts' }), now: () => Date.now() as Millis }).catch((e: unknown) => {
               log.warn('feed translations failed this pass', { err: errorText(e) });
               return null;
             });

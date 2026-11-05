@@ -13,6 +13,11 @@
  * (the cheap model, on the judge's line under `translate`), and its answer written: the English
  * and the language, or "kept" (it read them as English or wordless) as a row with no English.
  *
+ * ★ AN ECHO GETS A SECOND OPINION (policy.v228, `translate.echoModel`): a post the translator read
+ * as another language but answered with its own words back would be stored as "nothing to
+ * translate" and never asked again. Those posts alone go to `echoTranslator`; its English is kept
+ * when it gives one, and otherwise the row is written as it was before. No echo, no second call.
+ *
  * ★ OFF IS OFF, AND MISSING IS QUIET. With the switch off, no translator, a dry run, or 0081 not
  * applied, the step does nothing and says why in its result; every card shows its own words, as
  * before. A failed or refused call writes nothing for its posts, so they are asked again next pass
@@ -26,7 +31,7 @@
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import type { TranslatePort, TranslateSubject } from '@insidor/contracts/ports/translate.ts';
+import type { TranslateOutcome, TranslatePort, TranslateSubject } from '@insidor/contracts/ports/translate.ts';
 import type { PgTranslationRepo, TranslationRow } from '@insidor/store';
 import { translateNeed } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
@@ -38,6 +43,8 @@ export const NO_WORDS_PROMPT = 'no-words';
 
 export interface TranslateDeps {
   readonly translator: TranslatePort | null;
+  /** The second opinion for an echoed post (`translate.echoModel`); null or absent: none. */
+  readonly echoTranslator?: TranslatePort | null;
   readonly translations: Pick<PgTranslationRepo, 'candidates' | 'put'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
@@ -53,6 +60,8 @@ export interface TranslateResult {
   readonly translated: number;
   /** Rows written with no English: already English, or nothing to translate. */
   readonly kept: number;
+  /** Of `translated`, the posts the translator echoed that the second opinion translated. */
+  readonly echoFixed?: number;
   readonly absent: number;
   readonly usd: number;
 }
@@ -102,12 +111,14 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
   let kept = rows.length;
   let absent = 0;
   let usd = 0;
+  let echoFixed = 0;
   if (subjects.length > 0) {
     try {
       /* A post that failed before is asked on its own call; the rest together, as before. */
       const together = subjects.filter((x) => !failures.has(x.ref));
       const groups = [...(together.length > 0 ? [together] : []), ...subjects.filter((x) => failures.has(x.ref)).map((x) => [x])];
       const outcomes = [];
+      const echoes: { readonly ref: string; readonly from: string; readonly model?: string }[] = [];
       for (const group of groups) {
         const line = deps.meter.line();
         const r = await translator.translate(group, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + deps.policy.judge.timeoutMs) as Millis });
@@ -122,12 +133,29 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
           continue;
         }
         failures.delete(o.ref);
-        if (o.kind === 'kept') {
+        if (o.kind === 'kept' && echoed(o.from, p) && deps.echoTranslator) {
+          echoes.push(o);
+        } else if (o.kind === 'kept') {
           kept += 1;
           rows.push({ itemId: o.ref, from: o.from, textEn: null, model: o.model ?? translator.model, promptId: translator.promptId });
         } else {
           translated += 1;
           rows.push({ itemId: o.ref, from: o.from, textEn: o.text, model: o.model ?? translator.model, promptId: translator.promptId });
+        }
+      }
+      if (echoes.length > 0 && deps.echoTranslator) {
+        const second = await secondOpinion(deps.echoTranslator, echoes.map((e) => subjects.find((x) => x.ref === e.ref)).filter((x) => x !== undefined), deps);
+        usd += second.usd;
+        for (const e of echoes) {
+          const o = second.byRef.get(e.ref);
+          if (o?.kind === 'translated') {
+            translated += 1;
+            echoFixed += 1;
+            rows.push({ itemId: e.ref, from: o.from, textEn: o.text, model: o.model ?? deps.echoTranslator.model, promptId: deps.echoTranslator.promptId });
+          } else {
+            kept += 1;
+            rows.push({ itemId: e.ref, from: e.from, textEn: null, model: e.model ?? translator.model, promptId: translator.promptId });
+          }
         }
       }
     } catch (e) {
@@ -137,6 +165,28 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
     }
   }
   if (!(await deps.translations.put(rows))) return none('0081 not applied: nowhere to keep translations');
-  if (subjects.length > 0) deps.log.info('feed posts translated', { translated, kept, absent, usd: Math.round(usd * 1e4) / 1e4 });
-  return { skipped: null, due: due.length, translated, kept, absent, usd };
+  if (subjects.length > 0) deps.log.info('feed posts translated', { translated, kept, absent, ...(deps.echoTranslator ? { echoFixed } : {}), usd: Math.round(usd * 1e4) / 1e4 });
+  return { skipped: null, due: due.length, translated, kept, absent, ...(deps.echoTranslator ? { echoFixed } : {}), usd };
+}
+
+/** A "kept" answer in a language other than English or none: the translator gave the words back. */
+function echoed(from: string, p: Policy['translate']): boolean {
+  return !p.englishCodes.includes(from) && !p.noWordsCodes.includes(from);
+}
+
+/**
+ * The echoed posts put to the second model, together in one call. Anything short of an answer —
+ * an error, a refusal, the day's line spent — leaves them as the first model answered: kept, as
+ * before. It never throws, so a second opinion can never cost the first one's rows.
+ */
+async function secondOpinion(port: TranslatePort, subjects: readonly TranslateSubject[], deps: TranslateDeps): Promise<{ readonly byRef: ReadonlyMap<string, TranslateOutcome>; readonly usd: number }> {
+  if (subjects.length === 0) return { byRef: new Map(), usd: 0 };
+  try {
+    const line = deps.meter.line();
+    const r = await port.translate(subjects, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (deps.now() + deps.policy.judge.timeoutMs) as Millis });
+    return { byRef: new Map(r.value.map((o) => [o.ref, o])), usd: r.spend.usd };
+  } catch (e) {
+    deps.log.warn('an echoed post\'s second opinion failed; kept as the translator answered', { posts: subjects.length, err: e instanceof Error ? e.message : String(e) });
+    return { byRef: new Map(), usd: 0 };
+  }
 }

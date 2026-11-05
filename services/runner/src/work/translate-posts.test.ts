@@ -98,3 +98,53 @@ test('★ a post that fails is asked alone next time and waits longer after each
   assert.ok(retryAfterMs(2) > retryAfterMs(1));
   assert.equal(retryAfterMs(20), 21_600_000, 'never more than six hours');
 });
+
+/* ★ THE ECHO'S SECOND OPINION (policy.v228, 2026-11-05): "A si como trates a este Perrito…" came back
+   as itself, read as Spanish, and was stored as nothing to translate. */
+function withEcho(due: TranslateCandidate[], first: (s: TranslateSubject) => TranslateOutcome, second: ((s: TranslateSubject) => TranslateOutcome) | 'throws') {
+  const s = setup(due, first);
+  const echoAsked: TranslateSubject[] = [];
+  const echoTranslator: TranslatePort = {
+    id: 'e', promptId: 'translate@abc', model: 'gemma',
+    async translate(subjects) {
+      echoAsked.push(...subjects);
+      if (second === 'throws') throw new Error('router down');
+      return { value: subjects.map(second), spend: { vendor: 'v', endpoint: 'translate', units: 1, usd: 0.0001, at: 0 as Millis } } as never;
+    },
+  };
+  return { ...s, echoAsked, deps: { ...s.deps, echoTranslator } };
+}
+
+test('★ a post echoed in another language is put to the second model alone, and its English kept', async () => {
+  const s = withEcho(
+    [
+      { itemId: 'x:1', text: 'A si como trates a este Perrito', lang: 'es' },
+      { itemId: 'x:2', text: 'o rato caiu', lang: 'pt' },
+      { itemId: 'x:3', text: 'Eu/acc vibes', lang: 'pt' },
+    ],
+    (x) => (x.ref === 'x:2' ? { kind: 'translated', ref: x.ref, from: 'pt', text: 'the rat fell' } : x.ref === 'x:1' ? { kind: 'kept', ref: x.ref, from: 'es' } : { kind: 'kept', ref: x.ref, from: 'en' }),
+    (x) => ({ kind: 'translated', ref: x.ref, from: 'es', text: 'As you treat this little dog' }),
+  );
+  const r = await translatePosts(s.deps);
+  assert.deepEqual(s.echoAsked.map((a) => a.ref), ['x:1'], 'only the echo; a post read as English is not');
+  assert.deepEqual(s.written.find((w) => w.itemId === 'x:1'), { itemId: 'x:1', from: 'es', textEn: 'As you treat this little dog', model: 'gemma', promptId: 'translate@abc' });
+  assert.deepEqual(s.written.find((w) => w.itemId === 'x:3')?.textEn, null);
+  assert.deepEqual(r, { skipped: null, due: 3, translated: 2, kept: 1, absent: 0, echoFixed: 1, usd: 0.0011 });
+});
+
+test('a second model that echoes too, or fails, leaves the row as the first model answered', async () => {
+  for (const second of [((x: TranslateSubject) => ({ kind: 'kept', ref: x.ref, from: 'es' })) as (s: TranslateSubject) => TranslateOutcome, 'throws' as const]) {
+    forgetTranslateFailures();
+    const s = withEcho([{ itemId: 'x:1', text: 'mira que dependen de ustedes', lang: 'es' }], (x) => ({ kind: 'kept', ref: x.ref, from: 'es' }), second);
+    const r = await translatePosts(s.deps);
+    assert.deepEqual(s.written, [{ itemId: 'x:1', from: 'es', textEn: null, model: 'm', promptId: 'translate@abc' }]);
+    assert.equal(r.echoFixed, 0);
+    assert.equal(r.kept, 1);
+  }
+});
+
+test('no echo, no second call', async () => {
+  const s = withEcho([{ itemId: 'x:2', text: 'o rato caiu', lang: 'pt' }], (x) => ({ kind: 'translated', ref: x.ref, from: 'pt', text: 'the rat fell' }), () => assert.fail('asked'));
+  await translatePosts(s.deps);
+  assert.equal(s.echoAsked.length, 0);
+});

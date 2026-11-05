@@ -4580,6 +4580,17 @@ export interface TranslatePolicy {
   readonly englishCodes: readonly string[];
   /** Source language tags that mean no words to translate (media only, tags only, unknown short text). */
   readonly noWordsCodes: readonly string[];
+  /**
+   * ★ A SECOND OPINION FOR AN ECHO (the owner, 2026-11-05: "theres a few posts on fyp that are not
+   * translating"). The translator sometimes answers a post it reads as Spanish, Turkish or French
+   * with the post's own words back; that is stored as "nothing to translate" and never asked again,
+   * so the card shows the original. Such a post is put to this model on the same router, and its
+   * English kept when it gives one. Measured that evening: Nemotron echoed 4 of 6 such posts even
+   * asked alone; Gemma 3 translated all 6, and on 40 posts Nemotron had translated it agreed in
+   * meaning, at $0.0006 for all 40. Only echoed posts reach it; every other post is translated as
+   * before. Null: no second opinion, the echo kept as before policy.v228.
+   */
+  readonly echoModel: string | null;
 }
 
 /**
@@ -6233,7 +6244,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v227',
+  version: 'policy.v228',
 
   admit: {
     maxAgeMin: 240,
@@ -8418,6 +8429,8 @@ const POLICY_V1: Policy = {
     englishCodes: ['en'],
     /* 'zxx' no linguistic content, 'und'/'un' undetermined, 'qme' media only, 'qam' mentions only, 'qht' hashtags only, 'qst' very short, 'qct' cashtags only. */
     noWordsCodes: ['zxx', 'und', 'un', 'qme', 'qam', 'qht', 'qst', 'qct'],
+    /* policy.v228 (2026-11-05): see TranslatePolicy.echoModel. */
+    echoModel: 'google/gemma-3-27b-it',
   },
 
   narrative: {
