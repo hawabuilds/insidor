@@ -15,8 +15,8 @@ const P = DEFAULT_POLICY.ingest.reskin;
 const made = (iso: string) => Date.parse(iso) as Millis;
 
 test('★ the larp zoos are held (2026-11-04)', () => {
-  assert.equal(reskinned({ createdAt: made('2009-03-17T23:24:23Z'), postsEver: 60, approvalsGiven: 0 }, NOW, P), true, '@honolulu_zoo');
-  assert.equal(reskinned({ createdAt: made('2008-11-19T18:02:40Z'), postsEver: 30, approvalsGiven: 64 }, NOW, P), true, '@ThailandZoo');
+  assert.equal(reskinned({ createdAt: made('2009-03-17T23:24:23Z'), postsEver: 60, approvalsGiven: 0 }, NOW, { ...P, on: true }), true, '@honolulu_zoo');
+  assert.equal(reskinned({ createdAt: made('2008-11-19T18:02:40Z'), postsEver: 30, approvalsGiven: 64 }, NOW, { ...P, on: true }), true, '@ThailandZoo');
 });
 
 test('real accounts the feed showed nearest the bars are not held', () => {

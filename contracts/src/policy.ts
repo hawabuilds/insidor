@@ -6197,8 +6197,10 @@ const POLICY_V1: Policy = {
      v221 (2026-11-01, the owner: "only ship zero change") adds `group.image.matchOnlyWithVector`: a post
      with no picture vector is not sent every open story's id, ~15 GB a day less database egress.
      v225 (2026-11-04, the owner: larp zoo accounts) adds `ingest.reskin`: an old account emptied and
-     dressed up as someone else has its posts left unstored, so they reach no feed, narrative or alert. */
-  version: 'policy.v225',
+     dressed up as someone else has its posts left unstored, so they reach no feed, narrative or alert.
+     v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
+     pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry. */
+  version: 'policy.v226',
 
   admit: {
     maxAgeMin: 240,
@@ -6788,7 +6790,7 @@ const POLICY_V1: Policy = {
     failingAfterFailures: 3,
     /* Two years old, under 200 posts ever and 20 a year, under 100 likes given: on the week's feed
        (300 accounts, 2026-11-04) only the two reskinned zoos are under all four. */
-    reskin: { on: true, minAgeMs: 63_072_000_000, maxPostsEver: 200, maxPostsPerYear: 20, maxApprovalsGiven: 100 },
+    reskin: { on: false, minAgeMs: 63_072_000_000, maxPostsEver: 200, maxPostsPerYear: 20, maxApprovalsGiven: 100 },
   },
 
   /* The earlier build's numbers, kept: a 30-minute window, floors starting at 100, never
