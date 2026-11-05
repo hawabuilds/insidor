@@ -33,7 +33,8 @@ const item = (id: string, by: string): Item => ({ itemId: id, authorKey: by, cou
 test('★ a reskinned account\'s posts are not stored and the hold is logged; the rest are stored as before (2026-11-04)', async () => {
   const { repos, upserted, found, authorRows } = fakes();
   const logged: unknown[] = [];
-  const store = storeArrivals(repos, DEFAULT_POLICY, () => NOW, { info: (_m, f) => logged.push(f) });
+  const on = { ...DEFAULT_POLICY, ingest: { ...DEFAULT_POLICY.ingest, reskin: { ...DEFAULT_POLICY.ingest.reskin, on: true } } };
+  const store = storeArrivals(repos, on, () => NOW, { info: (_m, f) => logged.push(f) });
   const zoo = author('x:24979446', { createdAt: Date.parse('2009-03-17T23:24:23Z') as Millis, postsEver: 60, approvalsGiven: 0 });
   const real = author('x:1', { createdAt: Date.parse('2012-01-01T00:00:00Z') as Millis, postsEver: 40_000, approvalsGiven: 9_000 });
   const unknown = author('x:2', undefined);
