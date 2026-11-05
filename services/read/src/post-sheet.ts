@@ -16,9 +16,12 @@
  * launches from public.coin_name and public.asset. Market numbers come from the market source's
  * keyless token read, once per post per `keepMs`, the same read the Portfolio tab prices with.
  *
- * ★ ONLY A POST ON A FEED. A post no feed holds is a 404: the sheet opens from a card or from a
- * coin page's post, and both are rows on a feed — the frame, or the infinite scroll's members
- * (SHEET_MEMBER_SQL).
+ * ★ A POST ON A FEED, OR A COIN'S OWN POST. The sheet opens from a card or from a coin page's post:
+ * the frame, then the infinite scroll's members (SHEET_MEMBER_SQL), then — for the post a coin's own
+ * launch links, which its page shows whether or not it ever made a feed (coin-about.ts
+ * LINKED_POST_SQL) — the stored X post itself (SHEET_ITEM_SQL, the owner 2026-11-05: "this post has
+ * left the feed" on $COGE's @NYCMayor post). That card carries only what the post row holds: its
+ * words, picture and last views, no line of readings and no coin link. Anything else is a 404.
  *
  * ★ A NUMBER WE COULD NOT READ IS A DASH WITH WHY, NEVER ZERO. A coin the market source does not
  * list has no market anyone reports (`no_market`); an outage is `not_read_yet`; the order puts
@@ -67,6 +70,56 @@ select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
  where f.item_id = $1 and f.withdrawn_at is null and f.payload is not null
  order by (f.feed_id = 'fyp') desc
  limit 1`;
+
+/**
+ * ★ AN X POST NO FEED HELD (see the header): read only when the frame and the scroll do not hold it,
+ * and only for an X post, the one source a coin's launch links. Its card is built by `itemCard`.
+ */
+export const SHEET_ITEM_SQL = `
+select i.item_id, i.body, i.media, i.posted_at, i.first_seen_at, i.counters, a.handle, a.display_name,
+       a.follower_count::text as follower_count,
+       to_jsonb(a) ->> 'picture_url' as picture_url, to_jsonb(a) ->> 'picture_copy' as picture_copy
+  from public.item i
+  left join public.author a on a.author_key = i.author_key
+ where i.item_id = $1 and i.item_id like 'x:%'`;
+
+/** A card's words: the post's own without trailing short links, at most this long (the projector's cut). */
+const ITEM_EXCERPT_CHARS = 280;
+
+/**
+ * A stored X post as a feed card: what the row holds and nothing more. Views are the post's last
+ * reading with its time, or a dash with why; the line of readings is empty, never drawn flat; the
+ * coin link is `none`, because the sheet lists the post's coins itself from the name index and the
+ * link (SHEET_LIST_SQL), so no claim is made here that a feed's projector did not make.
+ */
+export function itemCard(r: Row): Row {
+  const id = String(r['item_id']);
+  const sid = id.slice('x:'.length);
+  const handle = str(r['handle']);
+  const media = Array.isArray(r['media']) ? (r['media'] as Record<string, unknown>[]) : [];
+  const body = (str(r['body']) ?? '').replace(/(\s*https?:\/\/t\.co\/\S+)+\s*$/u, '').trim();
+  const reach = rec(rec(r['counters'])['reach']);
+  const views = typeof reach['value'] === 'number' && Number.isFinite(reach['value']) && reach['value'] >= 0 ? reach['value'] : null;
+  const readAt = typeof reach['observedAt'] === 'number' && Number.isFinite(reach['observedAt']) ? reach['observedAt'] : null;
+  const posted = ms(r['posted_at']);
+  const thumb = str(media[0]?.['uri']);
+  return {
+    id,
+    sourceLabel: 'X',
+    authorLabel: handle === null ? '' : `@${handle}`,
+    permalink: handle === null ? `https://x.com/i/status/${sid}` : `https://x.com/${handle}/status/${sid}`,
+    excerpt: Array.from(body).length > ITEM_EXCERPT_CHARS ? `${Array.from(body).slice(0, ITEM_EXCERPT_CHARS - 1).join('').trimEnd()}…` : body,
+    thumbUrl: thumb,
+    thumbIsVideo: media[0]?.['kind'] === 'video',
+    postedAt: posted === null ? { at: null, why: 'not_reported' } : { at: posted },
+    reach: views === null ? { v: null, why: 'not_read_yet' } : { v: views },
+    readAt: views === null || readAt === null ? { at: null, why: 'not_read_yet' } : { at: readAt },
+    spark: { points: [], windowMs: 1_800_000 },
+    storyId: null,
+    coins: { kind: 'none' },
+    runningOlder: [],
+  };
+}
 
 /**
  * The narrative the post is in, if any: the Narrative tile's name and link, and how many posts its
@@ -301,8 +354,14 @@ export function createPostSheet(deps: PostSheetDeps) {
     }
   }
 
+  /** A coin's own post no feed held (SHEET_ITEM_SQL), in the frame's row shape with `itemCard` as its payload. */
+  async function itemRow(itemId: string): Promise<Row | undefined> {
+    const r = (await deps.db.query(SHEET_ITEM_SQL, [itemId]))[0];
+    return r === undefined ? undefined : { ...r, payload: itemCard(r) };
+  }
+
   async function build(itemId: string): Promise<SheetReply> {
-    const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0] ?? (await memberRow(itemId));
+    const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0] ?? (await memberRow(itemId)) ?? (await itemRow(itemId));
     if (row === undefined) return json(404, { error: 'not found' });
     /* The post's English when it was written in another language (translations.ts, 0081). */
     /* Sent together: both are read by the post's id alone, and each round trip crosses a sea. */

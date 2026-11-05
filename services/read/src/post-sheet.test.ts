@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
-import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_QUOTED_MEDIA_SQL, SHEET_STORY_FIRST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_ITEM_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_QUOTED_MEDIA_SQL, SHEET_STORY_FIRST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
 import { QUOTE_FACES_SQL } from './quote-faces.ts';
 import { PICTURE_FILES_SQL } from './post-pics.ts';
 import type { Row } from './queries.ts';
@@ -146,4 +146,24 @@ test('★ PvP: the race\'s coins are priced on the sheet too, after the post\'s 
   const rows = { [SHEET_POST_SQL]: [{ payload, media: [] }], [SHEET_LIST_SQL]: [], [SHEET_COINS_SQL]: [{ address: 'KJI', symbol: 'KJI' }, { address: 'KIJ', symbol: 'KIJ' }] };
   const body = JSON.parse((await createPostSheet(deps(rows, new Map([['KJI', quote(51_000)], ['KIJ', quote(12_000)]]))).sheet('x:1')).body);
   assert.deepEqual(body.coins.map((c: { address: string; proven: boolean }) => [c.address, c.proven]), [['KJI', true], ['KIJ', false]]);
+});
+
+test('★ a coin\'s own post no feed held opens from the stored post: its words, picture and last views, no coin claim (2026-11-05)', async () => {
+  const item = {
+    item_id: 'x:2118413834356457724', body: 'Big day for New York https://t.co/abc', media: [], posted_at: new Date(1_793_908_000_000), first_seen_at: new Date(1_793_908_009_000),
+    counters: { reach: { value: 267_669, observedAt: 1_793_908_230_011 } }, handle: 'NYCMayor', display_name: 'Mayor', follower_count: '2000000', picture_url: 'https://p/a.jpg', picture_copy: null,
+  };
+  const r = await createPostSheet(deps({ [SHEET_ITEM_SQL]: [item] })).sheet('x:2118413834356457724');
+  assert.equal(r.status, 200);
+  const body = JSON.parse(r.body);
+  assert.deepEqual(body.post, {
+    id: 'x:2118413834356457724', sourceLabel: 'X', authorLabel: '@NYCMayor', permalink: 'https://x.com/NYCMayor/status/2118413834356457724',
+    excerpt: 'Big day for New York', thumbUrl: null, thumbIsVideo: false, postedAt: { at: 1_793_908_000_000 }, reach: { v: 267_669 }, readAt: { at: 1_793_908_230_011 },
+    spark: { points: [], windowMs: 1_800_000 }, storyId: null, coins: { kind: 'none' }, runningOlder: [],
+  });
+  assert.equal(body.author.name, 'Mayor');
+  assert.equal(body.media, null);
+  /* A post with no reading is a dash with why, never zero. */
+  const unread = JSON.parse((await createPostSheet(deps({ [SHEET_ITEM_SQL]: [{ ...item, counters: {} }] })).sheet('x:2118413834356457724')).body).post;
+  assert.deepEqual([unread.reach, unread.readAt], [{ v: null, why: 'not_read_yet' }, { at: null, why: 'not_read_yet' }]);
 });
