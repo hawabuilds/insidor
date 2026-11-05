@@ -156,9 +156,12 @@ select address, image_uri from public.asset where chain = 'solana' and address =
 
 /* A coin's facts by address: its full row while it lasts, the name index after. Either one is
    enough, the same two the market route accepts (market.ts ASSET_SQL): a coin a post sheet or a
-   narrative lists is always in one of them, and its page must open from any tap on it. */
+   narrative lists is always in one of them, and its page must open from any tap on it.
+   ★ Its picture: the asset row's, else the one its launch metadata declares (0168 public.coin_picture,
+   the owner 2026-11-05: $COGE showed a letter though its metadata names a picture). */
 export const ASSET_FACTS_SQL = `
-select q.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
+select q.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name,
+       coalesce(a.image_uri, (select p.image_uri from public.coin_picture p where p.asset_key = 'solana:' || q.address)) as image_uri,
        coalesce(a.minted_at, n.launched_at) as minted_at
   from (select $1::text as address) q
   left join public.coin_name n on n.address = q.address
