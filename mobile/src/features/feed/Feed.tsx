@@ -116,6 +116,9 @@ import { ScreenHeader } from '../../shared/ui/ScreenHeader.tsx';
 import { RunningCoins } from '../../shared/ui/RunningCoins.tsx';
 import { noteTap } from '../../shared/tap-log.ts';
 import styles from './feed.module.css';
+import { AutoBuySheet } from '../autobuy/AutoBuySheet.tsx';
+import { AutoBuyStrip, awaitsCoin } from '../autobuy/AutoBuyStrip.tsx';
+import { useAutoBuys } from '../../shared/auto-buys.ts';
 import { Mark } from '../onboarding/Frame.tsx';
 
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
@@ -150,6 +153,9 @@ export function Feed({
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   /* The post whose post sheet is open and the view it opened on, or none. */
   const [sheet, setSheet] = useState<{ readonly id: string; readonly start: 'post' | 'coins' } | null>(null);
+  /* The auto buy sheet's post (features/autobuy): opened by the star on a post with no coin yet, or by its card strip. */
+  const [autoBuyFor, setAutoBuyFor] = useState<RisingPost | null>(null);
+  const autoBuyAllowed = useAutoBuys().allowed();
   /*
    * ★ `#/post/<id>` (a post notification) IS FOR YOU WITH THAT POST'S SHEET UP. The address is put
    * back to For You at once, in place (no new history entry, no hashchange), and the sheet opens over
@@ -303,9 +309,10 @@ export function Feed({
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}
           <OlderCoinsLine post={p} now={now} />
           {owner ? <OwnerCardStrip post={p} /> : null}
+          <AutoBuyStrip post={p} onOpen={() => setAutoBuyFor(p)} />
         </>
       }
-      watch={<WatchStar postId={p.id} />}
+      watch={<WatchStar postId={p.id} onWatched={autoBuyAllowed && awaitsCoin(p) ? () => setAutoBuyFor(p) : undefined} />}
       sortLine={ranked === null ? null : ranked.by === 'trending' ? speedLineOf(ranked.speeds.get(p.id)) : gainedLineOf(ranked.gained.get(p.id), ranked.window)}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
@@ -473,6 +480,7 @@ export function Feed({
         {owner && addMissed ? <AddMissedPostSheet onClose={() => setAddMissed(false)} /> : null}
         {owner ? <HideBar /> : null}
         {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
+        {autoBuyFor !== null ? <AutoBuySheet key={autoBuyFor.id} post={autoBuyFor} onClose={() => setAutoBuyFor(null)} /> : null}
       </section>
     </>
   );

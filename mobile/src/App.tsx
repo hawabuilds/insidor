@@ -39,6 +39,7 @@ import { resavePush, standalone } from './features/alerts/push.ts';
 import { PushAsk } from './features/alerts/PushAsk.tsx';
 import { UnreadContext } from './shared/unread.ts';
 import { fetchAlertSettings, notifyCall, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { autoBuys } from './shared/auto-buys.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
@@ -314,6 +315,10 @@ export function App() {
   /* The posts watched here, read from the alert service once signed in (shared/watched-posts.ts). */
   useEffect(() => {
     if (signedIn) watchedPosts.load();
+  }, [signedIn]);
+  /* Auto buy (shared/auto-buys.ts): whether this person may set one, and theirs, once signed in. */
+  useEffect(() => {
+    if (signedIn) void autoBuys.load();
   }, [signedIn]);
   /* The narratives starred here are mirrored for alerts sent while the app is closed. */
   const watchedKey = watched.join(',');
