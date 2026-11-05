@@ -81,3 +81,17 @@ test('a reply without included tokens leaves both sides unknown, never guessed f
   const pools = readPools(POOLS);
   assert.ok(pools.every((p) => p.base === null && p.quote === null && p.dexName === null));
 });
+
+test('★ a stray thin pool does not beat the curve the coin trades on; its own graduation pool always does ($GIF, 2026-11-05)', () => {
+  const GIF = 'E86A12o3L9CBZCoJ3uYsT87WPEaMHy9dZVzgfdHXpump';
+  const tok = (address: string) => ({ address, symbol: null, name: null, imageUrl: null });
+  const curve = { address: 'curve', dex: 'pump-fun', reserveUsd: 0, volume24hUsd: 87_307, base: tok(GIF), quote: tok('OPENAI') };
+  const hadron = { address: 'hadron', dex: 'hadron', reserveUsd: 255.6, volume24hUsd: 182, base: tok(GIF), quote: tok('SOL') };
+  const meteora = { address: 'meteora', dex: 'meteora-damm-v2', reserveUsd: 7.7, volume24hUsd: 23, base: tok(GIF), quote: tok('SOL') };
+  assert.equal(primaryPool([hadron, meteora, curve])?.address, 'curve');
+  assert.equal(primaryPool([{ ...hadron, reserveUsd: 40_000 }, curve])?.address, 'hadron', 'a real pool still wins');
+  assert.equal(primaryPool([{ ...hadron, volume24hUsd: 90_000 }, curve])?.address, 'hadron', 'the thin pool trades more: it is the market');
+  assert.equal(primaryPool([hadron, { ...curve, volume24hUsd: null }])?.address, 'hadron', 'curve trading unknown: as before');
+  const ownPool = { address: 'pumpswap', dex: 'pumpswap', reserveUsd: 900, volume24hUsd: 50, base: tok(GIF), quote: tok('OPENAI') };
+  assert.equal(primaryPool([ownPool, curve])?.address, 'pumpswap', 'graduated today and fell: still its own pool');
+});
