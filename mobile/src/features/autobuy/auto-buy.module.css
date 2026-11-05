@@ -1,0 +1,60 @@
+/*
+ * The auto buy sheet and its card strip (AutoBuySheet.tsx, AutoBuyStrip.tsx), on the owner's neutral
+ * design (2026-11-05): the app's own type sizes (17 / 15 / 13 / 12), the feed's quick pills for the
+ * amounts, purple only on the one action, red only on what is short. Every colour is a token.
+ *
+ * What breaks if changed carelessly: purple on anything but the button, or green on the "on"
+ * state, is what the owner took out; the strip is the card's own grey ghost button stretched.
+ */
+
+.who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.whoText { min-width: 0; }
+.whoTitle { margin: 0; font-size: var(--type-section); font-weight: var(--type-section-weight); letter-spacing: -0.02em; }
+.whoSub { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--text-2); font-size: var(--type-secondary); }
+.pill { height: 20px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 999px; background: var(--sheet-chip); color: var(--text-1); font-size: var(--type-caption); font-weight: 600; }
+
+.hero { display: flex; flex-direction: column; align-items: center; padding: 16px 0 4px; }
+.heroLabel { color: var(--text-2); font-size: var(--type-caption); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.amount { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.amount b { font-size: 48px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.amount span { color: var(--text-2); font-size: var(--type-section); font-weight: 600; }
+.heroSub { margin-top: 8px; color: var(--text-2); font-size: var(--type-secondary); font-variant-numeric: tabular-nums; }
+
+.chips { display: flex; justify-content: center; gap: 8px; margin: 16px 0 20px; }
+.chip { min-width: 60px; height: 36px; padding: 0 14px; border-radius: var(--r-pill); background: var(--card); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--text-2); font: inherit; font-size: var(--type-body); font-weight: 600; font-variant-numeric: tabular-nums; }
+.chipOn { background: var(--tag-bg); box-shadow: inset 0 0 0 1px var(--tag-line); color: var(--text-1); }
+
+.group { border-radius: var(--r-card); background: var(--sheet-card); border: 1px solid var(--sheet-border); overflow: hidden; }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 0 16px; background: none; color: inherit; font: inherit; text-align: left; }
+.row + .row, .row + .pick, .pick + .row { border-top: 1px solid var(--sheet-border); }
+.rowText { flex: 1; min-width: 0; font-size: var(--type-body); }
+.value { color: var(--text-1); font-size: var(--type-body); font-weight: 600; font-variant-numeric: tabular-nums; }
+.valueOff { color: var(--text-2); font-weight: 400; }
+.chev { color: var(--text-3); display: grid; transition: transform 0.15s; }
+.chevOpen { transform: rotate(90deg); }
+
+.pick { padding: 4px 16px 16px; }
+.pickLabel { display: flex; justify-content: space-between; margin: 4px 2px 8px; color: var(--text-2); font-size: var(--type-caption); font-weight: 600; }
+.seg + .pickLabel { margin-top: 14px; }
+.seg { display: flex; padding: 3px; border-radius: 12px; background: var(--segment-track); }
+.seg button { flex: 1; height: 34px; border-radius: 9px; background: none; color: var(--text-2); font: inherit; font-size: var(--type-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.seg .segOn { background: var(--input); color: var(--text-1); box-shadow: var(--shadow-tab-active); }
+
+.toggle { position: relative; width: 44px; height: 26px; flex: none; border-radius: 13px; background: var(--border); transition: background 0.15s; }
+.toggle i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.toggleOn { background: var(--brand); }
+.toggleOn i { transform: translateX(18px); }
+
+.sum { display: grid; gap: 8px; margin: 0 4px 12px; }
+.sumLine { display: flex; justify-content: space-between; align-items: center; font-size: var(--type-secondary); color: var(--text-2); }
+.sumLine em { font-style: normal; color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sumLine b { color: var(--text-1); font-size: var(--type-body); font-weight: 700; font-variant-numeric: tabular-nums; }
+.need { color: var(--down) !important; }
+.primary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: var(--button-h); border-radius: var(--r-button); background: var(--brand); color: #fff; font: inherit; font-size: var(--button-size); font-weight: 700; box-shadow: var(--shadow-brand); }
+.quiet { display: block; width: 100%; height: var(--tap); margin-top: 4px; background: none; color: var(--text-2); font: inherit; font-size: var(--type-secondary); font-weight: 600; }
+.consent { margin: 12px 4px 0; color: var(--text-3); font-size: var(--type-caption); text-align: center; }
+
+/* The card's strip: the card's own grey ghost button ("See 1 coin"), stretched, 10px under its actions. */
+.strip { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; margin-top: 10px; padding: 0 12px 0 14px; border: 0; border-radius: 12px; background: #22222a; color: var(--text-1); font: inherit; text-align: left; cursor: pointer; }
+.stripText { flex: 1; display: flex; align-items: baseline; gap: 6px; color: var(--text-2); font-size: var(--type-secondary); font-weight: 600; }
+.stripAmt { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }

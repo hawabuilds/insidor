@@ -21,14 +21,17 @@ export function useWatchedPostIds(): readonly string[] {
   return useSyncExternalStore(watchedPosts.subscribe, watchedPosts.ids, watchedPosts.ids);
 }
 
-export function WatchStar({ postId, size = 'card' }: { postId: string; size?: 'card' | 'sheet' }) {
+export function WatchStar({ postId, size = 'card', onWatched }: { postId: string; size?: 'card' | 'sheet'; /** After a watch the server agreed to: the owner's auto buy sheet opens (features/autobuy). */ onWatched?: (() => void) | undefined }) {
   const on = useWatchedPostIds().includes(postId);
   const toast = useToast();
   const tap = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     watchedPosts.set(postId, !on).then(
-      () => toast(on ? 'Stopped watching this post' : 'Watching this post', on ? '' : 'You will hear the moment a coin for it launches or is found.'),
+      () => {
+        if (!on && onWatched !== undefined) onWatched();
+        else toast(on ? 'Stopped watching this post' : 'Watching this post', on ? '' : 'You will hear the moment a coin for it launches or is found.');
+      },
       (err: unknown) => toast(on ? "Couldn't stop watching" : "Couldn't watch this post", err instanceof Error ? err.message : 'Try again in a moment.'),
     );
   };
