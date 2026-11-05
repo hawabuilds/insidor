@@ -29,6 +29,8 @@ export interface Pool {
   readonly dex: string;
   /** Both sides' dollar value together, as the vendor reports it; null when it did not say. */
   readonly reserveUsd: number | null;
+  /** Dollars traded in the pool over the last 24 hours, as the vendor reports it; null when it did not say. */
+  readonly volume24hUsd?: number | null;
   /** The dex's own name ("PumpSwap", "Meteora"); null when the reply did not include it. */
   readonly dexName?: string | null;
   /** The pool's two sides. Null when the reply did not include that token. */
@@ -91,7 +93,7 @@ export function readPools(raw: unknown): readonly Pool[] {
     };
     return address === null || dex === null
       ? []
-      : [{ address, dex, reserveUsd: num(a.reserve_in_usd), dexName: dexNames.get(dex) ?? null, base: side('base_token'), quote: side('quote_token') }];
+      : [{ address, dex, reserveUsd: num(a.reserve_in_usd), volume24hUsd: num(rec(a.volume_usd).h24), dexName: dexNames.get(dex) ?? null, base: side('base_token'), quote: side('quote_token') }];
   });
 }
 
@@ -114,12 +116,29 @@ export function ownSide(pool: Pool, mint: string): PoolToken | null {
 
 /**
  * The pool a coin trades in now: the deepest listed pool; or, for a coin no listed pool holds
- * yet, its launchpad curve. A curve's reported reserve is not comparable with a pool's, so a
- * curve is chosen only when nothing else exists.
+ * yet, its launchpad curve. A curve's reported reserve is not comparable with a pool's (the vendor
+ * reports it as 0), so a curve is chosen over a listed pool only when it is plainly the market.
+ *
+ * ★ A STRAY POOL DOES NOT BEAT THE CURVE THE COIN TRADES ON (the owner, 2026-11-05: $GIF, paired
+ * with OPENAI on its curve, $87K traded in a day, was charted from someone's $255 SOL pool on Hadron
+ * with "Liq 252"). The curve wins when the deepest listed pool holds under `STRAY_POOL_USD` and the
+ * curve traded more than it over the day. The coin's own graduation pool (PumpSwap, the same token
+ * on its other side as the curve) is never stray, however thin, so a coin that left its curve today
+ * and fell is still charted from its pool.
  */
+const STRAY_POOL_USD = 5_000;
+
 export function primaryPool(pools: readonly Pool[]): Pool | null {
   const listed = pools.filter((p) => p.dex !== 'pump-fun').sort((a, b) => (b.reserveUsd ?? 0) - (a.reserveUsd ?? 0));
-  return listed[0] ?? pools.find((p) => p.dex === 'pump-fun') ?? null;
+  const curve = pools.find((p) => p.dex === 'pump-fun') ?? null;
+  const deepest = listed[0] ?? null;
+  if (deepest === null) return curve;
+  const curveTrades = curve?.volume24hUsd ?? null;
+  const others = (p: Pool): readonly (string | undefined)[] => [p.base?.address, p.quote?.address];
+  const graduated = curve !== null && deepest.dex === 'pumpswap' && others(curve).every((a) => others(deepest).includes(a));
+  const stray = !graduated && deepest.reserveUsd !== null && deepest.reserveUsd < STRAY_POOL_USD;
+  if (curve !== null && stray && curveTrades !== null && curveTrades > (deepest.volume24hUsd ?? 0)) return curve;
+  return deepest;
 }
 
 export function readCandles(raw: unknown): readonly Candle[] {
