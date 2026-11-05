@@ -4106,22 +4106,26 @@ export interface NotifyPolicy {
  *   ownerOnly   true: only Policy.owner may save one (the owner tests it first).
  *   mode        'dry': at the moment of buying, the buy is built and simulated and its outcome
  *               recorded as `dry`, never sent. 'live': it is sent. Starts 'dry'.
- *   maxLamports the most one buy may be, whatever the sheet sent: the hard cap of the test.
- *   choices     the sheet's quick amounts (lamports), market caps (dollars), speeds, slippages
+ *   maxSol      the most one buy may be, whatever the sheet sent: the hard cap of the test.
+ *   choices     the sheet's quick amounts (SOL), market caps (dollars), speeds, slippages
  *               (bps, never above the trade service's own maximum) and how long it stays on.
- *   speedMicroLamports  the priority fee each speed sends with (micro-lamports per compute unit).
+ *   speedPriority  the priority fee each speed sends with, in millionths of the chain's smallest
+ *               unit per compute unit.
  */
 export interface AutoBuyPolicy {
   readonly on: boolean;
   readonly ownerOnly: boolean;
   readonly mode: 'dry' | 'live';
-  readonly maxLamports: number;
-  readonly amountChoicesLamports: readonly number[];
+  readonly maxSol: number;
+  readonly amountChoicesSol: readonly number[];
   readonly capChoicesUsd: readonly number[];
   readonly slippageChoicesBps: readonly number[];
   readonly activeChoicesMs: readonly number[];
   readonly maxPvpCoins: number;
-  readonly speedMicroLamports: { readonly normal: number; readonly fast: number; readonly turbo: number };
+  readonly speedPriority: { readonly normal: number; readonly fast: number; readonly turbo: number };
+  /** For the sheet's fee estimate: a buy's compute units (the curve trade sets 250k) and the network's base fee in SOL. */
+  readonly estComputeUnits: number;
+  readonly baseFeeSol: number;
 }
 
 /**
@@ -7820,13 +7824,15 @@ const POLICY_V1: Policy = {
       on: true,
       ownerOnly: true,
       mode: 'dry',
-      maxLamports: 500_000_000,
-      amountChoicesLamports: [100_000_000, 250_000_000, 500_000_000],
+      maxSol: 0.5,
+      amountChoicesSol: [0.1, 0.25, 0.5],
       capChoicesUsd: [25_000, 50_000, 100_000, 250_000],
       slippageChoicesBps: [500, 1_000, 1_500],
       activeChoicesMs: [86_400_000, 259_200_000, 604_800_000],
       maxPvpCoins: 4,
-      speedMicroLamports: { normal: 100_000, fast: 1_000_000, turbo: 5_000_000 },
+      speedPriority: { normal: 100_000, fast: 1_000_000, turbo: 5_000_000 },
+      estComputeUnits: 250_000,
+      baseFeeSol: 0.000005,
     },
     watchMetadataPerPass: 40,
     watchMinNameChars: 4,

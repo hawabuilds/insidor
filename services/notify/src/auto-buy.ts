@@ -12,7 +12,7 @@
  * saves what the person chose.
  *
  * ★ EVERY NUMBER IS CHECKED AGAINST THE POLICY, NOT TRUSTED FROM THE SHEET. The amount is capped at
- * `autoBuy.maxLamports`; the market cap, slippage and time on must be one of the policy's choices
+ * `autoBuy.maxSol`; the market cap, slippage and time on must be one of the policy's choices
  * (or a positive custom cap); PvP at most `maxPvpCoins`. The wallet is the person's own embedded
  * wallet from their verified sign-in, never one the request names.
  *
@@ -31,6 +31,7 @@ import { json, type Reply } from './http.ts';
 import { postWatchRoute } from './post-watch.ts';
 
 const ITEM = /^[A-Za-z0-9:_\-.]{1,200}$/;
+const LAMPORTS = 1_000_000_000;
 const SPEEDS = ['normal', 'fast', 'turbo'] as const;
 type Speed = (typeof SPEEDS)[number];
 
@@ -43,6 +44,11 @@ export interface AutoBuy {
   readonly slippageBps: number;
   readonly activeUntil: number;
 }
+
+/** One buy's estimated fees at a speed: the base fee plus the priority fee over the buy's compute units. */
+export const feeLamports = (p: AutoBuyPolicy, speed: Speed): number => Math.round(p.baseFeeSol * LAMPORTS) + Math.ceil((p.speedPriority[speed] * p.estComputeUnits) / 1_000_000);
+/** The most one buy may be, in lamports. */
+export const maxLamports = (p: AutoBuyPolicy): number => Math.round(p.maxSol * LAMPORTS);
 
 /** Whether this person is the owner, as social's `ownerRefOf` decides it: a wallet exactly, an X handle in any case. */
 export function isOwner(me: Person, owner: OwnerPolicy): boolean {
@@ -63,7 +69,7 @@ export function readSettings(body: unknown, p: AutoBuyPolicy, now: number): { se
   const int = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) ? v : null);
   const lamports = int(b['lamports']);
   if (lamports === null || lamports <= 0) return { refused: 'Choose an amount.' };
-  if (lamports > p.maxLamports) return { refused: `At most ${p.maxLamports / 1e9} SOL a buy while auto buy is being tested.` };
+  if (lamports > maxLamports(p)) return { refused: `At most ${p.maxSol} SOL a buy while auto buy is being tested.` };
   const cap = b['maxCapUsd'] === null ? null : typeof b['maxCapUsd'] === 'number' && b['maxCapUsd'] > 0 && Number.isFinite(b['maxCapUsd']) ? b['maxCapUsd'] : undefined;
   if (cap === undefined) return { refused: 'Choose a market cap limit.' };
   const pvp = int(b['pvpCoins']);
@@ -96,8 +102,10 @@ export async function autoBuyRoute(db: Db, method: string, seg: readonly string[
   if (seg.length === 2 && seg[1] === 'config' && method === 'GET') {
     return json(200, {
       allowed: wallet !== null,
-      choices: { amountsLamports: p.amountChoicesLamports, capsUsd: p.capChoicesUsd, slippagesBps: p.slippageChoicesBps, activeMs: p.activeChoicesMs, maxPvpCoins: p.maxPvpCoins, maxLamports: p.maxLamports },
+      choices: { amountsLamports: p.amountChoicesSol.map((sol) => Math.round(sol * LAMPORTS)), capsUsd: p.capChoicesUsd, slippagesBps: p.slippageChoicesBps, activeMs: p.activeChoicesMs, maxPvpCoins: p.maxPvpCoins, maxLamports: maxLamports(p) },
       mode: p.mode,
+      /* What each speed costs a buy in fees (network base fee plus priority fee), for the sheet's "Est. fees". Insidor takes no fee (Policy.trade.platformFeeBps 0). */
+      feeLamports: Object.fromEntries(SPEEDS.map((sp) => [sp, feeLamports(p, sp)])),
     });
   }
   if (wallet === null) return json(403, { error: 'Auto buy is not available yet.' });
