@@ -51,6 +51,24 @@ export function tradeKey(t: MarketTrade): string {
 }
 
 /**
+ * ★ ONE KEY A ROW, EVEN FOR ONE TRANSACTION'S SEVERAL FILLS (the owner, 2026-11-05: "a bunch of trades
+ * at the top … stay frozen whilst new trades are coming through beneath it"). A bundled buy or a route
+ * split across pools is several rows with the same transaction and side; two rows with one key leave
+ * the first one's line on the page, untracked, above every newer trade until a reload. The second and
+ * later repeats of a key get `#1`, `#2`…: a transaction's fills come in the same order on every read,
+ * so a row keeps its key from one read to the next.
+ */
+export function tradeKeys(trades: readonly MarketTrade[]): string[] {
+  const seen = new Map<string, number>();
+  return trades.map((t) => {
+    const k = tradeKey(t);
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    return n === 0 ? k : `${k}#${n}`;
+  });
+}
+
+/**
  * The keys seen for the first time, given the keys seen before. The first read marks nothing:
  * animating a whole list on arrival reads as loading, not as activity (Trador's useArrivals).
  */

@@ -23,7 +23,7 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { formatCount } from '../../shared/format/number.ts';
 import { ChevronIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKey, tradeUsd, type TapeFilter } from './trades-view.ts';
+import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKeys, tradeUsd, type TapeFilter } from './trades-view.ts';
 import styles from './token.module.css';
 
 /** How long a new row stays marked: longer than its slide-in, shorter than the next read. */
@@ -45,7 +45,8 @@ export function TradesPanel({ ticker, trades, note, account, now, filter }: {
   filter: TapeFilter;
 }) {
   const shown = useMemo(() => (trades === null ? [] : filterTape(trades, filter, account).slice(0, TRADES_SHOWN)), [trades, filter, account]);
-  const fresh = useArrivals(shown.map(tradeKey), filter);
+  const keys = useMemo(() => tradeKeys(shown), [shown]);
+  const fresh = useArrivals(keys, filter);
 
   return (
     <div>
@@ -55,8 +56,8 @@ export function TradesPanel({ ticker, trades, note, account, now, filter }: {
         <p className={styles['panelNote']}>{trades.length === 0 ? note : emptyLine(filter, ticker)}</p>
       ) : (
         <ul className={styles['tape']}>
-          {shown.map((t) => {
-            const key = tradeKey(t);
+          {shown.map((t, i) => {
+            const key = keys[i] ?? String(i);
             const buy = t.side === 'buy';
             const wallet = t.maker === null ? null : shortWallet(t.maker);
             return (

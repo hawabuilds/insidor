@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { MarketTrade } from '../../shared/api/index.ts';
-import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKey, tradeUsd } from './trades-view.ts';
+import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKey, tradeKeys, tradeUsd } from './trades-view.ts';
 
 const t = (tx: string, side: 'buy' | 'sell', maker: string | null): MarketTrade => ({
   tx, side, maker,
@@ -46,4 +46,13 @@ test('a row says its dollars to the cent under $1,000 and its wallet by both end
   assert.equal(tradeUsd({ known: false, pending: 'not_reported' }).kind, 'pending');
   assert.equal(shortWallet('3rpfQ8aZk1mN2pXyMDA'), '3rpf...yMDA');
   assert.equal(shortWallet('short'), 'short');
+});
+
+test('★ one transaction\'s several fills on one side are several rows with their own keys, the same on every read (2026-11-05)', () => {
+  const tape = [t('n', 'buy', 'x'), t('a', 'buy', 'w'), t('a', 'buy', 'w'), t('a', 'sell', 'w'), t('a', 'buy', 'w')];
+  const keys = tradeKeys(tape);
+  assert.deepEqual(keys, ['n:buy', 'a:buy', 'a:buy#1', 'a:sell', 'a:buy#2']);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.deepEqual(tradeKeys(tape.slice(1)), keys.slice(1), 'a newer trade on top leaves the older rows\' keys as they were');
+  assert.deepEqual(tradeKeys(TAPE), TAPE.map(tradeKey), 'no repeats: the keys as before');
 });
