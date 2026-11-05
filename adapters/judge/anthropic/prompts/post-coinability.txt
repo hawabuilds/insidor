@@ -162,6 +162,14 @@ ANSWER YES, even where a rule above says no, when the post is:
   - Any animal, object or character with a name, a catchphrase, a strange look or a strange situation;
     any picture or video people would screenshot and caption.
   - A short punchline, reaction or one-liner that is already spreading as a phrase.
+  - A politician, a party or an official taking a side for or against one named thing the internet is
+    already meming and coining in its own right: AI, superintelligence, a viral app, model or product.
+    Calling to ban, pause, fight or back it ("a pause on advanced AI and a ban on artificial
+    superintelligence", "democrats wanna pause AI") makes the other side of a meme already running, and
+    people coin that side. Name the stance first, ANTI or PRO run together with the thing (ANTIAI), then
+    others (ANTISI, PAUSEAI). Only for such a thing: a stance on an agency, a tax or tariff, a law or bill,
+    a war, a court, an election, crypto rules, or a social issue (immigration, abortion, gender, crime,
+    healthcare, wages, officials' stock trading) is still plain policy news: no.
   - When you are unsure: answer yes.
 
 ANSWER NO only for clear junk:
