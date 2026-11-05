@@ -498,7 +498,8 @@ export class PgOneCoinRepo {
   }
 
   /** Candidates written or widened: a later tie adds to the evidence, the first `found_at` stays. */
-  async upsertCandidates(rows: readonly CandidateRow[], nowMs: number): Promise<number> {
+  async upsertCandidates(given: readonly CandidateRow[], nowMs: number): Promise<number> {
+    const rows = oneCandidateEach(given);
     if (rows.length === 0) return 0;
     try {
       await this.#db.query(
@@ -866,7 +867,8 @@ export class PgOneCoinRepo {
    * Write each subject's pick, and a change row for every subject whose coin changed from what was
    * stored (`previous`). Returns how many coins changed.
    */
-  async writePicks(kind: PickKind, picks: readonly PickWrite[], previous: ReadonlyMap<string, StoredPick>, mode: 'shadow' | 'live', nowMs: number): Promise<number> {
+  async writePicks(kind: PickKind, given: readonly PickWrite[], previous: ReadonlyMap<string, StoredPick>, mode: 'shadow' | 'live', nowMs: number): Promise<number> {
+    const picks = onePickEach(given);
     if (picks.length === 0) return 0;
     const { table, key } = PICK_TABLE[kind];
     const at = new Date(nowMs).toISOString();
@@ -1041,4 +1043,33 @@ export class PgOneCoinRepo {
       throw e;
     }
   }
+}
+
+/**
+ * ★ ONE ROW PER KEY IN ONE STATEMENT (2026-11-05: the pick loop threw "ON CONFLICT DO UPDATE command
+ * cannot affect row a second time" when a batch named the same row twice, and lost the whole pass).
+ * Each keeps what writing the rows one after another would have left in the table, so nothing a
+ * batch without repeats writes is different.
+ *
+ *   candidates (item, coin): the first row is inserted, a later one only replaces its evidence,
+ *     so the first path, launch time and found time stay and the last evidence wins.
+ *   picks (subject): each write replaces the last, so the last pick wins.
+ */
+export function oneCandidateEach(rows: readonly CandidateRow[]): CandidateRow[] {
+  const byKey = new Map<string, CandidateRow>();
+  for (const r of rows) {
+    const k = `${r.itemId}\u0000${r.address}`;
+    const first = byKey.get(k);
+    byKey.set(k, first === undefined ? r : { ...first, evidence: r.evidence });
+  }
+  return [...byKey.values()];
+}
+
+export function onePickEach(picks: readonly PickWrite[]): PickWrite[] {
+  const byKey = new Map<string, PickWrite>();
+  for (const p of picks) {
+    byKey.delete(p.subjectId);
+    byKey.set(p.subjectId, p);
+  }
+  return [...byKey.values()];
 }
