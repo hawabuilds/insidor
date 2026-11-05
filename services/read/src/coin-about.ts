@@ -89,6 +89,10 @@ select distinct on (n.item_id) n.item_id, n.payload, n.own, n.links_post, n.same
  * the X status its launch links (public.coin_link, the creator's own claim), when we hold the post. Read
  * whether or not the post ever made a feed — that one was held as politics — so the coin's own post is
  * never missing from its page. `$1` the asset key.
+ * ★ A LINKED QUOTE OR REPOST SHOWS THE POST IT CARRIES (the owner, 2026-11-05: $AI's launch linked
+ * @lana_goat's "democrats wanna pause AI", a quote of @RepYassAnsari's post the coin is about — "show
+ * the post it is quoting not the promotion post"): when we hold the quoted or reposted post, that is
+ * the card; otherwise the linked post itself, as before.
  */
 export const LINKED_POST_SQL = `
 with l as (
@@ -97,7 +101,8 @@ with l as (
 )
 select i.item_id, i.body, i.media, i.posted_at, i.first_seen_at, (i.counters #>> '{reach,value}')::float8 as reach, a.handle
   from l
-  join public.item i on i.item_id = 'x:' || l.sid
+  join public.item q on q.item_id = 'x:' || l.sid
+  join public.item i on i.item_id = coalesce((select o.item_id from public.item o where o.item_id = coalesce(q.reproduction_of, q.rebroadcast_of)), q.item_id)
   left join public.author a on a.author_key = i.author_key
  where l.sid is not null
  limit 1`;
