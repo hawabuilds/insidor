@@ -18,6 +18,7 @@
  *                                    `tap diagnostics` line, nothing stored (tap-diag.ts)
  *   PUT    /watch { stories }       the narratives this person stars, mirrored for alerts
  *   GET|PUT|DELETE /post-watch/:itemId    the post sheet's bell on one post (post-watch.ts)
+ *   GET|PUT|DELETE /auto-buy[/config|/:itemId]  auto buy on a watched post, owner-only while tested (auto-buy.ts)
  *
  * ★ EVERY STEP OF TURNING PUSH ON LEAVES A LOG LINE (2026-10-14). The owner's phone never saved a
  * device and nothing said why: the phone swallowed the error and the server had no request to log.
@@ -30,7 +31,7 @@
  * does nothing.
  */
 
-import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
+import type { NotifyPolicy, OwnerPolicy } from '@insidor/contracts/policy.ts';
 import type { IdentityCheck, Person, PushSender } from '@insidor/contracts/ports/people.ts';
 import { normalisePrefs, type AlertPrefs } from '@insidor/core';
 
@@ -43,6 +44,7 @@ import { bellCount, parseList, readPage } from './list.ts';
 /** The rows drawn as a narrative's card in Notifications. */
 const NARRATIVE_ROWS = ['starred_speed', 'blowing_up', 'narrative_promoted'];
 import { postWatchRoute } from './post-watch.ts';
+import { autoBuyRoute } from './auto-buy.ts';
 import { tapRows } from './tap-diag.ts';
 
 export interface NotifyDeps {
@@ -57,6 +59,8 @@ export interface NotifyDeps {
   readonly answers?: Answers;
   /** One JSON log line (main.ts); silent in tests. */
   readonly log?: (msg: string, fields: Record<string, unknown>) => void;
+  /** Who the owner is (Policy.owner), for owner-only features (auto-buy.ts). Absent: nobody is. */
+  readonly owner?: OwnerPolicy;
 }
 
 const hostOf = (endpoint: string): string => {
@@ -147,6 +151,8 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
   }
   const watchedPost = await postWatchRoute(deps.db, m, seg, me.userId);
   if (watchedPost !== null) return watchedPost;
+  const autoBuy = await autoBuyRoute(deps.db, m, seg, me, req.body, { policy: P.autoBuy, owner: deps.owner ?? { wallets: [], xHandles: [] }, now: deps.now });
+  if (autoBuy !== null) return autoBuy;
   if (m === 'GET' && path === 'alerts/unread') return json(200, { unread: await bellCount(deps.db, me.userId) });
   if (m === 'POST' && path === 'alerts/seen') {
     await deps.db.query('insert into people.alert_seen (user_id, seen_at) values ($1, now()) on conflict (user_id) do update set seen_at = now()', [me.userId]);

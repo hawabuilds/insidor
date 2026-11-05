@@ -4094,6 +4094,34 @@ export interface NotifyPolicy {
   readonly windowMs: number;
   readonly languageDrop: LanguageDropPolicy;
   readonly judgeCost: JudgeCostPolicy;
+  readonly autoBuy: AutoBuyPolicy;
+}
+
+/**
+ * ★ AUTO BUY ON A WATCHED POST (the owner, 2026-11-05; services/notify auto-buy.ts, 0167). A person
+ * sets an amount on a post with no coin yet, and when its coin starts running Insidor buys it from
+ * their wallet, signed by the wallet provider within the limits the person allowed.
+ *
+ *   on          false: no auto buy can be saved and nothing is ever bought.
+ *   ownerOnly   true: only Policy.owner may save one (the owner tests it first).
+ *   mode        'dry': at the moment of buying, the buy is built and simulated and its outcome
+ *               recorded as `dry`, never sent. 'live': it is sent. Starts 'dry'.
+ *   maxLamports the most one buy may be, whatever the sheet sent: the hard cap of the test.
+ *   choices     the sheet's quick amounts (lamports), market caps (dollars), speeds, slippages
+ *               (bps, never above the trade service's own maximum) and how long it stays on.
+ *   speedMicroLamports  the priority fee each speed sends with (micro-lamports per compute unit).
+ */
+export interface AutoBuyPolicy {
+  readonly on: boolean;
+  readonly ownerOnly: boolean;
+  readonly mode: 'dry' | 'live';
+  readonly maxLamports: number;
+  readonly amountChoicesLamports: readonly number[];
+  readonly capChoicesUsd: readonly number[];
+  readonly slippageChoicesBps: readonly number[];
+  readonly activeChoicesMs: readonly number[];
+  readonly maxPvpCoins: number;
+  readonly speedMicroLamports: { readonly normal: number; readonly fast: number; readonly turbo: number };
 }
 
 /**
@@ -6199,8 +6227,9 @@ const POLICY_V1: Policy = {
      v225 (2026-11-04, the owner: larp zoo accounts) adds `ingest.reskin`: an old account emptied and
      dressed up as someone else has its posts left unstored, so they reach no feed, narrative or alert.
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
-     pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry. */
-  version: 'policy.v226',
+     pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
+     v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
+  version: 'policy.v227',
 
   admit: {
     maxAgeMin: 240,
@@ -7785,6 +7814,20 @@ const POLICY_V1: Policy = {
     deliverLoopMs: 5_000,
     /* Five seconds: the mint stream stores a coin about five seconds after it is made. */
     watchLoopMs: 5_000,
+    /* Owner only, and dry: nothing is sent until the owner says "live" (2026-11-05). 0.5 SOL is the
+       most one test buy may be. Slippage choices stop at the trade service's 15% maximum. */
+    autoBuy: {
+      on: true,
+      ownerOnly: true,
+      mode: 'dry',
+      maxLamports: 500_000_000,
+      amountChoicesLamports: [100_000_000, 250_000_000, 500_000_000],
+      capChoicesUsd: [25_000, 50_000, 100_000, 250_000],
+      slippageChoicesBps: [500, 1_000, 1_500],
+      activeChoicesMs: [86_400_000, 259_200_000, 604_800_000],
+      maxPvpCoins: 4,
+      speedMicroLamports: { normal: 100_000, fast: 1_000_000, turbo: 5_000_000 },
+    },
     watchMetadataPerPass: 40,
     watchMinNameChars: 4,
     /* Twenty narratives a pass, a pass every twenty seconds: 18 Oct had 13 first coins in three days. */
