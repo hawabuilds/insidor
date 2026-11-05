@@ -7,10 +7,11 @@
   <rect width="800" height="430" fill="#ffffff"/>
   <text x="24" y="26" font-size="13" fill="#111827">insidor — who imports whom</text>
   <path d="M 250 244 C 250 288, 340 288, 340 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
-  <path d="M 86 244 C 86 288, 356 288, 356 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
-  <path d="M 630 94 C 630 213, 370 213, 370 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
-  <path d="M 658 244 C 658 288, 388 288, 388 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
-  <path d="M 190 94 C 190 213, 410 213, 410 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M 366.6666666666667 94 C 366.6666666666667 213, 346.6666666666667 213, 346.6666666666667 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M 96.66666666666667 244 C 96.66666666666667 288, 366.6666666666667 288, 366.6666666666667 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M 640 94 C 640 213, 380 213, 380 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M 663.3333333333334 244 C 663.3333333333334 288, 393.3333333333333 288, 393.3333333333333 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M 193.33333333333334 94 C 193.33333333333334 213, 413.3333333333333 213, 413.3333333333333 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
   <path d="M 510 244 C 510 288, 420 288, 420 332" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
   <path d="M 600 94 C 600 138, 70 138, 70 182" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
   <path d="M 200 94 C 200 138, 150 138, 150 182" fill="none" stroke="#9ca3af" stroke-width="1.4" marker-end="url(#a)"/>
