@@ -47,6 +47,7 @@ import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 import { createLiveCoins } from './live-coins.ts';
+import { createTheses } from './theses.ts';
 
 const log = createLogger();
 
@@ -342,7 +343,9 @@ async function main(): Promise<void> {
     now: Date.now,
     solCandles: async (untilMs, minutes) => (await marketData.history(SOL, untilMs, 1, minutes)).candles,
   });
-  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds() };
+  /* The chart's fomo theses (theses.ts): a coin's kept two minutes, at most 30 calls to fomo a minute. */
+  const theses = createTheses({ cookie: cfg.fomoCookie, fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 120_000, perMinute: 30 });
+  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, theses, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */

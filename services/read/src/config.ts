@@ -103,6 +103,11 @@ export interface ReadConfig {
   readonly rpcUrl: string | null;
   /** The parsed-transactions endpoint for a wallet's buy history; null when no key is set. */
   readonly parseUrl: string | null;
+  /**
+   * The owner's fomo login cookie (`FOMO_COOKIE`), for the token chart's fomo theses (theses.ts).
+   * Set by the owner on Railway, never by code; null: the theses are "not configured".
+   */
+  readonly fomoCookie: string | null;
 }
 
 export class ConfigError extends Error {
@@ -212,5 +217,6 @@ export function loadReadConfig(env: Env): ReadConfig {
     olderCandlesFree: trimmed(env, 'MARKET_OLDER_CANDLES') === 'free',
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
+    fomoCookie: trimmed(env, 'FOMO_COOKIE'),
   };
 }
