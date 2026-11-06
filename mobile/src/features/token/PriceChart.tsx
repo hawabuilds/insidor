@@ -65,6 +65,18 @@ const MARK_LIFT_PX = 3;
 /** The bubble's tap area. */
 const MARK_TAP_PX = 32;
 const DOUBLE_TAP_MS = 280;
+/** How far each further fomo trader on one candle sits above the one below it. */
+const STACK_STEP_PX = 13;
+/** At most this many fomo traders' pictures on one candle; the card lists the rest. */
+const STACK_MAX = 3;
+
+/** One fomo trader's thesis on the chart: their picture over the candle of the minute they posted. */
+export interface ChartThesis {
+  readonly id: string;
+  readonly at: number;
+  readonly handle: string;
+  readonly pictureUrl: string | null;
+}
 
 interface Colours {
   readonly up: string;
@@ -96,7 +108,7 @@ const candleOptions = (c: Colours) => ({
 
 type Series = ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>;
 
-export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, onNotifiedTap, style, emptyLabel, onScrub }: {
+export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, onNotifiedTap, theses = [], onThesisTap, style, emptyLabel, onScrub }: {
   points: readonly ChartPoint[];
   /** All: the whole life is fitted, candles as thin as it takes. Otherwise candles keep BAR_PX and the newest sit at the right. */
   wholeLife?: boolean;
@@ -106,6 +118,10 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   notified?: { readonly at: number; readonly marketCapUsd: number | null } | null;
   /** The bubble was tapped: the block above shows when the app first showed the coin and the multiple since (CoinChart). */
   onNotifiedTap?: () => void;
+  /** fomo traders' theses: each trader's picture over the candle they posted on (the owner, 2026-11-06). */
+  theses?: readonly ChartThesis[];
+  /** A trader's picture was tapped: the card under the chart shows that thesis (CoinChart). */
+  onThesisTap?: (id: string) => void;
   /** Colours the line: green when the view ended above where it began. */
   rising: boolean;
   windowMs: number;
@@ -123,6 +139,9 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   const lastTapRef = useRef(0);
   const onScrubRef = useRef(onScrub);
   const markRef = useRef<HTMLButtonElement>(null);
+  const thesisRefs = useRef(new Map<string, HTMLButtonElement>());
+  const thesesRef = useRef(theses);
+  thesesRef.current = theses;
   const wholeLifeRef = useRef(wholeLife);
   wholeLifeRef.current = wholeLife;
   const placeMarkRef = useRef<() => void>(() => undefined);
@@ -242,7 +261,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
     /* ★ OUR MARK, AND NOTHING ELSE ON THE CHART (the owner, 2026-10-27: "just show our logo without
        words at the mc we caught it"): under the candle that holds the moment we caught the post;
        the first candle when we had it before the coin launched; none after the newest candle. */
-    placeMarkRef.current = () => {
+    const placeOurs = () => {
       const img = markRef.current;
       const ch = chartRef.current;
       const ser = seriesRef.current;
@@ -278,6 +297,43 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       /* The button is a finger's size around the 18px bubble; the bubble is drawn at its centre. */
       const pad = (MARK_TAP_PX - MARK_PX) / 2;
       img.style.transform = `translate(${Math.round(x - MARK_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX) - pad))}px)`;
+    };
+    /* ★ FOMO'S TRADERS, AS GMGN DRAWS THEM (the owner, 2026-11-06): each thesis's trader in a small
+       ringed picture just above the candle of the minute they posted, stacked upward when several
+       posted on one candle, at most STACK_MAX; none before the first candle or after the newest. */
+    const placeTheses = () => {
+      const ch = chartRef.current;
+      const ser = seriesRef.current;
+      const pts = pointsRef.current;
+      const firstPt = pts[0];
+      const lastPt = pts[pts.length - 1];
+      const onCandle = new Map<number, number>();
+      for (const th of thesesRef.current) {
+        const el = thesisRefs.current.get(th.id);
+        if (el === undefined) continue;
+        el.style.display = 'none';
+        if (ch === null || ser === null || firstPt === undefined || lastPt === undefined || th.at < firstPt.t || th.at > lastPt.t + windowMs) continue;
+        let at = firstPt;
+        for (const q of pts) {
+          if (q.t <= th.at) at = q;
+          else break;
+        }
+        const n = onCandle.get(at.t) ?? 0;
+        onCandle.set(at.t, n + 1);
+        if (n >= STACK_MAX) continue;
+        const x = ch.timeScale().timeToCoordinate(toUtcSeconds(at.t) as UTCTimestamp);
+        const y = ser.priceToCoordinate((at.high ?? at.price) * k);
+        /* Only over a candle in view: one scrolled off either side is not pinned to the edge. */
+        const width = hostRef.current?.clientWidth ?? 0;
+        if (x === null || y === null || x < 0 || x > width - AXIS_PX) continue;
+        const pad = (MARK_TAP_PX - MARK_PX) / 2;
+        el.style.display = 'flex';
+        el.style.transform = `translate(${Math.round(x - MARK_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX - n * STACK_STEP_PX) - pad))}px)`;
+      }
+    };
+    placeMarkRef.current = () => {
+      placeTheses();
+      placeOurs();
     };
     if (series === null || data.length === 0) {
       placeMarkRef.current();
@@ -315,7 +371,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       fit();
     }
     placeMarkRef.current();
-  }, [data, fit, points, rising, style, windowMs, scale, notified]);
+  }, [data, fit, points, rising, style, windowMs, scale, notified, theses]);
 
   const reset = useCallback(() => {
     fit();
@@ -334,6 +390,29 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         lastTapRef.current = now;
       }}
     >
+      {theses.map((th) => (
+        <button
+          key={th.id}
+          ref={(el) => {
+            if (el === null) thesisRefs.current.delete(th.id);
+            else thesisRefs.current.set(th.id, el);
+          }}
+          type="button"
+          className={styles['thesisTap']}
+          aria-label={`@${th.handle} on fomo`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onThesisTap?.(th.id);
+          }}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {th.pictureUrl !== null ? (
+            <img className={styles['thesisPic']} src={th.pictureUrl} alt="" draggable={false} loading="lazy" />
+          ) : (
+            <span className={styles['thesisPic']} aria-hidden="true">{th.handle.slice(0, 1).toUpperCase()}</span>
+          )}
+        </button>
+      ))}
       <button
         ref={markRef}
         type="button"

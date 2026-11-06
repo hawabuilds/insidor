@@ -16,7 +16,7 @@
 
 import { Suspense, useMemo, useState } from 'react';
 
-import type { CoinMarket } from '../../shared/api/index.ts';
+import type { CoinMarket, CoinTheses, Thesis } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { compactMoney, formatChangePercent, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { value, type Rendered } from '../../shared/format/rendered.ts';
@@ -39,7 +39,7 @@ const CHART_HEIGHT = 200;
 /** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
 export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;
 
-export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
+export function CoinChart({ market, state, view, onView, ageMs, notified, theses = null, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
   view: ChartView;
@@ -48,6 +48,8 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   ageMs: number | null;
   /** When we first pushed this coin to phones, and the market cap the push carried: our bubble goes there. Null: none. */
   notified: { readonly at: number; readonly marketCapUsd: number | null } | null;
+  /** What fomo's traders wrote about the coin (the owner, 2026-11-06); null while reading or where the page has none. */
+  theses?: CoinTheses | null;
   /** The coin's own price and 24-hour change, shown when there are no candles to read. */
   price: Measured;
   change24h: Measured;
@@ -61,6 +63,12 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when the app first showed the coin and the
      multiple since; nothing is drawn over the chart. Touching the chart or the bubble again ends it. */
   const [alerted, setAlerted] = useState(false);
+  /* A fomo trader's picture tapped: their thesis in a card under the chart; the same picture again closes it. */
+  const [openThesis, setOpenThesis] = useState<string | null>(null);
+  const thesisList: readonly Thesis[] = theses?.kind === 'read' ? theses.theses : [];
+  const shownThesis = openThesis === null ? null : (thesisList.find((t) => t.id === openThesis) ?? null);
+  /* The thesis card stays while the finger reads candles (a tap on a picture is also a touch on the
+     chart); it closes on its picture again or a new timeframe. */
   const scrub = (p: ChartPoint | null) => {
     if (p !== null) setAlerted(false);
     setScrubbed(p);
@@ -144,8 +152,25 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
           </div>
         }
       >
-        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} />
+        <PriceChart
+          points={points}
+          rising={rising}
+          windowMs={period * CHART_WINDOW_BARS}
+          wholeLife={view === 'all'}
+          scale={supply}
+          notified={notified}
+          theses={thesisList}
+          style={style}
+          emptyLabel={chartNote(state, market, tf)}
+          onScrub={scrub}
+          onNotifiedTap={() => setAlerted((a) => !a)}
+          onThesisTap={(id) => setOpenThesis((o) => (o === id ? null : id))}
+        />
       </Suspense>
+      {shownThesis !== null ? <ThesisCard thesis={shownThesis} /> : null}
+      {/* fomo's traders could not be read (not when the feature is simply not set up): said, so a chart
+          with no pictures is never read as "nobody wrote about it". */}
+      {theses?.kind === 'missing' && theses.why !== 'not_configured' ? <p className={styles['thesesNote']}>fomo theses unavailable right now</p> : null}
       {/* ★ A chart from our own record that began after the coin launched says where it starts (2026-10-29):
           never a chart that reads as if the coin was born at its left edge. */}
       {read !== null && read.chartFrom !== null ? (
@@ -163,6 +188,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
               onClick={() => {
                 setScrubbed(null);
                 setAlerted(false);
+                setOpenThesis(null);
                 onView(v);
               }}
             >
@@ -176,5 +202,44 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
         </div>
       </div>
     </>
+  );
+}
+
+/** "+$1.2K", "-$138": a dollar amount with its sign in front of the dollar sign. */
+const signedMoney = (v: number): string => `${v < 0 ? '-' : '+'}$${compactMoney(Math.abs(v))}`;
+
+/**
+ * One fomo thesis, under the chart: the trader (picture, name, handle), when, their words, the cap
+ * when they posted, their position as fomo reports it, and fomo's name with a link to the coin there.
+ * fomo's numbers as fomo reports them: nothing here says the trader was right or wrong.
+ */
+function ThesisCard({ thesis }: { thesis: Thesis }) {
+  const p = thesis.position;
+  return (
+    <div className={styles['thesisCard']}>
+      <div className={styles['thesisHead']}>
+        {thesis.pictureUrl !== null ? <img src={thesis.pictureUrl} alt="" /> : <span className={styles['thesisLetter']} aria-hidden="true">{thesis.handle.slice(0, 1).toUpperCase()}</span>}
+        <span className={styles['thesisWho']}>
+          <b>{thesis.name ?? thesis.handle}</b>
+          <span>@{thesis.handle}, {clock(thesis.at)}</span>
+        </span>
+        <span className={styles['thesisVia']}>
+          <img src="https://fomo.family/apple-touch-icon.png" alt="" />
+          fomo
+        </span>
+      </div>
+      <p className={styles['thesisText']}>{thesis.text}</p>
+      <div className={styles['thesisFacts']}>
+        {thesis.marketCapUsd !== null ? <span>Posted at ${compactMoney(thesis.marketCapUsd)}</span> : null}
+        {p !== null && p.closed ? <span>Position closed</span> : null}
+        {p !== null && !p.closed && p.valueUsd !== null ? (
+          <span>
+            Holds ${compactMoney(p.valueUsd)}
+            {p.pnlUsd !== null ? <span className={p.pnlUsd >= 0 ? styles['up'] : styles['down']}> {signedMoney(p.pnlUsd)}</span> : null}
+          </span>
+        ) : null}
+        <a href={thesis.url} target="_blank" rel="noreferrer">Open on fomo ›</a>
+      </div>
+    </div>
   );
 }
