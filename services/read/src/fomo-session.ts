@@ -51,14 +51,13 @@ export function jwtExpiryMs(jwt: string): number | null {
   }
 }
 
-/** The access token out of a Privy session reply: the first JWT-shaped field, else a `privy-token` Set-Cookie. */
+/** The access token out of a Privy session reply: the first JWT-shaped field, else a Set-Cookie token. */
 function accessTokenOf(body: Record<string, unknown>, setCookie: string | null): string | null {
   for (const k of ['token', 'privy_access_token', 'access_token']) {
     const v = body[k];
     if (typeof v === 'string' && v.split('.').length === 3) return v;
   }
-  const m = setCookie?.match(/privy-token=([^;]+)/);
-  return m?.[1] ?? null;
+  return setCookie?.match(/privy-(?:access-)?token=([^;]+)/)?.[1] ?? null;
 }
 
 /** The rotated refresh token out of a reply: its field, else a `privy-refresh-token` Set-Cookie; null keeps the one we have. */
@@ -113,9 +112,18 @@ export function createFomoSession(deps: FomoSessionDeps): { cookie: () => Promis
   async function refresh(): Promise<SessionResult> {
     if (refreshToken === null) return { cookie: null, why: 'not_configured' };
     try {
+      /* Privy moved the refresh token from localStorage to an httpOnly cookie, so the renewal sends it
+         BOTH as that cookie and in the body: whichever Privy reads, it works (the owner, 2026-11-07,
+         confirmed the cookie is `privy-refresh-token` on fomo's Privy domain). */
       const res = await deps.fetch(deps.cfg.privyUrl, {
         method: 'POST',
-        headers: { 'privy-app-id': deps.cfg.appId, origin: deps.cfg.origin, 'content-type': 'application/json', accept: 'application/json' },
+        headers: {
+          'privy-app-id': deps.cfg.appId,
+          origin: deps.cfg.origin,
+          'content-type': 'application/json',
+          accept: 'application/json',
+          cookie: `privy-refresh-token=${refreshToken}`,
+        },
         body: JSON.stringify({ refresh_token: refreshToken }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

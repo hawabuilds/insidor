@@ -34,8 +34,10 @@ test('no refresh token: not configured, and Privy is never called', async () => 
 test('★ renews before expiry, sends the access token as a privy-token cookie, and rotates the refresh token', async () => {
   let now = 1_000_000;
   const bodies: string[] = [];
+  const cookies: string[] = [];
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     bodies.push(String(init.body));
+    cookies.push(String((init.headers as Record<string, string>)['cookie']));
     const n = bodies.length;
     return new Response(JSON.stringify({ token: jwtWithExp(Math.floor(now / 1000) + 3600), refresh_token: `refresh-${n}` }));
   }) as unknown as typeof globalThis.fetch;
@@ -45,6 +47,7 @@ test('★ renews before expiry, sends the access token as a privy-token cookie, 
   assert.equal('cookie' in first && first.cookie?.startsWith('privy-token='), true);
   assert.match((first as { cookie: string }).cookie, /privy-session=privy\.fomo\.family/);
   assert.equal(JSON.parse(bodies[0] ?? '{}').refresh_token, 'refresh-0', 'the env refresh token is used first');
+  assert.equal(cookies[0], 'privy-refresh-token=refresh-0', 'the refresh token is also sent as the cookie Privy now reads');
 
   await s.cookie();
   assert.equal(bodies.length, 1, 'still fresh: no second call to Privy');
