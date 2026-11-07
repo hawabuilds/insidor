@@ -137,6 +137,14 @@ export interface ThesesDeps {
   readonly perMinute: number;
   /** The headers fomo's own app sends (APP_HEADERS); without them fomo's API refuses the call. */
   readonly appHeaders: Record<string, string>;
+  /**
+   * ★ AN UPSTREAM THAT RETURNS FOMO'S THESIS JSON ITSELF (`FOMO_THESES_PROXY`). Set, every read goes
+   * to `<proxy>?mint=<address>` and the fomo login here is skipped — that upstream owns the fetch and
+   * auth, and hands back fomo's raw `{success, responseObject:{items}}`, which we parse as usual. Null:
+   * we call fomo directly with the renewed login above. The two are interchangeable to everything
+   * downstream (the bubbles, the cache, the cap).
+   */
+  readonly proxyUrl: string | null;
 }
 
 /** A coin's theses by its Solana address, kept `keepMs`, at most `perMinute` calls to fomo a minute. */
@@ -144,34 +152,60 @@ export function createTheses(deps: ThesesDeps): (address: string) => Promise<The
   const kept = new Map<string, { readonly at: number; readonly reply: ThesesReply }>();
   const asked: number[] = [];
   const KEPT_MAX = 500;
+  /** One coin's raw fomo JSON through the upstream proxy: no login, the proxy owns the fetch. */
+  async function viaProxy(proxy: string, address: string): Promise<ThesesReply> {
+    try {
+      const url = `${proxy}${proxy.includes('?') ? '&' : '?'}mint=${encodeURIComponent(address)}`;
+      const res = await deps.fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (!res.ok) {
+        deps.log.info('fomo theses upstream unavailable', { status: res.status });
+        return { theses: null, why: 'unavailable' };
+      }
+      const body: unknown = await res.json();
+      return rec(body)['success'] === false ? { theses: null, why: 'unavailable' } : { theses: decodeTheses(body, address) };
+    } catch (e) {
+      deps.log.info('fomo theses upstream unavailable', { err: e instanceof Error ? e.message : String(e) });
+      return { theses: null, why: 'unavailable' };
+    }
+  }
+
+  /** One coin's raw fomo JSON straight from fomo, with the renewed login and fomo's own app headers. */
+  async function direct(cookie: string, address: string): Promise<ThesesReply> {
+    try {
+      const url = `${FEED_URL}?tokenAddress=${encodeURIComponent(address)}&networkId=${FOMO_SOLANA_NETWORK}&threshold=${FEED_MIN_POSITION_USD}`;
+      const res = await deps.fetch(url, { headers: { ...deps.appHeaders, cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (res.status === 401 || res.status === 403) {
+        deps.log.info('fomo theses: the login was refused by fomo', { status: res.status });
+        return { theses: null, why: 'login_expired' };
+      }
+      if (!res.ok) {
+        deps.log.info('fomo theses unavailable', { status: res.status });
+        return { theses: null, why: 'unavailable' };
+      }
+      const body: unknown = await res.json();
+      return rec(body)['success'] === false ? { theses: null, why: 'unavailable' } : { theses: decodeTheses(body, address) };
+    } catch (e) {
+      deps.log.info('fomo theses unavailable', { err: e instanceof Error ? e.message : String(e) });
+      return { theses: null, why: 'unavailable' };
+    }
+  }
+
   return async (address) => {
     const now = deps.now();
     const hit = kept.get(address);
     if (hit !== undefined && now - hit.at < deps.keepMs) return hit.reply;
-    /* The login first: no cookie is a reason of its own (not configured, expired, Privy down), not a fomo call. */
-    const login = await deps.cookie();
-    if (login.cookie === null) return { theses: null, why: login.why };
+    /* With an upstream, the proxy owns the login; without one, we need our own renewed cookie first.
+       Either way no cookie is a reason of its own (not configured, expired, down), never a blind call. */
+    let cookie: string | null = null;
+    if (deps.proxyUrl === null) {
+      const login = await deps.cookie();
+      if (login.cookie === null) return { theses: null, why: login.why };
+      cookie = login.cookie;
+    }
     while (asked.length > 0 && now - (asked[0] ?? 0) >= 60_000) asked.shift();
     if (asked.length >= deps.perMinute) return hit?.reply ?? { theses: null, why: 'busy' };
     asked.push(now);
-    let reply: ThesesReply;
-    try {
-      const url = `${FEED_URL}?tokenAddress=${encodeURIComponent(address)}&networkId=${FOMO_SOLANA_NETWORK}&threshold=${FEED_MIN_POSITION_USD}`;
-      const res = await deps.fetch(url, { headers: { ...deps.appHeaders, cookie: login.cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (res.status === 401 || res.status === 403) {
-        reply = { theses: null, why: 'login_expired' };
-        deps.log.info('fomo theses: the login was refused by fomo', { status: res.status });
-      } else if (!res.ok) {
-        reply = { theses: null, why: 'unavailable' };
-        deps.log.info('fomo theses unavailable', { status: res.status });
-      } else {
-        const body: unknown = await res.json();
-        reply = rec(body)['success'] === false ? { theses: null, why: 'unavailable' } : { theses: decodeTheses(body, address) };
-      }
-    } catch (e) {
-      reply = { theses: null, why: 'unavailable' };
-      deps.log.info('fomo theses unavailable', { err: e instanceof Error ? e.message : String(e) });
-    }
+    const reply = deps.proxyUrl !== null ? await viaProxy(deps.proxyUrl, address) : await direct(cookie as string, address);
     /* A refused login is kept too, so an expired cookie is not asked again by every viewer. */
     if (kept.size >= KEPT_MAX) kept.delete(kept.keys().next().value ?? '');
     kept.set(address, { at: now, reply });

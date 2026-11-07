@@ -49,14 +49,14 @@ test('★ a thesis keeps who, when, the words, the cap then and the position as 
 });
 
 type Login = { readonly cookie: string } | { readonly cookie: null; readonly why: 'not_configured' | 'login_expired' | 'unavailable' };
-const deps = (fetchImpl: typeof globalThis.fetch, login: Login = { cookie: 'privy-token=abc' }) => {
+const deps = (fetchImpl: typeof globalThis.fetch, login: Login = { cookie: 'privy-token=abc' }, proxyUrl: string | null = null) => {
   let t = 1_000_000;
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const f = (async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     return fetchImpl(url, init);
   }) as typeof globalThis.fetch;
-  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie: async () => login, appHeaders: { 'app-build': 'test' }, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
+  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie: async () => login, proxyUrl, appHeaders: { 'app-build': 'test' }, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
 };
 const ok = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof globalThis.fetch;
 
@@ -73,6 +73,14 @@ test('no login means fomo is never called', async () => {
   const d = deps(ok(REPLY), { cookie: null, why: 'not_configured' });
   await d.get(ADDR);
   assert.equal(d.calls.length, 0);
+});
+
+test('★ with an upstream, it is asked for the coin by mint with no fomo login, and its fomo JSON is read as usual', async () => {
+  const d = deps(ok(REPLY), { cookie: null, why: 'not_configured' }, 'https://theses.example/fomo');
+  assert.equal(((await d.get(ADDR)) as { theses: readonly unknown[] }).theses.length, 2);
+  assert.equal(d.calls[0]?.url, `https://theses.example/fomo?mint=${ADDR}`);
+  assert.equal((d.calls[0]?.init?.headers as Record<string, string>)['cookie'], undefined, 'no fomo login goes to the upstream');
+  assert.deepEqual(await deps(ok({}, 502), { cookie: 'x' }, 'https://theses.example/fomo').get(ADDR), { theses: null, why: 'unavailable' });
 });
 
 test('one coin is asked once while kept; the minute cap answers from what is kept, or busy', async () => {

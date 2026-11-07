@@ -108,6 +108,11 @@ export interface ReadConfig {
    * Set by the owner on Railway, never by code; null: the theses are "not configured".
    */
   readonly fomoCookie: string | null;
+  /**
+   * An upstream that returns fomo's thesis JSON itself (`FOMO_THESES_PROXY`). Set, the theses reader
+   * calls it instead of fomo directly and skips the fomo login; null: it calls fomo. See theses.ts.
+   */
+  readonly thesesProxy: string | null;
 }
 
 export class ConfigError extends Error {
@@ -218,5 +223,6 @@ export function loadReadConfig(env: Env): ReadConfig {
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
     fomoCookie: trimmed(env, 'FOMO_COOKIE'),
+    thesesProxy: ((u) => (u !== null && /^https?:\/\//.test(u) ? u : null))(trimmed(env, 'FOMO_THESES_PROXY')),
   };
 }
