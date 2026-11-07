@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -253,7 +253,7 @@ export async function rugSweep(
   if (crashed.length === 0) return 0;
   const rows = await repo.candidatesOf(crashed.map((p) => p.subjectId));
   const addresses = [...new Set(rows.map((r) => r.address))];
-  const [trades, watched, market] = await Promise.all([repo.tradeFacts(addresses), repo.watched(addresses, now), repo.marketFacts(addresses, now - RUG_SWEEP_MS)]);
+  const { trades, watched, market } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
   const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
   const byItem = new Map<string, CandidateRow[]>();
   for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
@@ -263,6 +263,21 @@ export async function rugSweep(
     return rs === undefined || rs.length === 0 ? [] : [pickWrite(p.subjectId, judge(rs, p, facts), p, now, P.mode)];
   });
   return writes.length === 0 ? 0 : repo.writePicks('post', writes, prev, P.mode, now);
+}
+
+/**
+ * A list of coins' watch, market, and optionally trades and last hour: in one statement through the
+ * store (`coinFacts`, which sends the list once), or by the separate reads where a repo has none.
+ */
+async function factsOf(repo: OneCoinDeps['repo'], addresses: readonly string[], now: number, opts: { readonly marketSinceMs: number; readonly trades: boolean; readonly hoursSinceMs: number | null }) {
+  if (repo.coinFacts !== undefined) return repo.coinFacts(addresses, now, opts);
+  const [watched, market, trades, hours] = await Promise.all([
+    repo.watched(addresses, now),
+    repo.marketFacts(addresses, opts.marketSinceMs),
+    opts.trades ? repo.tradeFacts(addresses) : Promise.resolve(null),
+    opts.hoursSinceMs === null || repo.lastHours === undefined ? Promise.resolve(null) : repo.lastHours(addresses, opts.hoursSinceMs),
+  ]);
+  return { watched, market, trades, hours };
 }
 
 /** How far back the waiting sweep looks, how many posts it judges a pass, and the trade peak (in the quote token) a candidate needs. */
@@ -301,11 +316,7 @@ export async function waitingSweep(
   /* ★ ON FRESH READINGS ALONE. The coin watcher follows a coin's trades only while it is watched, so
      hours later its trade state is the state it had then (Fp4Jkq…'s last trade on file is 02:25, two
      hours before it bonded): judged on that, a coin that ran later would look like it never did. */
-  const [watched, fresh, hours] = await Promise.all([
-    repo.watched(addresses, now),
-    repo.marketFacts(addresses, now - WAITING_FRESH_MS),
-    repo.lastHours === undefined ? Promise.resolve(null) : repo.lastHours(addresses, now - WAITING_FRESH_MS),
-  ]);
+  const { watched, market: fresh, hours } = await factsOf(repo, addresses, now, { marketSinceMs: now - WAITING_FRESH_MS, trades: false, hoursSinceMs: repo.lastHours === undefined && repo.coinFacts === undefined ? null : now - WAITING_FRESH_MS });
   /* ★ ONLY A COIN THAT TRADED IN ITS LAST HOUR. A market source can keep answering a curve that
      stopped trading at its old price: $DX1MhZ… read $41,261 with $0 traded for nine hours while its
      trades had fallen to about $2k. Without a last hour that traded, a reading is not a price. */
@@ -556,11 +567,9 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const memberRows = await repo.candidatesOf([...new Set([...narratives.values()].flat())].filter((m) => !byPost.has(m)));
   const allRows = [...open, ...memberRows];
   const addresses = [...new Set(allRows.map((r) => r.address))];
-  const [trades, feedAt, watched, market, fit] = await Promise.all([
-    repo.tradeFacts(addresses),
+  const [{ trades, watched, market }, feedAt, fit] = await Promise.all([
+    factsOf(repo, addresses, now, { marketSinceMs: now - P.postWindowMs - P.watchMs, trades: true, hoursSinceMs: null }),
     repo.tradeFeedAt(),
-    repo.watched(addresses, now),
-    repo.marketFacts(addresses, now - P.postWindowMs - P.watchMs),
     repo.appliedFit(),
   ]);
   const running = trades !== null && feedAt !== null && now - feedAt <= P.tradeFeedFreshMs;

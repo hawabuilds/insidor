@@ -130,6 +130,30 @@ const PROMO_OF = (alias: string): string => `
 const ms = (v: unknown): number | null => (v === null || v === undefined ? null : new Date(v as string).getTime());
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const hex = (v: unknown): string | null => (v === null || v === undefined ? null : fromBits(v as string));
+export interface MarketFact { readonly capUsd: number; readonly peakCapUsd: number; readonly readAtMs: number; readonly liquidityUsd: number | null }
+export interface LastHour { readonly volume1hUsd: number; readonly trades1h: number; readonly capUsd: number | null }
+
+/* One coin's row of each lookup, read the same whether it came alone or in `coinFacts`. */
+const marketFactOf = (r: { cap: unknown; liq: unknown; peak: unknown; at: unknown }): MarketFact => ({ capUsd: Number(r.cap), peakCapUsd: Number(r.peak), readAtMs: new Date(r.at as string).getTime(), liquidityUsd: num(r.liq) });
+const lastHourOf = (r: Record<string, unknown>): LastHour | null => {
+  const v = num(r['v']);
+  const b = num(r['b']);
+  const s = num(r['s']);
+  return v !== null && b !== null && s !== null && Number.isFinite(v + b + s) ? { volume1hUsd: v, trades1h: b + s, capUsd: num(r['cap']) } : null;
+};
+const truthy = (v: string | null): boolean => v !== null && (v === 'true' || v === 't' || (/^[0-9.eE+-]+$/.test(v) && Number(v) > 0));
+const tradeRollupOf = (r: { net: string | null; new_buyers: string | null; last_usd: string | null; last_cap: string | null; peak_minutes: string | null; creator_minutes: string | null; unique_buyers: string | null; peak: string | null; state_cap: string | null; creator_flag: string | null }): TradeRollup => {
+  const peak = [num(r.peak), num(r.peak_minutes)].filter((x): x is number => x !== null);
+  return {
+    uniqueBuyers: num(r.unique_buyers) ?? num(r.new_buyers) ?? 0,
+    netBuy: num(r.net) ?? 0,
+    capUsd: num(r.last_usd),
+    cap: num(r.state_cap) ?? num(r.last_cap),
+    peakCap: peak.length === 0 ? null : Math.max(...peak),
+    creatorSold: truthy(r.creator_flag) || truthy(r.creator_minutes),
+  };
+};
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []);
 
 interface PostRow {
@@ -727,18 +751,7 @@ export class PgOneCoinRepo {
             and not exists (select 1 from internal.coin_watch w where w.address = a.address and w.unmeasured_from is not null)`,
         [[...addresses]],
       );
-      const truthy = (v: string | null): boolean => v !== null && (v === 'true' || v === 't' || (/^[0-9.eE+-]+$/.test(v) && Number(v) > 0));
-      return new Map(rows.map((r) => {
-        const peak = [num(r.peak), num(r.peak_minutes)].filter((x): x is number => x !== null);
-        return [r.address, {
-          uniqueBuyers: num(r.unique_buyers) ?? num(r.new_buyers) ?? 0,
-          netBuy: num(r.net) ?? 0,
-          capUsd: num(r.last_usd),
-          cap: num(r.state_cap) ?? num(r.last_cap),
-          peakCap: peak.length === 0 ? null : Math.max(...peak),
-          creatorSold: truthy(r.creator_flag) || truthy(r.creator_minutes),
-        }] as const;
-      }));
+      return new Map(rows.map((r) => [r.address, tradeRollupOf(r)] as const));
     } catch (e) {
       if (missingTable(e)) return null;
       throw e;
@@ -779,7 +792,94 @@ export class PgOneCoinRepo {
         where a.address = any($1::text[])`,
       [[...addresses], new Date(sinceMs).toISOString()],
     );
-    return new Map(rows.map((r) => [r.address, { capUsd: Number(r.cap), peakCapUsd: Number(r.peak), readAtMs: new Date(r.at).getTime(), liquidityUsd: num(r.liq) }] as const));
+    return new Map(rows.map((r) => [r.address, marketFactOf(r)] as const));
+  }
+
+  /**
+   * ★ `watched`, `marketFacts`, and optionally `tradeFacts` and `lastHours`, for ONE list of coins, in
+   * ONE statement (2026-11-07). A pass asked the four separately with the same several thousand
+   * addresses, so the list crossed the wire up to four times — ~40% of the runner's database egress.
+   * Each part below is its method's own statement over the list sent once, and each row is read by the
+   * same function, so every answer is the one the four calls give. The parts run one after another in
+   * one statement where the calls ran side by side; copy-tested for time as well as answers. Null
+   * trades: 0112 or 0114 is not applied (the whole statement then falls back to the separate calls).
+   */
+  async coinFacts(addresses: readonly string[], nowMs: number, opts: { readonly marketSinceMs: number; readonly trades: boolean; readonly hoursSinceMs: number | null }): Promise<{
+    readonly watched: ReadonlySet<string>;
+    readonly market: ReadonlyMap<string, MarketFact>;
+    readonly trades: ReadonlyMap<string, TradeRollup> | null;
+    readonly hours: ReadonlyMap<string, LastHour> | null;
+  }> {
+    const asked = [...new Set(addresses)];
+    if (asked.length === 0) return { watched: new Set(), market: new Map(), trades: opts.trades ? new Map() : null, hours: opts.hoursSinceMs === null ? null : new Map() };
+    const held = this.#watchedHeld;
+    let rows: { k: 'w' | 'm' | 't' | 'h'; address: string; d: Record<string, unknown> }[];
+    try {
+      rows = await this.#db.query(
+        `with a as (select * from unnest($1::text[], $2::boolean[]) as a(address, held))
+         select 'w' as k, a.address, jsonb_build_object('ok', w.address is not null) as d
+           from a left join internal.coin_watch w
+             on w.address = a.address and w.since <= $3 and w.measured_from is not null and w.measured_from <= $3 and w.unmeasured_from is null
+          where a.held is distinct from (w.address is not null)
+         union all
+         select 'm', x.address, jsonb_build_object('cap', r.cap, 'liq', r.liq, 'peak', r.peak, 'at', r.at)
+           from public.asset x
+           join lateral (
+             select (array_agg(market_cap_usd order by taken_at desc))[1] as cap, (array_agg(liquidity_usd order by taken_at desc))[1] as liq,
+                    max(market_cap_usd) as peak, max(taken_at) as at
+               from public.market_reading m
+              where m.asset_key = x.asset_key and m.taken_at >= $4 and m.market_cap_usd is not null
+           ) r on r.cap is not null
+          where x.address in (select address from a)
+         union all
+         select 't', a.address, jsonb_build_object('net', mm.net, 'new_buyers', mm.new_buyers, 'last_usd', mm.last_usd, 'last_cap', mm.last_cap,
+                  'peak_minutes', mm.peak_minutes, 'creator_minutes', mm.creator_minutes, 'unique_buyers', s.unique_buyers::text,
+                  'peak', s.peak_mcap_sol::text, 'state_cap', s.last_mcap_sol::text, 'creator_flag', s.creator_sold::text)
+           from a
+           left join lateral (
+             select sum(net_sol)::text as net, sum(new_buyers)::text as new_buyers, max(last_mcap_sol)::text as peak_minutes,
+                    sum(creator_sold_sol)::text as creator_minutes,
+                    (array_agg(last_mcap_usd order by minute desc) filter (where last_mcap_usd is not null))[1]::text as last_usd,
+                    (array_agg(last_mcap_sol order by minute desc) filter (where last_mcap_sol is not null))[1]::text as last_cap,
+                    count(*) as n
+               from internal.coin_trade_minute m where m.address = a.address) mm on true
+           left join internal.coin_trade_state s on s.address = a.address
+          where $5::boolean and (mm.n > 0 or s.address is not null)
+            and not exists (select 1 from internal.coin_watch w where w.address = a.address and w.unmeasured_from is not null)
+         union all
+         select 'h', y.address, jsonb_build_object('v', y.v, 'b', y.b, 's', y.s, 'cap', y.cap)
+           from (select distinct on (x.address) x.address, m.volume_1h_usd as v, m.buys_1h as b, m.sells_1h as s, m.market_cap_usd as cap
+                   from public.asset x join public.market_reading m on m.asset_key = x.asset_key
+                  where $6::timestamptz is not null and x.address in (select address from a) and m.taken_at >= $6::timestamptz
+                  order by x.address, m.taken_at desc) y`,
+        [asked, asked.map((a) => held.get(a) ?? null), new Date(nowMs).toISOString(), new Date(opts.marketSinceMs).toISOString(), opts.trades, opts.hoursSinceMs === null ? null : new Date(opts.hoursSinceMs).toISOString()],
+      );
+    } catch (e) {
+      if (!missingTable(e)) throw e;
+      const [watched, market, trades, hours] = await Promise.all([
+        this.watched(asked, nowMs),
+        this.marketFacts(asked, opts.marketSinceMs),
+        opts.trades ? this.tradeFacts(asked) : Promise.resolve(null),
+        opts.hoursSinceMs === null ? Promise.resolve(null) : this.lastHours(asked, opts.hoursSinceMs),
+      ]);
+      return { watched, market, trades, hours };
+    }
+    const market = new Map<string, MarketFact>();
+    const trades = opts.trades ? new Map<string, TradeRollup>() : null;
+    const hours = opts.hoursSinceMs === null ? null : new Map<string, LastHour>();
+    const watchRows: { address: string; ok: boolean }[] = [];
+    for (const r of rows) {
+      if (r.k === 'w') watchRows.push({ address: r.address, ok: r.d['ok'] === true });
+      else if (r.k === 'm') market.set(r.address, marketFactOf(r.d as never));
+      else if (r.k === 't') trades?.set(r.address, tradeRollupOf(r.d as never));
+      else {
+        const h = lastHourOf(r.d);
+        if (h !== null) hours?.set(r.address, h);
+      }
+    }
+    if (held.size + watchRows.length > HELD_WATCH_MAX) held.clear();
+    for (const r of watchRows) held.set(r.address, r.ok);
+    return { watched: new Set(asked.filter((a) => held.get(a) === true)), market, trades, hours };
   }
 
   /** Each coin's market readings since `sinceMs`, oldest first, with each reading's pool (the replay's fallback). */
@@ -1004,12 +1104,10 @@ export class PgOneCoinRepo {
         order by a.address, m.taken_at desc`,
       [[...new Set(addresses)], new Date(sinceMs).toISOString()],
     );
-    const out = new Map<string, { volume1hUsd: number; trades1h: number; capUsd: number | null }>();
+    const out = new Map<string, LastHour>();
     for (const r of rows) {
-      const v = num(r.v);
-      const b = num(r.b);
-      const s = num(r.s);
-      if (v !== null && b !== null && s !== null && Number.isFinite(v + b + s)) out.set(r.address, { volume1hUsd: v, trades1h: b + s, capUsd: num(r.cap) });
+      const h = lastHourOf(r);
+      if (h !== null) out.set(r.address, h);
     }
     return out;
   }
