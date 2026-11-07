@@ -6244,7 +6244,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v228',
+  version: 'policy.v229',
 
   admit: {
     maxAgeMin: 240,
@@ -8852,11 +8852,13 @@ const POLICY_V1: Policy = {
     minCoveredFraction: 0.99,
   },
 
-  /* Off until the owner's yes. A slimmed post had about 9 readings besides its first ones (12–18
-     Oct), so a batch of 500 is ~4,500 rows and one DELETE of at most 5,000 usually finishes it; 40
-     batches is 20,000 posts, a day of them and more, per hourly run. */
+  /* On (the owner, 2026-11-07: "archive first"): what a batch removes goes to the private bucket
+     post-slim-archive and is checked before it is deleted (tools/post-slim.ts). A slimmed post had
+     about 9 readings besides its first ones (12–18 Oct), so a batch of 500 is ~4,500 rows and one
+     DELETE of at most 5,000 usually finishes it; 40 batches is 20,000 posts, a day of them and more,
+     per hourly run. */
   slim: {
-    on: false,
+    on: true,
     afterMs: 604_800_000, // 7 days
     postsPerBatch: 500,
     rowsPerStatement: 5_000,
