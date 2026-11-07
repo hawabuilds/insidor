@@ -65,8 +65,11 @@ const MARK_LIFT_PX = 3;
 /** The bubble's tap area. */
 const MARK_TAP_PX = 32;
 const DOUBLE_TAP_MS = 280;
+/** A fomo trader's picture, and the finger-sized button around it. */
+const THESIS_PX = 24;
+const THESIS_TAP_PX = 34;
 /** How far each further fomo trader on one candle sits above the one below it. */
-const STACK_STEP_PX = 13;
+const STACK_STEP_PX = 17;
 /** At most this many fomo traders' pictures on one candle; the card lists the rest. */
 const STACK_MAX = 3;
 
@@ -120,8 +123,8 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   onNotifiedTap?: () => void;
   /** fomo traders' theses: each trader's picture over the candle they posted on (the owner, 2026-11-06). */
   theses?: readonly ChartThesis[];
-  /** A trader's picture was tapped: the card under the chart shows that thesis (CoinChart). */
-  onThesisTap?: (id: string) => void;
+  /** A trader's picture was tapped, its centre at (`x`, `y`) px in a chart `width` px wide: the card opens beside it (CoinChart). */
+  onThesisTap?: (id: string, x: number, y: number, width: number) => void;
   /** Colours the line: green when the view ended above where it began. */
   rising: boolean;
   windowMs: number;
@@ -326,9 +329,11 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         /* Only over a candle in view: one scrolled off either side is not pinned to the edge. */
         const width = hostRef.current?.clientWidth ?? 0;
         if (x === null || y === null || x < 0 || x > width - AXIS_PX) continue;
-        const pad = (MARK_TAP_PX - MARK_PX) / 2;
+        const pad = (THESIS_TAP_PX - THESIS_PX) / 2;
         el.style.display = 'flex';
-        el.style.transform = `translate(${Math.round(x - MARK_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX - n * STACK_STEP_PX) - pad))}px)`;
+        el.dataset['x'] = String(Math.round(x));
+        el.dataset['y'] = String(Math.round(Math.max(THESIS_PX / 2, y - THESIS_PX / 2 - MARK_LIFT_PX - n * STACK_STEP_PX)));
+        el.style.transform = `translate(${Math.round(x - THESIS_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - THESIS_PX - 26, y - THESIS_PX - MARK_LIFT_PX - n * STACK_STEP_PX) - pad))}px)`;
       }
     };
     placeMarkRef.current = () => {
@@ -402,7 +407,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
           aria-label={`@${th.handle} on fomo`}
           onClick={(e) => {
             e.stopPropagation();
-            onThesisTap?.(th.id);
+            onThesisTap?.(th.id, Number(e.currentTarget.dataset['x'] ?? 0), Number(e.currentTarget.dataset['y'] ?? 0), hostRef.current?.clientWidth ?? 0);
           }}
           onTouchEnd={(e) => e.stopPropagation()}
         >
@@ -411,6 +416,8 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
           ) : (
             <span className={styles['thesisPic']} aria-hidden="true">{th.handle.slice(0, 1).toUpperCase()}</span>
           )}
+          {/* fomo's mark on every one of its traders: where the picture comes from. */}
+          <img className={styles['thesisBadge']} src="https://fomo.family/apple-touch-icon.png" alt="" draggable={false} />
         </button>
       ))}
       <button

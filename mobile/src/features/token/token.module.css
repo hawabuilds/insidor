@@ -719,16 +719,16 @@
   margin-right: 6px;
 }
 
-/* A fomo trader's thesis on the chart (PriceChart): their picture in a small ringed circle over the
-   candle they posted on, as GMGN draws them; our own mark keeps the green ring, theirs a quiet one. */
+/* A fomo trader's thesis on the chart (PriceChart): their picture in our purple ring over the candle
+   they posted on, fomo's mark at its corner. Our own mark keeps the green ring. */
 .thesisTap {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 2;
   display: none;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   align-items: center;
   justify-content: center;
@@ -737,101 +737,145 @@
 .thesisPic {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   object-fit: cover;
-  background: var(--surface-2, var(--bg));
-  color: var(--text-2);
-  font-size: 10px;
+  background: var(--card);
+  color: var(--brand-200);
+  font-size: 11px;
   font-weight: 600;
-  box-shadow: 0 0 0 1.5px var(--text-3), 0 0 0 3px var(--bg);
+  box-shadow: 0 0 0 2px var(--brand), 0 0 0 3.5px var(--bg);
   pointer-events: none;
 }
 
-/* The tapped thesis, under the chart (CoinChart): who, when, their words, their position, fomo's name. */
+.thesisBadge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--bg);
+  pointer-events: none;
+}
+
+/* The chart and the card that floats over it. */
+.chartWrap {
+  position: relative;
+}
+
+/* The tapped thesis, beside its picture over the chart (CoinChart sets where). Solid, and compact so
+   most of the chart stays in sight on a phone (the owner, 2026-11-07: "too big on mobile"). */
 .thesisCard {
-  margin: 8px 0 4px;
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--surface-2, var(--hover));
+  position: absolute;
+  z-index: 5;
+  width: min(220px, 60%);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--popup);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 50%);
 }
 
 .thesisHead {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 6px;
 }
 
-.thesisHead img,
+.thesisHead > img,
 .thesisLetter {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   object-fit: cover;
   flex: none;
+  box-shadow: 0 0 0 1.5px var(--brand);
 }
 
 .thesisLetter {
   display: grid;
   place-items: center;
-  background: var(--bg);
-  color: var(--text-2);
+  background: var(--card);
+  color: var(--brand-200);
+  font-size: 11px;
   font-weight: 600;
 }
 
 .thesisWho {
   min-width: 0;
   flex: 1;
-  line-height: 1.25;
-}
-
-.thesisWho b {
-  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.thesisWho span {
-  color: var(--text-3);
-  font-size: 12px;
-}
-
-.thesisVia {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-3);
+.thesisWhen {
+  color: var(--brand-300);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
-.thesisVia img {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+.thesisClose {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -5px -2px 0;
+  padding: 0;
+  color: var(--text-3);
 }
 
+/* Two lines at most; the whole thesis is a tap away on fomo. */
 .thesisText {
-  margin: 8px 0 6px;
-  font-size: 14px;
-  line-height: 1.4;
+  display: -webkit-box;
+  margin: 6px 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .thesisFacts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  align-items: center;
+  gap: 2px 8px;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.thesisFacts a {
+.thesisFacts b {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.thesisFacts b.up {
+  color: var(--up);
+}
+
+.thesisFacts b.down {
+  color: var(--down);
+}
+
+.thesisVia {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-2);
+}
+
+.thesisVia img {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
 }
 
 .thesesNote {
