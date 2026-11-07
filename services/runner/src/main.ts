@@ -296,7 +296,9 @@ async function main(): Promise<void> {
        (2026-11-07: ~45 GB a day to the database, and Postgres records no parameter sizes). */
     const tallying = setInterval(() => {
       const t = takeSentTally(10);
-      log.info('db sent tally', { mb: Math.round(t.totalChars / 1e4) / 100, top: t.top.map((s) => ({ mb: Math.round(s.chars / 1e4) / 100, calls: s.calls, sql: s.sql.slice(0, 120) })) });
+      const rows = (xs: typeof t.top) => xs.map((s) => ({ mb: Math.round(s.chars / 1e4) / 100, calls: s.calls, sql: s.sql.slice(0, 120) }));
+      log.info('db sent tally', { mb: Math.round(t.totalChars / 1e4) / 100, top: rows(t.top) });
+      log.info('db received tally', { mb: Math.round(t.gotChars / 1e4) / 100, top: rows(t.topGot) });
     }, 600_000);
     tallying.unref();
 

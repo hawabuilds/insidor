@@ -203,37 +203,43 @@ const sizeOf = (v: unknown): number =>
   : typeof v === 'object' ? JSON.stringify(v).length
   : String(v).length;
 
-const SENT = new Map<string, { calls: number; chars: number }>();
+const SENT = new Map<string, { calls: number; chars: number; got: number }>();
 
-function countSent(sql: string, params: readonly unknown[] | undefined): void {
+function countSent(sql: string, params: readonly unknown[] | undefined): { got: number } {
   const key = sql.slice(0, 160);
   const chars = sql.length + (params === undefined ? 0 : params.reduce<number>((n, p) => n + sizeOf(p), 0));
-  const hit = SENT.get(key);
-  if (hit === undefined) SENT.set(key, { calls: 1, chars });
-  else {
-    hit.calls += 1;
-    hit.chars += chars;
+  let hit = SENT.get(key);
+  if (hit === undefined) {
+    hit = { calls: 0, chars: 0, got: 0 };
+    SENT.set(key, hit);
   }
+  hit.calls += 1;
+  hit.chars += chars;
+  return hit;
 }
 
+type TallyRow = { readonly sql: string; readonly calls: number; readonly chars: number };
+
 /**
- * The statements that sent the most characters since the last call, heaviest first, and the total;
- * the tally starts over. For a process to log, so its network egress can be put on the statement
- * that causes it.
+ * The statements that sent the most characters since the last call, and those whose answers brought
+ * the most back (the database's transfer, billed by the database host), heaviest first, with totals;
+ * the tally starts over. For a process to log, so its traffic can be put on the statement causing it.
  */
-export function takeSentTally(top: number): { readonly totalChars: number; readonly top: readonly { readonly sql: string; readonly calls: number; readonly chars: number }[] } {
-  const all = [...SENT.entries()].map(([sql, s]) => ({ sql: sql.replace(/\s+/g, ' '), calls: s.calls, chars: s.chars }));
+export function takeSentTally(top: number): { readonly totalChars: number; readonly top: readonly TallyRow[]; readonly gotChars: number; readonly topGot: readonly TallyRow[] } {
+  const all = [...SENT.entries()].map(([sql, s]) => ({ sql: sql.replace(/\s+/g, ' '), calls: s.calls, chars: s.chars, got: s.got }));
   SENT.clear();
-  all.sort((a, b) => b.chars - a.chars);
-  return { totalChars: all.reduce((n, s) => n + s.chars, 0), top: all.slice(0, top) };
+  const sent = [...all].sort((a, b) => b.chars - a.chars).slice(0, top).map(({ sql, calls, chars }) => ({ sql, calls, chars }));
+  const got = [...all].sort((a, b) => b.got - a.got).slice(0, top).map(({ sql, calls, got: chars }) => ({ sql, calls, chars }));
+  return { totalChars: all.reduce((n, s) => n + s.chars, 0), top: sent, gotChars: all.reduce((n, s) => n + s.got, 0), topGot: got };
 }
 
 /** Adapt a Pool or a checked-out client to the narrow interface repositories take. */
 export function asDb(source: Pool | PoolClient): Db {
   return {
     async query<R extends QueryResultRow>(sql: string, params?: readonly unknown[]): Promise<R[]> {
-      countSent(sql, params);
+      const tally = countSent(sql, params);
       const result = await source.query<R>(sql, params ? [...params] : undefined);
+      tally.got += sizeOf(result.rows);
       return result.rows;
     },
   };
@@ -287,8 +293,12 @@ export function serialDb(client: Pick<PoolClient, 'query'>): Db {
   let tail: Promise<unknown> = Promise.resolve();
   return {
     query<R extends QueryResultRow>(sql: string, params?: readonly unknown[]): Promise<R[]> {
-      countSent(sql, params);
-      const run = tail.then(async () => (await client.query<R>(sql, params ? [...params] : undefined)).rows);
+      const tally = countSent(sql, params);
+      const run = tail.then(async () => {
+        const rows = (await client.query<R>(sql, params ? [...params] : undefined)).rows;
+        tally.got += sizeOf(rows);
+        return rows;
+      });
       tail = run.catch(() => undefined);
       return run;
     },
