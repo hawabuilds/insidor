@@ -7,7 +7,7 @@
  * and writing SQL somewhere that is not here.
  */
 
-export { createPool, asDb, serialDb, withTransaction, withAdvisoryLock, DB_ROLE } from './client.ts';
+export { createPool, asDb, serialDb, withTransaction, withAdvisoryLock, takeSentTally, DB_ROLE } from './client.ts';
 export type { Db, DbRole, PoolOptions } from './client.ts';
 
 export { migrate, loadMigrations, planMigrations } from './migrate.ts';

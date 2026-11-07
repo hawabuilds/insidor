@@ -30,6 +30,7 @@ import { createLogger, errorText } from './log.ts';
 import type { Loop } from './loop.ts';
 import { supervise, type SupervisorDeps } from './supervisor.ts';
 import { withRuntime } from './wiring.ts';
+import { takeSentTally } from '@insidor/store';
 
 import { admitLoop } from './loops/admit.ts';
 import { detectLoop } from './loops/detect.ts';
@@ -290,6 +291,14 @@ async function main(): Promise<void> {
 
     const running = loops.map((loop) => supervise(loop, supervisorDeps));
     log.info('supervising', { loops: loops.map((l) => l.stage) });
+
+    /* Which statements fill the runner's network egress — the largest line on the hosting bill
+       (2026-11-07: ~45 GB a day to the database, and Postgres records no parameter sizes). */
+    const tallying = setInterval(() => {
+      const t = takeSentTally(10);
+      log.info('db sent tally', { mb: Math.round(t.totalChars / 1e4) / 100, top: t.top.map((s) => ({ mb: Math.round(s.chars / 1e4) / 100, calls: s.calls, sql: s.sql.slice(0, 120) })) });
+    }, 600_000);
+    tallying.unref();
 
     // Both listeners stay registered, so a second SIGTERM from an impatient
     // deploy is absorbed rather than killing the process mid-run: `resolve` on

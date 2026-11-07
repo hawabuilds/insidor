@@ -192,10 +192,47 @@ export function createPool(role: DbRole, options: PoolOptions = {}): Pool {
   return pool;
 }
 
+/* The characters a value puts on the wire as a text parameter, near enough: what decides which
+   statement fills the process's network egress, which the database itself does not record. */
+const sizeOf = (v: unknown): number =>
+  v === null || v === undefined ? 0
+  : typeof v === 'string' ? v.length
+  : Array.isArray(v) ? v.reduce<number>((n, x) => n + sizeOf(x) + 1, 2)
+  : v instanceof Uint8Array ? v.byteLength * 2
+  : v instanceof Date ? 24
+  : typeof v === 'object' ? JSON.stringify(v).length
+  : String(v).length;
+
+const SENT = new Map<string, { calls: number; chars: number }>();
+
+function countSent(sql: string, params: readonly unknown[] | undefined): void {
+  const key = sql.slice(0, 160);
+  const chars = sql.length + (params === undefined ? 0 : params.reduce<number>((n, p) => n + sizeOf(p), 0));
+  const hit = SENT.get(key);
+  if (hit === undefined) SENT.set(key, { calls: 1, chars });
+  else {
+    hit.calls += 1;
+    hit.chars += chars;
+  }
+}
+
+/**
+ * The statements that sent the most characters since the last call, heaviest first, and the total;
+ * the tally starts over. For a process to log, so its network egress can be put on the statement
+ * that causes it.
+ */
+export function takeSentTally(top: number): { readonly totalChars: number; readonly top: readonly { readonly sql: string; readonly calls: number; readonly chars: number }[] } {
+  const all = [...SENT.entries()].map(([sql, s]) => ({ sql: sql.replace(/\s+/g, ' '), calls: s.calls, chars: s.chars }));
+  SENT.clear();
+  all.sort((a, b) => b.chars - a.chars);
+  return { totalChars: all.reduce((n, s) => n + s.chars, 0), top: all.slice(0, top) };
+}
+
 /** Adapt a Pool or a checked-out client to the narrow interface repositories take. */
 export function asDb(source: Pool | PoolClient): Db {
   return {
     async query<R extends QueryResultRow>(sql: string, params?: readonly unknown[]): Promise<R[]> {
+      countSent(sql, params);
       const result = await source.query<R>(sql, params ? [...params] : undefined);
       return result.rows;
     },
@@ -250,6 +287,7 @@ export function serialDb(client: Pick<PoolClient, 'query'>): Db {
   let tail: Promise<unknown> = Promise.resolve();
   return {
     query<R extends QueryResultRow>(sql: string, params?: readonly unknown[]): Promise<R[]> {
+      countSent(sql, params);
       const run = tail.then(async () => (await client.query<R>(sql, params ? [...params] : undefined)).rows);
       tail = run.catch(() => undefined);
       return run;
