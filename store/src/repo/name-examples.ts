@@ -98,10 +98,15 @@ const COIN_NAMES = `
     left join public.coin_name n on n.address = a.address
     left join public.asset s on s.chain = 'solana' and s.address = a.address`;
 
+/** One example post as `all` reads it: its words, its coins and its vector's stamp. */
+type ExampleRow = { item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[] | null; not_coins: { name: string; ticker: string }[] | null; posted_at: Date | null; embedded_at: string };
+
 export class PgNameExampleRepo {
   readonly #db: Db;
   /** Example vectors this process holds, by space and post, with the `embedded_at` they were read at. See `all`. */
   readonly #vectors = new Map<string, Map<string, { readonly at: string; readonly values: Float32Array }>>();
+  /** `all`'s rows by space then post, at the digest each was read at. */
+  readonly #rows = new Map<string, Map<string, { readonly d: string; readonly row: ExampleRow }>>();
   constructor(db: Db) {
     this.#db = db;
   }
@@ -374,20 +379,48 @@ export class PgNameExampleRepo {
    * post would keep its old vector for the life of the process.
    */
   async all(space: string): Promise<readonly StoredExample[]> {
-    type Row = { item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[] | null; not_coins: { name: string; ticker: string }[] | null; posted_at: Date | null; embedded_at: string };
-    const read = (rejected: boolean) =>
-      this.#soft(() =>
-        this.#db.query<Row>(
-          `select e.item_id, max(e.text) as text, max(e.seen) as seen,
-                  jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where ${rejected ? 'not e.rejected' : 'true'}) as coins,
-                  ${rejected ? `jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where e.rejected)` : 'null::jsonb'} as not_coins,
-                  min(e.posted_at) as posted_at, v.embedded_at::text as embedded_at
-             from internal.name_example e
-             join internal.name_example_embedding v on v.item_id = e.item_id and v.space = $1
-            group by e.item_id, v.embedded_at`,
-          [space],
-        ),
+    type Row = ExampleRow;
+    /* ★ THE WORDS TOO, BY DIGEST (2026-11-07). After the vectors were held, the words and coins of every
+       example still crossed whole on each read — ~19 MB, ~2.7 GB a day. Each example's whole row now
+       comes first as a digest of everything this returns; only an example not held at its digest is
+       read whole. A changed name, a flipped `rejected` or a re-embed moves the digest. */
+    const agg = (rejected: boolean, only: boolean) =>
+      `select e.item_id, max(e.text) as text, max(e.seen) as seen,
+              jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where ${rejected ? 'not e.rejected' : 'true'}) as coins,
+              ${rejected ? `jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where e.rejected)` : 'null::jsonb'} as not_coins,
+              min(e.posted_at) as posted_at, v.embedded_at::text as embedded_at
+         from internal.name_example e
+         join internal.name_example_embedding v on v.item_id = e.item_id and v.space = $1
+        ${only ? 'where e.item_id = any($2::text[])' : ''}
+        group by e.item_id, v.embedded_at`;
+    const read = async (rejected: boolean): Promise<Row[]> => {
+      const digests = await this.#soft(() =>
+        this.#db.query<{ item_id: string; d: string }>(`select x.item_id, md5(row(x.*)::text) as d from (${agg(rejected, false)}) x`, [space]),
       );
+      const kept = this.#rows.get(space) ?? new Map<string, { readonly d: string; readonly row: Row }>();
+      const stale = digests.filter((x) => kept.get(x.item_id)?.d !== x.d).map((x) => x.item_id);
+      if (stale.length > 0) {
+        const whole = await this.#soft(() =>
+          this.#db.query<Row & { d: string }>(`select x.*, md5(row(x.*)::text) as d from (${agg(rejected, true)}) x`, [space, stale]),
+        );
+        for (const w of whole) {
+          const { d, ...row } = w;
+          kept.set(w.item_id, { d, row });
+        }
+      }
+      /* Only this read's examples stay held; one changed again between the reads is served as read
+         whole and read again next time, its digest no longer matching. */
+      const next = new Map<string, { readonly d: string; readonly row: Row }>();
+      const out: Row[] = [];
+      for (const x of digests) {
+        const k = kept.get(x.item_id);
+        if (k === undefined) continue;
+        next.set(x.item_id, k);
+        out.push(k.row);
+      }
+      this.#rows.set(space, next);
+      return out;
+    };
     let rows: Row[];
     try {
       rows = await read(true);
