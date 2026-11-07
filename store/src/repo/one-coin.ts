@@ -232,6 +232,11 @@ interface CandidateMirror {
 }
 const toCandidate = (r: CandidateDbRow): CandidateRow => ({ itemId: r.item_id, address: r.address, path: r.path, evidence: r.evidence, launchedAtMs: ms(r.launched_at), foundAtMs: new Date(r.found_at).getTime() });
 
+/** A stored pick's digest: every field `picks` returns, so the same digest is the same answer. */
+const PICK_DIGEST = `md5(coalesce(address, '') || '|' || outcome || '|' || decided_at::text || '|' || evidence::text)`;
+/** Past this many picks held a kind, `picks` starts over (each holds its evidence, ~1–5 KB). */
+const HELD_PICKS_MAX = 20_000;
+
 /** Past this many coins `watched` holds, it starts over: a coin leaves the sweeps when its watch ends. */
 const HELD_WATCH_MAX = 50_000;
 
@@ -251,6 +256,8 @@ export class PgOneCoinRepo {
   readonly #waitingEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
   /** The same for `heldPostPicks`. */
   readonly #heldEvidence = new Map<string, { readonly v: string; readonly evidence: Record<string, unknown> }>();
+  /** `picks`' rows by subject with the digest each was read at: see `picks`. */
+  readonly #heldPicks: Record<PickKind, Map<string, { readonly v: string; readonly pick: StoredPick }>> = { post: new Map(), narrative: new Map() };
   /**
    * `watched`'s last answer by coin. The sweeps ask about the same ~2,500 coins ~11,000 times a day
    * (~1.5 GB a day of database egress when each read sent every watched coin back), and almost every
@@ -947,16 +954,38 @@ export class PgOneCoinRepo {
     return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), liquidityUsd: num(r.liq), readAtMs: ms(r.at), promo: r.promo }));
   }
 
-  /** The stored picks of these subjects. */
+  /**
+   * The stored picks of these subjects.
+   *
+   * ★ WHOLE ROWS ONLY WHERE THEY CHANGED (2026-11-07). Every pass read every open subject's pick,
+   * evidence and all (~5 GB a day of the database's transfer), to compare with what it decides — and
+   * nearly every row was the one read the pass before. Each row now comes first as a digest of all it
+   * holds; a row held here at that digest is answered from memory, and only the rest are read whole.
+   */
   async picks(kind: PickKind, ids: readonly string[]): Promise<ReadonlyMap<string, StoredPick>> {
     if (ids.length === 0) return new Map();
     const { table, key } = PICK_TABLE[kind];
+    const held = this.#heldPicks[kind];
     try {
-      const rows = await this.#db.query<{ id: string; address: string | null; outcome: StoredPick['outcome']; decided_at: string; evidence: Record<string, unknown> }>(
-        `select ${key} as id, address, outcome, decided_at, evidence from ${table} where ${key} = any($1::text[])`,
+      const digests = await this.#db.query<{ id: string; v: string }>(
+        `select ${key} as id, ${PICK_DIGEST} as v from ${table} where ${key} = any($1::text[])`,
         [[...ids]],
       );
-      return new Map(rows.map((r) => [r.id, { subjectId: r.id, address: r.address, outcome: r.outcome, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence }] as const));
+      const stale = digests.filter((d) => held.get(d.id)?.v !== d.v).map((d) => d.id);
+      if (stale.length > 0) {
+        const rows = await this.#db.query<{ id: string; v: string; address: string | null; outcome: StoredPick['outcome']; decided_at: string; evidence: Record<string, unknown> }>(
+          `select ${key} as id, ${PICK_DIGEST} as v, address, outcome, decided_at, evidence from ${table} where ${key} = any($1::text[])`,
+          [stale],
+        );
+        if (held.size + rows.length > HELD_PICKS_MAX) held.clear();
+        for (const r of rows) held.set(r.id, { v: r.v, pick: { subjectId: r.id, address: r.address, outcome: r.outcome, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence } });
+      }
+      /* A row changed again between the two reads is answered as read whole: the digest it came with
+         is the one held, so the next pass reads it again. One gone between them is left out. */
+      return new Map(digests.flatMap((d) => {
+        const h = held.get(d.id);
+        return h === undefined ? [] : [[d.id, h.pick] as const];
+      }));
     } catch (e) {
       if (missingTable(e)) return new Map();
       throw e;
@@ -1023,7 +1052,7 @@ export class PgOneCoinRepo {
     try {
       /* The evidence only for rows changed since this repo last read them: see `waitingPostPicks`. */
       const rows = await this.#db.query<{ id: string; address: string; decided_at: string; v: string }>(
-        `select item_id as id, address, decided_at, xmin::text as v from internal.post_coin_pick
+        `select item_id as id, address, decided_at, md5(evidence::text) as v from internal.post_coin_pick
           where outcome = 'picked' and address is not null and updated_at >= $1
           order by updated_at desc limit $2`,
         [new Date(sinceMs).toISOString(), limit],
@@ -1048,13 +1077,15 @@ export class PgOneCoinRepo {
    * ★ THE EVIDENCE ONLY WHEN THE ROW CHANGED. The sweep runs every pass over the same ~900 posts,
    * and each pick's evidence is about a kilobyte: ~4 GB a day of the database's egress on 29 Oct
    * 2026, nearly all of it the rows the pass before was sent. The selection now returns each row's
-   * version (`xmin`, changed by every write), and the evidence is read only for the rows this repo
-   * does not hold at that version — the runner's one long-lived repo holds them between passes.
+   * evidence digest (`md5(evidence::text)`), and the evidence is read only for the rows this repo does
+   * not hold at that digest — the runner's one long-lived repo holds them between passes. A digest,
+   * not the row version (`xmin`): every pass stamps each pick's `updated_at`, which moves `xmin`
+   * though the evidence is the same, and re-read it all (~7 GB a day, 2026-11-07).
    */
   async waitingPostPicks(sinceMs: number, limit: number, minPeakQuote: number): Promise<readonly StoredPick[]> {
     try {
       const rows = await this.#db.query<{ id: string; decided_at: string; v: string }>(
-        `select p.item_id as id, p.decided_at, p.xmin::text as v from internal.post_coin_pick p
+        `select p.item_id as id, p.decided_at, md5(p.evidence::text) as v from internal.post_coin_pick p
           where p.outcome = 'waiting' and p.decided_at >= $1
             and exists (select 1 from internal.one_coin_candidate oc join internal.coin_trade_state s on s.address = oc.address
                          where oc.item_id = p.item_id and s.peak_mcap_sol >= $3)
@@ -1081,7 +1112,7 @@ export class PgOneCoinRepo {
     const stale = rows.filter((r) => held.get(r.id)?.v !== r.v).map((r) => r.id);
     if (stale.length > 0) {
       const fresh = await this.#db.query<{ id: string; v: string; evidence: Record<string, unknown> }>(
-        `select item_id as id, xmin::text as v, evidence from internal.post_coin_pick where item_id = any($1::text[])`,
+        `select item_id as id, md5(evidence::text) as v, evidence from internal.post_coin_pick where item_id = any($1::text[])`,
         [stale],
       );
       for (const f of fresh) held.set(f.id, { v: f.v, evidence: f.evidence });

@@ -130,7 +130,7 @@ test('without the mirror every read goes to the table', async () => {
   assert.equal(bounds.length, 2);
 });
 
-test('the waiting sweep reads a pick\'s evidence only when its row changed', async () => {
+test('the waiting sweep reads a pick\'s evidence only when its digest changed', async () => {
   const picks = [
     { id: 'x:1', decided_at: at(1_800_000_000_000), v: '10', evidence: { ties: ['name'] } },
     { id: 'x:2', decided_at: at(1_800_000_000_000), v: '11', evidence: { ties: ['link'] } },
@@ -139,7 +139,7 @@ test('the waiting sweep reads a pick\'s evidence only when its row changed', asy
   const db = {
     query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
       if (sql.includes("p.outcome = 'waiting'")) {
-        assert.ok(!sql.includes('p.evidence'));
+        assert.ok(!/p\.evidence(?!::text\))/.test(sql), 'the selection sends the evidence digest, never the evidence');
         return picks.map(({ id, decided_at, v }) => ({ id, decided_at, v })) as R[];
       }
       const ids = (params?.[0] ?? []) as string[];
@@ -152,19 +152,19 @@ test('the waiting sweep reads a pick\'s evidence only when its row changed', asy
   assert.deepEqual(first.map((p) => [p.subjectId, p.evidence]), [['x:1', { ties: ['name'] }], ['x:2', { ties: ['link'] }]]);
   assert.deepEqual(await repo.waitingPostPicks(0, 10, 1), first);
   assert.deepEqual(evidenceRead, [['x:1', 'x:2']]);
-  /* x:2 rewritten: only its evidence crosses again. */
+  /* x:2's evidence changed: only its evidence crosses again. */
   picks[1] = { ...picks[1]!, v: '12', evidence: { ties: ['link', 'picture'] } };
   assert.deepEqual((await repo.waitingPostPicks(0, 10, 1)).map((p) => p.evidence), [{ ties: ['name'] }, { ties: ['link', 'picture'] }]);
   assert.deepEqual(evidenceRead, [['x:1', 'x:2'], ['x:2']]);
 });
 
-test('the held picks read their evidence only when the row changed', async () => {
+test('the held picks read their evidence only when the digest changed', async () => {
   const picks = [{ id: 'x:1', address: 'A', decided_at: at(1_800_000_000_000), v: '10', evidence: { ties: ['name'] } }];
   let evidenceReads = 0;
   const db = {
     query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
       if (sql.includes("outcome = 'picked'")) {
-        assert.ok(!sql.includes('evidence'));
+        assert.ok(!/(?<!md5\()evidence(?!::text\))/.test(sql), 'the selection sends the evidence digest, never the evidence');
         return picks.map(({ id, address, decided_at, v }) => ({ id, address, decided_at, v })) as R[];
       }
       evidenceReads += 1;
@@ -221,4 +221,31 @@ test('★ writePicks: a pick the same as the one stored only moves updated_at; o
   assert.deepEqual(stamp?.params[0], ['n1'], 'the same in every field, key order aside: only stamped');
   assert.equal(stamp?.params[1], new Date(5_000).toISOString());
   assert.equal(changed, 1, 'the coin changed for n3 only');
+});
+
+test('★ picks: whole rows only for subjects whose digest changed; the rest from memory', async () => {
+  const rows = [
+    { id: 'n1', v: 'a1', address: 'A', outcome: 'picked', decided_at: at(1_800_000_000_000), evidence: { s: 1 } },
+    { id: 'n2', v: 'b1', address: null, outcome: 'waiting', decided_at: at(1_800_000_000_000), evidence: { s: 2 } },
+  ];
+  const wholeReads: string[][] = [];
+  const db = {
+    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      const ids = (params?.[0] ?? []) as string[];
+      const asked = rows.filter((r) => ids.includes(r.id));
+      if (!sql.includes(', evidence from')) return asked.map(({ id, v }) => ({ id, v })) as R[];
+      wholeReads.push(ids);
+      return asked.map((r) => ({ ...r })) as R[];
+    },
+  } as Db;
+  const repo = new PgOneCoinRepo(db);
+  const first = await repo.picks('narrative', ['n1', 'n2', 'gone']);
+  assert.deepEqual([...first.keys()], ['n1', 'n2']);
+  assert.deepEqual(await repo.picks('narrative', ['n1', 'n2']), first);
+  assert.deepEqual(wholeReads, [['n1', 'n2']], 'unchanged: answered from memory');
+  rows[1] = { ...rows[1]!, v: 'b2', outcome: 'picked', address: 'B' };
+  const third = await repo.picks('narrative', ['n1', 'n2']);
+  assert.deepEqual(wholeReads, [['n1', 'n2'], ['n2']], 'only the changed row is read whole');
+  assert.equal(third.get('n2')?.address, 'B');
+  assert.deepEqual(third.get('n1'), first.get('n1'));
 });
