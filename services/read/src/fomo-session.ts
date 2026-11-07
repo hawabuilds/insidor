@@ -128,11 +128,15 @@ export function createFomoSession(deps: FomoSessionDeps): { cookie: () => Promis
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (res.status === 401 || res.status === 403) {
-        deps.log.info('fomo login: the refresh token was refused; set a fresh FOMO_REFRESH_TOKEN', { status: res.status });
+        /* Privy's own `error`/`code` (e.g. invalid or expired refresh token), never a value, so the
+           logs tell a stale/revoked token from a request Privy did not like. */
+        const why = (await res.clone().json().catch(() => ({}))) as { error?: unknown; code?: unknown };
+        deps.log.info('fomo login: the refresh token was refused; set a fresh FOMO_REFRESH_TOKEN', { status: res.status, code: String(why.code ?? ''), error: String(why.error ?? '').slice(0, 80) });
         return { cookie: null, why: 'login_expired' };
       }
       if (!res.ok) {
-        deps.log.info('fomo login: Privy did not answer', { status: res.status });
+        const why = (await res.clone().json().catch(() => ({}))) as { error?: unknown; code?: unknown };
+        deps.log.info('fomo login: Privy did not answer', { status: res.status, code: String(why.code ?? ''), error: String(why.error ?? '').slice(0, 80) });
         return { cookie: null, why: 'unavailable' };
       }
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
