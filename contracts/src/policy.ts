@@ -6244,7 +6244,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v229',
+  version: 'policy.v230',
 
   admit: {
     maxAgeMin: 240,
@@ -6439,7 +6439,10 @@ const POLICY_V1: Policy = {
       postSpaceNext: null,
       /* Measured 25 Oct (the v180 entry): not read by any decision until the switch copies them. */
       postSpaceNextBars: null,
-      backfill: true,
+      /* Off (the owner, 2026-11-07): the switch to our own model is filled — the last boot's fill wrote
+         nothing of any kind — and it re-asked embed for ~9,200 pictures whose links are dead on every
+         boot. New posts and pictures are embedded as they come; turn on again only to fill a new space. */
+      backfill: false,
       nearIdentical: 0.945,
       likely: 0.86,
       borderline: 0.85,
