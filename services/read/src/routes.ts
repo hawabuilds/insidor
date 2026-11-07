@@ -24,7 +24,6 @@
 
 
 import { coinAbout, type AboutDeps } from './coin-about.ts';
-import type { ThesesReply } from './theses.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, forYouKeptFrom, parseCursor, startCursor } from './feed-page.ts';
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
@@ -90,8 +89,6 @@ export interface Deps {
   readonly runningCoins?: ReturnType<typeof createRunningCoins>;
   /** A coin's launch odds (launch-odds.ts), its groups kept `launchOdds.keepMs`. Absent: the groups are read on every request. */
   readonly launchOdds?: ReturnType<typeof createLaunchOdds>;
-  /** A coin's fomo theses by its address (theses.ts). Absent: "not configured". */
-  readonly theses?: (address: string) => Promise<ThesesReply>;
 }
 
 /*
@@ -573,13 +570,6 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
       const about = deps.about;
       return (await orOpened(param, deps, () => coinAbout(param, { ...about, ...recent, db: deps.db, log: deps.log }))) ?? NOT_FOUND;
-    }
-
-    /* What fomo's traders wrote about the coin: the chart's fomo bubbles (theses.ts). */
-    if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'theses') {
-      const address = param.startsWith('solana:') ? param.slice('solana:'.length) : null;
-      if (address === null || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return NOT_FOUND;
-      return json(200, deps.theses === undefined ? { theses: null, why: 'not_configured' } : await deps.theses(address));
     }
 
     /* What happened to past launches that opened like this one: the Info tab's odds block (launch-odds.ts). */

@@ -16,12 +16,11 @@
 
 import { Suspense, useMemo, useState } from 'react';
 
-import type { CoinMarket, CoinTheses, Thesis } from '../../shared/api/index.ts';
+import type { CoinMarket } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { formatDuration } from '../../shared/format/duration.ts';
 import { compactMoney, formatChangePercent, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { value, type Rendered } from '../../shared/format/rendered.ts';
-import { CandleIcon, CloseIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
+import { CandleIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { CHART_WINDOW_BARS, candleFromPoint, changePctForPoints, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
 import { VIEWS, fetchTimeframe, periodMs, tradesToCandles, viewLabel, type ChartView } from './chart-view.ts';
@@ -40,7 +39,7 @@ const CHART_HEIGHT = 200;
 /** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
 export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;
 
-export function CoinChart({ market, state, view, onView, ageMs, notified, theses = null, price, change24h, cap, liquidity }: {
+export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
   view: ChartView;
@@ -49,8 +48,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
   ageMs: number | null;
   /** When we first pushed this coin to phones, and the market cap the push carried: our bubble goes there. Null: none. */
   notified: { readonly at: number; readonly marketCapUsd: number | null } | null;
-  /** What fomo's traders wrote about the coin (the owner, 2026-11-06); null while reading or where the page has none. */
-  theses?: CoinTheses | null;
   /** The coin's own price and 24-hour change, shown when there are no candles to read. */
   price: Measured;
   change24h: Measured;
@@ -64,13 +61,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
   /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when the app first showed the coin and the
      multiple since; nothing is drawn over the chart. Touching the chart or the bubble again ends it. */
   const [alerted, setAlerted] = useState(false);
-  /* A fomo trader's picture tapped: their thesis in a card over the chart, on the side away from the
-     picture so it stays in sight; the same picture again, the card's close, or a new timeframe closes it. */
-  const [openThesis, setOpenThesis] = useState<{ readonly id: string; readonly x: number; readonly y: number; readonly width: number } | null>(null);
-  const thesisList: readonly Thesis[] = theses?.kind === 'read' ? theses.theses : [];
-  const shownThesis = openThesis === null ? null : (thesisList.find((t) => t.id === openThesis.id) ?? null);
-  /* The thesis card stays while the finger reads candles (a tap on a picture is also a touch on the
-     chart); it closes on its picture again or a new timeframe. */
   const scrub = (p: ChartPoint | null) => {
     if (p !== null) setAlerted(false);
     setScrubbed(p);
@@ -147,7 +137,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
         ) : null}
       </div>
 
-      <div className={styles['chartWrap']}>
       <Suspense
         fallback={
           <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
@@ -155,26 +144,8 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
           </div>
         }
       >
-        <PriceChart
-          points={points}
-          rising={rising}
-          windowMs={period * CHART_WINDOW_BARS}
-          wholeLife={view === 'all'}
-          scale={supply}
-          notified={notified}
-          theses={thesisList}
-          style={style}
-          emptyLabel={chartNote(state, market, tf)}
-          onScrub={scrub}
-          onNotifiedTap={() => setAlerted((a) => !a)}
-          onThesisTap={(id, x, y, width) => setOpenThesis((o) => (o?.id === id ? null : { id, x, y, width }))}
-        />
+        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} />
       </Suspense>
-      {shownThesis !== null && openThesis !== null ? <ThesisCard thesis={shownThesis} at={openThesis} onClose={() => setOpenThesis(null)} /> : null}
-      </div>
-      {/* fomo's traders could not be read (not when the feature is simply not set up): said, so a chart
-          with no pictures is never read as "nobody wrote about it". */}
-      {theses?.kind === 'missing' && theses.why !== 'not_configured' ? <p className={styles['thesesNote']}>fomo theses unavailable right now</p> : null}
       {/* ★ A chart from our own record that began after the coin launched says where it starts (2026-10-29):
           never a chart that reads as if the coin was born at its left edge. */}
       {read !== null && read.chartFrom !== null ? (
@@ -192,7 +163,6 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
               onClick={() => {
                 setScrubbed(null);
                 setAlerted(false);
-                setOpenThesis(null);
                 onView(v);
               }}
             >
@@ -206,54 +176,5 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, theses
         </div>
       </div>
     </>
-  );
-}
-
-/** How far the thesis card sits from the picture's centre, how far above it its top starts, and its usual height. */
-const THESIS_GAP_PX = 18;
-const THESIS_CARD_LIFT_PX = 16;
-const THESIS_CARD_PX = 100;
-const THESIS_CARD_W_PX = 220;
-
-/** "+$1.2K", "-$138": a dollar amount with its sign in front of the dollar sign. */
-const signedMoney = (v: number): string => `${v < 0 ? '-' : '+'}$${compactMoney(Math.abs(v))}`;
-
-/**
- * One fomo thesis, over the chart: the trader (picture, name, handle) and how long ago, their words,
- * then their position as fomo reports it and the cap when they posted, with fomo's name and a link.
- * Our own card, in our colours. fomo's numbers as fomo reports them: nothing says the trader was right.
- */
-function ThesisCard({ thesis, at, onClose }: { thesis: Thesis; at: { readonly x: number; readonly y: number; readonly width: number }; onClose: () => void }) {
-  const p = thesis.position;
-  /* ★ BESIDE THE PICTURE TAPPED (the owner, 2026-11-07): just right of it when it sits in the chart's
-     left half, just left of it otherwise, level with it and kept inside the chart. */
-  const gap = THESIS_GAP_PX;
-  /* The card's width as the CSS draws it (min(220px, 60%)), so it is never pushed past the chart's edge. */
-  const room = Math.max(4, at.width - Math.min(THESIS_CARD_W_PX, at.width * 0.6) - 4);
-  const side = at.x < at.width / 2 ? { left: Math.round(Math.min(at.x + gap, room)) } : { right: Math.round(Math.min(at.width - at.x + gap, room)) };
-  const top = Math.round(Math.min(Math.max(at.y - THESIS_CARD_LIFT_PX, 4), CHART_HEIGHT - THESIS_CARD_PX - 4));
-  return (
-    <div className={styles['thesisCard']} style={{ ...side, top }} role="dialog" aria-label={`@${thesis.handle} on fomo`}>
-      <div className={styles['thesisHead']}>
-        {thesis.pictureUrl !== null ? <img src={thesis.pictureUrl} alt="" /> : <span className={styles['thesisLetter']} aria-hidden="true">{thesis.handle.slice(0, 1).toUpperCase()}</span>}
-        <b className={styles['thesisWho']}>@{thesis.handle}</b>
-        <span className={styles['thesisWhen']}>{formatDuration(Date.now() - thesis.at)}</span>
-        <button type="button" className={styles['thesisClose']} aria-label="Close" onClick={onClose}><CloseIcon size={12} /></button>
-      </div>
-      <p className={styles['thesisText']}>{thesis.text}</p>
-      <div className={styles['thesisFacts']}>
-        {p !== null && p.closed ? <span>Position closed</span> : null}
-        {p !== null && !p.closed && p.valueUsd !== null ? (
-          <span>
-            Holds <b>${compactMoney(p.valueUsd)}</b>
-            {p.pnlUsd !== null ? <b className={p.pnlUsd >= 0 ? styles['up'] : styles['down']}> {signedMoney(p.pnlUsd)}</b> : null}
-          </span>
-        ) : null}
-        <a className={styles['thesisVia']} href={thesis.url} target="_blank" rel="noreferrer">
-          <img src="https://fomo.family/apple-touch-icon.png" alt="" />
-          fomo ›
-        </a>
-      </div>
-    </div>
   );
 }

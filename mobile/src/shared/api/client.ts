@@ -18,7 +18,6 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
-import { decodeCoinTheses, type CoinTheses } from './theses.ts';
 import { decodeCoinOdds, type CoinOdds } from './odds.ts';
 import { decodeCatches, type Catches } from './catches.ts';
 import { decodeRunningCoins, type RunningCoin } from './running.ts';
@@ -260,11 +259,6 @@ export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe
 /** A coin's links, day numbers, holders, creator and the feed posts naming it: the token page's Info tab. */
 export async function fetchCoinAbout(coinId: string, signal?: AbortSignal): Promise<CoinAbout> {
   return decodeCoinAbout(await read(`/coin/${encodeURIComponent(coinId)}/about`, signal));
-}
-
-/** What fomo's traders wrote about a coin: the chart's fomo bubbles. A reason, never an empty list, when they cannot be read. */
-export async function fetchCoinTheses(coinId: string, signal?: AbortSignal): Promise<CoinTheses> {
-  return decodeCoinTheses(await read(`/coin/${encodeURIComponent(coinId)}/theses`, signal));
 }
 
 /** What happened to past launches that opened like this coin, beside all launches: the Info tab's odds block. */
