@@ -22,13 +22,22 @@
  * not compute, removes the one guard against comparing two models' vectors.
  */
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { Encoder } from './model.ts';
 import { fetchPicture, type Lookup, type PictureLimits, type Unread } from './picture.ts';
 import { E5_POST_DIMENSIONS, E5_POST_SPACE, E5_POST_TEXT_WEIGHT, MODEL_DIMENSIONS, MODEL_ID, POST_SPACE, POST_TEXT_WEIGHT, SPACE, WORDS_DIMENSIONS, WORDS_MODEL_ID } from './space.ts';
 import { beside, combine } from './vectors.ts';
+
+/**
+ * ★ A PICTURE'S VECTOR IS KEPT BY ITS BYTES (2026-11-07). The picture model is most of this service's
+ * CPU, the largest line on its bill, and the same picture comes back: a post's picture is asked for
+ * in the picture space and again in the post space, and a reposted picture is the same file. Keyed by
+ * the SHA-256 of the bytes read, never the address, so a changed file is a new key; the same bytes
+ * give the same vector, so a kept one is the answer encoding would give. ~3 KB a picture.
+ */
+const PICTURE_CACHE_MAX = 5_000;
 
 /** The post spaces a request may name. */
 export const POST_SPACES = [POST_SPACE, E5_POST_SPACE] as const;
@@ -64,6 +73,8 @@ export interface ServiceDeps {
   readonly maxTextChars: number;
   /** Pictures fetched at once per request. */
   readonly fetchConcurrency: number;
+  /** Pictures' vectors by the SHA-256 of their bytes (PICTURE_CACHE_MAX); absent: every picture is encoded. */
+  readonly pictureCache?: Map<string, Float32Array>;
   readonly fetch?: typeof globalThis.fetch;
   readonly lookup?: Lookup;
   readonly log: (line: Record<string, unknown>) => void;
@@ -117,6 +128,7 @@ const round = (v: Float32Array): number[] => Array.from(v, (x) => Math.round(x *
 export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, deps: ServiceDeps, postSpace: PostSpace = POST_SPACE): Promise<EmbedReply> {
   const e5 = postSpace === E5_POST_SPACE;
   const unread: Partial<Record<Unread | 'decode', number>> = {};
+  let cached = 0;
   const pictureVectors = await bounded(inputs, deps.fetchConcurrency, async (input) => {
     if (input.imageUrl === undefined) return null;
     const got = await fetchPicture(input.imageUrl, deps.pictures, deps.fetch, deps.lookup);
@@ -124,8 +136,22 @@ export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, dep
       unread[got.unread] = (unread[got.unread] ?? 0) + 1;
       return null;
     }
+    const cache = deps.pictureCache;
+    const key = cache === undefined ? null : createHash('sha256').update(got.bytes).digest('base64');
+    const kept = key === null ? undefined : cache?.get(key);
+    if (kept !== undefined && key !== null) {
+      cached += 1;
+      /* Re-set so the most recently used is the last to go. */
+      cache?.delete(key);
+      cache?.set(key, kept);
+      return kept;
+    }
     const vector = await encoder.embedPicture(got.bytes);
     if (vector === null) unread.decode = (unread.decode ?? 0) + 1;
+    else if (key !== null && cache !== undefined) {
+      if (cache.size >= PICTURE_CACHE_MAX) cache.delete(cache.keys().next().value as string);
+      cache.set(key, vector);
+    }
     return vector;
   });
   const texted = inputs.flatMap((input, i) => (input.text === undefined ? [] : [{ i, text: input.text }]));
@@ -142,7 +168,7 @@ export async function embed(inputs: readonly EmbedInput[], encoder: Encoder, dep
     return text ?? picture;
   });
   const pictures = inputs.map((input, i): PictureState => (input.imageUrl === undefined ? 'none' : pictureVectors[i] === null ? 'unread' : 'read'));
-  deps.log({ msg: 'embedded', postSpace, inputs: inputs.length, texts: texted.length, pictures: pictures.filter((p) => p !== 'none').length, unread });
+  deps.log({ msg: 'embedded', postSpace, inputs: inputs.length, texts: texted.length, pictures: pictures.filter((p) => p !== 'none').length, cached, unread });
   return {
     model: e5 ? `${WORDS_MODEL_ID}+${MODEL_ID}` : MODEL_ID,
     space: SPACE,

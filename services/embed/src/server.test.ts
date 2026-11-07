@@ -228,3 +228,17 @@ test('the probe: agreement within the tolerance, and an empty head never agrees'
   assert.ok(probeDistance(WORDS_PROBE.head, WORDS_PROBE.head.map((v) => v + 1e-2)) > WORDS_PROBE.tolerance);
   assert.equal(probeDistance([], [1]), Infinity);
 });
+
+test('★ the same picture bytes are encoded once: the second time is the kept vector, in either space', async () => {
+  let encoded = 0;
+  const counting: Encoder = { ...encoder, embedPicture: async (bytes) => { encoded += 1; return encoder.embedPicture(bytes); } };
+  const d = deps({ pictureCache: new Map() });
+  const first = await embed([{ imageUrl: 'https://img.example/ok.jpg' }], counting, d);
+  const again = await embed([{ imageUrl: 'https://img.example/ok.jpg' }, { text: 'a deer bows', imageUrl: 'https://img.example/ok.jpg' }], counting, d);
+  assert.equal(encoded, 1);
+  assert.deepEqual(again.vectors[0], first.vectors[0]);
+  const fresh = await embed([{ text: 'a deer bows', imageUrl: 'https://img.example/ok.jpg' }], encoder, deps());
+  assert.deepEqual(again.vectors[1], fresh.vectors[0], 'combined with words exactly as an encoded one');
+  await embed([{ imageUrl: 'https://img.example/notimage.jpg' }, { imageUrl: 'https://img.example/notimage.jpg' }], counting, d);
+  assert.equal(encoded, 3, 'a picture that does not decode is never kept, so it is tried again');
+});

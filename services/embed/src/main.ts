@@ -42,6 +42,7 @@ const server = createServer(
     maxBodyBytes: cfg.maxBodyBytes,
     maxTextChars: cfg.maxTextChars,
     fetchConcurrency: cfg.fetchConcurrency,
+    pictureCache: new Map(),
     log,
     rssBytes: () => process.memoryUsage().rss,
   }),
