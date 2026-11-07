@@ -1015,15 +1015,35 @@ export class PgOneCoinRepo {
     const stamped = picks.filter(unchanged).map((p) => p.subjectId);
     try {
       if (whole.length > 0) {
-        await this.#db.query(
+        /* ★ THE ROWS WRITTEN ARE HELD AS WRITTEN (2026-11-07). Most picks' evidence moves every pass (its
+           standings carry live caps), so the next pass's reads found a new digest and read back the
+           evidence this repo had just sent — ~9 GB a day of the database's transfer. The write returns
+           each row's digests, computed by the database from what it stored, and the row is held at
+           them: the next read finds it current and reads nothing whole. Held as JSON gives it back
+           (a field JSON drops is dropped here too). */
+        const stored = await this.#db.query<{ id: string; v: string; ev: string }>(
           `insert into ${table} (${key}, address, outcome, decided_at, evidence, updated_at)
            select p.id, p.address, p.outcome, p.decided_at, p.evidence, $6
              from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::jsonb[]) as p(id, address, outcome, decided_at, evidence)
            on conflict (${key}) do update
              set address = excluded.address, outcome = excluded.outcome, decided_at = excluded.decided_at,
-                 evidence = excluded.evidence, updated_at = excluded.updated_at`,
+                 evidence = excluded.evidence, updated_at = excluded.updated_at
+           returning ${key} as id, ${PICK_DIGEST} as v, md5(evidence::text) as ev`,
           [whole.map((p) => p.subjectId), whole.map((p) => p.address), whole.map((p) => p.outcome), whole.map((p) => new Date(p.decidedAtMs).toISOString()), whole.map((p) => JSON.stringify(p.evidence)), at],
         );
+        const written = new Map(whole.map((p) => [p.subjectId, p] as const));
+        const held = this.#heldPicks[kind];
+        if (held.size + stored.length > HELD_PICKS_MAX) held.clear();
+        for (const s of stored) {
+          const p = written.get(s.id);
+          if (p === undefined) continue;
+          const evidence = JSON.parse(JSON.stringify(p.evidence)) as Record<string, unknown>;
+          held.set(s.id, { v: s.v, pick: { subjectId: s.id, address: p.address, outcome: p.outcome, decidedAtMs: p.decidedAtMs, evidence } });
+          if (kind === 'post') {
+            this.#heldEvidence.set(s.id, { v: s.ev, evidence });
+            this.#waitingEvidence.set(s.id, { v: s.ev, evidence });
+          }
+        }
       }
       if (stamped.length > 0) {
         await this.#db.query(`update ${table} set updated_at = $2 where ${key} = any($1::text[])`, [stamped, at]);
