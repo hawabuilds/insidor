@@ -48,23 +48,31 @@ test('★ a thesis keeps who, when, the words, the cap then and the position as 
   assert.equal(out[0]?.position, null, 'no trade sent: no position, never a zero one');
 });
 
-const deps = (fetchImpl: typeof globalThis.fetch, cookie: string | null = 'session=abc') => {
+type Login = { readonly cookie: string } | { readonly cookie: null; readonly why: 'not_configured' | 'login_expired' | 'unavailable' };
+const deps = (fetchImpl: typeof globalThis.fetch, login: Login = { cookie: 'privy-token=abc' }) => {
   let t = 1_000_000;
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const f = (async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     return fetchImpl(url, init);
   }) as typeof globalThis.fetch;
-  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
+  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie: async () => login, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
 };
 const ok = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof globalThis.fetch;
 
-test('★ every way of not having them is a reason: not configured, login refused, fomo down', async () => {
-  assert.deepEqual(await deps(ok(REPLY), null).get(ADDR), { theses: null, why: 'not_configured' });
+test('★ every way of not having them is a reason: no login, fomo refused, fomo down', async () => {
+  assert.deepEqual(await deps(ok(REPLY), { cookie: null, why: 'not_configured' }).get(ADDR), { theses: null, why: 'not_configured' });
+  assert.deepEqual(await deps(ok(REPLY), { cookie: null, why: 'login_expired' }).get(ADDR), { theses: null, why: 'login_expired' });
   assert.deepEqual(await deps(ok({}, 401)).get(ADDR), { theses: null, why: 'login_expired' });
   assert.deepEqual(await deps(ok({}, 500)).get(ADDR), { theses: null, why: 'unavailable' });
   assert.deepEqual(await deps(ok({ success: false })).get(ADDR), { theses: null, why: 'unavailable' });
   assert.deepEqual(await deps((async () => { throw new Error('down'); }) as never).get(ADDR), { theses: null, why: 'unavailable' });
+});
+
+test('no login means fomo is never called', async () => {
+  const d = deps(ok(REPLY), { cookie: null, why: 'not_configured' });
+  await d.get(ADDR);
+  assert.equal(d.calls.length, 0);
 });
 
 test('one coin is asked once while kept; the minute cap answers from what is kept, or busy', async () => {
@@ -73,7 +81,7 @@ test('one coin is asked once while kept; the minute cap answers from what is kep
   await d.get(ADDR);
   assert.equal(d.calls.length, 1, 'kept');
   assert.match(d.calls[0]?.url ?? '', /tokenAddress=7SL2Vnf.*networkId=1399811149/);
-  assert.equal((d.calls[0]?.init?.headers as Record<string, string>)['cookie'], 'session=abc', 'the owner\'s login is sent to fomo');
+  assert.equal((d.calls[0]?.init?.headers as Record<string, string>)['cookie'], 'privy-token=abc', 'the owner\'s login is sent to fomo');
   await d.get('So11111111111111111111111111111111111111112');
   assert.deepEqual(await d.get('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin'), { theses: null, why: 'busy' }, 'two calls a minute in this test');
   d.tick(61_000);

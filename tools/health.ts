@@ -84,7 +84,7 @@ if (judgingBroken(now.judgedLast30m)) red.push(`judgedLast30m ${now.judgedLast30
 for (const [step, c] of Object.entries(now.flow)) { const usual = flowUsual(c.dayBefore, c.twoDaysBefore); if (flowFallen(c.recent, usual)) red.push(`${step} output fell: ${c.recent} in the last ${FLOW_WINDOW_HOURS} h, usual ${usual}`); }
 if (now.lastFypJoinMin > 60) red.push(`For You has added no post for ${now.lastFypJoinMin} min`);
 if (picturesBroken(now.pictureStorage === -1 ? null : now.pictureStorage)) red.push(`picture storage answers ${now.pictureStorage}: coin logos, poster and post pictures are not loading`);
-if (now.fomoTheses === 'login_expired') red.push('fomo theses: the fomo login expired; copy a fresh cookie into FOMO_COOKIE on the read service');
+if (now.fomoTheses === 'login_expired') red.push('fomo theses: the fomo login expired; set a fresh FOMO_REFRESH_TOKEN on the read service');
 if (now.logoCopyFailPct > LOGO_FAIL_PCT) red.push(`coin-logo copies failing: ${now.logoCopyFailPct}% in the last hour`);
 /* The shed share is information, not a failure: the re-read day is fixed, and the feeds' freshness above is the outcome. */
 for (const [s, n] of Object.entries(now.errors)) if (last && n > Math.max(10, 3 * (last.errors?.[s] ?? 0))) red.push(`${s} errors ${n} (last check ${last.errors?.[s]})`);

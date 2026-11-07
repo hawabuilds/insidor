@@ -111,8 +111,8 @@ export function decodeTheses(body: unknown, address: string): readonly Thesis[] 
 }
 
 export interface ThesesDeps {
-  /** The owner's fomo cookie (`FOMO_COOKIE`); null: not configured. */
-  readonly cookie: string | null;
+  /** The live fomo login (fomo-session.ts): a fresh cookie, or a typed reason there is none. */
+  readonly cookie: () => Promise<{ readonly cookie: string } | { readonly cookie: null; readonly why: 'not_configured' | 'login_expired' | 'unavailable' }>;
   readonly fetch: typeof globalThis.fetch;
   readonly now: () => number;
   readonly log: Pick<Logger, 'info'>;
@@ -128,20 +128,22 @@ export function createTheses(deps: ThesesDeps): (address: string) => Promise<The
   const asked: number[] = [];
   const KEPT_MAX = 500;
   return async (address) => {
-    if (deps.cookie === null) return { theses: null, why: 'not_configured' };
     const now = deps.now();
     const hit = kept.get(address);
     if (hit !== undefined && now - hit.at < deps.keepMs) return hit.reply;
+    /* The login first: no cookie is a reason of its own (not configured, expired, Privy down), not a fomo call. */
+    const login = await deps.cookie();
+    if (login.cookie === null) return { theses: null, why: login.why };
     while (asked.length > 0 && now - (asked[0] ?? 0) >= 60_000) asked.shift();
     if (asked.length >= deps.perMinute) return hit?.reply ?? { theses: null, why: 'busy' };
     asked.push(now);
     let reply: ThesesReply;
     try {
       const url = `${FEED_URL}?tokenAddress=${encodeURIComponent(address)}&networkId=${FOMO_SOLANA_NETWORK}&threshold=${FEED_MIN_POSITION_USD}`;
-      const res = await deps.fetch(url, { headers: { cookie: deps.cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const res = await deps.fetch(url, { headers: { cookie: login.cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (res.status === 401 || res.status === 403) {
         reply = { theses: null, why: 'login_expired' };
-        deps.log.info('fomo theses: the login was refused; FOMO_COOKIE needs refreshing', { status: res.status });
+        deps.log.info('fomo theses: the login was refused by fomo', { status: res.status });
       } else if (!res.ok) {
         reply = { theses: null, why: 'unavailable' };
         deps.log.info('fomo theses unavailable', { status: res.status });
