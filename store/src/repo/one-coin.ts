@@ -872,16 +872,33 @@ export class PgOneCoinRepo {
     if (picks.length === 0) return 0;
     const { table, key } = PICK_TABLE[kind];
     const at = new Date(nowMs).toISOString();
+    /* ★ A PICK THE SAME AS THE ONE STORED IS ONLY STAMPED (2026-11-07). Every pass rewrote every
+       subject's pick, evidence and all — ~1 MB a call for the narratives, the runner's largest share of
+       its database egress once the coin-post check was cut — though most were what `previous` already
+       held. Such a pick now sends only its id, to move `updated_at` as the rewrite did (the held sweep
+       selects by it); a pick that differs in any field, or whose stored row was not read, is written
+       whole. The runner is the only writer of these tables, so `previous`, read this pass, is the row. */
+    const unchanged = (p: PickWrite): boolean => {
+      const s = previous.get(p.subjectId);
+      return s !== undefined && s.address === p.address && s.outcome === p.outcome && s.decidedAtMs === p.decidedAtMs && canonical(s.evidence) === canonical(p.evidence);
+    };
+    const whole = picks.filter((p) => !unchanged(p));
+    const stamped = picks.filter(unchanged).map((p) => p.subjectId);
     try {
-      await this.#db.query(
-        `insert into ${table} (${key}, address, outcome, decided_at, evidence, updated_at)
-         select p.id, p.address, p.outcome, p.decided_at, p.evidence, $6
-           from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::jsonb[]) as p(id, address, outcome, decided_at, evidence)
-         on conflict (${key}) do update
-           set address = excluded.address, outcome = excluded.outcome, decided_at = excluded.decided_at,
-               evidence = excluded.evidence, updated_at = excluded.updated_at`,
-        [picks.map((p) => p.subjectId), picks.map((p) => p.address), picks.map((p) => p.outcome), picks.map((p) => new Date(p.decidedAtMs).toISOString()), picks.map((p) => JSON.stringify(p.evidence)), at],
-      );
+      if (whole.length > 0) {
+        await this.#db.query(
+          `insert into ${table} (${key}, address, outcome, decided_at, evidence, updated_at)
+           select p.id, p.address, p.outcome, p.decided_at, p.evidence, $6
+             from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::jsonb[]) as p(id, address, outcome, decided_at, evidence)
+           on conflict (${key}) do update
+             set address = excluded.address, outcome = excluded.outcome, decided_at = excluded.decided_at,
+                 evidence = excluded.evidence, updated_at = excluded.updated_at`,
+          [whole.map((p) => p.subjectId), whole.map((p) => p.address), whole.map((p) => p.outcome), whole.map((p) => new Date(p.decidedAtMs).toISOString()), whole.map((p) => JSON.stringify(p.evidence)), at],
+        );
+      }
+      if (stamped.length > 0) {
+        await this.#db.query(`update ${table} set updated_at = $2 where ${key} = any($1::text[])`, [stamped, at]);
+      }
       const changed = picks.filter((p) => (previous.get(p.subjectId)?.address ?? null) !== p.address);
       if (changed.length > 0) {
         await this.#db.query(
@@ -1063,6 +1080,19 @@ export function oneCandidateEach(rows: readonly CandidateRow[]): CandidateRow[] 
     byKey.set(k, first === undefined ? r : { ...first, evidence: r.evidence });
   }
   return [...byKey.values()];
+}
+
+/**
+ * A value as jsonb would store it, as one string: keys sorted at every level, and what JSON drops
+ * (an undefined field) dropped. Two evidences equal here are the same stored row; a difference this
+ * misses only costs a whole write.
+ */
+export function canonical(v: unknown): string {
+  const sort = (x: unknown): unknown =>
+    Array.isArray(x) ? x.map(sort)
+    : x !== null && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sort((x as Record<string, unknown>)[k])]))
+    : x;
+  return JSON.stringify(sort(JSON.parse(JSON.stringify(v ?? null))));
 }
 
 export function onePickEach(picks: readonly PickWrite[]): PickWrite[] {

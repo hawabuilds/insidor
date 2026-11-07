@@ -199,3 +199,26 @@ test('watched sends back only the coins whose answer is not the one held', async
   assert.deepEqual([...(await repo.watched(['A', 'B', 'C'], 3))].sort(), ['A', 'C']);
   assert.deepEqual(returned, [['A', 'B', 'C'], [], ['B', 'C']]);
 });
+
+test('★ writePicks: a pick the same as the one stored only moves updated_at; one that differs is written whole', async () => {
+  const sent: { sql: string; params: readonly unknown[] }[] = [];
+  const db: Db = { query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => { sent.push({ sql, params: params ?? [] }); return [] as R[]; } } as Db;
+  const repo = new PgOneCoinRepo(db);
+  const evidence = { mode: 'live', standings: [{ address: 'A', share: 0.5 }], note: undefined, basis: 'trades' };
+  const stored = new Map([
+    ['n1', { subjectId: 'n1', address: 'A', outcome: 'picked' as const, decidedAtMs: 1_000, evidence: { basis: 'trades', standings: [{ share: 0.5, address: 'A' }], mode: 'live' } }],
+    ['n2', { subjectId: 'n2', address: 'A', outcome: 'picked' as const, decidedAtMs: 1_000, evidence: { mode: 'live' } }],
+  ]);
+  const picks = [
+    { subjectId: 'n1', address: 'A', outcome: 'picked' as const, decidedAtMs: 1_000, evidence, basis: 'trades' as const },
+    { subjectId: 'n2', address: 'A', outcome: 'picked' as const, decidedAtMs: 1_000, evidence, basis: 'trades' as const },
+    { subjectId: 'n3', address: 'B', outcome: 'picked' as const, decidedAtMs: 2_000, evidence, basis: 'trades' as const },
+  ];
+  const changed = await repo.writePicks('narrative', picks, stored, 'live', 5_000);
+  const insert = sent.find((s) => s.sql.includes('insert into internal.narrative_coin_pick'));
+  const stamp = sent.find((s) => s.sql.startsWith('update internal.narrative_coin_pick set updated_at'));
+  assert.deepEqual(insert?.params[0], ['n2', 'n3'], 'different evidence, and never stored: written whole');
+  assert.deepEqual(stamp?.params[0], ['n1'], 'the same in every field, key order aside: only stamped');
+  assert.equal(stamp?.params[1], new Date(5_000).toISOString());
+  assert.equal(changed, 1, 'the coin changed for n3 only');
+});
