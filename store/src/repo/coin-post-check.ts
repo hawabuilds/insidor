@@ -104,8 +104,42 @@ const duesOf = (rows: readonly DueRow[]): CoinPostDue[] =>
       postPicture: r.post_picture,
     }));
 
+/**
+ * ★ THE "NO"S, HELD PER PROCESS (2026-11-07). `refused` used to send every pair on screen to learn which
+ * few the judge refused — ~0.9 MB a call, the runner's largest share of its ~30 GB a day to the database.
+ * A row is written once and never changed or deleted (0151), so the "no" pairs are held here and caught
+ * up by `checked_at`, re-reading an hour back for a row stamped a little before it landed, and read whole
+ * every six hours; only pairs in that set go to the database, which still decides OWN_NAME. Module-level
+ * because callers build a repo per call.
+ */
+const NO_PAIRS = { keys: new Set<string>(), readTo: null as number | null, wholeAt: 0 };
+const NO_OVERLAP_MS = 3_600_000;
+const NO_WHOLE_EVERY_MS = 6 * 3_600_000;
+
 export class PgCoinPostCheckRepo {
   readonly #db: Db;
+
+  async #heldNos(): Promise<ReadonlySet<string>> {
+    const now = Date.now();
+    const whole = NO_PAIRS.readTo === null || now - NO_PAIRS.wholeAt >= NO_WHOLE_EVERY_MS;
+    const from = whole ? null : (NO_PAIRS.readTo as number) - NO_OVERLAP_MS;
+    const rows = await this.#db.query<{ item_id: string; address: string; at: string | Date }>(
+      `select item_id, address, checked_at as at from internal.coin_post_check
+        where answer = 'no' and ($1::timestamptz is null or checked_at >= $1::timestamptz)`,
+      [from === null ? null : toTimestamp(from as Millis)],
+    );
+    if (whole) {
+      NO_PAIRS.keys.clear();
+      NO_PAIRS.wholeAt = now;
+    }
+    let readTo = NO_PAIRS.readTo ?? 0;
+    for (const r of rows) {
+      NO_PAIRS.keys.add(`${r.item_id}|${r.address}`);
+      readTo = Math.max(readTo, new Date(r.at).getTime());
+    }
+    NO_PAIRS.readTo = readTo;
+    return NO_PAIRS.keys;
+  }
 
   constructor(db: Db) {
     this.#db = db;
@@ -193,11 +227,14 @@ export class PgCoinPostCheckRepo {
     if (pairs.length === 0) return new Set();
     const there = await this.#db.query<{ ok: boolean }>(`select to_regclass('internal.coin_post_check') is not null as ok`);
     if (there[0]?.ok !== true) return new Set();
+    const nos = await this.#heldNos();
+    const asked = pairs.filter((p) => nos.has(`${p.itemId}|${p.address}`));
+    if (asked.length === 0) return new Set();
     const rows = await this.#db.query<{ item_id: string; address: string }>(
       `select k.item_id, k.address from internal.coin_post_check k
          join unnest($1::text[], $2::text[]) as p(item_id, address) on p.item_id = k.item_id and p.address = k.address
         where k.answer = 'no' and not ${OWN_NAME}`,
-      [pairs.map((p) => p.itemId), pairs.map((p) => p.address)],
+      [asked.map((p) => p.itemId), asked.map((p) => p.address)],
     );
     return new Set(rows.map((r) => `${r.item_id}|${r.address}`));
   }
