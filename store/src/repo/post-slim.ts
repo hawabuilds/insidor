@@ -64,7 +64,9 @@ export const KEEP_SOURCES: readonly string[] = [
 ];
 
 /* $1 = the batch's item ids. Returns the kept ones. Each branch is a semi-join on an indexed or a
-   small table; coin_origin has no index on post_item_id and is read whole (≈115k rows, tens of ms). */
+   small table; coin_origin has no index on post_item_id and is read whole (≈115k rows, tens of ms) —
+   ONCE, as an IN list the planner hashes. Written as a correlated EXISTS it was re-read for every post
+   of the batch, 500 scans, and the run hit its statement limit before it decided one batch (2026-11-07). */
 const KEPT_SQL = `
   with b as (select item_id, source, source_item_id from public.item where item_id = any($1::text[]))
   select b.item_id from b
@@ -83,7 +85,7 @@ const KEPT_SQL = `
                   where x.item_id = b.item_id or (x.source = b.source and x.source_item_id = b.source_item_id))
       or exists (select 1 from internal.gold_addition x where x.item_id = b.item_id)
       or exists (select 1 from internal.coined_video x where x.item_id = b.item_id)
-      or exists (select 1 from internal.coin_origin x where x.post_item_id = b.item_id)
+      or b.item_id in (select x.post_item_id from internal.coin_origin x where x.post_item_id is not null)
       or exists (select 1 from internal.coin_post_link x where x.source = b.source and x.source_item_id = b.source_item_id)
       or exists (select 1 from internal.name_example x where x.item_id = b.item_id)
       or exists (select 1 from internal.label_embedding x where x.item_id = b.item_id)
