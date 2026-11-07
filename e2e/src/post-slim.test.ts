@@ -11,7 +11,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Db } from '@insidor/store';
-import { runSlim, type InTransaction } from '@insidor/store/repo/post-slim.ts';
+import { runSlim, type ArchiveSlim, type InTransaction, type SlimArchive } from '@insidor/store/repo/post-slim.ts';
 
 import { migratedDb } from './db.ts';
 
@@ -78,7 +78,9 @@ test('a week-old post nobody kept is slimmed to its first readings; kept and you
   assert.equal((await readings(db, 'x:plain')).length, 8, 'a dry run deletes nothing');
   assert.equal((await db.query(`select 1 from internal.post_slim_cursor`)).length, 0, 'nor moves the cursor');
 
-  const live = await runSlim(db, tx(db), POLICY, NOW, true);
+  const archived: SlimArchive[] = [];
+  const archive: ArchiveSlim = async (b) => { archived.push(b); };
+  const live = await runSlim(db, tx(db), POLICY, NOW, true, { archive });
   assert.equal(live.kind, 'ran');
   if (live.kind === 'ran') {
     assert.equal(live.live, true);
@@ -96,6 +98,11 @@ test('a week-old post nobody kept is slimmed to its first readings; kept and you
     await db.query(`select item_id, readings_dropped, search_dropped from internal.post_slim`),
     [{ item_id: 'x:plain', readings_dropped: 6, search_dropped: 1 }],
   );
+  /* ★ Archived first: every removed row, and the emptied fields, went to the archive as they were. */
+  assert.equal(archived.reduce((s, b) => s + b.readings.length, 0), 6);
+  assert.equal(archived.reduce((s, b) => s + b.searchRecords.length, 0), 1);
+  assert.deepEqual(archived.flatMap((b) => b.itemFields.map((r) => r['item_id'])), ['x:plain']);
+  assert.ok(archived.flatMap((b) => b.readings).every((r) => r['item_id'] === 'x:plain'), 'only the slimmed post');
 
   for (const id of ['x:fyp', 'x:coined', 'x:called', 'x:young']) {
     assert.equal((await readings(db, id)).length, 8, `${id} keeps every reading`);
@@ -104,7 +111,7 @@ test('a week-old post nobody kept is slimmed to its first readings; kept and you
     assert.equal(row?.n, 1, `${id} keeps its picture link`);
   }
 
-  const again = await runSlim(db, tx(db), POLICY, NOW, true);
+  const again = await runSlim(db, tx(db), POLICY, NOW, true, { archive });
   assert.equal(again.kind === 'ran' && again.batches.length, 0, 'the cursor is past every decided post');
 });
 

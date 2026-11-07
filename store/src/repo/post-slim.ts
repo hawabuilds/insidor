@@ -15,9 +15,11 @@
  *
  * ★ WHAT A SLIMMED POST KEEPS: its item row (link, text, account, platform; the picture link and the
  * cached newest count are emptied), the FIRST reading of each counter (the views when found), its
- * judge answers, every label, its picture vector and fingerprints. What goes: every later reading,
- * its search record (internal.item_found_by) and its raw capture. A row in internal.post_slim says it
- * happened, so anything drawing the post can say "later readings dropped" instead of a flat line.
+ * judge answers, every label, its picture vector and fingerprints. What leaves the database: every
+ * later reading, its search record (internal.item_found_by), its raw capture, and the emptied fields —
+ * ARCHIVED FIRST (`ArchiveSlim`, the owner 2026-11-07): stored and checked before anything is deleted.
+ * A row in internal.post_slim says it happened, so anything drawing the post can say "later readings
+ * dropped" instead of a flat line.
  *
  * ★ BOUNDED. One transaction per batch of posts (Policy.slim.postsPerBatch), each DELETE at most
  * `rowsPerStatement` rows through the observation primary key, a short lock_timeout, and a
@@ -195,55 +197,92 @@ async function measure(db: Db, ids: readonly string[]): Promise<Omit<SlimBatch, 
   };
 }
 
-/** Slims `ids` (already re-checked as not kept, in this transaction). Returns what went. */
-async function slim(db: Db, ids: readonly string[], rowsPerStatement: number): Promise<Omit<SlimBatch, 'decided' | 'kept' | 'slimmed' | 'cursor' | 'readingBytes' | 'itemBytes'>> {
+/** Everything a batch removes, each row as stored (`to_jsonb`), handed to the archive before any of it goes. */
+export interface SlimArchive {
+  readonly readings: readonly Record<string, unknown>[];
+  readonly searchRecords: readonly Record<string, unknown>[];
+  readonly rawCaptures: readonly Record<string, unknown>[];
+  /** Each emptied post's picture link and cached counts, as they were. */
+  readonly itemFields: readonly Record<string, unknown>[];
+}
+
+/**
+ * ★ ARCHIVED FIRST (the owner, 2026-11-07: "archive first"). Stores a batch and resolves only once it
+ * is read back and checked; any failure must throw, which rolls the batch back with nothing removed.
+ */
+export type ArchiveSlim = (batch: SlimArchive, cursor: SlimCursor) => Promise<void>;
+
+/** Removed rows counted against archived ones; a difference rolls the batch back. */
+function same(what: string, removed: number, archived: number): void {
+  if (removed !== archived) throw new Error(`post slimming: removed ${removed} ${what} but archived ${archived}; the batch is rolled back`);
+}
+
+/**
+ * Slims `ids` (already re-checked as not kept, in this transaction). Returns what went.
+ *
+ * ★ ONLY WHAT WAS ARCHIVED, BY ITS OWN KEY. The rows are read, archived and checked, then deleted by
+ * their primary keys, never again by the rule: a reading that lands between the read and the delete
+ * is not in the archive, so it is not deleted either. Each delete's count must equal the archive's.
+ */
+async function slim(db: Db, ids: readonly string[], rowsPerStatement: number, archive: ArchiveSlim, cursor: SlimCursor): Promise<Omit<SlimBatch, 'decided' | 'kept' | 'slimmed' | 'cursor' | 'readingBytes' | 'itemBytes'>> {
   if (ids.length === 0) return { readings: 0, searchRecords: 0, rawCaptures: 0 };
-  /* The ledger first, with each post's own counts, read in the transaction that deletes them. */
+  type Keyed = { k1: string; k2: string | null; k3: string | null; row: Record<string, unknown> };
+  const readings = await db.query<Keyed>(`select o.item_id as k1, o.kind as k2, o.captured_at::text as k3, to_jsonb(o) as row ${LATER_READINGS}`, [ids]);
+  const found = await db.query<Keyed>(`select x.item_id as k1, null as k2, null as k3, to_jsonb(x) as row from internal.item_found_by x where x.item_id = any($1::text[])`, [ids]);
+  const raws = await db.query<Keyed>(
+    `select distinct on (c.raw_ref) c.raw_ref as k1, null as k2, null as k3, to_jsonb(c) as row
+       from raw.capture c join public.item i on i.raw_ref = c.raw_ref where i.item_id = any($1::text[])`,
+    [ids],
+  );
+  const items = await db.query<Keyed>(
+    `select item_id as k1, null as k2, null as k3,
+            jsonb_build_object('item_id', item_id, 'media', media, 'counters', counters, 'counters_observed_at', counters_observed_at) as row
+       from public.item where item_id = any($1::text[]) and (media <> '[]'::jsonb or counters <> '{}'::jsonb or counters_observed_at is not null)`,
+    [ids],
+  );
+  await archive({ readings: readings.map((r) => r.row), searchRecords: found.map((r) => r.row), rawCaptures: raws.map((r) => r.row), itemFields: items.map((r) => r.row) }, cursor);
+
+  /* The ledger, with each post's counts from what was archived. */
+  const count = (rows: readonly Keyed[], id: string) => rows.filter((r) => r.k1 === id).length;
   await db.query(
     `insert into internal.post_slim (item_id, readings_dropped, search_dropped)
-     select b.id,
-            (select count(*) from public.observation o
-              where o.item_id = b.id
-                and exists (select 1 from public.observation f
-                             where f.item_id = o.item_id and f.kind = o.kind and f.captured_at < o.captured_at)),
-            (select count(*) from internal.item_found_by x where x.item_id = b.id)
-       from unnest($1::text[]) as b(id)
+     select * from unnest($1::text[], $2::bigint[], $3::bigint[])
      on conflict (item_id) do update
         set readings_dropped = internal.post_slim.readings_dropped + excluded.readings_dropped,
             search_dropped = internal.post_slim.search_dropped + excluded.search_dropped`,
-    [ids],
+    [ids, ids.map((id) => count(readings, id)), ids.map((id) => count(found, id))],
   );
   await db.query(`select set_config('insidor.slim', 'on', true)`);
-  let readings = 0;
-  for (;;) {
+  let removed = 0;
+  for (let i = 0; i < readings.length; i += rowsPerStatement) {
+    const part = readings.slice(i, i + rowsPerStatement);
     const [d] = await db.query<{ n: string }>(
       `with gone as (
-         delete from public.observation where ctid = any(array(select o.ctid ${LATER_READINGS} limit $2))
-         returning item_id)
+         delete from public.observation o using unnest($1::text[], $2::text[], $3::timestamptz[]) as k(item_id, kind, captured_at)
+          where o.item_id = k.item_id and o.kind = k.kind and o.captured_at = k.captured_at
+         returning 1)
        select count(*)::text as n from gone`,
-      [ids, rowsPerStatement],
+      [part.map((r) => r.k1), part.map((r) => r.k2), part.map((r) => r.k3)],
     );
-    const n = num(d?.n);
-    readings += n;
-    if (n < rowsPerStatement) break;
+    removed += num(d?.n);
   }
   await db.query(`select set_config('insidor.slim', 'off', true)`);
+  same('readings', removed, readings.length);
   const [f] = await db.query<{ n: string }>(
     `with gone as (delete from internal.item_found_by where item_id = any($1::text[]) returning 1) select count(*)::text as n from gone`,
-    [ids],
+    [found.map((r) => r.k1)],
   );
+  same('search records', num(f?.n), found.length);
   const [c] = await db.query<{ n: string }>(
-    `with gone as (delete from raw.capture c using public.item i
-                    where i.raw_ref = c.raw_ref and i.item_id = any($1::text[]) returning 1)
-     select count(*)::text as n from gone`,
-    [ids],
+    `with gone as (delete from raw.capture where raw_ref = any($1::text[]) returning 1) select count(*)::text as n from gone`,
+    [raws.map((r) => r.k1)],
   );
+  same('raw captures', num(c?.n), raws.length);
   await db.query(
-    `update public.item set media = '[]'::jsonb, counters = '{}'::jsonb, counters_observed_at = null
-      where item_id = any($1::text[]) and (media <> '[]'::jsonb or counters <> '{}'::jsonb or counters_observed_at is not null)`,
-    [ids],
+    `update public.item set media = '[]'::jsonb, counters = '{}'::jsonb, counters_observed_at = null where item_id = any($1::text[])`,
+    [items.map((r) => r.k1)],
   );
-  return { readings, searchRecords: num(f?.n), rawCaptures: num(c?.n) };
+  return { readings: removed, searchRecords: num(f?.n), rawCaptures: num(c?.n) };
 }
 
 /**
@@ -257,9 +296,11 @@ export async function runSlim(
   policy: SlimPolicy,
   nowMs: number,
   live: boolean,
-  options: { readonly from?: SlimCursor } = {},
+  options: { readonly from?: SlimCursor; readonly archive?: ArchiveSlim } = {},
 ): Promise<SlimRunOutcome> {
   const writing = live && policy.on;
+  const archive = options.archive;
+  if (writing && archive === undefined) throw new Error('post slimming removes only what it has archived, and no archive was given');
   const missing = await missingTables(db, writing);
   if (missing.length > 0) return { kind: 'not_migrated', missing };
   const cutoffIso = new Date(nowMs - policy.afterMs).toISOString();
@@ -285,8 +326,8 @@ export async function runSlim(
       const kept = await keptAmong(tx, ids);
       const slimIds = ids.filter((id) => !kept.has(id));
       let counted = await measure(tx, slimIds);
-      if (writing) {
-        counted = { ...counted, ...(await slim(tx, slimIds, policy.rowsPerStatement)) };
+      if (writing && archive !== undefined) {
+        counted = { ...counted, ...(await slim(tx, slimIds, policy.rowsPerStatement, archive, next)) };
         await tx.query(
           `insert into internal.post_slim_cursor (id, first_seen_at, item_id, updated_at) values (true, $1::timestamptz, $2, now())
            on conflict (id) do update set first_seen_at = excluded.first_seen_at, item_id = excluded.item_id, updated_at = now()`,
