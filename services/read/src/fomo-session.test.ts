@@ -16,7 +16,7 @@ const jwtWithExp = (expSec: number): string => {
   return `${b64({ alg: 'ES256', typ: 'JWT' })}.${b64({ aud: 'app', exp: expSec })}.sig`;
 };
 
-const cfg = (refreshToken: string | null): FomoSessionConfig => ({ refreshToken, appId: 'app', privyUrl: 'https://privy/sessions', origin: 'https://fomo.family' });
+const cfg = (refreshToken: string | null): FomoSessionConfig => ({ refreshToken, appId: 'app', clientId: 'client-x', sdkVersion: 'react-auth:3.48.0', privyUrl: 'https://privy/sessions', origin: 'https://fomo.family' });
 
 test('jwtExpiryMs reads exp in ms, or null when there is none', () => {
   assert.equal(jwtExpiryMs(jwtWithExp(1_700_000_000)), 1_700_000_000_000);
@@ -35,9 +35,11 @@ test('★ renews before expiry, sends the access token as a privy-token cookie, 
   let now = 1_000_000;
   const bodies: string[] = [];
   const cookies: string[] = [];
+  const headers: Record<string, string>[] = [];
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     bodies.push(String(init.body));
     cookies.push(String((init.headers as Record<string, string>)['cookie']));
+    headers.push(init.headers as Record<string, string>);
     const n = bodies.length;
     return new Response(JSON.stringify({ token: jwtWithExp(Math.floor(now / 1000) + 3600), refresh_token: `refresh-${n}` }));
   }) as unknown as typeof globalThis.fetch;
@@ -48,6 +50,8 @@ test('★ renews before expiry, sends the access token as a privy-token cookie, 
   assert.match((first as { cookie: string }).cookie, /privy-session=privy\.fomo\.family/);
   assert.equal(JSON.parse(bodies[0] ?? '{}').refresh_token, 'refresh-0', 'the env refresh token is used first');
   assert.equal(cookies[0], 'privy-refresh-token=refresh-0', 'the refresh token is also sent as the cookie Privy now reads');
+  assert.equal(headers[0]?.['privy-client-id'], 'client-x', 'the Privy client id is sent (without it Privy answers 401)');
+  assert.equal(headers[0]?.['privy-client'], 'react-auth:3.48.0', 'and the privy-client version header');
 
   await s.cookie();
   assert.equal(bodies.length, 1, 'still fresh: no second call to Privy');
@@ -69,7 +73,7 @@ test('a refused refresh is login_expired; Privy down or an unreadable reply is u
 });
 
 test('the config reads the env, with fomo\'s Privy app id as the default', () => {
-  assert.deepEqual(readFomoSessionConfig({ FOMO_REFRESH_TOKEN: ' tok ' }), { refreshToken: 'tok', appId: 'cm6h485o300n3zj9yl6vpedq7', privyUrl: 'https://auth.privy.io/api/v1/sessions', origin: 'https://fomo.family' });
+  assert.deepEqual(readFomoSessionConfig({ FOMO_REFRESH_TOKEN: ' tok ' }), { refreshToken: 'tok', appId: 'cm6h485o300n3zj9yl6vpedq7', clientId: 'client-WY5gFSayQjxnQhG4rP6SnwPAyPZWZpNRhJ6b9rzMnYwqH', sdkVersion: 'react-auth:3.48.0', privyUrl: 'https://auth.privy.io/api/v1/sessions', origin: 'https://fomo.family' });
   assert.equal(readFomoSessionConfig({}).refreshToken, null);
   assert.equal(readFomoSessionConfig({ FOMO_REFRESH_TOKEN: 'x', FOMO_PRIVY_APP_ID: 'other' }).appId, 'other');
 });

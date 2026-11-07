@@ -30,6 +30,13 @@ import type { Logger } from './log.ts';
 const DEFAULT_PRIVY_URL = 'https://auth.privy.io/api/v1/sessions';
 /** fomo's Privy app id (the `aud` of its access token); `FOMO_PRIVY_APP_ID` overrides it. */
 export const DEFAULT_FOMO_APP_ID = 'cm6h485o300n3zj9yl6vpedq7';
+/**
+ * fomo's Privy client id (`privy-client-id`), from fomo's own bundle. Privy's session endpoint refuses
+ * a call without it (a 401, which is what cost us a day of 2026-11-07); `FOMO_PRIVY_CLIENT_ID` overrides it.
+ */
+export const DEFAULT_FOMO_CLIENT_ID = 'client-WY5gFSayQjxnQhG4rP6SnwPAyPZWZpNRhJ6b9rzMnYwqH';
+/** The `privy-client` header fomo's SDK sends (its version); `FOMO_PRIVY_CLIENT` overrides it. */
+const DEFAULT_SDK_VERSION = 'react-auth:3.48.0';
 /** The origin Privy requires on a session call; fomo's own. `FOMO_PRIVY_ORIGIN` overrides it. */
 const DEFAULT_ORIGIN = 'https://fomo.family';
 /** Renew this long before the access token's own expiry, so a slow clock never sends a dead cookie. */
@@ -73,6 +80,8 @@ export interface FomoSessionConfig {
   /** The owner's refresh token (`FOMO_REFRESH_TOKEN`); null: not configured, nothing is asked. */
   readonly refreshToken: string | null;
   readonly appId: string;
+  readonly clientId: string;
+  readonly sdkVersion: string;
   readonly privyUrl: string;
   readonly origin: string;
 }
@@ -83,6 +92,8 @@ export function readFomoSessionConfig(env: Readonly<Record<string, string | unde
   return {
     refreshToken: t('FOMO_REFRESH_TOKEN'),
     appId: t('FOMO_PRIVY_APP_ID') ?? DEFAULT_FOMO_APP_ID,
+    clientId: t('FOMO_PRIVY_CLIENT_ID') ?? DEFAULT_FOMO_CLIENT_ID,
+    sdkVersion: t('FOMO_PRIVY_CLIENT') ?? DEFAULT_SDK_VERSION,
     privyUrl: t('FOMO_PRIVY_URL') ?? DEFAULT_PRIVY_URL,
     origin: t('FOMO_PRIVY_ORIGIN') ?? DEFAULT_ORIGIN,
   };
@@ -112,17 +123,22 @@ export function createFomoSession(deps: FomoSessionDeps): { cookie: () => Promis
   async function refresh(): Promise<SessionResult> {
     if (refreshToken === null) return { cookie: null, why: 'not_configured' };
     try {
-      /* Privy moved the refresh token from localStorage to an httpOnly cookie, so the renewal sends it
-         BOTH as that cookie and in the body: whichever Privy reads, it works (the owner, 2026-11-07,
-         confirmed the cookie is `privy-refresh-token` on fomo's Privy domain). */
+      /* The request fomo's own SDK makes (read from its bundle, 2026-11-07): the session POST carries
+         `privy-app-id`, `privy-client-id` and `privy-client` — without the client id Privy answers 401 —
+         and the refresh token itself rides as the `privy-refresh-token` cookie (Privy moved it out of
+         local storage); the body `refresh_token` is sent too, which the SDK does and Privy ignores in
+         favour of the cookie. The access token, once we have one, goes as the Bearer the SDK sends. */
       const res = await deps.fetch(deps.cfg.privyUrl, {
         method: 'POST',
         headers: {
           'privy-app-id': deps.cfg.appId,
+          'privy-client-id': deps.cfg.clientId,
+          'privy-client': deps.cfg.sdkVersion,
           origin: deps.cfg.origin,
           'content-type': 'application/json',
           accept: 'application/json',
           cookie: `privy-refresh-token=${refreshToken}`,
+          ...(accessToken === null ? {} : { authorization: `Bearer ${accessToken}` }),
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -141,6 +157,12 @@ export function createFomoSession(deps: FomoSessionDeps): { cookie: () => Promis
       }
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const setCookie = res.headers.get('set-cookie');
+      /* Privy's own outcome: 'set' hands back fresh tokens, 'remove' ends the session (the owner's
+         token is revoked — a fresh one is needed), as fomo's SDK reads it. */
+      if (body['session_update_action'] === 'remove') {
+        deps.log.info('fomo login: Privy ended the session; set a fresh FOMO_REFRESH_TOKEN', {});
+        return { cookie: null, why: 'login_expired' };
+      }
       const token = accessTokenOf(body, setCookie);
       if (token === null) {
         /* The names only, never a value, so a changed reply shape can be seen from the logs. */
