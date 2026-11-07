@@ -56,7 +56,7 @@ const deps = (fetchImpl: typeof globalThis.fetch, login: Login = { cookie: 'priv
     calls.push({ url, init });
     return fetchImpl(url, init);
   }) as typeof globalThis.fetch;
-  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie: async () => login, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
+  return { calls, tick: (ms: number) => (t += ms), get: createTheses({ cookie: async () => login, appHeaders: { 'app-build': 'test' }, fetch: f, now: () => t, log: SILENT, keepMs: 120_000, perMinute: 2 }) };
 };
 const ok = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof globalThis.fetch;
 
@@ -82,6 +82,7 @@ test('one coin is asked once while kept; the minute cap answers from what is kep
   assert.equal(d.calls.length, 1, 'kept');
   assert.match(d.calls[0]?.url ?? '', /tokenAddress=7SL2Vnf.*networkId=1399811149/);
   assert.equal((d.calls[0]?.init?.headers as Record<string, string>)['cookie'], 'privy-token=abc', 'the owner\'s login is sent to fomo');
+  assert.equal((d.calls[0]?.init?.headers as Record<string, string>)['app-build'], 'test', 'and fomo\'s own app headers');
   await d.get('So11111111111111111111111111111111111111112');
   assert.deepEqual(await d.get('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin'), { theses: null, why: 'busy' }, 'two calls a minute in this test');
   d.tick(61_000);

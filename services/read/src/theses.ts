@@ -34,6 +34,21 @@ const FEED_URL = 'https://prod-api.fomo.family/feed/token/thesis';
 const FEED_MIN_POSITION_USD = 1000;
 const TIMEOUT_MS = 8_000;
 const TEXT_MAX_CHARS = 400;
+/**
+ * ★ THE HEADERS FOMO'S OWN APP SENDS (read from a live request, 2026-11-07). Without `app-build` and
+ * `x-supported-chains` fomo's API refuses the call (a custom 432); `app-build` is fomo's web build id,
+ * which its API takes leniently, and the chain list names the networks the app understands. A
+ * browser-shaped User-Agent keeps Cloudflare from turning away a bare server client. `FOMO_APP_BUILD`
+ * and `FOMO_SUPPORTED_CHAINS` override the defaults if fomo ever changes them.
+ */
+export const APP_HEADERS = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => ({
+  'app-build': env['FOMO_APP_BUILD']?.trim() || '0e38742',
+  'app-language': 'en',
+  'x-supported-chains': env['FOMO_SUPPORTED_CHAINS']?.trim() || '1,56,143,4663,5042,8453,1399811149',
+  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  origin: 'https://fomo.family',
+  referer: 'https://fomo.family/',
+});
 
 export type ThesesWhy = 'not_configured' | 'login_expired' | 'unavailable' | 'busy';
 
@@ -120,6 +135,8 @@ export interface ThesesDeps {
   readonly keepMs: number;
   /** Calls to fomo a minute, across every coin. */
   readonly perMinute: number;
+  /** The headers fomo's own app sends (APP_HEADERS); without them fomo's API refuses the call. */
+  readonly appHeaders: Record<string, string>;
 }
 
 /** A coin's theses by its Solana address, kept `keepMs`, at most `perMinute` calls to fomo a minute. */
@@ -140,7 +157,7 @@ export function createTheses(deps: ThesesDeps): (address: string) => Promise<The
     let reply: ThesesReply;
     try {
       const url = `${FEED_URL}?tokenAddress=${encodeURIComponent(address)}&networkId=${FOMO_SOLANA_NETWORK}&threshold=${FEED_MIN_POSITION_USD}`;
-      const res = await deps.fetch(url, { headers: { cookie: login.cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const res = await deps.fetch(url, { headers: { ...deps.appHeaders, cookie: login.cookie, 'content-type': 'application/json', accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (res.status === 401 || res.status === 403) {
         reply = { theses: null, why: 'login_expired' };
         deps.log.info('fomo theses: the login was refused by fomo', { status: res.status });

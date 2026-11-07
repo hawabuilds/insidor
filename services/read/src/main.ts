@@ -47,7 +47,7 @@ import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 import { createLiveCoins } from './live-coins.ts';
-import { createTheses } from './theses.ts';
+import { APP_HEADERS, createTheses } from './theses.ts';
 import { createFomoSession, readFomoSessionConfig } from './fomo-session.ts';
 
 const log = createLogger();
@@ -349,7 +349,7 @@ async function main(): Promise<void> {
      nobody copies a cookie by hand. A static `FOMO_COOKIE` still wins when set, for a quick test. */
   const fomoSession = createFomoSession({ cfg: readFomoSessionConfig(process.env), fetch: globalThis.fetch, now: Date.now, log: deps.log });
   const fomoCookie = cfg.fomoCookie === null ? fomoSession.cookie : async () => ({ cookie: cfg.fomoCookie as string });
-  const theses = createTheses({ cookie: fomoCookie, fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 120_000, perMinute: 30 });
+  const theses = createTheses({ cookie: fomoCookie, appHeaders: APP_HEADERS(process.env), fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 120_000, perMinute: 30 });
   const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, theses, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds() };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
