@@ -203,15 +203,22 @@ function ago(ms: number): string {
 }
 
 function ThesisCard({ thesis, x, y, width, onClose }: { thesis: Thesis; x: number; y: number; width: number; onClose: () => void }) {
+  const iW = typeof window !== 'undefined' ? window.innerWidth : 390;
+  const iH = typeof window !== 'undefined' ? window.innerHeight : 844;
+  const CARD_W = Math.min(220, iW * 0.6);
+  const CARD_H_EST = 170;
   const left = x + width + 6;
-  const flip = typeof window !== 'undefined' && left + 228 > window.innerWidth;
+  const flip = left + CARD_W > iW;
+  const top = Math.min(Math.max(8, y - 20), iH - CARD_H_EST - 8);
+  /* When flipped left, constrain right so the card can't slide off the left edge. */
+  const rightVal = Math.min(iW - CARD_W - 4, Math.max(4, iW - x + 4));
   const p = thesis.position;
   return (
     <div
       className={styles['thesisCard']}
       style={flip
-        ? { top: Math.max(8, y - 20), right: Math.max(4, (typeof window !== 'undefined' ? window.innerWidth : 390) - x + 4) }
-        : { top: Math.max(8, y - 20), left: Math.max(4, left) }}
+        ? { top, right: rightVal }
+        : { top, left: Math.max(4, left) }}
       onClick={(e) => e.stopPropagation()}
     >
       <div className={styles['thesisHead']}>
