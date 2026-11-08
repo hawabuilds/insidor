@@ -296,51 +296,58 @@
 .chartWrap { position: relative; }
 
 /* Each thesis bubble: a finger-sized tap zone over the candle the trader posted at. */
-.thesisTap { position: absolute; left: 0; top: 0; z-index: 2; display: none; width: 34px; height: 34px; padding: 0; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
-/* The trader's profile picture or fallback initial. */
-.thesisPic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--card); color: var(--brand-200); font-size: 11px; font-weight: 600; box-shadow: 0 0 0 2px var(--brand), 0 0 0 3.5px var(--bg); pointer-events: none; flex-shrink: 0; }
+.thesisTap { position: absolute; left: 0; top: 0; z-index: 2; display: none; width: 40px; height: 40px; padding: 0; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
+/* The trader's profile picture or fallback initial — shared by chart bubbles and the fomoTheses section. */
+.thesisPic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--card); color: var(--text-2); font-size: 11px; font-weight: 700; border: 2px solid var(--bg); box-shadow: 0 0 0 1.5px var(--border), 0 2px 6px rgb(0 0 0 / 55%); pointer-events: none; flex-shrink: 0; }
 /* The small fomo badge on each bubble's corner. */
-.thesisBadge { position: absolute; right: 3px; bottom: 3px; width: 11px; height: 11px; border-radius: 50%; background: #f9741c; box-shadow: 0 0 0 1.5px var(--bg); pointer-events: none; }
+.thesisBadge { position: absolute; right: 4px; bottom: 4px; width: 10px; height: 10px; border-radius: 50%; background: #f9741c; box-shadow: 0 0 0 1.5px var(--bg); pointer-events: none; }
 
 /* The thesis card floating over the chart when a bubble is tapped. */
-.thesisCard { position: fixed; z-index: 100; width: min(220px, 60%); padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--popup); box-shadow: 0 6px 20px rgb(0 0 0 / 50%); }
-/* Header row: picture, handle + time, close button. */
-.thesisHead { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; }
+.thesisCard { position: fixed; z-index: 100; width: min(248px, 65vw); padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--popup); box-shadow: 0 10px 32px rgb(0 0 0 / 65%), 0 0 0 1px var(--border-subtle); }
+/* Header row: picture, [handle + pill + time], close button. */
+.thesisHead { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 /* Fallback initial inside a thesisPic span. */
-.thesisLetter { font-size: 11px; font-weight: 600; }
-/* Handle and time-ago text. */
-.thesisWho { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thesisWhen { font-size: 11px; color: var(--text-3); font-weight: 400; }
-.thesisClose { margin-left: auto; padding: 0; background: none; border: none; color: var(--text-3); font-size: 16px; line-height: 1; cursor: pointer; }
+.thesisLetter { font-size: 11px; font-weight: 700; }
+/* Column: [handle + pill row] then time. */
+.thesisWho { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+/* Handle + "Thesis" pill on one line. */
+.thesisWhoLine { display: flex; align-items: center; gap: 5px; overflow: hidden; }
+.thesisHandleText { font-size: 13px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "Thesis" label pill in brand purple. */
+.thesisPill { flex-shrink: 0; padding: 1px 6px; border-radius: 6px; background: var(--brand-wash); color: var(--brand-200); font-size: 10px; font-weight: 600; }
+.thesisWhen { font-size: 11px; color: var(--text-3); }
+.thesisClose { margin-left: auto; flex-shrink: 0; padding: 2px 4px; background: none; border: none; color: var(--text-3); font-size: 18px; line-height: 1; cursor: pointer; }
 /* The thesis text, cut to 4 lines. */
-.thesisText { font-size: 12px; line-height: 1.45; color: var(--text-1); margin: 0 0 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+.thesisText { font-size: 13px; line-height: 1.5; color: var(--text-1); margin: 0 0 7px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
 /* Position size and PnL. */
-.thesisFacts { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 5px; }
+.thesisFacts { font-size: 12px; color: var(--text-2); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
 .thesisFacts b { font-weight: 600; }
 /* The "via fomo" attribution link. */
-.thesisVia { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); text-decoration: none; }
+.thesisVia { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); text-decoration: none; }
 .thesisVia:hover { color: var(--text-2); }
 /* The small fomo orange dot beside the attribution. */
-.thesisViaBadge { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }
+.thesisViaBadge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }
 
 /* "Trader bubbles (fomo) unavailable right now" — shown when fomo is configured but not reachable. */
 .thesesNote { margin-top: 4px; font-size: 11px; color: var(--text-3); }
 
 /* fomo theses section below the trades list. */
-.fomoTheses { padding: 12px 0 4px; border-top: 1px solid var(--border); }
-.fomoThesesHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.fomoThesesTitle { font-size: 13px; font-weight: 600; color: var(--text-2); }
-.fomoThesesAll { font-size: 12px; color: var(--text-3); text-decoration: none; }
-.fomoThesesAll:hover { color: var(--text-2); }
+.fomoTheses { padding: 14px 0 6px; border-top: 1px solid var(--border); }
+.fomoThesesHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.fomoThesesTitle { font-size: 13px; font-weight: 600; color: var(--text-1); }
+.fomoThesesAll { font-size: 12px; color: var(--brand-300); text-decoration: none; }
+.fomoThesesAll:hover { color: var(--brand-200); }
 /* Each thesis row in the section. */
-.fomoThesisRow { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit; }
-.fomoThesisRow:last-child { border-bottom: none; }
-.fomoThesisWho { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
-.fomoThesisWhoText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.fomoThesisHandle { font-size: 12px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fomoThesisRow { display: block; padding: 10px 0; border-bottom: 1px solid var(--border-subtle); text-decoration: none; color: inherit; }
+.fomoThesisRow:last-child { border-bottom: none; padding-bottom: 2px; }
+.fomoThesisWho { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fomoThesisWhoText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* Handle + "Thesis" pill on one line. */
+.fomoThesisWhoLine { display: flex; align-items: center; gap: 5px; overflow: hidden; }
+.fomoThesisHandle { font-size: 13px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fomoThesisWhen { font-size: 11px; color: var(--text-3); }
-.fomoThesisText { font-size: 12px; line-height: 1.45; color: var(--text-1); margin: 0 0 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.fomoThesisPnl { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 3px; }
+.fomoThesisText { font-size: 13px; line-height: 1.5; color: var(--text-1); margin: 0 0 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.fomoThesisPnl { font-size: 12px; color: var(--text-2); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .fomoThesisPnl b { font-weight: 600; }
 .fomoThesisVia { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); }
 .fomoThesisViaBadge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }

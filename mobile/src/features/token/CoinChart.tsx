@@ -219,7 +219,10 @@ function ThesisCard({ thesis, x, y, width, onClose }: { thesis: Thesis; x: numbe
           ? <img className={styles['thesisPic']} src={thesis.pictureUrl} alt="" />
           : <span className={`${styles['thesisPic']} ${styles['thesisLetter']}`}>{thesis.handle.slice(0, 1).toUpperCase()}</span>}
         <div className={styles['thesisWho']}>
-          <span>@{thesis.handle}</span>
+          <div className={styles['thesisWhoLine']}>
+            <span className={styles['thesisHandleText']}>@{thesis.handle}</span>
+            <span className={styles['thesisPill']}>Thesis</span>
+          </div>
           <span className={styles['thesisWhen']}>{ago(Date.now() - thesis.at)}</span>
         </div>
         <button type="button" className={styles['thesisClose']} onClick={onClose} aria-label="Close thesis">×</button>

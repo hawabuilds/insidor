@@ -52,7 +52,10 @@ function ThesisRow({ thesis: t, now }: { thesis: Thesis; now: number }) {
           ? <img className={styles['thesisPic']} src={t.pictureUrl} alt="" />
           : <span className={styles['thesisPic']}>{t.handle.slice(0, 1).toUpperCase()}</span>}
         <div className={styles['fomoThesisWhoText']}>
-          <span className={styles['fomoThesisHandle']}>@{t.handle}</span>
+          <div className={styles['fomoThesisWhoLine']}>
+            <span className={styles['fomoThesisHandle']}>@{t.handle}</span>
+            <span className={styles['thesisPill']}>Thesis</span>
+          </div>
           <span className={styles['fomoThesisWhen']}><Value r={formatAge(t.at as never, now as never)} /></span>
         </div>
       </div>

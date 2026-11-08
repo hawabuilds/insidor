@@ -47,8 +47,7 @@ import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 import { createLiveCoins } from './live-coins.ts';
-import { APP_HEADERS, createTheses } from './theses.ts';
-import { createFomoSession, readFomoSessionConfig } from './fomo-session.ts';
+import { createTheses } from './theses.ts';
 
 const log = createLogger();
 
@@ -344,11 +343,9 @@ async function main(): Promise<void> {
     now: Date.now,
     solCandles: async (untilMs, minutes) => (await marketData.history(SOL, untilMs, 1, minutes)).candles,
   });
-  /* fomo theses for the chart's trader bubbles (theses.ts + fomo-session.ts). The session auto-renews
-     the owner's Privy access token from FOMO_REFRESH_TOKEN; FOMO_COOKIE bypasses Privy entirely. */
-  const fomoSession = createFomoSession({ cfg: readFomoSessionConfig(process.env), fetch: globalThis.fetch, now: Date.now, log: deps.log });
-  const fomoCookieFn = cfg.fomoCookie === null ? fomoSession.cookie : async () => ({ cookie: cfg.fomoCookie as string });
-  const theses = createTheses({ cookie: fomoCookieFn, proxyUrl: cfg.thesesProxy, appHeaders: APP_HEADERS(process.env), fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 600_000, perMinute: 30 });
+  /* fomo theses for the chart's trader bubbles (theses.ts). fomoapi.io Bearer key (FOMOAPI_KEY),
+     $250+ positions only. Null key: theses section absent, nothing asked. */
+  const theses = createTheses({ apiKey: cfg.fomoApiKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 600_000, perMinute: 20 });
   const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it

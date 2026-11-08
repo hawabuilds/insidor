@@ -19,7 +19,6 @@ export interface Thesis {
   readonly name: string | null;
   readonly pictureUrl: string | null;
   readonly text: string;
-  readonly marketCapUsd: number | null;
   readonly likes: number | null;
   readonly position: { readonly valueUsd: number | null; readonly pnlUsd: number | null; readonly pnlPct: number | null; readonly closed: boolean } | null;
   readonly url: string;
@@ -52,7 +51,6 @@ export function decodeCoinTheses(raw: unknown): CoinTheses {
       id, at, handle, text, url,
       name: str(x['name']),
       pictureUrl: https(x['pictureUrl']),
-      marketCapUsd: num(x['marketCapUsd']),
       likes: num(x['likes']),
       position: p === null ? null : { valueUsd: num(p['valueUsd']), pnlUsd: num(p['pnlUsd']), pnlPct: num(p['pnlPct']), closed: p['closed'] === true },
     }];
