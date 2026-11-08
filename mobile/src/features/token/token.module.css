@@ -296,7 +296,7 @@
 .chartWrap { position: relative; }
 
 /* Each thesis bubble: a finger-sized tap zone over the candle the trader posted at. */
-.thesisTap { position: absolute; left: 0; top: 0; z-index: 2; display: none; width: 34px; height: 34px; padding: 0; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
+.thesisTap { position: absolute; left: 0; top: 0; z-index: 10; display: none; width: 34px; height: 34px; padding: 0; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
 /* The trader's profile picture or fallback initial — shared by chart bubbles and the fomoTheses section. */
 .thesisPic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--card); color: var(--brand-200); font-size: 11px; font-weight: 600; box-shadow: 0 0 0 2px var(--brand), 0 0 0 3.5px var(--bg); pointer-events: none; flex-shrink: 0; }
 /* The small fomo badge on each bubble's corner. */
