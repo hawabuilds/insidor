@@ -91,7 +91,7 @@ export interface Deps {
   /** A coin's launch odds (launch-odds.ts), its groups kept `launchOdds.keepMs`. Absent: the groups are read on every request. */
   readonly launchOdds?: ReturnType<typeof createLaunchOdds>;
   /** A coin's fomo theses by its Solana address (theses.ts). Absent: the route answers "not_configured". */
-  readonly theses?: (address: string) => Promise<ThesesReply>;
+  readonly theses?: (address: string, threshold?: number) => Promise<ThesesReply>;
 }
 
 /*
@@ -585,7 +585,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'theses') {
       const address = param.startsWith('solana:') ? param.slice('solana:'.length) : null;
       if (address === null || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return NOT_FOUND;
-      return json(200, deps.theses === undefined ? { theses: null, why: 'not_configured' } : await deps.theses(address));
+      const thresholdRaw = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('threshold');
+      const threshold = thresholdRaw !== null && /^\d+$/.test(thresholdRaw) ? parseInt(thresholdRaw, 10) : undefined;
+      return json(200, deps.theses === undefined ? { theses: null, why: 'not_configured' } : await deps.theses(address, threshold));
     }
 
     if (deps.tradeCard !== undefined && segments.length === 3 && head === 'sell' && param !== undefined && segments[2] === 'card') {

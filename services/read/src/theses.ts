@@ -26,8 +26,8 @@
 import type { Logger } from './log.ts';
 
 const BASE_URL = 'https://api.fomoapi.io/v2/thesis/token';
-/** Only theses from traders holding at least this many USD of the coin. */
-const MIN_POSITION_USD = 250;
+/** Default minimum position when the caller does not specify a threshold. */
+const DEFAULT_THRESHOLD_USD = 250;
 const TIMEOUT_MS = 8_000;
 const TEXT_MAX_CHARS = 400;
 
@@ -101,16 +101,17 @@ export interface ThesesDeps {
   readonly perMinute: number;
 }
 
-export function createTheses(deps: ThesesDeps): (address: string) => Promise<ThesesReply> {
+export function createTheses(deps: ThesesDeps): (address: string, threshold?: number) => Promise<ThesesReply> {
   if (deps.apiKey === null) return async () => ({ theses: null, why: 'not_configured' });
 
   const kept = new Map<string, { readonly at: number; readonly reply: ThesesReply }>();
   const asked: number[] = [];
   const KEPT_MAX = 500;
 
-  return async (address) => {
+  return async (address, threshold = DEFAULT_THRESHOLD_USD) => {
+    const cacheKey = `${address}:${threshold}`;
     const now = deps.now();
-    const hit = kept.get(address);
+    const hit = kept.get(cacheKey);
     if (hit !== undefined && now - hit.at < deps.keepMs) return hit.reply;
 
     while (asked.length > 0 && now - (asked[0] ?? 0) >= 60_000) asked.shift();
@@ -119,7 +120,7 @@ export function createTheses(deps: ThesesDeps): (address: string) => Promise<The
 
     let reply: ThesesReply;
     try {
-      const url = `${BASE_URL}/${encodeURIComponent(address)}?threshold=${MIN_POSITION_USD}&sort=recent&limit=50`;
+      const url = `${BASE_URL}/${encodeURIComponent(address)}?threshold=${threshold}&sort=recent&limit=50`;
       const res = await deps.fetch(url, {
         headers: { authorization: `Bearer ${deps.apiKey}`, accept: 'application/json' },
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -140,7 +141,7 @@ export function createTheses(deps: ThesesDeps): (address: string) => Promise<The
     }
 
     if (kept.size >= KEPT_MAX) kept.delete(kept.keys().next().value ?? '');
-    kept.set(address, { at: now, reply });
+    kept.set(cacheKey, { at: now, reply });
     return reply;
   };
 }

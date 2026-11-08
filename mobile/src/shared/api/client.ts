@@ -578,8 +578,9 @@ export async function submitTrade(_coinId: string, _side: 'buy' | 'sell'): Promi
  * as a bearer header and nowhere else. Replies are returned whole, with their status, for
  * people.ts to read. `keepalive` lets a request sent as the page is hidden finish after it goes.
  */
-export async function fetchCoinTheses(coinId: string, signal?: AbortSignal): Promise<CoinTheses> {
-  return decodeCoinTheses(await read(`/coin/${encodeURIComponent(coinId)}/theses`, signal));
+export async function fetchCoinTheses(coinId: string, signal?: AbortSignal, threshold?: number): Promise<CoinTheses> {
+  const qs = threshold !== undefined ? `?threshold=${threshold}` : '';
+  return decodeCoinTheses(await read(`/coin/${encodeURIComponent(coinId)}/theses${qs}`, signal));
 }
 
 export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown, keepalive = false): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {
