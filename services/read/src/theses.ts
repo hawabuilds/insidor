@@ -2,14 +2,19 @@
  * GET /coin/:id/theses — what fomo's traders wrote about a coin, for the token chart's bubbles.
  * fomo is a social trading app: a trader posts a short "thesis" with a trade, and fomo shows
  * their position beside it. Each one here is the trader's handle, name and picture, their words,
- * when they posted, and their position size as fomo reports it — facts about the world, shown
- * with fomo's name on them.
+ * when they posted, and their position size and profit as fomo reports them — facts about the
+ * world, shown with fomo's name on them.
  *
  * Data comes from fomoapi.io, an independent FOMO data API (not affiliated with fomo.family).
  * One `FOMOAPI_KEY` on Railway is all the auth needed: a plain Bearer key, no session management.
  *
  * ★ ONLY THESES BACKED BY $250+. `threshold=250` is passed on every call; the API skips theses
  * on positions under that size, so low-conviction dust trades never reach the chart.
+ *
+ * ★ THE POSITION COMES FROM THE THESIS ROW ITSELF. Each row carries the trade's size
+ * (`tradeUsd`) and its realized and unrealized profit, so no per-trade lookup is needed.
+ * `equity` is read first but fomoapi sends it as 0 on open positions, so it cannot be the only
+ * source: reading equity alone dropped every position and the card showed none.
  *
  * ★ MISSING IS A REASON, NEVER "NO THESES". Not configured, the key refused, the API unreachable,
  * or the per-minute cap reached: each is `theses: null` with `why`, so the chart can say the
@@ -26,13 +31,10 @@
 import type { Logger } from './log.ts';
 
 const BASE_URL = 'https://api.fomoapi.io/v2/thesis/token';
-const TRADES_URL = 'https://api.fomoapi.io/v2/trades';
 /** Default minimum position when the caller does not specify a threshold. */
 const DEFAULT_THRESHOLD_USD = 250;
 const TIMEOUT_MS = 8_000;
 const TEXT_MAX_CHARS = 400;
-/** At most this many trade lookups per coin per request (250 credits each). */
-const MAX_TRADE_LOOKUPS = 5;
 
 export type ThesesWhy = 'not_configured' | 'login_failed' | 'upstream_error' | 'busy';
 
@@ -58,23 +60,28 @@ const rec = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const https = (v: unknown): string | null => { const s = str(v); return s !== null && s.startsWith('https://') ? s : null; };
+const positive = (v: unknown): number | null => { const n = num(v); return n !== null && n > 0 ? n : null; };
 
 export const fomoCoinUrl = (address: string): string => `https://fomo.family/tokens/solana/${address}`;
 
-/** Internal: a decoded thesis row that also carries the tradeId for the enrichment step. */
-interface DecodedThesis {
-  readonly thesis: Thesis;
-  readonly tradeId: string | null;
+/** Size from equity, else the trade's size; profit is realized plus unrealized, absent when fomo sent neither. */
+function positionOf(it: Record<string, unknown>): Thesis['position'] {
+  const valueUsd = positive(it['equity']) ?? positive(it['tradeUsd']);
+  if (valueUsd === null) return null;
+  const realized = num(it['realizedPnlUsd']);
+  const unrealized = num(it['unrealizedPnlUsd']);
+  const pnlUsd = realized === null && unrealized === null ? null : (realized ?? 0) + (unrealized ?? 0);
+  return { valueUsd, pnlUsd, pnlPct: null, closed: false };
 }
 
 /**
- * Decodes the fomoapi.io /v2/thesis/token response, oldest first.
+ * Decodes the fomoapi.io /v2/thesis/token response into our Thesis list, oldest first.
  * A thesis missing an id, a parseable timestamp, a handle, or any text is dropped.
  */
-function decodeThesesResponse(body: unknown, address: string): readonly DecodedThesis[] {
+export function decodeThesesResponse(body: unknown, address: string): readonly Thesis[] {
   const items = rec(body)['theses'];
   if (!Array.isArray(items)) return [];
-  const out: DecodedThesis[] = [];
+  const out: Thesis[] = [];
   const seen = new Set<string>();
   for (const raw of items) {
     const it = rec(raw);
@@ -84,31 +91,19 @@ function decodeThesesResponse(body: unknown, address: string): readonly DecodedT
     const text = str(it['text']);
     if (id === null || !Number.isFinite(at) || handle === null || text === null || seen.has(id)) continue;
     seen.add(id);
-    const equityRaw = num(it['equity']);
     out.push({
-      thesis: {
-        id,
-        at,
-        handle,
-        name: str(it['name']),
-        pictureUrl: https(it['avatar']),
-        text: Array.from(text).length > TEXT_MAX_CHARS ? `${Array.from(text).slice(0, TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : text,
-        likes: num(it['likes']),
-        position: equityRaw !== null && equityRaw > 0 ? { valueUsd: equityRaw, pnlUsd: null, pnlPct: null, closed: false } : null,
-        url: fomoCoinUrl(address),
-      },
-      tradeId: str(it['tradeId']),
+      id,
+      at,
+      handle,
+      name: str(it['name']),
+      pictureUrl: https(it['avatar']),
+      text: Array.from(text).length > TEXT_MAX_CHARS ? `${Array.from(text).slice(0, TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : text,
+      likes: num(it['likes']),
+      position: positionOf(it),
+      url: fomoCoinUrl(address),
     });
   }
-  return out.sort((a, b) => a.thesis.at - b.thesis.at);
-}
-
-/** Extracts unrealized PnL (open) or realized PnL (closed) from a trade response body. */
-function decodeTradePnl(body: unknown): number | null {
-  // The API returns fields at top level or nested under "trade"
-  const root = rec(body);
-  const trade = rec(root['trade'] ?? body);
-  return num(trade['unrealizedPnlUsd']) ?? num(trade['realizedPnlUsd']);
+  return out.sort((a, b) => a.at - b.at);
 }
 
 export interface ThesesDeps {
@@ -153,38 +148,7 @@ export function createTheses(deps: ThesesDeps): (address: string, threshold?: nu
         reply = { theses: null, why: 'upstream_error' };
       } else {
         const body: unknown = await res.json();
-        const decoded = decodeThesesResponse(body, address);
-
-        // Enrich up to MAX_TRADE_LOOKUPS open positions with PnL from /v2/trades/{tradeId}.
-        // Only positions with a tradeId and non-null valueUsd (open) are looked up.
-        // Trade calls count against the per-minute cap, shared with thesis calls above.
-        const toEnrich = decoded
-          .filter(d => d.tradeId !== null && d.thesis.position !== null)
-          .slice(0, MAX_TRADE_LOOKUPS);
-
-        const pnlMap = new Map<string, number | null>();
-        await Promise.all(toEnrich.map(async (d) => {
-          const tid = d.tradeId!;
-          while (asked.length > 0 && deps.now() - (asked[0] ?? 0) >= 60_000) asked.shift();
-          if (asked.length >= deps.perMinute) return;
-          asked.push(deps.now());
-          try {
-            const tr = await deps.fetch(`${TRADES_URL}/${encodeURIComponent(tid)}`, {
-              headers: { authorization: `Bearer ${deps.apiKey}`, accept: 'application/json' },
-              signal: AbortSignal.timeout(TIMEOUT_MS),
-            });
-            if (tr.ok) pnlMap.set(tid, decodeTradePnl(await tr.json()));
-          } catch {
-            // trade lookup failure is non-fatal; position still shows without PnL
-          }
-        }));
-
-        const theses: readonly Thesis[] = decoded.map(d => {
-          const pnl = d.tradeId !== null ? (pnlMap.get(d.tradeId) ?? null) : null;
-          if (pnl === null || d.thesis.position === null) return d.thesis;
-          return { ...d.thesis, position: { ...d.thesis.position, pnlUsd: pnl } };
-        });
-        reply = { theses };
+        reply = { theses: decodeThesesResponse(body, address) };
       }
     } catch (e) {
       deps.log.info('fomoapi theses unavailable', { err: e instanceof Error ? e.message : String(e) });
