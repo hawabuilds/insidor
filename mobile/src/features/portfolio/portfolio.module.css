@@ -388,8 +388,7 @@
 .sheetNote {
   margin: 0;
   color: var(--text-3);
-  font-size: var(--type-caption);
-  font-weight: 500;
+  font-size: var(--type-secondary);
   line-height: 1.5;
   text-align: center;
 }
@@ -406,53 +405,57 @@
   word-break: break-all;
 }
 
-/* The chains to send from, one row that scrolls sideways. */
+/* The chains to send from, one row that scrolls sideways. It stays inside the pop-up's own
+   padding: bleeding it out by the page gutter (22px) past the pop-up's 18px made the pop-up
+   scroll sideways and drew a grey scrollbar under it. Chips as every pop-up draws them: grey, the
+   chosen one white on the lighter grey, never purple (tokens.css, share.module.css). */
 .chainRow {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 8px;
   overflow-x: auto;
-  margin: 0 calc(-1 * var(--gutter));
-  padding: 0 var(--gutter);
   scrollbar-width: none;
 }
 .chainRow::-webkit-scrollbar { display: none; }
 
 .chainChip {
   flex-shrink: 0;
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--card);
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--sheet-button);
   color: var(--text-2);
-  font-size: var(--type-caption);
+  font: inherit;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .chainChipOn {
-  border-color: var(--brand);
-  background: var(--brand-wash);
-  color: var(--brand-200);
+  background: var(--tag-bg);
+  color: var(--text-1);
 }
 
 /* What has arrived through a deposit address, newest first. */
 .arrivals {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .arrival {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--type-caption);
+  padding: 10px 0;
+  border-top: 1px solid var(--sheet-border);
+  font-size: var(--type-secondary);
 }
 
 .arrivalDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.arrivalWorking { background: var(--brand); }
+.arrivalWorking { background: var(--sheet-label); }
 .arrivalDone { background: var(--up); }
 .arrivalFailed { background: var(--down); }
 
@@ -469,7 +472,6 @@
 
 .arrivalState {
   color: var(--text-3);
-  font-weight: 500;
   white-space: nowrap;
 }
 

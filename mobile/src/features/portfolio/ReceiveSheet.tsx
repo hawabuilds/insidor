@@ -140,7 +140,7 @@ export function ReceiveSheet({ address, onClose }: { address: string; onClose: (
       <div className={styles['sheet']}>
         <div className={styles['chainRow']} role="tablist" aria-label="Chain to send from">
           {CHAINS.map((c) => (
-            <button key={c.id} type="button" role="tab" aria-selected={c.id === chainId} className={`${styles['chainChip']} ${c.id === chainId ? styles['chainChipOn'] : ''}`} onClick={() => setChainId(c.id)}>
+            <button key={c.id} type="button" role="tab" aria-selected={c.id === chainId} className={`${styles['chainChip']} ${c.id === chainId ? styles['chainChipOn'] : ''}`} onClick={(e) => { setChainId(c.id); e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }}>
               {c.name}
             </button>
           ))}
