@@ -345,8 +345,8 @@ async function main(): Promise<void> {
     solCandles: async (untilMs, minutes) => (await marketData.history(SOL, untilMs, 1, minutes)).candles,
   });
   /* fomo theses for the chart's trader bubbles (theses.ts). fomoapi.io Bearer key (FOMOAPI_KEY),
-     $250+ positions only. Null key: theses section absent, nothing asked. */
-  const theses = createTheses({ apiKey: cfg.fomoApiKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 600_000, perMinute: 20 });
+     $250+ positions only; newest page every 15 min, four pages of history every 2 h. Null key: theses section absent, nothing asked. */
+  const theses = createTheses({ apiKey: cfg.fomoApiKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, recentKeepMs: 900_000, historyKeepMs: 7_200_000, perMinute: 20 });
   /* Deposits from other chains that land as SOL, through Aurora Intents (deposits.ts). Null key: Solana only. */
   const deposits = createDeposits({ apiKey: cfg.auroraIntentsKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, perMinute: 120 });
   const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses, deposits };
