@@ -26,10 +26,13 @@
 import type { Logger } from './log.ts';
 
 const BASE_URL = 'https://api.fomoapi.io/v2/thesis/token';
+const TRADES_URL = 'https://api.fomoapi.io/v2/trades';
 /** Default minimum position when the caller does not specify a threshold. */
 const DEFAULT_THRESHOLD_USD = 250;
 const TIMEOUT_MS = 8_000;
 const TEXT_MAX_CHARS = 400;
+/** At most this many trade lookups per coin per request (250 credits each). */
+const MAX_TRADE_LOOKUPS = 5;
 
 export type ThesesWhy = 'not_configured' | 'login_failed' | 'upstream_error' | 'busy';
 
@@ -44,7 +47,7 @@ export interface Thesis {
   readonly text: string;
   readonly likes: number | null;
   /** Position in the coin as fomoapi reports it; null when not supplied. */
-  readonly position: { readonly valueUsd: number | null; readonly pnlUsd: null; readonly pnlPct: null; readonly closed: boolean } | null;
+  readonly position: { readonly valueUsd: number | null; readonly pnlUsd: number | null; readonly pnlPct: null; readonly closed: boolean } | null;
   /** The coin on fomo, where the thesis is read in full. */
   readonly url: string;
 }
@@ -58,14 +61,20 @@ const https = (v: unknown): string | null => { const s = str(v); return s !== nu
 
 export const fomoCoinUrl = (address: string): string => `https://fomo.family/tokens/solana/${address}`;
 
+/** Internal: a decoded thesis row that also carries the tradeId for the enrichment step. */
+interface DecodedThesis {
+  readonly thesis: Thesis;
+  readonly tradeId: string | null;
+}
+
 /**
- * Decodes the fomoapi.io /v2/thesis/token response into our Thesis list, oldest first.
+ * Decodes the fomoapi.io /v2/thesis/token response, oldest first.
  * A thesis missing an id, a parseable timestamp, a handle, or any text is dropped.
  */
-export function decodeThesesResponse(body: unknown, address: string): readonly Thesis[] {
+function decodeThesesResponse(body: unknown, address: string): readonly DecodedThesis[] {
   const items = rec(body)['theses'];
   if (!Array.isArray(items)) return [];
-  const out: Thesis[] = [];
+  const out: DecodedThesis[] = [];
   const seen = new Set<string>();
   for (const raw of items) {
     const it = rec(raw);
@@ -77,18 +86,29 @@ export function decodeThesesResponse(body: unknown, address: string): readonly T
     seen.add(id);
     const equityRaw = num(it['equity']);
     out.push({
-      id,
-      at,
-      handle,
-      name: str(it['name']),
-      pictureUrl: https(it['avatar']),
-      text: Array.from(text).length > TEXT_MAX_CHARS ? `${Array.from(text).slice(0, TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : text,
-      likes: num(it['likes']),
-      position: equityRaw !== null && equityRaw > 0 ? { valueUsd: equityRaw, pnlUsd: null, pnlPct: null, closed: false } : null,
-      url: fomoCoinUrl(address),
+      thesis: {
+        id,
+        at,
+        handle,
+        name: str(it['name']),
+        pictureUrl: https(it['avatar']),
+        text: Array.from(text).length > TEXT_MAX_CHARS ? `${Array.from(text).slice(0, TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : text,
+        likes: num(it['likes']),
+        position: equityRaw !== null && equityRaw > 0 ? { valueUsd: equityRaw, pnlUsd: null, pnlPct: null, closed: false } : null,
+        url: fomoCoinUrl(address),
+      },
+      tradeId: str(it['tradeId']),
     });
   }
-  return out.sort((a, b) => a.at - b.at);
+  return out.sort((a, b) => a.thesis.at - b.thesis.at);
+}
+
+/** Extracts unrealized PnL (open) or realized PnL (closed) from a trade response body. */
+function decodeTradePnl(body: unknown): number | null {
+  // The API returns fields at top level or nested under "trade"
+  const root = rec(body);
+  const trade = rec(root['trade'] ?? body);
+  return num(trade['unrealizedPnlUsd']) ?? num(trade['realizedPnlUsd']);
 }
 
 export interface ThesesDeps {
@@ -133,7 +153,38 @@ export function createTheses(deps: ThesesDeps): (address: string, threshold?: nu
         reply = { theses: null, why: 'upstream_error' };
       } else {
         const body: unknown = await res.json();
-        reply = { theses: decodeThesesResponse(body, address) };
+        const decoded = decodeThesesResponse(body, address);
+
+        // Enrich up to MAX_TRADE_LOOKUPS open positions with PnL from /v2/trades/{tradeId}.
+        // Only positions with a tradeId and non-null valueUsd (open) are looked up.
+        // Trade calls count against the per-minute cap, shared with thesis calls above.
+        const toEnrich = decoded
+          .filter(d => d.tradeId !== null && d.thesis.position !== null)
+          .slice(0, MAX_TRADE_LOOKUPS);
+
+        const pnlMap = new Map<string, number | null>();
+        await Promise.all(toEnrich.map(async (d) => {
+          const tid = d.tradeId!;
+          while (asked.length > 0 && deps.now() - (asked[0] ?? 0) >= 60_000) asked.shift();
+          if (asked.length >= deps.perMinute) return;
+          asked.push(deps.now());
+          try {
+            const tr = await deps.fetch(`${TRADES_URL}/${encodeURIComponent(tid)}`, {
+              headers: { authorization: `Bearer ${deps.apiKey}`, accept: 'application/json' },
+              signal: AbortSignal.timeout(TIMEOUT_MS),
+            });
+            if (tr.ok) pnlMap.set(tid, decodeTradePnl(await tr.json()));
+          } catch {
+            // trade lookup failure is non-fatal; position still shows without PnL
+          }
+        }));
+
+        const theses: readonly Thesis[] = decoded.map(d => {
+          const pnl = d.tradeId !== null ? (pnlMap.get(d.tradeId) ?? null) : null;
+          if (pnl === null || d.thesis.position === null) return d.thesis;
+          return { ...d.thesis, position: { ...d.thesis.position, pnlUsd: pnl } };
+        });
+        reply = { theses };
       }
     } catch (e) {
       deps.log.info('fomoapi theses unavailable', { err: e instanceof Error ? e.message : String(e) });
