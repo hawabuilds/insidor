@@ -602,5 +602,13 @@ export async function peopleRequest(url: string, method: string, token: string |
     headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(token === null ? {} : { authorization: `Bearer ${token}` }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  return { ok: response.ok, status: response.status, json: await response.json().catch(() => ({})) };
+  /* An empty body (a delete's 204) is fine; a body that is not JSON is not an answer. It once was the
+     app's own page, served with a 200 when the deploy lost its proxy, and read as an empty profile. */
+  const text = await response.text().catch(() => '');
+  if (text.trim() === '') return { ok: response.ok, status: response.status, json: {} };
+  try {
+    return { ok: response.ok, status: response.status, json: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, status: 502, json: { error: "That didn't load. Try again." } };
+  }
 }
