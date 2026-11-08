@@ -162,6 +162,8 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   const tradesDone = runtime.trades === null ? Promise.resolve() : runTrades(runtime.trades, ac.signal);
   // Our own candles (chart.ts) on their own clock too; with no relay they are fed nothing and write nothing.
   const chartsDone = runtime.charts.run(ac.signal);
+  // Every launch and what it did, to the private archive bucket (launch-archive.ts), on its own clock too.
+  const archiveDone = runtime.archive.run(ac.signal);
 
   /*
    * ★ EVERY HOLE DECLARED SINCE THE LAST WINDOW WE CLOSED, so that the next
@@ -368,6 +370,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   await listingDone;
   await tradesDone;
   await chartsDone;
+  await archiveDone;
   server.close();
   // The pool and the singleton lock are closed by `withRuntime` on the way out of
   // this function, in a `finally`, including when it leaves by throwing.

@@ -13,6 +13,7 @@
   "dependencies": {
     "@insidor/contracts": "workspace:*",
     "@insidor/market-geckoterminal": "workspace:*",
+    "@insidor/storage-supabase": "workspace:*",
     "@insidor/store": "workspace:*",
     "@insidor/venue-solana-pumpfun": "workspace:*"
   }
