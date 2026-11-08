@@ -58,11 +58,11 @@ const BAR_PX = 7;
 /** The trader picture drawn over the candle the thesis was posted at: a small profile picture with fomo's badge. */
 interface ChartThesis { readonly id: string; readonly at: number; readonly handle: string; readonly pictureUrl: string | null }
 /** The picture itself, in CSS pixels. */
-const THESIS_PX = 28;
+const THESIS_PX = 24;
 /** The tap area around the picture. */
-const THESIS_TAP_PX = 40;
+const THESIS_TAP_PX = 34;
 /** Step between stacked theses on the same candle. */
-const STACK_STEP_PX = 20;
+const STACK_STEP_PX = 17;
 /** At most this many theses are shown per candle (the ones posted first). */
 const STACK_MAX = 3;
 /** All's narrowest and widest candle. */
