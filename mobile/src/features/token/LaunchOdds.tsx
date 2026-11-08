@@ -57,7 +57,9 @@ export function OddsLine({ odds, onOpen }: { odds: CoinOdds | null; onOpen: () =
       {m.look === 'runner' ? <span className={styles['good']}>Strong</span> : null}
       <span>2x {v(two, hitOf(m.normal, 2), true, sharePercent(two))}</span>
       <span>10x {v(ten, hitOf(m.normal, 10), true, sharePercent(ten))}</span>
-      <span>Rug {v(m.like.rugged, m.normal.rugged, false, sharePercent(m.like.rugged))}</span>
+      {/* ★ Rug is plain here (the owner, 2026-10-31): busy coins both run and rug more often, so a red
+          Rug beside a green "Strong" read as a contradiction. Its colour is on the Info tab. */}
+      <span>Rug <b>{sharePercent(m.like.rugged)}</b></span>
       <span>Peak <b>{peakAbout(m.like.peakP50S)}</b></span>
       <span className={styles['lineEnd']} aria-hidden="true"><ChevronIcon size={14} /></span>
     </button>
