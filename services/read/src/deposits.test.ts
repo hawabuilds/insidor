@@ -34,7 +34,7 @@ const TOKENS = [
 ];
 
 test('asks Aurora once for a wallet and chain, paying out SOL to that same wallet, and keeps the answer', async () => {
-  const { fetch, calls } = fakeFetch((url) => (url.includes('/tokens/') ? { status: 200, body: TOKENS } : { status: 200, body: { depositAddress: 'TQx7tronAddr', alreadyExists: false } }));
+  const { fetch, calls } = fakeFetch((url) => (url.includes('/tokens/') ? { status: 200, body: { asset_stats: [], tokens: TOKENS } } : { status: 200, body: { depositAddress: 'TQx7tronAddr', alreadyExists: false } }));
   const d = createDeposits({ apiKey: KEY, fetch, now: () => 0, log: SILENT, perMinute: 100 });
   const a = await d.address(WALLET, 'tron');
   assert.deepEqual(a, { kind: 'ready', chain: 'tron', address: 'TQx7tronAddr', coins: ['USDT', 'TRX'] });
@@ -89,6 +89,10 @@ test('amounts scale by their decimals; unreadable parts are null, never 0', () =
 
 test('EVM is one entry covering every EVM chain the token list names', () => {
   assert.deepEqual(coinsOn('evm', TOKENS.map((t) => ({ chain: t.blockchain, symbol: t.symbol }))), ['ETH', 'USDC']);
+});
+
+test('a bridged twin like BTC(OMNI) is not named beside the coin itself', () => {
+  assert.deepEqual(coinsOn('btc', [{ chain: 'btc', symbol: 'BTC(OMNI)' }, { chain: 'btc', symbol: 'BTC' }]), ['BTC']);
 });
 
 test('the routes check the wallet and chain before anything is asked', async () => {

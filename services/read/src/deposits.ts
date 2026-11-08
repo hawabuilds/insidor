@@ -103,7 +103,8 @@ export function scaled(amount: unknown, decimals: unknown): number | null {
 
 /** The symbols a chain accepts, common ones first, from Aurora's token list. */
 export function coinsOn(chain: DepositChain, tokens: readonly { readonly chain: string; readonly symbol: string }[]): readonly string[] {
-  const on = new Set(tokens.filter((t) => (chain === 'evm' ? EVM_CHAINS.has(t.chain) : t.chain === chain)).map((t) => t.symbol));
+  /* A symbol with a bracket is a bridged twin (`BTC(OMNI)` beside `BTC`): naming both reads as two coins to send. */
+  const on = new Set(tokens.filter((t) => (chain === 'evm' ? EVM_CHAINS.has(t.chain) : t.chain === chain) && !t.symbol.includes('(')).map((t) => t.symbol));
   const first = COMMON.filter((s) => on.has(s));
   const rest = [...on].filter((s) => !first.includes(s)).sort();
   return [...first, ...rest].slice(0, COINS_SHOWN);
@@ -170,8 +171,10 @@ export function createDeposits(deps: DepositsDeps): Deposits {
     if (!room()) return tokens?.list ?? null;
     try {
       const r = await call(`tokens/${encodeURIComponent(key)}`);
-      if (r.status !== 200 || !Array.isArray(r.body)) return tokens?.list ?? null;
-      const list = r.body.flatMap((raw) => {
+      /* Aurora answers `{ tokens: [...] }` (beside `asset_stats`), not the bare list its docs show. */
+      const raw = Array.isArray(r.body) ? r.body : rec(r.body)['tokens'];
+      if (r.status !== 200 || !Array.isArray(raw)) return tokens?.list ?? null;
+      const list = raw.flatMap((raw) => {
         const t = rec(raw);
         const assetId = str(t['assetId']);
         const chain = str(t['blockchain']);
