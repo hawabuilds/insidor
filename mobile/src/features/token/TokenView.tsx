@@ -45,7 +45,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { fetchCoinAbout, fetchCoinMarket, fetchCoinOdds, type CoinAbout, type CoinMarket, type CoinOdds, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
+import { fetchCoinAbout, fetchCoinMarket, fetchCoinOdds, fetchCoinTheses, type CoinAbout, type CoinMarket, type CoinOdds, type CoinTheses, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
 import { LIVE_POLL_MS, noteMarket } from '../../shared/coin-cap.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -153,6 +153,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
+  const [thesesLoad] = useLoad(`theses:${facts.coinId}`, (signal) => fetchCoinTheses(facts.coinId, signal), 'memory');
+  const theses: CoinTheses | null = thesesLoad.state === 'ready' ? thesesLoad.value : null;
   /* What happened to launches that opened like this one (LaunchOdds.tsx): read once when the page opens, like the about read.
      ★ Owner only (the owner 2026-10-31): the odds line and the Info card are still being proven, so
      everyone else never reads them and sees the page as it was before. */
@@ -231,7 +233,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
-      <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
+      <CoinChart market={market} state={loaded.state} view={view} onView={setView} ageMs={ageMs} notified={about?.notified ?? null} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} theses={theses} />
 
       {viral !== null && about !== null ? <ViralPost posts={about.posts} launchedAt={launchedAt} /> : null}
 
@@ -253,7 +255,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       </div>
 
       <div className={styles['panel']}>
-        {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} /> : null}
+        {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} coinAddress={facts.address} theses={theses} /> : null}
         {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={named.ticker !== null ? tickerText(named.ticker) : 'this coin'} about={ticker} /> : null}
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} odds={odds} tradable={facts.tradable} now={now} insidor={insidor} pair={pair} /> : null}
       </div>

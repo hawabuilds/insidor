@@ -17,6 +17,7 @@ export type { BuildResult, Holding as TradeHolding, TradeLimits, TradeQuote, Tra
 export type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 export type { Catches, CatchStat, CatchWhy } from './catches.ts';
 export type { RunningCoin } from './running.ts';
+export type { CoinTheses, Thesis } from './theses.ts';
 export type { SellCard, SellCardPost, SellFact, SellFactWhy } from './sell-card.ts';
 export type { NameIdea, OriginGap, SameNameCoin, SameNameCoins, SearchCoin, TickerUse, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
@@ -61,6 +62,7 @@ export {
   fetchStorySheet,
   fetchStoryPosts,
   submitTrade,
+  fetchCoinTheses,
 } from './client.ts';
 
 export { WireLeakError, WireShapeError } from './decode.ts';

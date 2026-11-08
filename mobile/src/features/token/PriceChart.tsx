@@ -54,6 +54,17 @@ import styles from './token.module.css';
 const HEIGHT = 200;
 /** A candle's width in px on every view but All, which fits the whole life: thin, as pump.fun's, never stretched. */
 const BAR_PX = 7;
+
+/** The trader picture drawn over the candle the thesis was posted at: a small profile picture with fomo's badge. */
+interface ChartThesis { readonly id: string; readonly at: number; readonly handle: string; readonly pictureUrl: string | null }
+/** The picture itself, in CSS pixels. */
+const THESIS_PX = 24;
+/** The tap area around the picture. */
+const THESIS_TAP_PX = 34;
+/** Step between stacked theses on the same candle. */
+const STACK_STEP_PX = 17;
+/** At most this many theses are shown per candle (the ones posted first). */
+const STACK_MAX = 3;
 /** All's narrowest and widest candle. */
 const ALL_MIN_PX = 1.5;
 const ALL_MAX_PX = 7;
@@ -96,7 +107,7 @@ const candleOptions = (c: Colours) => ({
 
 type Series = ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>;
 
-export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, onNotifiedTap, style, emptyLabel, onScrub }: {
+export function PriceChart({ points, rising, windowMs, wholeLife = false, scale = null, notified = null, onNotifiedTap, style, emptyLabel, onScrub, theses = [], onThesisTap }: {
   points: readonly ChartPoint[];
   /** All: the whole life is fitted, candles as thin as it takes. Otherwise candles keep BAR_PX and the newest sit at the right. */
   wholeLife?: boolean;
@@ -112,6 +123,10 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   style: ChartStyle;
   emptyLabel: string;
   onScrub: (point: ChartPoint | null) => void;
+  /** fomo trader pictures drawn above each candle where a thesis was posted. */
+  theses?: readonly ChartThesis[];
+  /** A thesis bubble was tapped: show its card at the given viewport position. */
+  onThesisTap?: (id: string, x: number, y: number, width: number) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -123,6 +138,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
   const lastTapRef = useRef(0);
   const onScrubRef = useRef(onScrub);
   const markRef = useRef<HTMLButtonElement>(null);
+  const thesisRefs = useRef(new Map<string, HTMLButtonElement>());
   const wholeLifeRef = useRef(wholeLife);
   wholeLifeRef.current = wholeLife;
   const placeMarkRef = useRef<() => void>(() => undefined);
@@ -242,15 +258,13 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
     /* ★ OUR MARK, AND NOTHING ELSE ON THE CHART (the owner, 2026-10-27: "just show our logo without
        words at the mc we caught it"): under the candle that holds the moment we caught the post;
        the first candle when we had it before the coin launched; none after the newest candle. */
-    placeMarkRef.current = () => {
+    const placeOurs = () => {
       const img = markRef.current;
       const ch = chartRef.current;
       const ser = seriesRef.current;
       const pts = pointsRef.current;
       if (img === null) return;
-      const hide = () => {
-        img.style.display = 'none';
-      };
+      const hide = () => { img.style.display = 'none'; };
       const lastPt = pts[pts.length - 1];
       const caughtAt = notified?.at ?? null;
       const firstPt = pts[0];
@@ -267,10 +281,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       const x = ch.timeScale().timeToCoordinate(toUtcSeconds(at.t) as UTCTimestamp);
       /* Just above the candle's wick, as pump.fun's bubbles sit: the candle stays readable under it. */
       const y = ser.priceToCoordinate((at.high ?? at.price) * k);
-      if (x === null || y === null) {
-        hide();
-        return;
-      }
+      if (x === null || y === null) { hide(); return; }
       /* ★ WHERE WE TOLD PEOPLE, AS PUMP.FUN'S TRADER BUBBLES (the owner, 2026-10-27: "when we notified
          users of the coin"): our logo in a ringed circle just above the candle of our first push —
          no line, no words. */
@@ -279,6 +290,38 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       const pad = (MARK_TAP_PX - MARK_PX) / 2;
       img.style.transform = `translate(${Math.round(x - MARK_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, Math.min(HEIGHT - MARK_PX - 26, y - MARK_PX - MARK_LIFT_PX) - pad))}px)`;
     };
+    /* Fomo's traders' thesis bubbles: each trader's picture above the candle they posted on. */
+    const placeTheses = () => {
+      const ch = chartRef.current;
+      const ser = seriesRef.current;
+      const pts = pointsRef.current;
+      for (const btn of thesisRefs.current.values()) btn.style.display = 'none';
+      if (ch === null || ser === null || pts.length === 0) return;
+      /* Bucket by the chart candle each thesis falls on: oldest first matches the sorted order. */
+      const buckets = new Map<number, readonly ChartThesis[]>();
+      for (const th of theses) {
+        let at = pts[0] as ChartPoint;
+        for (const q of pts) { if (q.t <= th.at) at = q; else break; }
+        buckets.set(at.t, [...(buckets.get(at.t) ?? []), th]);
+      }
+      for (const [bucketT, list] of buckets) {
+        const pt = pts.find((p) => p.t === bucketT);
+        if (pt === undefined) continue;
+        const bx = ch.timeScale().timeToCoordinate(toUtcSeconds(bucketT) as UTCTimestamp);
+        const by = ser.priceToCoordinate((pt.high ?? pt.price) * k);
+        if (bx === null || by === null) continue;
+        const pad = (THESIS_TAP_PX - THESIS_PX) / 2;
+        const shown = list.slice(0, STACK_MAX);
+        for (let i = 0; i < shown.length; i++) {
+          const th = shown[i] as ChartThesis;
+          const btn = thesisRefs.current.get(th.id);
+          if (btn === undefined) continue;
+          btn.style.display = 'flex';
+          btn.style.transform = `translate(${Math.round(bx - THESIS_TAP_PX / 2)}px, ${Math.round(Math.max(-pad, by - THESIS_PX - MARK_LIFT_PX - i * STACK_STEP_PX) - pad)}px)`;
+        }
+      }
+    };
+    placeMarkRef.current = () => { placeOurs(); placeTheses(); };
     if (series === null || data.length === 0) {
       placeMarkRef.current();
       return;
@@ -315,7 +358,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       fit();
     }
     placeMarkRef.current();
-  }, [data, fit, points, rising, style, windowMs, scale, notified]);
+  }, [data, fit, points, rising, style, windowMs, scale, notified, theses]);
 
   const reset = useCallback(() => {
     fit();
@@ -347,6 +390,26 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       >
         <img className={styles['caught']} src="/icons/favicon-64.png?v=keyhole" alt="" draggable={false} />
       </button>
+      {theses.map((t) => (
+        <button
+          key={t.id}
+          ref={(el) => { if (el !== null) thesisRefs.current.set(t.id, el); else thesisRefs.current.delete(t.id); }}
+          type="button"
+          className={styles['thesisTap']}
+          aria-label={`@${t.handle}'s thesis`}
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            onThesisTap?.(t.id, rect.left, rect.top, rect.width);
+          }}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {t.pictureUrl !== null
+            ? <img className={styles['thesisPic']} src={t.pictureUrl} alt="" draggable={false} />
+            : <span className={styles['thesisPic']}>{t.handle.slice(0, 1).toUpperCase()}</span>}
+          <span className={styles['thesisBadge']} aria-hidden="true" />
+        </button>
+      ))}
       {points.length < 2 ? <div className={styles['chartEmpty']}>{emptyLabel}</div> : null}
     </div>
   );

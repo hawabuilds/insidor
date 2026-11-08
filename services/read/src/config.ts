@@ -103,6 +103,18 @@ export interface ReadConfig {
   readonly rpcUrl: string | null;
   /** The parsed-transactions endpoint for a wallet's buy history; null when no key is set. */
   readonly parseUrl: string | null;
+  /**
+   * A static fomo session cookie (`FOMO_COOKIE`), set by the owner on Railway when a full
+   * Privy refresh-token cycle is not needed. Set: used as-is. Null: fomo-session.ts auto-renews
+   * from `FOMO_REFRESH_TOKEN`. Never logged, never returned in a reply.
+   */
+  readonly fomoCookie: string | null;
+  /**
+   * An upstream that returns fomo's thesis JSON itself (`FOMO_THESES_PROXY`, must be https://
+   * or http://). Set: theses.ts fetches through it and skips the Privy login entirely.
+   * Null: direct to fomo with the renewed cookie.
+   */
+  readonly thesesProxy: string | null;
 }
 
 export class ConfigError extends Error {
@@ -212,5 +224,7 @@ export function loadReadConfig(env: Env): ReadConfig {
     olderCandlesFree: trimmed(env, 'MARKET_OLDER_CANDLES') === 'free',
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
+    fomoCookie: trimmed(env, 'FOMO_COOKIE'),
+    thesesProxy: ((u) => (u !== null && /^https?:\/\//.test(u) ? u : null))(trimmed(env, 'FOMO_THESES_PROXY')),
   };
 }

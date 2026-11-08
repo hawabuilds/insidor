@@ -18,12 +18,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { MarketTrade } from '../../shared/api/index.ts';
+import type { CoinTheses, MarketTrade } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { formatCount } from '../../shared/format/number.ts';
 import { ChevronIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKeys, tradeUsd, type TapeFilter } from './trades-view.ts';
+import { FomoTheses } from './FomoTheses.tsx';
 import styles from './token.module.css';
 
 /** How long a new row stays marked: longer than its slide-in, shorter than the next read. */
@@ -34,7 +35,7 @@ const TRADES_SHOWN = 50;
 /** The filter in force: Mine without a signed-in wallet has nothing to match, so it is All, never an empty tape. */
 export const tapeFilterFor = (picked: TapeFilter, account: string | null): TapeFilter => (picked === 'mine' && account === null ? 'all' : picked);
 
-export function TradesPanel({ ticker, trades, note, account, now, filter }: {
+export function TradesPanel({ ticker, trades, note, account, now, filter, coinAddress, theses }: {
   ticker: string;
   /** Null while there is nothing to list: `note` says why (loading, unread, none yet). */
   trades: readonly MarketTrade[] | null;
@@ -43,6 +44,8 @@ export function TradesPanel({ ticker, trades, note, account, now, filter }: {
   now: number;
   /** The menu's choice, already through `tapeFilterFor`. */
   filter: TapeFilter;
+  coinAddress?: string;
+  theses?: CoinTheses | null;
 }) {
   const shown = useMemo(() => (trades === null ? [] : filterTape(trades, filter, account).slice(0, TRADES_SHOWN)), [trades, filter, account]);
   const keys = useMemo(() => tradeKeys(shown), [shown]);
@@ -80,6 +83,9 @@ export function TradesPanel({ ticker, trades, note, account, now, filter }: {
           })}
         </ul>
       )}
+      {theses !== undefined && theses !== null && coinAddress !== undefined ? (
+        <FomoTheses theses={theses} coinAddress={coinAddress} now={now} />
+      ) : null}
     </div>
   );
 }

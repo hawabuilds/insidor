@@ -16,7 +16,7 @@
 
 import { Suspense, useMemo, useState } from 'react';
 
-import type { CoinMarket } from '../../shared/api/index.ts';
+import type { CoinMarket, CoinTheses, Thesis } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { compactMoney, formatChangePercent, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { value, type Rendered } from '../../shared/format/rendered.ts';
@@ -39,7 +39,7 @@ const CHART_HEIGHT = 200;
 /** "17.2x" under a hundred, "240x" above; under one, "0.4x". */
 export const multipleText = (m: number): string => `${m >= 100 ? Math.round(m) : m.toFixed(1)}x`;
 
-export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity }: {
+export function CoinChart({ market, state, view, onView, ageMs, notified, price, change24h, cap, liquidity, theses = null }: {
   market: CoinMarket | null;
   state: 'loading' | 'ready' | 'failed';
   view: ChartView;
@@ -55,9 +55,14 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   cap: Measured | 'loading';
   /** Null where the page does not show liquidity; 'loading' while it is being read. */
   liquidity: Measured | 'loading' | null;
+  /** fomo's trader theses, shown as profile picture bubbles over the candles. Null while loading or not configured. */
+  theses?: CoinTheses | null;
 }) {
   const [style, setStyle] = useState<ChartStyle>(readChartStyle);
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
+  const [openThesis, setOpenThesis] = useState<{ readonly id: string; readonly x: number; readonly y: number; readonly width: number } | null>(null);
+  const thesisList: readonly Thesis[] = theses?.kind === 'read' ? theses.theses : [];
+  const shownThesis: Thesis | null = openThesis === null ? null : (thesisList.find((t) => t.id === openThesis.id) ?? null);
   /* ★ THE BUBBLE TAPPED (the owner, 2026-10-27, option C): the header says when the app first showed the coin and the
      multiple since; nothing is drawn over the chart. Touching the chart or the bubble again ends it. */
   const [alerted, setAlerted] = useState(false);
@@ -137,19 +142,27 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
         ) : null}
       </div>
 
-      <Suspense
-        fallback={
-          <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
-            {points.length < 2 ? <div className={styles['chartEmpty']}>{chartNote(state, market, tf)}</div> : null}
-          </div>
-        }
-      >
-        <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} />
-      </Suspense>
-      {/* ★ A chart from our own record that began after the coin launched says where it starts (2026-10-29):
-          never a chart that reads as if the coin was born at its left edge. */}
-      {read !== null && read.chartFrom !== null ? (
-        <div className={styles['chartFrom']}>Chart from {new Date(read.chartFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+      <div className={styles['chartWrap']} onClick={() => setOpenThesis(null)}>
+        <Suspense
+          fallback={
+            <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
+              {points.length < 2 ? <div className={styles['chartEmpty']}>{chartNote(state, market, tf)}</div> : null}
+            </div>
+          }
+        >
+          <PriceChart points={points} rising={rising} windowMs={period * CHART_WINDOW_BARS} wholeLife={view === 'all'} scale={supply} notified={notified} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={scrub} onNotifiedTap={() => setAlerted((a) => !a)} theses={thesisList} onThesisTap={(id, x, y, w) => setOpenThesis({ id, x, y, width: w })} />
+        </Suspense>
+        {shownThesis !== null && openThesis !== null ? (
+          <ThesisCard thesis={shownThesis} x={openThesis.x} y={openThesis.y} width={openThesis.width} onClose={() => setOpenThesis(null)} />
+        ) : null}
+        {/* ★ A chart from our own record that began after the coin launched says where it starts (2026-10-29):
+            never a chart that reads as if the coin was born at its left edge. */}
+        {read !== null && read.chartFrom !== null ? (
+          <div className={styles['chartFrom']}>Chart from {new Date(read.chartFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+        ) : null}
+      </div>
+      {theses?.kind === 'missing' && theses.why !== 'not_configured' ? (
+        <div className={styles['thesesNote']}>Trader bubbles (fomo) unavailable right now</div>
       ) : null}
 
       <div className={styles['tfRow']}>
@@ -176,5 +189,52 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
         </div>
       </div>
     </>
+  );
+}
+
+function ago(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+function ThesisCard({ thesis, x, y, width, onClose }: { thesis: Thesis; x: number; y: number; width: number; onClose: () => void }) {
+  const left = x + width + 6;
+  const flip = typeof window !== 'undefined' && left + 228 > window.innerWidth;
+  const p = thesis.position;
+  return (
+    <div
+      className={styles['thesisCard']}
+      style={flip
+        ? { top: Math.max(8, y - 20), right: Math.max(4, (typeof window !== 'undefined' ? window.innerWidth : 390) - x + 4) }
+        : { top: Math.max(8, y - 20), left: Math.max(4, left) }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className={styles['thesisHead']}>
+        {thesis.pictureUrl !== null
+          ? <img className={styles['thesisPic']} src={thesis.pictureUrl} alt="" />
+          : <span className={`${styles['thesisPic']} ${styles['thesisLetter']}`}>{thesis.handle.slice(0, 1).toUpperCase()}</span>}
+        <div className={styles['thesisWho']}>
+          <span>@{thesis.handle}</span>
+          <span className={styles['thesisWhen']}>{ago(Date.now() - thesis.at)}</span>
+        </div>
+        <button type="button" className={styles['thesisClose']} onClick={onClose} aria-label="Close thesis">×</button>
+      </div>
+      <p className={styles['thesisText']}>{thesis.text}</p>
+      {p !== null && !p.closed && p.valueUsd !== null ? (
+        <div className={styles['thesisFacts']}>
+          <span>Holds <b>${compactMoney(p.valueUsd)}</b></span>
+          {p.pnlUsd !== null ? <b className={p.pnlUsd >= 0 ? styles['up'] : styles['down']}>{p.pnlUsd >= 0 ? '+' : '-'}${compactMoney(Math.abs(p.pnlUsd))}</b> : null}
+        </div>
+      ) : null}
+      <a className={styles['thesisVia']} href={thesis.url} target="_blank" rel="noreferrer">
+        <span className={styles['thesisViaBadge']} aria-hidden="true" />
+        via fomo
+      </a>
+    </div>
   );
 }

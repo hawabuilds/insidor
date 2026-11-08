@@ -23,6 +23,7 @@ import { decodeCatches, type Catches } from './catches.ts';
 import { decodeRunningCoins, type RunningCoin } from './running.ts';
 import { decodeSellCard, type SellCard } from './sell-card.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
+import { decodeCoinTheses, type CoinTheses } from './theses.ts';
 import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodeNarrativesPage, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -577,6 +578,10 @@ export async function submitTrade(_coinId: string, _side: 'buy' | 'sell'): Promi
  * as a bearer header and nowhere else. Replies are returned whole, with their status, for
  * people.ts to read. `keepalive` lets a request sent as the page is hidden finish after it goes.
  */
+export async function fetchCoinTheses(coinId: string, signal?: AbortSignal): Promise<CoinTheses> {
+  return decodeCoinTheses(await read(`/coin/${encodeURIComponent(coinId)}/theses`, signal));
+}
+
 export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown, keepalive = false): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {
   const response = await fetch(url, {
     method,

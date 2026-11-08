@@ -292,6 +292,59 @@
   user-select: none;
 }
 
+/* Wraps the chart canvas: the thesis bubble buttons are absolute within it, the thesis card is fixed over it. */
+.chartWrap { position: relative; }
+
+/* Each thesis bubble: a finger-sized tap zone over the candle the trader posted at. */
+.thesisTap { position: absolute; left: 0; top: 0; z-index: 2; display: none; width: 34px; height: 34px; padding: 0; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
+/* The trader's profile picture or fallback initial. */
+.thesisPic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--card); color: var(--brand-200); font-size: 11px; font-weight: 600; box-shadow: 0 0 0 2px var(--brand), 0 0 0 3.5px var(--bg); pointer-events: none; flex-shrink: 0; }
+/* The small fomo badge on each bubble's corner. */
+.thesisBadge { position: absolute; right: 3px; bottom: 3px; width: 11px; height: 11px; border-radius: 50%; background: #f9741c; box-shadow: 0 0 0 1.5px var(--bg); pointer-events: none; }
+
+/* The thesis card floating over the chart when a bubble is tapped. */
+.thesisCard { position: fixed; z-index: 100; width: min(220px, 60%); padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--popup); box-shadow: 0 6px 20px rgb(0 0 0 / 50%); }
+/* Header row: picture, handle + time, close button. */
+.thesisHead { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; }
+/* Fallback initial inside a thesisPic span. */
+.thesisLetter { font-size: 11px; font-weight: 600; }
+/* Handle and time-ago text. */
+.thesisWho { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thesisWhen { font-size: 11px; color: var(--text-3); font-weight: 400; }
+.thesisClose { margin-left: auto; padding: 0; background: none; border: none; color: var(--text-3); font-size: 16px; line-height: 1; cursor: pointer; }
+/* The thesis text, cut to 4 lines. */
+.thesisText { font-size: 12px; line-height: 1.45; color: var(--text-1); margin: 0 0 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+/* Position size and PnL. */
+.thesisFacts { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 5px; }
+.thesisFacts b { font-weight: 600; }
+/* The "via fomo" attribution link. */
+.thesisVia { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); text-decoration: none; }
+.thesisVia:hover { color: var(--text-2); }
+/* The small fomo orange dot beside the attribution. */
+.thesisViaBadge { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }
+
+/* "Trader bubbles (fomo) unavailable right now" — shown when fomo is configured but not reachable. */
+.thesesNote { margin-top: 4px; font-size: 11px; color: var(--text-3); }
+
+/* fomo theses section below the trades list. */
+.fomoTheses { padding: 12px 0 4px; border-top: 1px solid var(--border); }
+.fomoThesesHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.fomoThesesTitle { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.fomoThesesAll { font-size: 12px; color: var(--text-3); text-decoration: none; }
+.fomoThesesAll:hover { color: var(--text-2); }
+/* Each thesis row in the section. */
+.fomoThesisRow { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit; }
+.fomoThesisRow:last-child { border-bottom: none; }
+.fomoThesisWho { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.fomoThesisWhoText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.fomoThesisHandle { font-size: 12px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fomoThesisWhen { font-size: 11px; color: var(--text-3); }
+.fomoThesisText { font-size: 12px; line-height: 1.45; color: var(--text-1); margin: 0 0 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.fomoThesisPnl { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 3px; }
+.fomoThesisPnl b { font-weight: 600; }
+.fomoThesisVia { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); }
+.fomoThesisViaBadge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }
+
 /* Over the empty chart, the way Trador says it: why there is nothing to draw. */
 /* "Chart from 27 Oct": an older coin's chart drawn from our own record, which began after its launch. */
 .chartFrom {
