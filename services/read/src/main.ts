@@ -48,6 +48,7 @@ import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 import { createLiveCoins } from './live-coins.ts';
 import { createTheses } from './theses.ts';
+import { createDeposits } from './deposits.ts';
 
 const log = createLogger();
 
@@ -346,7 +347,9 @@ async function main(): Promise<void> {
   /* fomo theses for the chart's trader bubbles (theses.ts). fomoapi.io Bearer key (FOMOAPI_KEY),
      $250+ positions only. Null key: theses section absent, nothing asked. */
   const theses = createTheses({ apiKey: cfg.fomoApiKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, keepMs: 600_000, perMinute: 20 });
-  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses };
+  /* Deposits from other chains that land as SOL, through Aurora Intents (deposits.ts). Null key: Solana only. */
+  const deposits = createDeposits({ apiKey: cfg.auroraIntentsKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, perMinute: 120 });
+  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses, deposits };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */

@@ -24,6 +24,7 @@ import { decodeRunningCoins, type RunningCoin } from './running.ts';
 import { decodeSellCard, type SellCard } from './sell-card.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeCoinTheses, type CoinTheses } from './theses.ts';
+import { decodeArrivals, decodeDepositAddress, type Arrivals, type DepositAddress, type DepositChain } from './deposits.ts';
 import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodeNarrativesPage, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -581,6 +582,16 @@ export async function submitTrade(_coinId: string, _side: 'buy' | 'sell'): Promi
 export async function fetchCoinTheses(coinId: string, signal?: AbortSignal, minUsd?: number): Promise<CoinTheses> {
   const qs = minUsd !== undefined ? `?min_usd=${minUsd}` : '';
   return decodeCoinTheses(await read(`/coin/${encodeURIComponent(coinId)}/theses${qs}`, signal));
+}
+
+/** The wallet's fixed address on another chain, paying out as SOL (services/read/src/deposits.ts). */
+export async function fetchDepositAddress(wallet: string, chain: DepositChain, signal?: AbortSignal): Promise<DepositAddress> {
+  return decodeDepositAddress(await read(`/deposit/${encodeURIComponent(wallet)}/address?chain=${chain}`, signal));
+}
+
+/** What has arrived through that address: swapping, in the wallet, or failed. */
+export async function fetchDepositArrivals(wallet: string, address: string, signal?: AbortSignal): Promise<Arrivals> {
+  return decodeArrivals(await read(`/deposit/${encodeURIComponent(wallet)}/arrivals?address=${encodeURIComponent(address)}`, signal));
 }
 
 export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown, keepalive = false): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {

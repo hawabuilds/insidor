@@ -109,6 +109,12 @@ export interface ReadConfig {
    * Never logged, never returned in a reply.
    */
   readonly fomoApiKey: string | null;
+  /**
+   * Aurora Intents key (`AURORA_INTENTS_KEY`). Set: the Receive sheet offers deposits from other
+   * chains that land as SOL (deposits.ts). Null: those chains answer "not_configured" and only the
+   * Solana address is shown. It rides in Aurora's URL path, so it is never logged.
+   */
+  readonly auroraIntentsKey: string | null;
 }
 
 export class ConfigError extends Error {
@@ -219,5 +225,6 @@ export function loadReadConfig(env: Env): ReadConfig {
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
     parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
     fomoApiKey: trimmed(env, 'FOMOAPI_KEY'),
+    auroraIntentsKey: trimmed(env, 'AURORA_INTENTS_KEY'),
   };
 }

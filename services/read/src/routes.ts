@@ -39,6 +39,7 @@ import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
 import type { TradeCard } from './trade-card.ts';
 import type { ThesesReply } from './theses.ts';
+import { isDepositChain, type Deposits } from './deposits.ts';
 import type { WalletRoute } from './wallet.ts';
 import { readWarCoin } from './war-coin.ts';
 import {
@@ -92,6 +93,8 @@ export interface Deps {
   readonly launchOdds?: ReturnType<typeof createLaunchOdds>;
   /** A coin's fomo theses by its Solana address (theses.ts). Absent: the route answers "not_configured". */
   readonly theses?: (address: string, minUsd?: number) => Promise<ThesesReply>;
+  /** Deposits from other chains into a wallet as SOL (deposits.ts). Absent: both routes answer "not_configured". */
+  readonly deposits?: Deposits;
 }
 
 /*
@@ -588,6 +591,21 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const minUsdRaw = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('min_usd');
       const minUsd = minUsdRaw !== null && /^\d+$/.test(minUsdRaw) ? parseInt(minUsdRaw, 10) : undefined;
       return json(200, deps.theses === undefined ? { theses: null, why: 'not_configured' } : await deps.theses(address, minUsd));
+    }
+
+    /* A wallet's fixed deposit address on another chain, and what has arrived through it (deposits.ts). */
+    if (segments.length === 3 && head === 'deposit' && param !== undefined && (segments[2] === 'address' || segments[2] === 'arrivals')) {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(param)) return NOT_FOUND;
+      const q = new URLSearchParams(rawUrl.split('?')[1] ?? '');
+      const notConfigured = { kind: 'missing', why: 'not_configured' };
+      if (segments[2] === 'address') {
+        const chain = q.get('chain');
+        if (!isDepositChain(chain)) return BAD_REQUEST;
+        return json(200, deps.deposits === undefined ? notConfigured : await deps.deposits.address(param, chain));
+      }
+      const address = q.get('address');
+      if (address === null || !/^[A-Za-z0-9:._-]{20,120}$/.test(address)) return BAD_REQUEST;
+      return json(200, deps.deposits === undefined ? notConfigured : await deps.deposits.arrivals(address));
     }
 
     if (deps.tradeCard !== undefined && segments.length === 3 && head === 'sell' && param !== undefined && segments[2] === 'card') {
