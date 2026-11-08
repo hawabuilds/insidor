@@ -315,13 +315,8 @@
 /* The thesis text, cut to 4 lines. */
 .thesisText { font-size: 12px; line-height: 1.45; color: var(--text-1); margin: 0 0 5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
 /* Position size and PnL. */
-.thesisFacts { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 5px; }
+.thesisFacts { font-size: 11px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 3px; }
 .thesisFacts b { font-weight: 600; }
-/* The "via fomo" attribution link. */
-.thesisVia { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-3); text-decoration: none; }
-.thesisVia:hover { color: var(--text-2); }
-/* The small fomo orange dot beside the attribution. */
-.thesisViaBadge { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #f9741c; flex-shrink: 0; }
 
 /* "Trader bubbles (fomo) unavailable right now" — shown when fomo is configured but not reachable. */
 .thesesNote { margin-top: 4px; font-size: 11px; color: var(--text-3); }

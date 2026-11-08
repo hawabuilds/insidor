@@ -238,10 +238,6 @@ function ThesisCard({ thesis, x, y, width, onClose }: { thesis: Thesis; x: numbe
           {p.pnlUsd !== null ? <b className={p.pnlUsd >= 0 ? styles['up'] : styles['down']}>{p.pnlUsd >= 0 ? '+' : '-'}${compactMoney(Math.abs(p.pnlUsd))}</b> : null}
         </div>
       ) : null}
-      <a className={styles['thesisVia']} href={thesis.url} target="_blank" rel="noreferrer">
-        <span className={styles['thesisViaBadge']} aria-hidden="true" />
-        via fomo
-      </a>
     </div>
   );
 }
