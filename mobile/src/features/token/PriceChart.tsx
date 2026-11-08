@@ -397,12 +397,18 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
           type="button"
           className={styles['thesisTap']}
           aria-label={`@${t.handle}'s thesis`}
-          onClick={(e) => {
+          onPointerDown={(e) => {
+            if (e.pointerType !== 'mouse') return;
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
             onThesisTap?.(t.id, rect.left, rect.top, rect.width);
           }}
-          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            onThesisTap?.(t.id, rect.left, rect.top, rect.width);
+          }}
         >
           {t.pictureUrl !== null
             ? <img className={styles['thesisPic']} src={t.pictureUrl} alt="" draggable={false} />

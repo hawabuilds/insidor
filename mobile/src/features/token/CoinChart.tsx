@@ -142,7 +142,7 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
         ) : null}
       </div>
 
-      <div className={styles['chartWrap']} onClick={() => setOpenThesis(null)}>
+      <div className={styles['chartWrap']} onClick={() => setOpenThesis(null)} onPointerDown={(e) => { if (e.target === e.currentTarget) setOpenThesis(null); }} onTouchEnd={(e) => { if (e.target === e.currentTarget) setOpenThesis(null); }}>
         <Suspense
           fallback={
             <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
