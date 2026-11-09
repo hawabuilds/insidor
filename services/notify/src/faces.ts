@@ -127,7 +127,7 @@ export interface RowThumb {
   readonly video: boolean;
   readonly sourceLabel: string | null;
 }
-const POST_KINDS = ['rising_post', 'blowing_up', 'starred_big_account', 'story_post', 'watched_first_coin', 'watch_coin', 'fyp_coin', 'fyp_proven', 'coin_launched'];
+const POST_KINDS = ['rising_post', 'blowing_up', 'starred_big_account', 'story_post', 'watched_first_coin', 'watch_coin', 'fyp_coin', 'fyp_proven', 'coin_launched', 'coin_picked'];
 
 /**
  * ★ A ROW ABOUT A POST IS THE POST'S OWN CARD (the owner, 2026-10-18): the For You card the read

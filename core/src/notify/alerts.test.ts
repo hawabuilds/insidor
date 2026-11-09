@@ -22,7 +22,7 @@ test("★ each level fires once: only the highest crossed, and the ones below ar
 });
 
 test('★ switching an alert type off stops it, and mute stops everything', () => {
-  for (const kind of ALERT_KINDS) if (kind !== 'watchlist_multiple') assert.notEqual(at(kind).kind, 'skip', `${kind} is on by default`);
+  for (const kind of ALERT_KINDS) if (kind !== 'watchlist_multiple' && kind !== 'coin_picked') assert.notEqual(at(kind).kind, 'skip', `${kind} is on by default`);
   assert.deepEqual(at('watchlist_multiple'), { kind: 'skip', why: 'off' }, "Trador's default: the watchlist is off until switched on");
   const off = normalisePrefs({ ...base, on: { ...base.on, rising: false, holdings: false } }, P);
   assert.deepEqual(at('rising_post', off), { kind: 'skip', why: 'off' });
@@ -73,8 +73,8 @@ test('a supplier billing alert is the same alarm: no switch, past the hourly lim
 test('★ one push (2026-10-20): only a coin launched for a For You post reaches the phone; every other kind is listed', () => {
   for (const kind of ALERT_KINDS) {
     const d = at(kind);
-    if (PUSHED_KINDS.includes(kind) || OWNER_ALARM_KINDS.includes(kind)) assert.deepEqual(d, { kind: 'push' }, kind);
-    else if (kind === 'watchlist_multiple') assert.deepEqual(d, { kind: 'skip', why: 'off' }, kind);
+    if (kind === 'coin_picked' || kind === 'watchlist_multiple') assert.deepEqual(d, { kind: 'skip', why: 'off' }, `${kind} is off until switched on`);
+    else if (PUSHED_KINDS.includes(kind) || OWNER_ALARM_KINDS.includes(kind)) assert.deepEqual(d, { kind: 'push' }, kind);
     else assert.deepEqual(d, { kind: 'list', why: 'list-only' }, `${kind} is listed, not pushed`);
   }
   for (const kind of ['starred_first_coin', 'reply', 'holding_multiple', 'holding_down', 'creator_buyers', 'starred_speed', 'starred_big_account', 'blowing_up', 'story_post', 'follow', 'comment_useful'] as const) assert.deepEqual(at(kind), { kind: 'list', why: 'list-only' }, kind);
@@ -84,6 +84,17 @@ test('★ one push (2026-10-20): only a coin launched for a For You post reaches
   const alarmsOff = { ...P, launch: { ...P.launch, ownerAlarmsPush: false } };
   assert.deepEqual(deliveryFor({ kind: 'outage', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, policy: alarmsOff }), { kind: 'list', why: 'list-only' }, 'the owner\'s alarms follow their switch');
   assert.deepEqual(deliveryFor({ kind: 'outage', prefs: base, localMinutes: NOON, pushedLastHour: 0, devices: 1, policy: P }), { kind: 'push' });
+});
+
+test('★ every pick (policy.v235): off for everyone; switched on, pushed past the hourly limit and any daily cap, using up none of the other pushes', () => {
+  assert.equal(base.on.everyPick, false, 'off until the person chooses it');
+  assert.deepEqual(at('coin_picked'), { kind: 'skip', why: 'off' });
+  const on = normalisePrefs({ ...base, on: { ...base.on, everyPick: true } }, P);
+  assert.deepEqual(at('coin_picked', on), { kind: 'push' });
+  assert.deepEqual(at('coin_picked', on, P.maxPerHour + 1), { kind: 'push' }, 'a busy hour does not drop a pick they asked for');
+  assert.equal(pacingOf('coin_picked', P), null, 'no daily cap');
+  assert.ok(UNCOUNTED_PUSH_KINDS.includes('coin_picked'), 'and it uses up none of their other pushes');
+  assert.deepEqual(at('coin_picked', { ...on, muted: true }), { kind: 'skip', why: 'muted' });
 });
 
 test('★ a saved post always pushes (2026-10-24): past the hourly limit, never under a daily cap, still muted and quiet by choice', () => {

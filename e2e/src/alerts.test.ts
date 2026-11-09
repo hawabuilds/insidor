@@ -34,7 +34,7 @@ async function setup() {
 
 test('★ every alert type fires once per level: the same level again is dropped', async () => {
   const { prefs, q, run, db } = await setup();
-  await prefs('u1', { on: { ...defaultPrefs(P).on, watchlist: true }, perHour: P.maxPerHour });
+  await prefs('u1', { on: { ...defaultPrefs(P).on, watchlist: true, everyPick: true }, perHour: P.maxPerHour });
   for (const kind of ALERT_KINDS) {
     const rung = kind === 'holding_multiple' || kind === 'watchlist_multiple' ? 5 : 0;
     await q('u1', kind, `s-${kind}`, rung);

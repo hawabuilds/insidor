@@ -619,6 +619,108 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   return queued;
 }
 
+/* ── every pick, opt-in (Policy.notify.launch.everyPick) ─────────────────────────────────── */
+
+/** The stream every pick remembers its coins in: one push per coin, ever. */
+export const PICK_STREAM = 'pick';
+export const pickKey = (address: string): string => `k:${address}`;
+
+/** A post's current pick as the pass reads it. */
+export interface PickRow {
+  readonly itemId: string;
+  readonly address: string;
+  readonly launchedMs: number | null;
+  readonly symbol: string | null;
+  readonly excerpt: string | null;
+  readonly author: string | null;
+}
+
+/**
+ * The pure step of every pick: each coin not pushed before, launched at most `maxLaunchAgeMs` ago, once
+ * (the first post that picked it carries the words). A coin with no launch time is not pushed.
+ */
+export function picksDue(rows: readonly PickRow[], seen: ReadonlySet<string>, nowMs: number, maxLaunchAgeMs: number): readonly PickRow[] {
+  const out: PickRow[] = [];
+  const taken = new Set<string>();
+  for (const r of rows) {
+    if (r.launchedMs === null || nowMs - r.launchedMs > maxLaunchAgeMs) continue;
+    if (seen.has(pickKey(r.address)) || taken.has(r.address)) continue;
+    taken.add(r.address);
+    out.push(r);
+  }
+  return out;
+}
+
+/* The posts' current picks of coins launched in the window, with the words a push needs. */
+const PICKS_SQL = `
+  select k.item_id as "itemId", k.address, (extract(epoch from coalesce(a.minted_at, a.first_seen_at)) * 1000)::float8 as "launchedMs",
+         a.symbol, left(i.body, 280) as excerpt, case when au.handle is null then null else '@' || au.handle end as author
+    from internal.post_coin_pick k
+    join public.asset a on a.chain = 'solana' and a.address = k.address
+    join public.item i on i.item_id = k.item_id
+    left join public.author au on au.author_key = i.author_key
+   where k.outcome = 'picked' and k.address is not null
+     and k.updated_at > now() - make_interval(secs => $1::float8 / 1000)
+     and coalesce(a.minted_at, a.first_seen_at) > now() - make_interval(secs => $1::float8 / 1000)
+   order by k.updated_at`;
+
+/**
+ * ★ EVERY PICK (the header of Policy.notify.launch.everyPick): each new pick, pushed to the people who
+ * switched "every pick" on and nobody else. The same gates as the one push — the launchpad, and no push
+ * under `minPushCapUsd` (held unspent, pushed once it passes) — and one push per coin. A person who
+ * already had the coin by the normal push is not pushed it again (the deliverer's SAME_COIN_KINDS).
+ * The first look remembers every pick already made and sends nothing, as every stream does.
+ */
+export async function queuePicks(db: Db, ports: LaunchPorts): Promise<number> {
+  const L = ports.policy.launch;
+  if (!L.everyPick.on) return 0;
+  const [any] = await db.query<{ n: number }>(`select count(*)::int as n from people.alert_prefs where prefs -> 'on' ->> 'everyPick' = 'true'`);
+  const seen = await seenKeys(db, PICK_STREAM);
+  let rows: PickRow[];
+  try {
+    rows = (await db.query<PickRow>(PICKS_SQL, [L.maxLaunchAgeMs])).map((r) => ({ ...r, launchedMs: r.launchedMs === null ? null : Number(r.launchedMs) }));
+  } catch (e) {
+    /* Without 0129's grant the picks are not readable here: nothing to push. */
+    if ((e as { code?: unknown }).code !== '42501') throw e;
+    return 0;
+  }
+  const remember = async (keys: readonly string[]) => {
+    if (keys.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [PICK_STREAM, [...keys]]);
+  };
+  if (!seen.has(SEEDED)) {
+    await remember([...rows.map((r) => pickKey(r.address)), SEEDED]);
+    return 0;
+  }
+  /* Nobody asked for every pick: nothing is spent, so the first person to switch it on gets the young ones. */
+  if ((any?.n ?? 0) === 0) return 0;
+  const due = picksDue(rows, seen, ports.now(), L.maxLaunchAgeMs);
+  if (due.length === 0) return 0;
+  const gate = await coinGateFacts(db, due);
+  const onPad = due.filter((d) => onLaunchpad(gate.get(`${d.itemId}|${d.address}`)));
+  /* Off the launchpad: never pushed, so spent now. */
+  const spent = due.filter((d) => !onPad.includes(d)).map((d) => pickKey(d.address));
+  const caps = await coinFacts(db, ports.quotes, onPad.map((d) => d.address));
+  let queued = 0;
+  for (const d of [...onPad].sort((a, b) => (caps.get(b.address)?.mcUsd ?? -1) - (caps.get(a.address)?.mcUsd ?? -1))) {
+    const c = caps.get(d.address);
+    const capUsd = c?.mcUsd ?? null;
+    /* Under the floor: left unspent, looked at again next pass while the coin is young. */
+    if (capUsd === null || capUsd < L.minPushCapUsd) continue;
+    const facts = { symbol: d.symbol ?? c?.symbol ?? '', address: d.address, excerpt: text(d.excerpt), author: text(d.author), mcUsd: capUsd, image: null, logo: c?.logo ?? null, item: d.itemId };
+    const rows2 = await db.query<{ n: number }>(
+      `with q as (insert into people.alert_queue (user_id, kind, subject, rung, facts, href)
+         select p.user_id, 'coin_picked', $1, 0, $2::jsonb, $3 from people.alert_prefs p join people.profile pr on pr.user_id = p.user_id
+          where p.prefs -> 'on' ->> 'everyPick' = 'true'
+         returning 1) select count(*)::int as n from q`,
+      [d.address, JSON.stringify(facts), tokenHref(d.address)],
+    );
+    queued += rows2[0]?.n ?? 0;
+    spent.push(pickKey(d.address));
+  }
+  await remember(spent);
+  return queued;
+}
+
 /**
  * The PvP alerts of one pass (the header): for each switch, the post's first push, both caps of one
  * moment (the card's race, else a fresh read), and — when the new coin is ahead — one alert to each

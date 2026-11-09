@@ -6,7 +6,15 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { postOfRow } from './faces.ts';
-import { heldKeys, isRevival, launchEvents, launchHref, onLaunchpad, pvpSwitchDue, revivalKey, runnerKey, type Picked } from './launch.ts';
+import { heldKeys, isRevival, launchEvents, launchHref, onLaunchpad, pickKey, picksDue, pvpSwitchDue, revivalKey, runnerKey, type Picked, type PickRow } from './launch.ts';
+
+test('★ every pick: each coin once, only while young, the first post carrying the words', () => {
+  const now = 10_000_000;
+  const H3 = DEFAULT_POLICY.notify.launch.maxLaunchAgeMs;
+  const row = (itemId: string, address: string, launchedMs: number | null): PickRow => ({ itemId, address, launchedMs, symbol: 'X', excerpt: null, author: null });
+  const due = picksDue([row('x:1', 'A', now - 60_000), row('x:2', 'A', now - 60_000), row('x:3', 'B', now - H3 - 1), row('x:4', 'C', null), row('x:5', 'D', now)], new Set([pickKey('D')]), now, H3);
+  assert.deepEqual(due.map((d) => `${d.itemId}|${d.address}`), ['x:1|A'], 'A once by its first post; B too old; C of unknown launch; D already pushed');
+});
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;

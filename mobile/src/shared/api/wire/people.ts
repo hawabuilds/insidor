@@ -99,7 +99,7 @@ export interface Alert {
   readonly story?: { readonly title: string; readonly newPosts: number | null; readonly viewsGained: number | null; readonly starred: boolean } | null;
 }
 
-export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts' | 'starredFirstCoin' | 'blowingUp' | 'starredSpeed' | 'bigAccounts' | 'createdCoins' | 'launches';
+export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts' | 'starredFirstCoin' | 'blowingUp' | 'starredSpeed' | 'bigAccounts' | 'createdCoins' | 'launches' | 'everyPick';
 export interface AlertPrefs {
   readonly muted: boolean;
   readonly on: Readonly<Record<AlertSwitch, boolean>>;

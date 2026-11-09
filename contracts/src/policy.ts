@@ -4094,6 +4094,15 @@ export interface NotifyPolicy {
      * runner that passes $8k is still pushed.
      */
     readonly minPushCapUsd: number;
+    /**
+     * ★ EVERY PICK, OPT-IN (policy.v235; the owner, 2026-11-09: "don't miss any real runner", then "fewer,
+     * higher quality pushes"). Each coin the one-coin rule picks for a post, launched under `maxLaunchAgeMs`
+     * ago, on the launchpad and over `minPushCapUsd`, is pushed (`coin_picked`) the moment it is picked — to
+     * the people who switched "every pick" on, and nobody else. Replayed 19 Oct-9 Nov: it reaches 79 of 92
+     * real runners against 43 by the normal push, at about 130 pushes a day, most of which rug; that is why it
+     * is off for everyone until they choose it. Off here: nothing is queued.
+     */
+    readonly everyPick: { readonly on: boolean };
     readonly postsWithinMs: number;
     readonly ownerAlarmsPush: boolean;
   };
@@ -6269,7 +6278,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v234',
+  version: 'policy.v235',
 
   admit: {
     maxAgeMin: 240,
@@ -7915,6 +7924,7 @@ const POLICY_V1: Policy = {
       maxLaunchAgeMs: 10_800_000, // three hours
       lateRunningMs: 86_400_000, // a day, while running (policy.v164)
       minPushCapUsd: 8_000, // policy.v234: under $8k at push is almost always a rug (111 of 114, no real runner); v231 was $1k
+      everyPick: { on: true }, // policy.v235: opt-in per person (alert switch `everyPick`, off by default)
       postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
       ownerAlarmsPush: true,
     },

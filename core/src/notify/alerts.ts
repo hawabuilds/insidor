@@ -113,6 +113,9 @@ export const ALERT_KINDS = [
   'creator_buyers',
   /* The one push (2026-10-20): a coin that launched for a For You post and is picked as its coin (services/notify launch.ts). */
   'coin_launched',
+  /* Every coin the one-coin rule picks for a post, the moment it is picked (services/notify launch.ts
+     queuePicks; the owner, 2026-11-09): opt-in only, for people who want every pick on their phone. */
+  'coin_picked',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -126,7 +129,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin', 'blowingUp', 'starredSpeed', 'bigAccounts', 'createdCoins', 'launches'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts', 'starredFirstCoin', 'blowingUp', 'starredSpeed', 'bigAccounts', 'createdCoins', 'launches', 'everyPick'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -162,6 +165,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   holding_down: 'holdings',
   creator_buyers: 'createdCoins',
   coin_launched: 'launches',
+  coin_picked: 'everyPick',
 };
 
 export interface AlertPrefs {
@@ -181,7 +185,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true, blowingUp: true, starredSpeed: true, bigAccounts: true, createdCoins: true, launches: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true, starredFirstCoin: true, blowingUp: true, starredSpeed: true, bigAccounts: true, createdCoins: true, launches: true, everyPick: false },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,
@@ -252,7 +256,8 @@ export function isQuiet(localMinutes: number | null, prefs: AlertPrefs): boolean
  * for a post someone is watching (the owner: "notify me within seconds" — a busy hour of For You
  * posts must not be what keeps it off the phone), and the test someone just tapped.
  */
-const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'watched_first_coin', 'push_test', 'outage'];
+/* `coin_picked`: the person switched on every pick, knowing it is many a day; an hourly ceiling would quietly drop the runner they asked not to miss. */
+const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'watched_first_coin', 'push_test', 'outage', 'coin_picked'];
 
 /**
  * ★ LISTED, NEVER PUSHED (the owner's notification design, 2026-10-18: people won't sit in the app,
@@ -270,13 +275,14 @@ export const LIST_ONLY: readonly AlertKind[] = ['rank_up', 'rising_post', 'narra
  * alarms are pushed while Policy.notify.launch.ownerAlarmsPush is on (absent policy: on, so a
  * caller that forgets the policy never silences an outage).
  */
-export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin', 'push_test'];
+export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin', 'push_test', 'coin_picked'];
 
 /**
  * ★ PUSHES THAT USE UP NO ALLOWANCE (4j): not counted in the hourly limit or any daily cap of the
  * person's other pushes. The deliverer leaves them out of both counts.
  */
-export const UNCOUNTED_PUSH_KINDS: readonly AlertKind[] = ['watched_first_coin'];
+/* `coin_picked` too: someone who asked for every pick still gets their other pushes; the picks are uncapped (no pacing) and pass their hourly ceiling (PAST_THE_LIMIT). */
+export const UNCOUNTED_PUSH_KINDS: readonly AlertKind[] = ['watched_first_coin', 'coin_picked'];
 export const OWNER_ALARM_KINDS: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'outage', 'retune_summary', 'launch_intel'];
 export const pushable = (kind: AlertKind, P?: NotifyPolicy): boolean => PUSHED_KINDS.includes(kind) || (OWNER_ALARM_KINDS.includes(kind) && (P?.launch.ownerAlarmsPush ?? true));
 

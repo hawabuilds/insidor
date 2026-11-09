@@ -332,6 +332,15 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const title = started !== null ? `${ticker(f)} launched from the post that started ${started}` : `${ticker(f)} launched for a post you may have seen`;
       return { title, body: `${post}.${mc === null ? '' : ` ${mc}.`}` };
     }
+    case 'coin_picked': {
+      /* Every pick (launch.ts queuePicks, opt-in): "$FALCON is the coin for @SpaceX's post" / '"Falcon 9 lands…". $48K MC.' */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const who = s(f['author'], '');
+      const mc = cap(f);
+      const from = who === '' ? 'a post we found' : `${possessive(who)} post`;
+      const said = words !== null ? `"${words}".` : who === '' ? 'A post we found.' : `A post by ${who}.`;
+      return { title: `${ticker(f)} is the coin for ${from}`, body: `${said}${mc === null ? '' : ` ${mc}.`}` };
+    }
     case 'watched_first_coin': {
       /* "$FALCON is the first coin for a post you saved" / '"Falcon 9 lands…" (@SpaceX). $3K MC.' */
       const words = cutWords(f['excerpt'], EXCERPT_CHARS);

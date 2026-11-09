@@ -24,7 +24,7 @@ import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 import { ALARM_LOOP_MS, alarmMemory, checkAlarms, JUDGE_VENDOR_OF_ROLE } from './alarm.ts';
 import { checkHealth, HEALTH_LOOP_MS, healthMemory } from './health-alarm.ts';
 import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
-import { checkLaunches } from './launch.ts';
+import { checkLaunches, queuePicks } from './launch.ts';
 import { loadNotifyConfig } from './config.ts';
 import { checkBlowingUp } from './blowing-up.ts';
 import { checkCreatorBuyers, type CreatorState } from './creator-buyers.ts';
@@ -124,6 +124,8 @@ if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'grouped pushes', async () => (await deliverGroups(deps)).length);
   /* THE ONE PUSH (2026-10-20, launch.ts): a coin just launched and picked for a For You post, to everyone. Every other kind below is listed only. */
   every(P.pipelineLoopMs, 'launch alerts', () => checkLaunches(db, { policy: P, now: Date.now, quotes }));
+  /* Every pick (launch.ts queuePicks), only to the people who switched it on. */
+  every(P.pipelineLoopMs, 'every pick alerts', () => queuePicks(db, { policy: P, now: Date.now, quotes }));
   /* The notification design (2026-10-18): For You posts and new narratives blowing up, starred narratives' speed and big accounts. */
   every(P.pipelineLoopMs, 'blowing up alerts', () => checkBlowingUp(db, DEFAULT_POLICY, Date.now()));
   every(P.pipelineLoopMs, 'starred narrative alerts', () => checkStarred(db, P, Date.now()));

@@ -46,7 +46,7 @@ export function cardOf(a: Alert): RisingPost | null {
 function reasonOf(a: Alert): { readonly icon: ReactNode; readonly text: string } {
   if (a.kind === 'blowing_up' || a.kind === 'rising_post') return { icon: <TrendingUpIcon size={15} />, text: a.title };
   if (a.kind === 'watched_first_coin') return { icon: <CoinIcon size={15} />, text: 'First coin on a post you saved' };
-  if (a.kind === 'coin_launched' || a.kind === 'fyp_coin' || a.kind === 'fyp_proven' || a.kind === 'watch_coin' || a.kind === 'story_post') return { icon: <CoinIcon size={15} />, text: a.title };
+  if (a.kind === 'coin_launched' || a.kind === 'coin_picked' || a.kind === 'fyp_coin' || a.kind === 'fyp_proven' || a.kind === 'watch_coin' || a.kind === 'story_post') return { icon: <CoinIcon size={15} />, text: a.title };
   return { icon: <FlameIcon size={15} />, text: a.title };
 }
 

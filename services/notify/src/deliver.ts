@@ -42,7 +42,7 @@ export interface DeliverDeps {
 }
 
 /** The kinds about a coin: their small picture is the coin's logo when we have one. */
-const COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'fyp_coin', 'fyp_proven', 'watch_coin', 'starred_first_coin', 'watched_first_coin', 'holding_down', 'creator_buyers'];
+const COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'coin_picked', 'fyp_coin', 'fyp_proven', 'watch_coin', 'starred_first_coin', 'watched_first_coin', 'holding_down', 'creator_buyers'];
 const httpsFact = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) && v.length <= 2_000 ? v : null);
 
 /**
@@ -142,8 +142,8 @@ export async function deliverQueued(deps: DeliverDeps, limit = 200): Promise<rea
   return out;
 }
 
-/** The two pushes about one launched coin (launch.ts, saved-post.ts): whichever reaches a person first, the other is listed. */
-const SAME_COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin'];
+/** The pushes about one launched coin (launch.ts, saved-post.ts, and every pick): whichever reaches a person first, the others are listed. */
+const SAME_COIN_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_first_coin', 'coin_picked'];
 
 /** Whether this coin already reached this person's phone in the last day by the other of the two kinds. */
 async function alreadyPushedCoin(db: Db, userId: string, kind: AlertKind, facts: Facts): Promise<boolean> {

@@ -28,6 +28,7 @@ import { Num } from '../../shared/ui/Num.tsx';
 const LISTED = 'In Notifications only, never pushed.';
 const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readonly hint: string }[] = [
   { key: 'launches', label: 'A coin launched for an FYP post', hint: "Pushed. When a coin launches after a post was on For You and people are buying it: the post's first coin only, never the ones after. A few a day at most." },
+  { key: 'everyPick', label: 'Every coin we match to a post', hint: "Pushed the moment we match it, in its first hours. Many a day, and most won't last: for people who never want to miss one. Off to start." },
   { key: 'watchedPosts', label: 'First coin for posts you save', hint: LISTED },
   { key: 'starredFirstCoin', label: 'First coin for narratives you star', hint: LISTED },
   { key: 'blowingUp', label: 'Blowing up on FYP', hint: `The fastest-rising posts and brand-new narratives taking off. ${LISTED}` },
