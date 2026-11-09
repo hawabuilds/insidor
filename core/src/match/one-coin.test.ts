@@ -241,6 +241,27 @@ test('★ on readings a quote with no pool climbs nothing: a frozen cap is not t
   assert.equal(pickOneCoin([c('FROZEN', 1_005, null, { market: read(381_537, 0.01) })], null, NOW, false, BARS).kind, 'waiting');
 });
 
+test('★ $trump (9 Nov): an older coin whose quote is frozen holds no pick and takes none', () => {
+  const older = (address: string, capUsd: number, priceFrozen?: boolean) =>
+    c(address, 0, null, { existingSinceMs: 1_001 * MIN, evidence: ['name_judge', 'existing'], market: { capUsd, peakCapUsd: capUsd, liquidityUsd: null, ...(priceFrozen === undefined ? {} : { priceFrozen }) } });
+  /* Alone and frozen: nothing is picked, and the standing says why. */
+  const alone = pickOneCoin([older('OADY', 64_129, true), c('UNREAD', 0, null, { existingSinceMs: 1_001 * MIN, evidence: ['name_judge', 'existing'] })], null, NOW, false, BARS);
+  assert.equal(alone.kind, 'waiting');
+  assert.equal(alone.kind === 'waiting' && alone.standings.find((s) => s.address === 'OADY')?.out, 'price_frozen');
+  /* Held: dropped. */
+  const held = pickOneCoin([older('OADY', 64_129, true)], { address: 'OADY', sinceMs: 1_005 * MIN }, NOW, false, BARS);
+  assert.equal(held.kind === 'waiting' && held.droppedHolder, 'OADY');
+  /* A trading older coin beside it is picked. */
+  const other = pickOneCoin([older('OADY', 64_129, true), older('LIVE', 24_000, false)], null, NOW, false, BARS);
+  assert.equal(other.kind === 'picked' && other.address, 'LIVE');
+  /* Not frozen, or not known: judged as before. */
+  assert.equal((pickOneCoin([older('OADY', 64_129, false)], null, NOW, false, BARS) as { address?: string }).address, 'OADY');
+  assert.equal((pickOneCoin([older('OADY', 64_129)], null, NOW, false, BARS) as { address?: string }).address, 'OADY');
+  /* A coin made for the post is not touched by the flag: it is judged on its trades from launch. */
+  const launch = pickOneCoin([c('NEW', 1_005, null, { market: { capUsd: 40_000, peakCapUsd: 40_000, liquidityUsd: null, priceFrozen: true } })], null, NOW, false, BARS);
+  assert.equal(launch.kind === 'picked' && launch.address, 'NEW');
+});
+
 test('waiting: too early, under the bars, no clear lead, a rival we could not measure', () => {
   assert.equal((pickOneCoin([c('A', 1_018, trades({}))], null, NOW, true, BARS) as { reason?: string }).reason, 'too_early');
   assert.equal((pickOneCoin([c('A', 1_005, trades({ uniqueBuyers: 3 }))], null, NOW, true, BARS) as { reason?: string }).reason, 'under_bars');

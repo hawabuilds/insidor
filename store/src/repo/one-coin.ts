@@ -1164,6 +1164,25 @@ export class PgOneCoinRepo {
   }
 
   /**
+   * The coins whose newest market reading is a frozen quote (core match/one-coin.ts `priceFrozen`):
+   * no pool, and a last hour the source counted, with no buy and no sell in it. A last hour the source
+   * did not report is unknown, never zero, so its coin is not in the set. One indexed newest reading
+   * a coin (market_reading_latest_idx); the runner asks it only for the second path's older coins.
+   */
+  async frozenPrices(addresses: readonly string[]): Promise<ReadonlySet<string>> {
+    if (addresses.length === 0) return new Set();
+    const rows = await this.#db.query<{ address: string }>(
+      `select a.address
+         from public.asset a
+         join lateral (select m.liquidity_usd, m.buys_1h, m.sells_1h from public.market_reading m
+                        where m.asset_key = a.asset_key and m.market_cap_usd is not null order by m.taken_at desc limit 1) r on true
+        where a.address = any($1::text[]) and r.liquidity_usd is null and r.buys_1h = 0 and r.sells_1h = 0`,
+      [[...new Set(addresses)]],
+    );
+    return new Set(rows.map((r) => r.address));
+  }
+
+  /**
    * For the early pick's push (services/runner work/early-pick.ts): when each post was first on For
    * You (null: never), and whether For You took it by the coin-first route (0116/0117), whose coin
    * always came first. A database before 0117 reads every post as not coin-first.

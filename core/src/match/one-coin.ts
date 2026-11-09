@@ -71,6 +71,17 @@
  * until its watch ended. A watched coin with no trade yet is a measured zero: the feed would have
  * told us. On readings, a coin with no reading is simply not judged yet, as in the replay.
  *
+ * ★ AN OLDER COIN'S FROZEN QUOTE IS NOT A CAP (the owner, 2026-11-09, "it only has 1 buy"). A market
+ * source keeps quoting a curve coin at the price of its last trade, however long ago: "Good morning
+ * America" ($trump) traded in its first two minutes on 7 Nov and read $64k for two days after, with
+ * no pool and no buy or sell in any hour. Found by the second path for a TRUMP post on 9 Nov, it was
+ * the only one of five older TRUMP coins with a reading, so the readings rule picked it alone. On
+ * readings, an older coin whose newest reading gave no pool and no trade in its last hour
+ * (`priceFrozen`) is out (`price_frozen`): it holds no pick and takes none until it trades again.
+ * Older coins only: a coin made for the post is watched on trades from its launch. Replayed over
+ * 3-9 Nov: 297 of 1,482 older-coin picks stood on such a quote, and none of those coins ever
+ * doubled afterwards.
+ *
  * ★ AN OLDER COIN OF THE POST'S NAME IS THE INCUMBENT. When the second path found a coin that was
  * already trading on the post's subject, a coin launched after it that only shares a name is out
  * (`after_older_coin`) unless it clears the bars and its strength is `handOverRatio` times the
@@ -387,6 +398,11 @@ export interface MarketFacts {
   readonly peakCapUsd: number;
   /** The newest reading's pool; absent or null when it gave none (a coin on its curve): unknown. */
   readonly liquidityUsd?: number | null;
+  /**
+   * The newest reading gave no pool and counted no buy and no sell in its last hour: the source is
+   * repeating an old price, not quoting a trade. Absent or false: not known to be frozen.
+   */
+  readonly priceFrozen?: boolean;
 }
 
 export interface Contender {
@@ -401,7 +417,7 @@ export interface Contender {
 }
 
 export type Basis = 'trades' | 'market_readings';
-export type OutReason = 'creator_sold' | 'fell_from_peak' | 'after_older_coin' | 'behind_stated';
+export type OutReason = 'creator_sold' | 'fell_from_peak' | 'after_older_coin' | 'behind_stated' | 'price_frozen';
 
 /** How one candidate stood at this judgement. Kept with the pick; never shown. */
 export interface Standing {
@@ -463,6 +479,8 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
   }
   const m = c.market;
   if (m === null) return { address: c.address, evidence: c.evidence, visible, measured: false, strength: null, uniqueBuyers: null, capUsd: null, out: null, clears: false };
+  /* ★ An older coin whose quote is frozen is out on readings (see the header): its cap is not a price. */
+  if (isOlder(c) && m.priceFrozen === true) return { address: c.address, evidence: c.evidence, visible, measured: true, strength: 0, uniqueBuyers: null, capUsd: m.capUsd, out: 'price_frozen', clears: false };
   const out: OutReason | null = m.peakCapUsd > 0 && m.capUsd < bars.rugShareOfPeak * m.peakCapUsd ? 'fell_from_peak' : null;
   const noPool = m.liquidityUsd !== undefined && m.liquidityUsd !== null && (m.liquidityUsd < bars.minLiquidityUsd || m.capUsd > bars.maxCapToPool * m.liquidityUsd);
   return { address: c.address, evidence: c.evidence, visible, measured: true, strength: noPool ? 0 : Math.max(0, m.capUsd - bars.openingCapUsd), uniqueBuyers: null, capUsd: m.capUsd, out, clears: !noPool && out === null && m.capUsd >= bars.minCapUsd };

@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -218,6 +218,35 @@ export function contendersOf(rows: readonly CandidateRow[], trades: ReadonlyMap<
   });
 }
 
+/**
+ * ★ THE SECOND PATH'S OLDER COINS WHOSE QUOTE IS FROZEN, flagged on their market facts (core
+ * match/one-coin.ts `priceFrozen`, the owner, 2026-11-09: $trump read $64k for two days on one trade).
+ * Asked only for coins a post holds through the second path, so no other coin's facts change; a repo
+ * without `frozenPrices` flags nothing. Run before `withCandleCaps`: a fresh candle of our own is a
+ * trade, and its facts replace the flagged reading's.
+ */
+export async function withFrozenPrices<M extends MarketFacts>(repo: Pick<OneCoinDeps['repo'], 'frozenPrices'>, rows: readonly CandidateRow[], market: ReadonlyMap<string, M>): Promise<ReadonlyMap<string, M>> {
+  if (repo.frozenPrices === undefined) return market;
+  const older = [...new Set(rows.filter((r) => r.path === 'existing').map((r) => r.address))].filter((a) => market.has(a));
+  if (older.length === 0) return market;
+  const frozen = await repo.frozenPrices(older);
+  if (frozen.size === 0) return market;
+  const out = new Map(market);
+  for (const a of frozen) {
+    const m = out.get(a);
+    if (m !== undefined) out.set(a, { ...m, priceFrozen: true });
+  }
+  return out;
+}
+
+/** The held coin's own standing in its stored pick names it an older coin (the second path's `existing` tie). */
+const heldOlder = (p: StoredPick): boolean => {
+  const standings = p.evidence['standings'];
+  if (!Array.isArray(standings)) return false;
+  const own = standings.find((x: unknown) => typeof x === 'object' && x !== null && (x as Record<string, unknown>)['address'] === p.address) as Record<string, unknown> | undefined;
+  return Array.isArray(own?.['ties']) && (own['ties'] as unknown[]).includes('existing');
+};
+
 /** How far back the rug sweep looks for held picks, and how many it reads a pass. */
 const RUG_SWEEP_MS = 2 * 86_400_000;
 const RUG_SWEEP_LIMIT = 200;
@@ -246,14 +275,19 @@ export async function rugSweep(
   if (held.length === 0) return 0;
   const heldTrades = await repo.tradeFacts(held.map((p) => p.address as string));
   if (heldTrades === null) return 0;
-  const crashed = held.filter((p) => {
+  const crashedOnTrades = held.filter((p) => {
     const t = heldTrades.get(p.address as string);
     return t !== undefined && t.cap !== null && t.peakCap !== null && t.peakCap > 0 && t.cap < P.rugShareOfPeak * t.peakCap;
   });
+  /* ★ And a held older coin whose quote is frozen (`withFrozenPrices`): it never trades, so it never crashes on trades. */
+  const olderHeld = held.filter((p) => !crashedOnTrades.includes(p) && heldOlder(p));
+  const frozenHeld = repo.frozenPrices === undefined || olderHeld.length === 0 ? new Set<string>() : await repo.frozenPrices(olderHeld.map((p) => p.address as string));
+  const crashed = [...crashedOnTrades, ...olderHeld.filter((p) => frozenHeld.has(p.address as string))];
   if (crashed.length === 0) return 0;
   const rows = await repo.candidatesOf(crashed.map((p) => p.subjectId));
   const addresses = [...new Set(rows.map((r) => r.address))];
-  const { trades, watched, market } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
+  const { trades, watched, market: read } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
+  const market = await withFrozenPrices(repo, rows, read);
   const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
   const byItem = new Map<string, CandidateRow[]>();
   for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
@@ -582,7 +616,8 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
       deps.log.error('one coin: our candles were not read; the pick is judged on readings this minute', { err: errorText(e) });
     }
   }
-  const ruled = P.candles.on && state.candleCaps !== null ? withCandleCaps(market, state.candleCaps.caps, now, P.candles.freshMs) : market;
+  const flagged = await withFrozenPrices(repo, allRows, market);
+  const ruled = P.candles.on && state.candleCaps !== null ? withCandleCaps(flagged, state.candleCaps.caps, now, P.candles.freshMs) : flagged;
   /* ★ The trades' caps in dollars (withDollarCaps): never a stale reading's when the trades are live. */
   const solUsd = trades === null ? null : solPriceOf(trades, market);
   const tradesUsd = trades === null ? null : withDollarCaps(trades, market, solUsd);

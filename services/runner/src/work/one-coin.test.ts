@@ -264,6 +264,44 @@ test('second path: a post whose coin launched long before it gets the biggest co
   assert.equal(w.candidates.length, 1);
 });
 
+test('★ $trump (9 Nov): an older coin on a frozen quote is not picked, and a held one is dropped by the sweep', async () => {
+  const frozenWorld = () => world({
+    posts: [post],
+    named: [{ address: 'OADY', name: 'Pancake', ticker: 'PANCAKE', launchedAtMs: NOW - 2 * 24 * 60 * MIN, capUsd: 64_129, readAtMs: NOW - MIN, liquidityUsd: null }],
+    market: new Map([['OADY', { capUsd: 64_129, peakCapUsd: 65_439, readAtMs: NOW - MIN, liquidityUsd: null }]]),
+  });
+  /* Without the lookup (a repo before it): picked on its frozen $64k, as on 9 Nov. */
+  const before = frozenWorld();
+  await oneCoinPass(deps(before), newOneCoinState());
+  assert.equal(before.picks.get('x:2111')?.address, 'OADY');
+  /* With it: still the post's candidate, never its pick. */
+  const asked: string[][] = [];
+  const after = frozenWorld();
+  const d = deps(after);
+  await oneCoinPass({ ...d, repo: { ...d.repo, frozenPrices: async (a: readonly string[]) => (asked.push([...a]), new Set(['OADY'])) } }, newOneCoinState());
+  assert.deepEqual(after.candidates.map((c) => c.address), ['OADY']);
+  assert.notEqual(after.picks.get('x:2111')?.address, 'OADY');
+  assert.deepEqual(asked, [['OADY']], 'asked only for the older coin');
+
+  /* Held past its hour (the open pass no longer judges it): the sweep drops it. */
+  const ID = 'x:trump';
+  const cand: CandidateRow = { itemId: ID, address: 'OADY', path: 'existing', evidence: { ties: ['name_judge', 'existing'] }, launchedAtMs: NOW - 2 * 24 * 60 * MIN, foundAtMs: NOW - 5 * 60 * MIN };
+  const held: StoredPick = { subjectId: ID, address: 'OADY', outcome: 'picked', decidedAtMs: NOW - 4 * 60 * MIN, evidence: { standings: [{ address: 'OADY', ties: ['name_judge', 'existing'] }] } };
+  const w = world({ candidates: [cand], picks: new Map([[ID, held]]), trades: new Map(), market: new Map([['OADY', { capUsd: 64_129, peakCapUsd: 65_439, readAtMs: NOW - MIN, liquidityUsd: null }]]) });
+  const s = deps(w);
+  const sweep = { ...s.repo, openCandidates: async () => [], heldPostPicks: async () => [held] };
+  await oneCoinPass({ ...s, repo: { ...sweep, frozenPrices: async () => new Set(['OADY']) } }, newOneCoinState());
+  assert.equal(w.picks.get(ID)?.outcome, 'waiting');
+  /* A held coin made for the post is never looked up: the flag is for older coins only. */
+  const launchHeld: StoredPick = { ...held, subjectId: 'x:made', evidence: { standings: [{ address: 'OADY', ties: ['link'] }] } };
+  const lookups: string[][] = [];
+  const w2 = world({ candidates: [{ ...cand, itemId: 'x:made', path: 'launch', evidence: { ties: ['link'] } }], picks: new Map([['x:made', launchHeld]]), trades: new Map() });
+  const s2 = deps(w2);
+  await oneCoinPass({ ...s2, repo: { ...s2.repo, openCandidates: async () => [], heldPostPicks: async () => [launchHeld], frozenPrices: async (a: readonly string[]) => (lookups.push([...a]), new Set(a)) } }, newOneCoinState());
+  assert.deepEqual(lookups, []);
+  assert.equal(w2.picks.get('x:made')?.address, 'OADY');
+});
+
 test('★ a held coin\'s rug grace is stored with the pick and read back as the holder, so a restart does not restart it', () => {
   const since = NOW - 7 * MIN;
   const write = pickWrite('x:1', { kind: 'picked', address: 'A', sinceMs: NOW - 20 * MIN, confirmed: true, handedOverFrom: null, underShareSinceMs: since, basis: 'market_readings', standings: [] }, undefined, NOW, 'live');
