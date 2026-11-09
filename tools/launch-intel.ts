@@ -21,6 +21,8 @@
  *   dry     run everything but write nothing to the bucket and tell nobody
  *   report  print the latest report
  *
+ * LAUNCH_INTEL_QUIET=1 on a by-hand re-run: everything as `run`, but no second summary to the owner.
+ *
  * ★ OWNER-ONLY, AND RECORDED, NOT USED. Nothing here changes a push or a pick; the copy-tests say what a
  * rule would have done, for the owner to decide (the owner replays every pick change first).
  *
@@ -47,6 +49,8 @@ const RUN_AFTER_UTC_HOUR = 1;
 const FUNDER_CAP_CALLS = 1_000;
 const FUNDER_PAGE = 100;
 const FUNDER_MAX_PAGES = 3;
+const FUNDER_PACE_MS = 300;
+const FUNDER_RATE_WAIT_MS = 10_000;
 const RAN_IN_HOUR_USD = 15_000;
 const EARLY_LINE_TEST_USD = 13_000;
 const STATEMENT_TIMEOUT_MS = 30_000;
@@ -195,16 +199,28 @@ const ows = (a: string): Outcomes => outcomes.get(a) ?? {};
 const winner = (a: string): boolean => ran(ows(a), graduated.has(a));
 let funderCalls = 0;
 let funderStopped: string | null = null;
+let funderSkipped = 0;
 const heliusKey = (process.env['HELIUS_API_KEY'] ?? '').trim();
+let lastCallAt = 0;
+let waitedOnRate = false;
 async function rpc(method: string, params: unknown[]): Promise<unknown> {
   if (funderCalls >= FUNDER_CAP_CALLS) throw new Error('cap');
+  /* Paced well under the key's rate so the live app's own calls are never crowded out. */
+  const wait = lastCallAt + FUNDER_PACE_MS - Date.now();
+  if (wait > 0) await new Promise((res) => setTimeout(res, wait));
+  lastCallAt = Date.now();
   funderCalls += 1;
   const r = await fetch(`https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15_000) });
-  if (r.status === 429 || r.status === 402 || r.status === 403) throw new Error(`refused ${r.status}`);
+  /* One rate refusal is waited out once; a second, or out of credits, stops the night. */
+  if (r.status === 429 && !waitedOnRate) { waitedOnRate = true; await new Promise((res) => setTimeout(res, FUNDER_RATE_WAIT_MS)); return rpc(method, params); }
+  if (r.status === 429 || r.status === 402 || r.status === 403) throw new Refused(`refused ${r.status}`);
   const j = (await r.json()) as { result?: unknown; error?: { code?: number; message?: string } };
-  if (j.error !== undefined) throw new Error(`refused ${j.error.code ?? ''}`);
+  /* A refusal of the key (rate, credits) stops the night; anything else is this wallet's and only skips it. */
+  if (j.error !== undefined && (j.error.code === -32429 || /rate|limit|credit|usage|quota/i.test(j.error.message ?? ''))) throw new Refused(`refused ${j.error.code ?? ''}`);
+  if (j.error !== undefined) throw new Error(`skipped ${j.error.code ?? ''}`);
   return j.result;
 }
+class Refused extends Error {}
 async function funderOf(wallet: string): Promise<string | null> {
   let before: string | undefined;
   let oldest: string | null = null;
@@ -230,13 +246,13 @@ if (heliusKey !== '' && write) {
   for (const l of wantFunder) {
     if (funderCalls >= FUNDER_CAP_CALLS - FUNDER_MAX_PAGES - 1) { funderStopped = 'cap'; break; }
     try { const f = await funderOf(l.creator!); newFunders[l.creator!] = f; funders.set(l.creator!, f); } catch (e) {
-      funderStopped = e instanceof Error ? e.message : 'error';
-      break;
+      if (e instanceof Refused || (e instanceof Error && e.message === 'cap')) { funderStopped = e.message; break; }
+      funderSkipped += 1;
     }
   }
   if (Object.keys(newFunders).length > 0) await archivePut(A, fetch, `funders/${today}.json.gz`, gz(newFunders), 'application/gzip');
 }
-log('funders', { wanted: wantFunder.length, found: Object.keys(newFunders).length, calls: funderCalls, stopped: funderStopped });
+log('funders', { wanted: wantFunder.length, found: Object.keys(newFunders).length, skipped: funderSkipped, calls: funderCalls, stopped: funderStopped });
 
 /* ── 4. the numbers ── */
 
@@ -312,7 +328,7 @@ const report = {
     holdRugRisk: copyTestRugHold(pushCases),
     picks: copyTestPicks(pickCases),
   },
-  funderLookups: { calls: funderCalls, found: Object.keys(newFunders).length, wanted: wantFunder.length, stopped: funderStopped },
+  funderLookups: { calls: funderCalls, found: Object.keys(newFunders).length, skipped: funderSkipped, wanted: wantFunder.length, stopped: funderStopped },
 };
 
 if (write) {
@@ -322,9 +338,9 @@ if (write) {
 }
 log('report', { day: today, smart: smart.length, teams: teams.length, rugRows: rugRows.length, peakRows: peakRows.length, pushCases: pushCases.length, pickCases: pickCases.length, written: write });
 
-/* ── 5. the owner's summary ── */
+/* ── 5. the owner's summary (LAUNCH_INTEL_QUIET=1 for a by-hand re-run the same day: no second summary) ── */
 
-if (write) {
+if (write && process.env['LAUNCH_INTEL_QUIET'] !== '1') {
   try {
     const all = report.rugWithinHour['all launches'];
     const early = report.copyTests.earlyLine13k;
