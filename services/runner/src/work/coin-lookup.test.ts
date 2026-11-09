@@ -147,6 +147,7 @@ test("★ the narrative posts' chain reads stop at the day's cap, and a coin pas
   const chain = {
     metadataUri: async (m: string) => (reads.push(`meta:${m}`), `https://example.org/${m}.json`),
     oldestSignatureBlockTime: async (m: string) => (reads.push(`oldest:${m}`), 1_799_000_000),
+    curveAccount: async (c: string) => (reads.push(`curve:${c}`), {}),
   };
   const upserted: { metadata: unknown; source: string }[] = [];
   const source: CoinSearch = { search: async () => ({ hits: [hit('So11111111111111111111111111111111111111112', 'Gordão', 60_000), hit('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 'Gordão', 120_000)], capped: false }) };
@@ -177,9 +178,39 @@ test("★ the narrative posts' chain reads stop at the day's cap, and a coin pas
   assert.deepEqual(upserted.map((u) => [u.metadata === undefined ? 'no link' : 'link', u.source]), [['link', 'chain_rpc'], ['no link', 'vendor_field']]);
 });
 
+test('★ a pool hit is added only when the chain holds its launchpad curve; no curve or a failed read adds nothing', async () => {
+  const PROVEN = 'Er4LgAaev5h9hXkmvJxCzZb7xA9a9VhRM1XMTj5Fpump';
+  const BARE = 'Ez92P7sb4vQ3hxk5SiwP3YRrNeZcBs3FAaLLdi2Hpump';
+  const pool = (address: string, name: string): CoinSearchHit => ({ ...hit(address, name, 60_000), venue: 'pool' });
+  const source: CoinSearch = { search: async () => ({ hits: [pool(PROVEN, 'Jensen'), pool(BARE, 'Jensen')], capped: false }) };
+  const term: LookupTerm = { kind: 'post', id: 'x:jensen', term: 'Jensen', names: ['Jensen'], attempts: 0 };
+  const run = async (curveAccount: (c: string) => Promise<unknown>) => {
+    const { d } = deps(term, [source]);
+    const added: string[] = [];
+    const reads: string[] = [];
+    await lookUpCoins({
+      ...d,
+      chain: { metadataUri: async (m) => (reads.push(`meta:${m}`), null), oldestSignatureBlockTime: async () => null, curveAccount },
+      assets: { upsert: async (xs) => (added.push(...xs.map((a) => a.ref.address)), xs.length) },
+      coins: { ...d.coins, knownAssets: async () => new Set() },
+    });
+    return { added, reads };
+  };
+  const { curveAddress } = await import('@insidor/venue-solana-pumpfun');
+  const one = await run(async (c) => (c === curveAddress(PROVEN) ? {} : null));
+  assert.deepEqual(one.added, [PROVEN]);
+  assert.deepEqual(one.reads, [`meta:${PROVEN}`], 'a coin with no curve spends no further reads');
+  const down = await run(async () => { throw new Error('rpc down'); });
+  assert.deepEqual(down.added, [], 'unknown is never yes');
+  const { d } = deps(term, [source]);
+  const added: string[] = [];
+  await lookUpCoins({ ...d, assets: { upsert: async (xs) => (added.push(...xs.map((a) => a.ref.address)), xs.length) }, coins: { ...d.coins, knownAssets: async () => new Set() } });
+  assert.deepEqual(added, [], 'no chain to ask: no pool hit is added');
+});
+
 test("★ the store's count of today's coins holds the cap after a restart", async () => {
   const reads: string[] = [];
-  const chain = { metadataUri: async () => (reads.push('m'), null), oldestSignatureBlockTime: async () => (reads.push('o'), null) };
+  const chain = { metadataUri: async () => (reads.push('m'), null), oldestSignatureBlockTime: async () => (reads.push('o'), null), curveAccount: async () => (reads.push('c'), null) };
   const source: CoinSearch = { search: async () => ({ hits: [hit('So11111111111111111111111111111111111111112', 'Gordão', 60_000)], capped: false }) };
   const { d } = deps({ kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 }, [{ search: async () => ({ hits: [], capped: false }) }]);
   await lookUpCoins({

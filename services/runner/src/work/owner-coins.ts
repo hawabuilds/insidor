@@ -17,6 +17,11 @@
  * asked about again after `RETRY_MS`, in this process. A coin no source ever lists is never
  * shown on the post, rather than shown with no name.
  *
+ * ★ A COIN THAT NEVER HAD A LAUNCHPAD CURVE IS NOT ADDED, EVEN THE OWNER'S (the owner, 2026-11-09:
+ * no coin that did not launch on the launchpad is ever matched to a post). A coin listed only in a
+ * pool is added once the chain shows its curve (search-asset.ts `curveProven`); no curve, or a chain
+ * we could not read, and it is asked about again after `RETRY_MS`.
+ *
  * What breaks if changed carelessly: the exact-address filter. A search by an address can return
  * other pools that mention it; adding one of those would put another coin on the owner's post.
  */
@@ -24,7 +29,7 @@
 import type { Millis } from '@insidor/contracts';
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 import type { PgAssetRepo, PgLearningRepo } from '@insidor/store';
-import { assetFromSearch } from '@insidor/venue-solana-pumpfun';
+import { assetFromSearch, curveProven } from '@insidor/venue-solana-pumpfun';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -37,7 +42,7 @@ export interface OwnerCoinDeps {
   readonly learning: Pick<PgLearningRepo, 'ownerCoinsNotHeld'>;
   readonly assets: Pick<PgAssetRepo, 'upsert'>;
   readonly sources: readonly CoinSearch[];
-  readonly chain: { metadataUri(mint: string): Promise<string | null>; oldestSignatureBlockTime(address: string): Promise<number | null> } | null;
+  readonly chain: { metadataUri(mint: string): Promise<string | null>; oldestSignatureBlockTime(address: string): Promise<number | null>; curveAccount(address: string): Promise<unknown> } | null;
   readonly log: Logger;
   readonly now: () => Millis;
 }
@@ -58,6 +63,21 @@ export async function addOwnerCoins(deps: OwnerCoinDeps): Promise<number> {
       continue;
     }
     const created = hits.flatMap((h) => (h.createdAt === null ? [] : [h.createdAt]));
+    const onCurve = hits.some((h) => h.venue === 'curve');
+    let proven = false;
+    if (!onCurve) {
+      const chain = deps.chain;
+      try {
+        proven = chain !== null && (await curveProven(address, (c) => chain.curveAccount(c)));
+      } catch (e) {
+        deps.log.info("the curve of a coin the owner named could not be read; asked again later", { coin: address, err: errorText(e) });
+        continue;
+      }
+      if (!proven) {
+        deps.log.info("a coin the owner named has no launchpad curve; it is not added", { coin: address, chainRead: deps.chain !== null });
+        continue;
+      }
+    }
     let metadataUri: string | null = null;
     let chainCreatedAt: Millis | null = null;
     if (deps.chain !== null) {
@@ -70,7 +90,7 @@ export async function addOwnerCoins(deps: OwnerCoinDeps): Promise<number> {
       }
     }
     /* The earliest market creation time stands in for the launch when the chain did not answer. */
-    const asset = assetFromSearch({ ...named, createdAt: created.length === 0 ? null : Math.min(...created) }, { firstSeenAt: now, metadataUri, chainCreatedAt });
+    const asset = assetFromSearch({ ...named, ...(onCurve ? { venue: 'curve' as const } : {}), createdAt: created.length === 0 ? null : Math.min(...created) }, { firstSeenAt: now, metadataUri, chainCreatedAt, curveProven: proven });
     if (asset === null) continue;
     await deps.assets.upsert([asset]);
     lastTried.delete(address);

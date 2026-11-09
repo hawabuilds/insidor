@@ -54,7 +54,7 @@ function deps(fail = false, policy = P): LookupDeps {
     coins: new PgCoinUniverseRepo(db),
     assets: new PgAssetRepo(db),
     sources: sources(fail),
-    chain: { metadataUri: async () => 'https://ipfs.io/ipfs/bafkreiexampleexampleexampleexampleexampleexampleexample', oldestSignatureBlockTime: async () => Math.floor((NOW - DAY) / 1000) },
+    chain: { metadataUri: async () => 'https://ipfs.io/ipfs/bafkreiexampleexampleexampleexampleexampleexampleexample', oldestSignatureBlockTime: async () => Math.floor((NOW - DAY) / 1000), curveAccount: async () => ({}) },
     policy,
     log: quiet,
     now: () => NOW,

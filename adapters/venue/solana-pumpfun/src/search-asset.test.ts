@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import type { Millis } from '@insidor/contracts';
 import type { CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
-import { assetFromSearch } from './search-asset.ts';
+import { curveAddress } from './curve-rpc.ts';
+import { assetFromSearch, curveProven } from './search-asset.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const hit: CoinSearchHit = {
@@ -32,6 +33,20 @@ test('the chain\'s launch time wins over the source\'s when it was read; a bad a
   assert.equal(asset?.mintedAt.source, 'chain_rpc');
   assert.deepEqual(asset?.declaredSocial, {});
   assert.equal(assetFromSearch({ ...hit, address: 'not an address' }, { firstSeenAt: NOW, metadataUri: null, chainCreatedAt: null }), null);
+});
+
+test('★ a pool hit is no row unless the chain proved its launchpad curve; a curve hit needs no proof', async () => {
+  const pool = { ...hit, venue: 'pool' as const };
+  assert.equal(assetFromSearch(pool, { firstSeenAt: NOW, metadataUri: null, chainCreatedAt: null }), null);
+  assert.equal(assetFromSearch(pool, { firstSeenAt: NOW, metadataUri: null, chainCreatedAt: null, curveProven: false }), null);
+  assert.equal(assetFromSearch(pool, { firstSeenAt: NOW, metadataUri: null, chainCreatedAt: null, curveProven: true })?.venue, 'solana:pumpfun');
+  assert.equal(assetFromSearch(hit, { firstSeenAt: NOW, metadataUri: null, chainCreatedAt: null })?.venue, 'solana:pumpfun');
+  /* The curve is read at its derived address; no account there is no curve; a failed read throws. */
+  const asked: string[] = [];
+  assert.equal(await curveProven(hit.address, async (c) => (asked.push(c), {})), true);
+  assert.deepEqual(asked, [curveAddress(hit.address)]);
+  assert.equal(await curveProven(hit.address, async () => null), false);
+  await assert.rejects(curveProven(hit.address, async () => { throw new Error('rpc down'); }));
 });
 
 test('the metadata link is read from the chain\'s asset record', async () => {

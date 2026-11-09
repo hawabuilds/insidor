@@ -28,7 +28,7 @@ test('★ only the hit with the exact address is added, with the chain launch ti
     learning: { ownerCoinsNotHeld: async () => [MINT] },
     assets: { upsert: async (a) => { added.push(...a); return a.length; } },
     sources: [{ search: async () => ({ hits: [hit(OTHER, 'HomeView by Apple'), hit(MINT, 'HomeView')], capped: false }) }],
-    chain: { metadataUri: async () => 'https://ipfs.io/ipfs/bafkreiabc', oldestSignatureBlockTime: async () => (NOW - 7_200_000) / 1_000 },
+    chain: { metadataUri: async () => 'https://ipfs.io/ipfs/bafkreiabc', oldestSignatureBlockTime: async () => (NOW - 7_200_000) / 1_000, curveAccount: async () => ({}) },
     log,
     now: () => NOW as Millis,
   });
@@ -37,6 +37,28 @@ test('★ only the hit with the exact address is added, with the chain launch ti
   assert.equal(added[0]?.name, 'HomeView');
   assert.equal(added[0]?.origin, 'backfill', 'a coin named by hand is still a search-found coin');
   assert.equal(added[0]?.mintedAt.at, NOW - 7_200_000);
+});
+
+test('★ a pool-only coin with no launchpad curve on the chain, or no chain to ask, is not added', async () => {
+  const POOL_ONLY = 'GcdTi1zz6bVXmSn6pBoxRpk9H4WZfjpwhKfbYaozpump';
+  const run = (chain: Parameters<typeof addOwnerCoins>[0]['chain'], at: number) => {
+    const added: Asset[] = [];
+    return addOwnerCoins({
+      learning: { ownerCoinsNotHeld: async () => [POOL_ONLY] },
+      assets: { upsert: async (a) => { added.push(...a); return a.length; } },
+      sources: [{ search: async () => ({ hits: [hit(POOL_ONLY, 'Jensen')], capped: false }) }],
+      chain,
+      log,
+      now: () => at as Millis,
+    }).then((n) => ({ n, added }));
+  };
+  const noCurve = await run({ metadataUri: async () => null, oldestSignatureBlockTime: async () => null, curveAccount: async () => null }, NOW);
+  assert.deepEqual(noCurve, { n: 0, added: [] });
+  const noChain = await run(null, NOW + RETRY_MS);
+  assert.deepEqual(noChain, { n: 0, added: [] });
+  const proven = await run({ metadataUri: async () => null, oldestSignatureBlockTime: async () => null, curveAccount: async () => ({}) }, NOW + 2 * RETRY_MS);
+  assert.equal(proven.n, 1);
+  assert.equal(proven.added[0]?.venue, 'solana:pumpfun');
 });
 
 test('an address no source lists adds nothing, and is not asked again until the wait is over', async () => {

@@ -59,7 +59,7 @@ import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { LookupTerm, PgAssetRepo, PgCoinUniverseRepo, PgOlderCoinRepo } from '@insidor/store';
 import { mergeHits } from '@insidor/core';
-import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
+import { assetFromSearch, CHAIN, curveProven } from '@insidor/venue-solana-pumpfun';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -69,8 +69,11 @@ export interface LookupDeps {
   readonly sources: readonly CoinSearch[];
   /** The sources that cost nothing a call, for the narrative pages' posts. Absent or empty: those are not searched. */
   readonly freeSources?: readonly CoinSearch[];
-  /** The chain, for a candidate's metadata link and launch time. Null: neither is read. */
-  readonly chain: { metadataUri(mint: string): Promise<string | null>; oldestSignatureBlockTime(address: string): Promise<number | null> } | null;
+  /**
+   * The chain, for a candidate's metadata link and launch time, and a pool hit's launchpad curve.
+   * Null: none is read, and no pool hit is added (its curve cannot be proven).
+   */
+  readonly chain: { metadataUri(mint: string): Promise<string | null>; oldestSignatureBlockTime(address: string): Promise<number | null>; curveAccount(address: string): Promise<unknown> } | null;
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
@@ -267,34 +270,53 @@ async function searchOne(
   const more = cut || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
   const known = await deps.coins.knownAssets(hits.map((h) => assetKey({ chain: CHAIN, address: h.address })));
   let newHere = 0;
+  let unproven = 0;
+  const chain = deps.chain;
+  const spend = (n: number) => {
+    if (budget === null) return;
+    budget.left -= n;
+    budget.tally.reads += n;
+  };
   for (const hit of hits) {
     if (known.has(assetKey({ chain: CHAIN, address: hit.address }))) continue;
     let metadataUri: string | null = null;
     let chainCreatedAt: Millis | null = null;
-    /* ★ Past the narrative posts' day's cap the coin is added from what the search gave: no
+    /* ★ A POOL HIT NEEDS ITS LAUNCHPAD CURVE PROVEN (search-asset.ts `curveProven`): read first, so a
+       coin made elsewhere costs this one read and is not added. A curve hit is the launchpad's own. */
+    const pool = hit.venue !== 'curve';
+    /* ★ Past the narrative posts' day's cap a curve hit is added from what the search gave: no
        metadata link (so no picture, links or description are read for it, and its picture and
        link evidence stay unknown, never "no") and a launch time from the market's creation,
-       claimed only to within five minutes, or unknown — never a guess. */
-    const capped = budget !== null && budget.left < CHAIN_READS_PER_COIN;
+       claimed only to within five minutes, or unknown — never a guess. A pool hit is not added. */
+    const capped = budget !== null && budget.left < CHAIN_READS_PER_COIN + (pool ? 1 : 0);
     if (capped) budget.skipped += 1;
-    if (deps.chain !== null && !capped) {
+    let proven = false;
+    if (chain !== null && !capped) {
       try {
-        if (budget !== null) {
-          budget.left -= CHAIN_READS_PER_COIN;
-          budget.tally.reads += CHAIN_READS_PER_COIN;
+        if (pool) {
+          spend(1);
+          proven = await curveProven(hit.address, (c) => chain.curveAccount(c));
         }
-        metadataUri = await deps.chain.metadataUri(hit.address);
-        const seconds = await deps.chain.oldestSignatureBlockTime(hit.address);
-        chainCreatedAt = seconds === null ? null : ((seconds * 1_000) as Millis);
+        if (!pool || proven) {
+          spend(CHAIN_READS_PER_COIN);
+          metadataUri = await chain.metadataUri(hit.address);
+          const seconds = await chain.oldestSignatureBlockTime(hit.address);
+          chainCreatedAt = seconds === null ? null : ((seconds * 1_000) as Millis);
+        }
       } catch (e) {
         deps.log.info('chain read for a found coin failed; it is added with what the search gave', { coin: hit.address, err: errorText(e) });
       }
     }
-    const asset = assetFromSearch(hit, { firstSeenAt: now, metadataUri, chainCreatedAt });
+    if (pool && !proven) {
+      unproven += 1;
+      continue;
+    }
+    const asset = assetFromSearch(hit, { firstSeenAt: now, metadataUri, chainCreatedAt, curveProven: proven });
     if (asset === null) continue;
     await deps.assets.upsert([asset]);
     newHere += 1;
   }
+  if (unproven > 0) deps.log.info('found coins not added: a pool with no launchpad curve proven on the chain', { coins: unproven, term: term.term });
   /* Stamped when the search ran, not when the pass began: the rolling minute counts by it. */
   await deps.coins.recordLookup(term, { hits: hits.map((h) => h.address), more }, newHere, deps.now());
   tally.searched += 1;

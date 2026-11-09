@@ -328,4 +328,4 @@ export type { CurveAccount } from './curve-account.ts';
 export { ACCOUNTS_PER_CALL, readTokenMetadata, tokenMetadata, TOKEN_2022_PROGRAM } from './token-metadata.ts';
 export type { TokenMetadata, TokenMetadataConfig } from './token-metadata.ts';
 /* A coin found by searching, as a row for the coin universe — a candidate, `origin: 'backfill'`. */
-export { assetFromSearch } from './search-asset.ts';
+export { assetFromSearch, curveProven } from './search-asset.ts';

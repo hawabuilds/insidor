@@ -9,6 +9,14 @@
  * time — `vendor_field`, never `exact`. The source's picture is NOT the coin's picture: only a
  * content-addressed one, read through our gateway, ever is.
  *
+ * ★ A POOL HIT IS A LAUNCHPAD COIN ONLY WITH THE CHAIN'S WORD FOR IT (the owner, 2026-11-09: "some
+ * of these scam tokens are not launched through pump fun, they just have a pump swap liquidity, which
+ * they then pull"). The search sources file a coin trading in the launchpad's graduated pool as a
+ * launchpad coin, but anyone can open such a pool for a coin made elsewhere. Every launchpad coin has
+ * a curve account at an address derived from its mint, and the account stays after graduation, so
+ * its existence is the proof (`curveProven`). Without that proof a pool hit is not stored: stored
+ * under this venue, every gate downstream — the Tape, the pushes, the coin match — would trust it.
+ *
  * What breaks if changed carelessly: `origin`. A search-found coin is a candidate; the
  * projector holds it to a picture-plus-name-plus-timing match before naming it on a story.
  * Stored as `live_stream`, it would be named on a name match alone.
@@ -19,6 +27,7 @@ import type { Asset } from '@insidor/contracts/asset.ts';
 import type { CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 import { assetKey } from '@insidor/contracts/ids.ts';
 
+import { curveAddress } from './curve-rpc.ts';
 import { boundedText, httpsUri, mintAddress } from './hostile.ts';
 import { CHAIN, VENUE_ID } from './ids.ts';
 
@@ -30,9 +39,20 @@ const DECIMALS = 6;
 /** How far a market-creation time may sit from the true launch, in seconds, as we claim it. */
 const VENDOR_BOUND_S = 300;
 
-export function assetFromSearch(hit: CoinSearchHit, ctx: { readonly firstSeenAt: Millis; readonly metadataUri: string | null; readonly chainCreatedAt: Millis | null }): Asset | null {
+/**
+ * Whether the chain holds this coin's launchpad curve: true for a coin launched on the launchpad,
+ * graduated or not. Throws when the chain cannot be read — unknown is never an answer here.
+ */
+export async function curveProven(address: string, curveAccount: (curve: string) => Promise<unknown>): Promise<boolean> {
+  const a = mintAddress(address);
+  return a !== null && (await curveAccount(curveAddress(a))) !== null;
+}
+
+/** The row for a hit; null for a bad address, or a pool hit whose curve the caller has not proven (`curveProven`). */
+export function assetFromSearch(hit: CoinSearchHit, ctx: { readonly firstSeenAt: Millis; readonly metadataUri: string | null; readonly chainCreatedAt: Millis | null; readonly curveProven?: boolean }): Asset | null {
   const address = mintAddress(hit.address);
   if (address === null) return null;
+  if (hit.venue !== 'curve' && ctx.curveProven !== true) return null;
   const ref = { chain: CHAIN, address };
   const metadata = httpsUri(ctx.metadataUri, URI_MAX);
   const mintedAt =
