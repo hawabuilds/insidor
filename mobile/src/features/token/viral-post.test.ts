@@ -47,6 +47,17 @@ test('★ never a promotion: with no linked post, only a post from before the la
   assert.equal(viralPost([p('og', 5, null, 10)], { launchedAt: null }), null, 'launch time unknown: we cannot tell which came first');
   const after = { ...p('x', 9, null, 10), evidence: { linksPost: null, samePicture: null, launchedAfterMs: -60_000 } };
   assert.equal(viralPost([after], { launchedAt: LAUNCH }), null, 'the evidence says it was posted after the launch');
-  assert.equal(viralPost([p('linked', 1, true, 500)], { launchedAt: LAUNCH }), null, 'a linked-but-post-launch post is a promotion: not shown');
+  assert.equal(viralPost([p('linked', 1, true, 500)], { launchedAt: LAUNCH })?.post.postId, 'linked', 'the linked post is shown whenever it was posted');
   assert.equal(viralPost([p('og', 50_000, null, 10), p('promo', 9_000_000, null, 500)])?.post.postId, 'promo', 'not shown (the narrative card\'s choice): the ranking alone, as before');
+});
+
+test('★ a linked post nobody saw does not lead under the chart: $JENSEN (2026-11-09)', () => {
+  const at = (id: string, views: number, linksPost: boolean | null, launchedAfterMs: number): AboutPost => ({ ...p(id, views, linksPost), evidence: { linksPost, samePicture: null, launchedAfterMs } });
+  const promo = { ...p('esotericpigeon', 0, true, 99), evidence: { linksPost: true, samePicture: null, launchedAfterMs: null } };
+  const posts = [promo, at('nytimes', 3_917_157, false, 22_746_000), at('foxnews', 2_258_934, null, 16_053_000), at('cryptowalax', 64_933, false, -11_136_000)];
+  const shown = viralPost(posts, { launchedAt: LAUNCH });
+  assert.equal(shown?.post.postId, 'nytimes', 'the most-viewed post from before the launch');
+  assert.equal(shown?.proven, false);
+  assert.equal(viralPost([promo, at('cryptowalax', 64_933, false, -11_136_000)], { launchedAt: LAUNCH })?.post.postId, 'esotericpigeon', 'nothing from before the launch: the coin\'s own claim is still shown');
+  assert.equal(viralPost([p('big', 9_000_000, false), p('linked', 400_000, true)], { launchedAt: LAUNCH })?.post.postId, 'linked', 'a linked post that was seen still leads ($Donkey)');
 });

@@ -22,18 +22,29 @@ export interface ViralPost {
 
 /** `shown`: the post is to be shown under the chart, so only the original may lead (the rule below).
  *  Without it the ranking alone, as the narrative card's choice of story has always used it. */
+/**
+ * ★ A LINKED POST UNDER THIS MANY VIEWS DOES NOT LEAD THE TOKEN PAGE (the owner, 2026-11-09: $JENSEN
+ * linked @esotericpigeon's own "we haven't bonded the name" post, 0 views, and the page showed it over
+ * @nytimes' 3.9M-view story the coin was made from). A post nobody saw is the creator announcing the
+ * coin, not the viral post. Kept low on purpose: a linked post that really went viral ($Donkey's
+ * @WatcherGuru post) is far past it, so only the duds lose their place.
+ */
+export const LINKED_MIN_VIEWS = 1_000;
+
 export function viralPost(posts: readonly AboutPost[], shown?: { readonly launchedAt: number | null }): ViralPost | null {
   /* ★ The post the coin itself links comes first (the coin's own claim to it), the most-viewed of
      those whose views we read; only with none, the original post: the most-viewed one posted before
      the coin launched (the owner, 2026-11-04: "we show the og viral post", never a promotion, and
-     promotion comes after a launch). A post whose time against the launch is unknown is not shown. */
+     promotion comes after a launch). A post whose time against the launch is unknown is not shown.
+     Under the chart a linked post leads only once seen (`LINKED_MIN_VIEWS`); a barely seen one is
+     still shown when no post from before the launch names the coin, as the coin's own claim. */
   const launchedAt = shown?.launchedAt ?? null;
+  const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known);
   const before = (p: AboutPost): boolean =>
     p.evidence.launchedAfterMs !== null ? p.evidence.launchedAfterMs >= 0 : launchedAt !== null && p.postedAt.known && p.postedAt.at <= launchedAt;
-  /* In shown mode a linked-but-post-launch post is a promotion; only pre-launch linked posts
-     beat the OG pool. Without shown (the narrative card) the ranking alone picks as before. */
-  const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known && (shown === undefined || before(p)));
-  const pool = linked.length > 0 ? linked : shown === undefined ? posts : posts.filter(before);
+  const seen = shown === undefined ? linked : linked.filter((p) => p.views.known && p.views.amount >= LINKED_MIN_VIEWS);
+  const original = shown === undefined ? posts : posts.filter(before);
+  const pool = seen.length > 0 ? seen : original.length > 0 ? original : linked;
   let best: AboutPost | null = null;
   for (const p of pool) {
     if (best === null) best = p;
