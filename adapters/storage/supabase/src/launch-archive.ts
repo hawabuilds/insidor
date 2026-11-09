@@ -79,6 +79,8 @@ export interface OutcomeRecord {
   readonly top10Share: number | null;
   /** Wallets holding any of it, by the same count; null when not recorded. */
   readonly holders: number | null;
+  /** When the coin first reached each take-off mark within the window: '15k', '50k', '100k', '1m' (cap) and '2x', '5x', '10x' (of its opening cap). Absent: not reached (or not recorded, before 9 Nov). */
+  readonly reachedAt: Readonly<Record<string, number>>;
 }
 
 export interface GraduationRecord {
@@ -162,6 +164,7 @@ export function decodeOutcomes(bytes: Uint8Array): OutcomeRecord[] {
       bundleFirstSellAt: num(o['bundleFirstSellAt']), bundleSoldShare: num(o['bundleSoldShare']),
       trades: num(o['trades']) ?? 0, buys: num(o['buys']) ?? 0,
       top10Share: num(o['top10Share']), holders: num(o['holders']),
+      reachedAt: Object.fromEntries(Object.entries(rec(o['reachedAt'])).flatMap(([k, v]) => (num(v) === null ? [] : [[k, num(v) as number]]))),
     }];
   });
 }

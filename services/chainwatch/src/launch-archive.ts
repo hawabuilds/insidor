@@ -55,6 +55,10 @@ const QUIET_MS = 6 * HOUR_MS;
 const CRASH_SHARE = 0.2;
 const CRASH_MIN_RUN = 2;
 const MAX_MINUTE_BUYS = 80;
+/* Take-off marks: the first time a coin reached each cap, and each multiple of its opening cap ("beat the runner"
+   is our pick and push time against these). */
+const CAP_MARKS: readonly [string, number][] = [['15k', 15_000], ['50k', 50_000], ['100k', 100_000], ['1m', 1_000_000]];
+const RUN_MARKS: readonly [string, number][] = [['2x', 2], ['5x', 5], ['10x', 10]];
 const MAX_BUNDLE_WALLETS = 40;
 /* Holders followed per coin, from trades (buys less sells); past this new wallets are not added and the share is marked capped. */
 const MAX_HOLDERS = 5_000;
@@ -72,7 +76,7 @@ export interface ArchivePort {
 
 export interface LaunchMeta { readonly name: string | null; readonly symbol: string | null; readonly creator: string | null; readonly metadataUri: string | null }
 
-interface Snap { peak: number | null; peakAt: number | null; end: number | null; crashAt: number | null; grad: number | null; devFirstSell: number | null; devSoldShare: number | null; bundleFirstSell: number | null; bundleSoldShare: number | null; trades: number; buys: number; top10Share: number | null; holders: number | null }
+interface Snap { peak: number | null; peakAt: number | null; end: number | null; crashAt: number | null; grad: number | null; devFirstSell: number | null; devSoldShare: number | null; bundleFirstSell: number | null; bundleSoldShare: number | null; trades: number; buys: number; top10Share: number | null; holders: number | null; reachedAt: Record<string, number> }
 
 interface Coin {
   a: string; t: number; pool: string | null; creator: string | null;
@@ -85,6 +89,8 @@ interface Coin {
   grad: number | null; trades: number; buys: number; last: number;
   /** Each wallet's tokens from its own trades (buys less sells); wallet moves are not seen. */
   held: Record<string, number>; heldCapped: boolean;
+  /** When each take-off mark was first reached (CAP_MARKS, RUN_MARKS). */
+  reached: Record<string, number>;
   snaps: Partial<Record<Horizon, Snap>>;
 }
 
@@ -134,7 +140,7 @@ export class LaunchBook {
       buys1m: [], firstSec: [], devBuySol: null, devBuyUsd: null,
       blockTokens: 0, devTokens: 0, devSold: 0, devFirstSell: null,
       bundle: [], bundleTokens: 0, bundleSold: 0, bundleFirstSell: null,
-      openCap: null, peak: null, peakAt: null, end: null, crashAt: null, grad: null, trades: 0, buys: 0, last: atMs, held: {}, heldCapped: false, snaps: {},
+      openCap: null, peak: null, peakAt: null, end: null, crashAt: null, grad: null, trades: 0, buys: 0, last: atMs, held: {}, heldCapped: false, reached: {}, snaps: {},
     });
   }
 
@@ -149,6 +155,7 @@ export class LaunchBook {
   private snap(c: Coin): Snap {
     return {
       ...this.holderFacts(c),
+      reachedAt: { ...(c.reached ?? {}) },
       peak: c.peak, peakAt: c.peakAt, end: c.end, crashAt: c.crashAt, grad: c.grad,
       devFirstSell: c.devFirstSell, devSoldShare: c.devTokens > 0 ? Math.min(1, c.devSold / c.devTokens) : null,
       bundleFirstSell: c.bundleFirstSell, bundleSoldShare: c.bundleTokens > 0 ? Math.min(1, c.bundleSold / c.bundleTokens) : null,
@@ -187,6 +194,9 @@ export class LaunchBook {
       c.openCap ??= t.capUsd;
       c.end = t.capUsd;
       if (c.peak === null || t.capUsd > c.peak) { c.peak = t.capUsd; c.peakAt = t.atMs; }
+      c.reached ??= {};
+      for (const [k, v] of CAP_MARKS) if (c.reached[k] === undefined && t.capUsd >= v) c.reached[k] = t.atMs;
+      if (c.openCap !== null) for (const [k, m] of RUN_MARKS) if (c.reached[k] === undefined && t.capUsd >= m * c.openCap) c.reached[k] = t.atMs;
       if (c.crashAt === null && c.peak >= CRASH_MIN_RUN * (c.openCap ?? c.peak) && t.capUsd <= CRASH_SHARE * c.peak) c.crashAt = t.atMs;
     }
     return grad;
@@ -214,7 +224,7 @@ export class LaunchBook {
       address: c.a, launchedAt: c.t, horizon: h, complete: this.complete(c, h),
       peakCapUsd: s.peak, peakAt: s.peakAt, endCapUsd: s.end, crashAt: s.crashAt, graduatedAt: s.grad,
       devFirstSellAt: s.devFirstSell, devSoldShare: s.devSoldShare, bundleFirstSellAt: s.bundleFirstSell, bundleSoldShare: s.bundleSoldShare,
-      trades: s.trades, buys: s.buys, top10Share: s.top10Share, holders: s.holders,
+      trades: s.trades, buys: s.buys, top10Share: s.top10Share, holders: s.holders, reachedAt: s.reachedAt ?? {},
     };
   }
 

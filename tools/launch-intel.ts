@@ -102,8 +102,8 @@ async function readOnly<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 
 /* ── 1. narrative facts: yesterday's picks and pushes, and the week before on the first run ── */
 
-interface PickRow { kind: 'pick'; itemId: string; address: string | null; outcome: string; decidedAt: number; candidates: { address: string; path: string; launchedAt: number | null; ties: string[] }[]; post: { postedAt: number | null; firstShownAt: number | null; lang: string | null; author: string | null; views: number | null; likes: number | null; reposts: number | null } }
-interface PushRow { kind: 'push'; address: string; at: number; capAtPush: number | null; early: boolean; what: string | null; item: string | null; ageMs: number | null }
+interface PickRow { kind: 'pick'; itemId: string; address: string | null; outcome: string; decidedAt: number; candidates: { address: string; path: string; launchedAt: number | null; ties: string[] }[]; post: { postedAt: number | null; firstShownAt: number | null; lang: string | null; author: string | null; views: number | null; likes: number | null; reposts: number | null; viewsAtDecision: number | null; likesAtDecision: number | null } }
+interface PushRow { kind: 'push'; address: string; at: number; capAtPush: number | null; early: boolean; what: string | null; item: string | null; ageMs: number | null; viewsAtPush: number | null }
 
 async function exportNarrative(day: string): Promise<number> {
   const from = new Date(`${day}T00:00:00Z`);
@@ -117,8 +117,22 @@ async function exportNarrative(day: string): Promise<number> {
          from internal.one_coin_candidate where item_id = any($1)`, [ids]);
     const posts = ids.length === 0 ? [] : await db.query<{ item_id: string; posted_at: Date | null; lang: string | null; author_key: string; counters: Record<string, unknown> | null; first_shown_at: Date | null }>(
       `select i.item_id, i.posted_at, i.lang, i.author_key, i.counters, f.first_shown_at from public.item i left join public.feed_post f on f.item_id = i.item_id where i.item_id = any($1)`, [ids]);
+    /* Views and likes as they stood when the pick was decided: what a rule could have known then, never the day's end. */
+    const atDecision = ids.length === 0 ? [] : await db.query<{ item_id: string; kind: string; value: number | null }>(
+      `select d.item_id, k.kind, o.value from unnest($1::text[], $2::timestamptz[]) as d(item_id, at)
+         cross join (values ('reach'), ('approval')) as k(kind)
+         cross join lateral (select value from public.observation o where o.item_id = d.item_id and o.kind = k.kind and o.captured_at <= d.at and o.value is not null order by o.captured_at desc limit 1) o`,
+      [ids, picks.map((p) => p.decided_at)]);
     const pushes = await db.query<{ subject: string; at: Date; facts: Record<string, unknown> }>(
       `select distinct on (subject) subject, at, facts from people.alert where kind = 'coin_launched' and delivery = 'push' and at >= $1 and at < $2 order by subject, at`, [from, to]);
+    const pushItems = pushes.flatMap((p) => (typeof p.facts['item'] === 'string' ? [{ item: p.facts['item'] as string, at: p.at }] : []));
+    const atPush = pushItems.length === 0 ? [] : await db.query<{ item_id: string; at: Date; value: number | null }>(
+      `select d.item_id, d.at, o.value from unnest($1::text[], $2::timestamptz[]) as d(item_id, at)
+         cross join lateral (select value from public.observation o where o.item_id = d.item_id and o.kind = 'reach' and o.captured_at <= d.at and o.value is not null order by o.captured_at desc limit 1) o`,
+      [pushItems.map((p) => p.item), pushItems.map((p) => p.at)]);
+    const viewsAtPush = new Map(atPush.map((r) => [`${r.item_id}|${r.at.getTime()}`, r.value]));
+    const decided = new Map<string, { views: number | null; likes: number | null }>();
+    for (const r of atDecision) { const v = decided.get(r.item_id) ?? { views: null, likes: null }; if (r.kind === 'reach') v.views = r.value; else v.likes = r.value; decided.set(r.item_id, v); }
     const candOf = new Map<string, PickRow['candidates']>();
     for (const c of cands) { const l = candOf.get(c.item_id) ?? []; l.push({ address: c.address, path: c.path, launchedAt: c.launched_at?.getTime() ?? null, ties: c.ties ?? [] }); candOf.set(c.item_id, l); }
     const postOf = new Map(posts.map((p) => [p.item_id, p]));
@@ -129,13 +143,14 @@ async function exportNarrative(day: string): Promise<number> {
         const c = q?.counters ?? {};
         return {
           kind: 'pick', itemId: p.item_id, address: p.address, outcome: p.outcome, decidedAt: p.decided_at.getTime(), candidates: candOf.get(p.item_id) ?? [],
-          post: { postedAt: q?.posted_at?.getTime() ?? null, firstShownAt: q?.first_shown_at?.getTime() ?? null, lang: q?.lang ?? null, author: q?.author_key ?? null, views: n(c['views']), likes: n(c['likes']), reposts: n(c['reposts']) },
+          post: { postedAt: q?.posted_at?.getTime() ?? null, firstShownAt: q?.first_shown_at?.getTime() ?? null, lang: q?.lang ?? null, author: q?.author_key ?? null, views: n(c['reach']) ?? n(c['views']), likes: n(c['approval']) ?? n(c['likes']), reposts: n(c['rebroadcast']) ?? n(c['reposts']), viewsAtDecision: decided.get(p.item_id)?.views ?? null, likesAtDecision: decided.get(p.item_id)?.likes ?? null },
         };
       }),
       ...pushes.map((p): PushRow => ({
         kind: 'push', address: p.subject, at: p.at.getTime(), capAtPush: n(p.facts['mcUsd']),
         early: p.facts['early'] === true || p.facts['what'] === 'early-pick', what: typeof p.facts['what'] === 'string' ? p.facts['what'] : null,
         item: typeof p.facts['item'] === 'string' ? p.facts['item'] : null, ageMs: n(p.facts['ageMs']),
+        viewsAtPush: typeof p.facts['item'] === 'string' ? viewsAtPush.get(`${p.facts['item']}|${p.at.getTime()}`) ?? null : null,
       })),
     ];
     if (write) await archivePut(A, fetch, `narrative/${day}.jsonl.gz`, encodeRecords(rows as never), 'application/gzip');

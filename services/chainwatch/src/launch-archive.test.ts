@@ -121,3 +121,16 @@ test('top-10 holder share comes from each wallet’s own trades; a sale lowers i
   const o2 = b.outcomeRecord(b.coins.get(COIN)!, '1h');
   assert.equal(o2.holders, 3);
 });
+
+test('take-off marks: the first time a coin reached each cap and each multiple of its opening, kept per horizon', () => {
+  const b = launched();
+  tr(b, 'buy', 'x', T0 + 20 * M, 16_000);
+  tr(b, 'buy', 'y', T0 + 3 * H, 120_000);
+  const c = b.coins.get(COIN)!;
+  const one = b.outcomeRecord(c, '1h');
+  assert.equal(one.reachedAt['15k'], T0 + 20 * M);
+  assert.equal(one.reachedAt['2x'], T0 + 20 * M);
+  assert.equal(one.reachedAt['100k'], undefined);
+  assert.equal(b.outcomeRecord(c, '24h').reachedAt['100k'], T0 + 3 * H);
+  assert.equal(b.outcomeRecord(c, '24h').reachedAt['10x'], T0 + 3 * H);
+});
