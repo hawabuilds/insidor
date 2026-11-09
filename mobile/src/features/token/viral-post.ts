@@ -28,9 +28,11 @@ export function viralPost(posts: readonly AboutPost[], shown?: { readonly launch
      the coin launched (the owner, 2026-11-04: "we show the og viral post", never a promotion, and
      promotion comes after a launch). A post whose time against the launch is unknown is not shown. */
   const launchedAt = shown?.launchedAt ?? null;
-  const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known);
   const before = (p: AboutPost): boolean =>
     p.evidence.launchedAfterMs !== null ? p.evidence.launchedAfterMs >= 0 : launchedAt !== null && p.postedAt.known && p.postedAt.at <= launchedAt;
+  /* In shown mode a linked-but-post-launch post is a promotion; only pre-launch linked posts
+     beat the OG pool. Without shown (the narrative card) the ranking alone picks as before. */
+  const linked = posts.filter((p) => p.evidence.linksPost === true && p.views.known && (shown === undefined || before(p)));
   const pool = linked.length > 0 ? linked : shown === undefined ? posts : posts.filter(before);
   let best: AboutPost | null = null;
   for (const p of pool) {

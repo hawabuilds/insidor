@@ -47,6 +47,6 @@ test('★ never a promotion: with no linked post, only a post from before the la
   assert.equal(viralPost([p('og', 5, null, 10)], { launchedAt: null }), null, 'launch time unknown: we cannot tell which came first');
   const after = { ...p('x', 9, null, 10), evidence: { linksPost: null, samePicture: null, launchedAfterMs: -60_000 } };
   assert.equal(viralPost([after], { launchedAt: LAUNCH }), null, 'the evidence says it was posted after the launch');
-  assert.equal(viralPost([p('linked', 1, true, 500)], { launchedAt: LAUNCH })?.post.postId, 'linked', 'the linked post is shown whenever it was posted');
+  assert.equal(viralPost([p('linked', 1, true, 500)], { launchedAt: LAUNCH }), null, 'a linked-but-post-launch post is a promotion: not shown');
   assert.equal(viralPost([p('og', 50_000, null, 10), p('promo', 9_000_000, null, 500)])?.post.postId, 'promo', 'not shown (the narrative card\'s choice): the ranking alone, as before');
 });
