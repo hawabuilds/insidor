@@ -1169,6 +1169,32 @@ export class PgOneCoinRepo {
    * did not report is unknown, never zero, so its coin is not in the set. One indexed newest reading
    * a coin (market_reading_latest_idx); the runner asks it only for the second path's older coins.
    */
+  /**
+   * Narrative picks held since `sinceMs` whose coin's newest reading is a frozen price (as
+   * `frozenPrices` reads it), with their members: the runner's narrative sweep judges these again,
+   * since a narrative is otherwise judged only while one of its posts is in its first hour. Only the
+   * few matching rows come back, so the evidence is read with them.
+   */
+  async heldFrozenNarrativePicks(sinceMs: number, limit: number): Promise<readonly { readonly pick: StoredPick; readonly members: readonly string[] }[]> {
+    try {
+      const rows = await this.#db.query<{ id: string; address: string; decided_at: string; evidence: Record<string, unknown>; members: string[] | null }>(
+        `select n.narrative_id as id, n.address, n.decided_at, n.evidence,
+                (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members
+           from internal.narrative_coin_pick n
+           join public.asset a on a.address = n.address
+           join lateral (select m.liquidity_usd, m.buys_1h, m.sells_1h from public.market_reading m
+                          where m.asset_key = a.asset_key and m.market_cap_usd is not null order by m.taken_at desc limit 1) r on true
+          where n.outcome = 'picked' and n.updated_at >= $1 and r.liquidity_usd is null and r.buys_1h = 0 and r.sells_1h = 0
+          order by n.updated_at desc limit $2`,
+        [new Date(sinceMs).toISOString(), limit],
+      );
+      return rows.map((r) => ({ pick: { subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence ?? {} }, members: r.members ?? [] }));
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
   async frozenPrices(addresses: readonly string[]): Promise<ReadonlySet<string>> {
     if (addresses.length === 0) return new Set();
     const rows = await this.#db.query<{ address: string }>(

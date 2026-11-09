@@ -264,7 +264,7 @@ test('second path: a post whose coin launched long before it gets the biggest co
   assert.equal(w.candidates.length, 1);
 });
 
-test('★ $trump (9 Nov): an older coin on a frozen quote is not picked, and a held one is dropped by the sweep', async () => {
+test('★ $trump (9 Nov): an older coin on a frozen price is not picked, and a held one is dropped by the sweep', async () => {
   const frozenWorld = () => world({
     posts: [post],
     named: [{ address: 'OADY', name: 'Pancake', ticker: 'PANCAKE', launchedAtMs: NOW - 2 * 24 * 60 * MIN, capUsd: 64_129, readAtMs: NOW - MIN, liquidityUsd: null }],
@@ -300,6 +300,21 @@ test('★ $trump (9 Nov): an older coin on a frozen quote is not picked, and a h
   await oneCoinPass({ ...s2, repo: { ...s2.repo, openCandidates: async () => [], heldPostPicks: async () => [launchHeld], frozenPrices: async (a: readonly string[]) => (lookups.push([...a]), new Set(a)) } }, newOneCoinState());
   assert.deepEqual(lookups, []);
   assert.equal(w2.picks.get('x:made')?.address, 'OADY');
+
+  /* Its narrative, judged only while a post is in its hour, is let go by the narrative sweep. */
+  const N = 'n-x:trump';
+  const nPick: StoredPick = { subjectId: N, address: 'OADY', outcome: 'picked', decidedAtMs: NOW - 4 * 60 * MIN, evidence: {} };
+  const narrativeWrites: PickWrite[] = [];
+  const w3 = world({ candidates: [cand], trades: new Map(), market: new Map([['OADY', { capUsd: 64_129, peakCapUsd: 65_439, readAtMs: NOW - MIN, liquidityUsd: null }]]) });
+  const s3 = deps(w3);
+  await oneCoinPass({ ...s3, repo: {
+    ...s3.repo,
+    openCandidates: async () => [],
+    heldFrozenNarrativePicks: async () => [{ pick: nPick, members: [ID] }],
+    frozenPrices: async () => new Set(['OADY']),
+    writePicks: async (kind, picks, previous, mode, at) => (kind === 'narrative' && narrativeWrites.push(...picks), s3.repo.writePicks(kind, picks, previous, mode, at)),
+  } }, newOneCoinState());
+  assert.deepEqual(narrativeWrites.map((p) => [p.subjectId, p.outcome, p.address]), [[N, 'waiting', null]]);
 });
 
 test('★ a held coin\'s rug grace is stored with the pick and read back as the holder, so a restart does not restart it', () => {
