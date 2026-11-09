@@ -99,3 +99,15 @@ test('a restart is a gap: outcomes over it are not complete, and the book comes 
   const one = files.find((f) => f.path.startsWith('outcomes/1h/'));
   assert.equal(decodeOutcomes(one!.body)[0]?.complete, false);
 });
+
+test('a name that arrives after the launch (the listing, minutes later) still reaches the launch file; the first one seen wins', () => {
+  const b = new LaunchBook();
+  b.launched(COIN, T0, 'dev');
+  b.meta(COIN, { name: 'Corgi', symbol: 'CORGI', creator: null, metadataUri: 'https://x/m.json' }, T0 + 4 * M);
+  b.meta(COIN, { name: 'Other', symbol: 'OTHER', creator: 'someone', metadataUri: null }, T0 + 5 * M);
+  const r = b.launchRecord(b.coins.get(COIN)!);
+  assert.equal(r.name, 'Corgi');
+  assert.equal(r.symbol, 'CORGI');
+  assert.equal(r.creator, 'dev');
+  assert.equal(r.metadataUri, 'https://x/m.json');
+});

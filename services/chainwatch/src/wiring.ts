@@ -244,7 +244,7 @@ function lockKey(name: string): number {
  * listing, and its mint time is the listing's pool creation, ('vendor_field', 'bounded'). It is
  * added only when no row exists, so a coin the socket delivered first is never touched.
  */
-function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): Listing | null {
+function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, archive: LaunchArchive): Listing | null {
   const lp = DEFAULT_POLICY.assets.launchListing;
   if (!lp.on) return null;
   const keyed = cfg.listingMarketKey;
@@ -268,7 +268,10 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger): 
               { ...hit, name: details?.name ?? hit.name, ticker: details?.symbol ?? hit.ticker },
               { firstSeenAt: seenAt, metadataUri: details?.uri ?? null, chainCreatedAt: null },
             );
-            return asset === null ? [] : [asset];
+            if (asset === null) return [];
+            /* Most launches reach us here, not on the stream: their name, ticker and metadata link go to the launch archive too. */
+            archive.meta(asset.ref.address, { name: asset.name, symbol: asset.symbol, creator: asset.creator, metadataUri: asset.declaredSocial['metadata'] ?? details?.uri ?? null });
+            return [asset];
           }),
         ),
       /* ★ A paired token is marked only when the chain holds no curve for it (0122): a coin
@@ -451,7 +454,7 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
 
   return {
     feed: createFeed(cfg, log),
-    listing: buildListing(cfg, assets, log),
+    listing: buildListing(cfg, assets, log, archive),
     trades: buildTrades(cfg, db, log, live, charts, archive),
     live,
     charts,
