@@ -341,7 +341,9 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
     const liveEdge = !changed && !newView && isLiveEdgeUpdate(prev, points);
     const prepend = !changed && !newView && isHistoryPrepend(prev, points);
     const visible = prepend ? chart.timeScale().getVisibleLogicalRange() : null;
-    const fitNow = shouldAutoFit({ hasFitted: fittedKeyRef.current === key, liveEdge, prepend, identityChanged: fittedKeyRef.current !== '' && fittedKeyRef.current !== key });
+    /* For the whole-life view, prepend means more history just loaded: refit so the full life is shown.
+       For other views the user may have panned left, so the visible window is preserved. */
+    const fitNow = shouldAutoFit({ hasFitted: fittedKeyRef.current === key, liveEdge, prepend: !wholeLifeRef.current && prepend, identityChanged: fittedKeyRef.current !== '' && fittedKeyRef.current !== key });
     const last = data[data.length - 1];
     if (liveEdge && last !== undefined && !isWhitespace(last)) {
       series.update(last as never);
