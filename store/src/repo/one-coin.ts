@@ -906,7 +906,9 @@ export class PgOneCoinRepo {
 
   /**
    * Coins named exactly one of these names (lower-cased name, upper-cased ticker, by public.coin_name's
-   * indexes), with their newest market cap: the second path's pool. Core decides which, if any.
+   * indexes), first seen on pump.fun's bonding curve (venue_id = 'solana:pumpfun'), with their newest
+   * market cap: the second path's pool. Core decides which, if any. Coins first seen on PumpSwap or
+   * another venue are excluded: they were not launched through the bonding curve and may be scam pools.
    */
   async coinsNamed(names: readonly string[], limit: number): Promise<readonly ExistingCoinRow[]> {
     const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
@@ -919,7 +921,8 @@ export class PgOneCoinRepo {
                  join public.asset a on a.address = n.address
                  left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
                                      where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
-                where lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[])
+                where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
+                  and a.venue_id = 'solana:pumpfun'
                 order by r.cap desc nulls last
                 limit $3) x
          ${PROMO_OF('x')}
@@ -931,8 +934,10 @@ export class PgOneCoinRepo {
 
   /**
    * Coins launched in [`fromMs`, `toMs`) named exactly one of these names, or whose ticker is one of
-   * these words (a post's own words: core decides whether the name goes with it), each with its
-   * newest market reading and that reading's pool liquidity: the second path's lookback pool.
+   * these words (a post's own words: core decides whether the name goes with it), first seen on
+   * pump.fun's bonding curve (venue_id = 'solana:pumpfun'), each with its newest market reading and
+   * that reading's pool liquidity: the second path's lookback pool. Coins first seen on PumpSwap or
+   * another venue are excluded for the same reason as `coinsNamed`.
    */
   async coinsLaunchedBetween(names: readonly string[], words: readonly string[], fromMs: number, toMs: number, limit: number): Promise<readonly PriorCoinRow[]> {
     const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
@@ -946,6 +951,7 @@ export class PgOneCoinRepo {
                  left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
                                      where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
                 where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
+                  and a.venue_id = 'solana:pumpfun'
                   and n.launched_at >= $3 and n.launched_at < $4
                 order by r.cap desc nulls last
                 limit $5) x
