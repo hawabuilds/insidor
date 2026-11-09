@@ -6,6 +6,8 @@ the one actually running, so you can research it, launch it yourself, or buy it 
 
 **Live app:** [insidor.app](https://insidor.app)
 
+**Demo video:** [youtu.be/uSD8lO8d3c8](https://youtu.be/uSD8lO8d3c8)
+
 <p>
   <img src="docs/screenshots/for-you.jpg" width="300" alt="The For You feed: memeable posts, their views, and whether a coin exists yet" />
   <img src="docs/screenshots/token.jpg" width="300" alt="A token page: the coin's chart from the pool it trades in, the post it came from, and its trades" />
