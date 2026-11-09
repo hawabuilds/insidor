@@ -273,6 +273,18 @@ test('waiting: too early, under the bars, no clear lead, a rival we could not me
   assert.equal(pickOneCoin([c('A', 1_005, trades({})), c('B', 1_005, 'quiet')], null, NOW, true, BARS).kind, 'picked');
 });
 
+test('waiting: cap-per-buyer too high (dev-pump pattern) is under_bars; more buyers or disabled check passes', () => {
+  /* $113k cap / 15 buyers = $7.5k/buyer — well over the $4k bar; should not clear */
+  const pump = pickOneCoin([c('A', 1_005, trades({ capUsd: 113_000, uniqueBuyers: 15 }))], null, NOW, true, BARS);
+  assert.equal((pump as { reason?: string }).reason, 'under_bars');
+  /* Same cap with 29 buyers: $113k / 29 ≈ $3.9k — just under the bar */
+  const organic = pickOneCoin([c('A', 1_005, trades({ capUsd: 113_000, uniqueBuyers: 29 }))], null, NOW, true, BARS);
+  assert.equal(organic.kind, 'picked');
+  /* maxCapPerBuyer: 0 disables the check entirely */
+  const noLimit = pickOneCoin([c('A', 1_005, trades({ capUsd: 113_000, uniqueBuyers: 15 }))], null, NOW, true, { ...BARS, maxCapPerBuyer: 0 });
+  assert.equal(noLimit.kind, 'picked');
+});
+
 test('none: no candidate at all', () => {
   assert.deepEqual(pickOneCoin([], null, NOW, true, BARS), { kind: 'none' });
 });

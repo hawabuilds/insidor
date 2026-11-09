@@ -383,6 +383,11 @@ export interface OneCoinBars {
   readonly minLiquidityUsd: number;
   /** A reading whose cap is over this many times its pool is a frozen quote too. */
   readonly maxCapToPool: number;
+  /**
+   * A coin whose cap divided by its unique buyers exceeds this is a dev-pump: concentrated buying
+   * that runs the price without organic distribution. Zero disables the check.
+   */
+  readonly maxCapPerBuyer: number;
 }
 
 /** A candidate's trading over its life so far (internal.coin_trade_minute and _state). */
@@ -479,7 +484,9 @@ function standingOf(c: Contender, basis: Basis, nowMs: number, bars: OneCoinBars
     /* ★ A creator's sale counts only with the coin down under `creatorDumpShareOfPeak` of its peak: profit-taking on a runner is not a rug. */
     const out: OutReason | null = f.creatorSold && under(bars.creatorDumpShareOfPeak) ? 'creator_sold' : under(bars.rugShareOfPeak) ? 'fell_from_peak' : null;
     const capUsd = f.capUsd ?? c.market?.capUsd ?? null;
-    const clears = out === null && capUsd !== null && capUsd >= bars.minCapUsd && f.uniqueBuyers >= bars.minUniqueBuyers && f.netBuy > 0;
+    /* A high cap-per-buyer ratio means concentrated dev-pump buying, not organic distribution. */
+    const capPerBuyerOk = bars.maxCapPerBuyer === 0 || f.uniqueBuyers === 0 || (capUsd !== null && capUsd / f.uniqueBuyers <= bars.maxCapPerBuyer);
+    const clears = out === null && capUsd !== null && capUsd >= bars.minCapUsd && f.uniqueBuyers >= bars.minUniqueBuyers && f.netBuy > 0 && capPerBuyerOk;
     return { address: c.address, evidence: c.evidence, visible, measured: true, strength: f.netBuy, uniqueBuyers: f.uniqueBuyers, capUsd, out, clears };
   }
   const m = c.market;
@@ -618,7 +625,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly creatorDumpShareOfPeak: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number; readonly maxCapToPool: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly creatorDumpShareOfPeak: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number; readonly maxCapToPool: number; readonly maxCapPerBuyer: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -637,5 +644,6 @@ export function oneCoinBars(
     openingCapUsd: p.openingCapUsd,
     minLiquidityUsd: p.minLiquidityUsd,
     maxCapToPool: p.maxCapToPool,
+    maxCapPerBuyer: p.maxCapPerBuyer,
   };
 }

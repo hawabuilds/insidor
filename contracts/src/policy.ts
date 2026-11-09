@@ -2694,6 +2694,11 @@ export interface OneCoinPolicy {
    */
   readonly maxCapToPool: number;
   /**
+   * A coin whose market cap divided by its unique buyers exceeds this is a dev-pump: the price rose
+   * on concentrated buying, not organic distribution. Zero disables the check. policy.v232.
+   */
+  readonly maxCapPerBuyer: number;
+  /**
    * ★ OUR OWN CANDLES OVER THE READINGS (policy.v209; the owner, 2026-10-29: "i approve 3"). For a
    * launchpad candidate we chart (0144), the newest one-minute close and the highest close stand in for
    * its market reading wherever the rule reads one, when that close is at most `freshMs` old. The
@@ -6251,7 +6256,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v231',
+  version: 'policy.v232',
 
   admit: {
     maxAgeMin: 240,
@@ -8010,6 +8015,10 @@ const POLICY_V1: Policy = {
        times), each holding a post's pick over its real runner ($8TJ1uh, $160M on our candles). Replayed on
        186 runner posts: three more runners picked, no dud more. */
     maxCapToPool: 1_000,
+    /* policy.v232. A smooth pump with 15 unique buyers at $113k reads $7.5k/buyer; the default $4k
+       lets through $60k / 15 buyers = $4k (the minimum cap with the minimum buyers) but stops the
+       dev-concentrated pattern. Zero disables. */
+    maxCapPerBuyer: 4_000,
     /* policy.v209. Replayed over 22-29 Oct on 186 posts whose launchpad coin passed $25k, beside v208's
        rules: runner picked 49% -> 52%, before take-off 17% -> 19%, dud picks unchanged (32 on runner
        posts, 8 of 186 posts where nothing ran). Half an hour: the replay's bar; a staler close falls back
