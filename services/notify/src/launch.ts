@@ -285,6 +285,20 @@ export function launchEvents(
   return { due, keys };
 }
 
+/**
+ * ★ No push without a real cap (launch.minPushCapUsd, policy.v231). Null: send it. Otherwise the keys this
+ * push would spend, to be left unspent so a later pass pushes it once a real cap is read.
+ */
+export function heldKeys(d: Picked, capUsd: number | null, minCapUsd: number): readonly string[] | null {
+  if (capUsd !== null && capUsd >= minCapUsd) return null;
+  return [
+    `c:${d.address}`,
+    d.key,
+    ...(d.revival === true ? [revivalKey(d.itemId)] : []),
+    ...(d.runner === true ? [runnerKey(d.itemId, d.address)] : []),
+  ];
+}
+
 /* ── the database around it ───────────────────────────────────────── */
 
 const https = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) && v.length <= 2_000 ? v : null);
@@ -558,6 +572,8 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
   const gate = await coinGateFacts(db, events.due);
   const due = events.due.filter((d) => onLaunchpad(gate.get(`${d.itemId}|${d.address}`)));
   let queued = 0;
+  /* ★ Held for want of a real cap (launch.minPushCapUsd): their keys stay unspent for a later pass. */
+  const held = new Set<string>();
   if (due.length > 0) {
     /* The cap the push says: the card's own when it has one, else a fresh read (free). */
     const caps = await coinFacts(db, ports.quotes, due.filter((d) => d.capUsd === null).map((d) => d.address));
@@ -568,12 +584,18 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     const rivalFacts = await coinFacts(db, ports.quotes, [...new Set([...rivals.values()].flat())]);
     for (const d of due) {
       const c = caps.get(d.address);
+      const capUsd = d.capUsd ?? c?.mcUsd ?? null;
+      const hold = heldKeys(d, capUsd, L.minPushCapUsd);
+      if (hold !== null) {
+        for (const k of hold) held.add(k);
+        continue;
+      }
       const f: Record<string, unknown> = {
         symbol: d.ticker !== '' ? d.ticker : (c?.symbol ?? ''),
         address: d.address,
         excerpt: d.excerpt,
         author: d.author,
-        mcUsd: d.capUsd ?? c?.mcUsd ?? null,
+        mcUsd: capUsd,
         image: d.image,
         logo: d.logo ?? c?.logo ?? null,
         item: d.itemId,
@@ -593,7 +615,7 @@ export async function checkLaunches(db: Db, ports: LaunchPorts): Promise<number>
     }
   }
   queued += await queuePvpSwitches(db, ports, switches, [...postRows, ...(frame?.rows ?? [])], S.minCapUsd);
-  await remember(keys);
+  await remember(keys.filter((k) => !held.has(k)));
   return queued;
 }
 

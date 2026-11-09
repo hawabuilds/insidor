@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { postOfRow } from './faces.ts';
-import { isRevival, launchEvents, launchHref, onLaunchpad, pvpSwitchDue, type Picked } from './launch.ts';
+import { heldKeys, isRevival, launchEvents, launchHref, onLaunchpad, pvpSwitchDue, revivalKey, runnerKey, type Picked } from './launch.ts';
 
 const L = DEFAULT_POLICY.notify.launch;
 const MIN = 60_000;
@@ -177,4 +177,15 @@ test('★ a PvP alert only when the new coin is another coin, both caps read, pa
   assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 51_000 }, { ...first, capUsd: null }, 25_000), false, 'an unread first cap is no claim');
   assert.equal(pvpSwitchDue({ address: 'FIRST', capUsd: 51_000 }, first, 25_000), false, 'the same coin');
   assert.equal(pvpSwitchDue({ address: 'NEW', capUsd: 51_000 }, undefined, 25_000), false, 'no first push to anyone');
+});
+
+test('★ no push without a real cap: missing or under the floor is held, its keys left unspent for a later pass', () => {
+  const min = DEFAULT_POLICY.notify.launch.minPushCapUsd;
+  const p = pick('p:x:1', 'COIN1');
+  assert.equal(heldKeys(p, 18_450, min), null);
+  assert.equal(heldKeys(p, min, min), null);
+  assert.deepEqual(heldKeys(p, null, min), ['c:COIN1', 'p:x:1']);
+  assert.deepEqual(heldKeys(p, 0.23, min), ['c:COIN1', 'p:x:1']);
+  assert.deepEqual(heldKeys({ ...p, revival: true }, null, min), ['c:COIN1', 'p:x:1', revivalKey(p.itemId)]);
+  assert.deepEqual(heldKeys({ ...p, runner: true }, null, min), ['c:COIN1', 'p:x:1', runnerKey(p.itemId, 'COIN1')]);
 });
