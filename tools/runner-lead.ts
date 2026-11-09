@@ -1,5 +1,9 @@
 /**
- * `node --env-file=.env.local --experimental-strip-types tools/runner-lead.ts [--days <n>] [--min-cap <usd>] [--list]`
+ * `node --env-file=.env.local --experimental-strip-types tools/runner-lead.ts [--days <n>] [--min-cap <usd>] [--min-views <n>] [--list]`
+ *
+ * `--min-views` keeps only runners whose post spread (40000 is For You's view bar). Without it, most
+ * runners are tied to their own team's announcement post, read minutes after it went up with a few
+ * views — not a post For You should show — and the headline measures those instead of the goal.
  *
  * RUNNER LEAD, the goal's own number (the owner, 2026-11-09: "find the post before the actual runner
  * launches — as many posts as possible"): of the coins that RAN in the last `--days` (default 21), the
@@ -37,6 +41,7 @@ const arg = (name: string): string | null => {
 };
 const days = Number(arg('--days') ?? '21');
 const minCap = Number(arg('--min-cap') ?? String(WINNER_CAP_USD));
+const minViews = Number(arg('--min-views') ?? '0');
 const list = process.argv.includes('--list');
 const MIN_READINGS = 2;
 
@@ -50,6 +55,8 @@ interface Row {
   held_at: Date | null;
   shown_at: Date | null;
   found_by: string | null;
+  views: number | null;
+  judged_yes: boolean | null;
 }
 
 const RUNNER_POSTS = `
@@ -76,7 +83,7 @@ const RUNNER_POSTS = `
   )
   select l.item_id, r.address, r.launched_at, r.peak, r.crossed_at,
          i.posted_at, i.first_seen_at as held_at, fp.first_shown_at as shown_at, fb.lane as found_by,
-         j.coinable as judged_yes
+         j.coinable as judged_yes, (i.counters -> 'reach' ->> 'value')::double precision as views
     from linked l
     join ran r on r.address = l.address
     left join public.item i on i.item_id = l.item_id
@@ -123,13 +130,16 @@ const db = asDb(pool);
 
 try {
   const since = new Date(Date.now() - days * 86_400_000);
-  const rows = await db.query<Row>(RUNNER_POSTS, [since, minCap, P.oneCoin.minLiquidityUsd, MIN_READINGS]);
+  const all = await db.query<Row>(RUNNER_POSTS, [since, minCap, P.oneCoin.minLiquidityUsd, MIN_READINGS]);
+  /* A runner's post must have spread to count: the goal is viral posts, and a coin team's own
+     announcement with a few hundred views that its coin ran without is no post For You should show. */
+  const rows = minViews > 0 ? all.filter((r) => r.views !== null && r.views >= minViews) : all;
 
   const byCoin = new Map<string, Row[]>();
   for (const r of rows) byCoin.set(r.address, [...(byCoin.get(r.address) ?? []), r]);
   const runners = [...byCoin.values()].map(bestPost);
 
-  console.log(`Runners launched in the last ${days} days (cap ${usd(minCap)}+ on ${MIN_READINGS}+ pool readings), each by its best post:`);
+  console.log(`Runners launched in the last ${days} days (cap ${usd(minCap)}+ on ${MIN_READINGS}+ pool readings)${minViews > 0 ? `, posts with ${minViews.toLocaleString('en-US')}+ views` : ''}, each by its best post:`);
   console.log(`  ${runners.length} runners, ${rows.length} posts tied to them`);
   console.log();
   for (const b of BUCKETS) {

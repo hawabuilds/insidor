@@ -1,5 +1,5 @@
 /**
- * `node --env-file=.env.local --experimental-strip-types tools/onecoin-replay.ts [--days 7] [--at 10]`
+ * `node --env-file=.env.local --experimental-strip-types tools/onecoin-replay.ts [--days 7] [--at 10] [--judge-from 1,2,3]`
  *
  * THE ONE-COIN RULE REPLAYED on what we stored (read-only): every post the matcher gave candidates
  * in the last `--days`, its candidates' trade minutes (internal.coin_trade_minute, 0112) — or their
@@ -56,6 +56,15 @@ async function main(): Promise<void> {
     }
     for (const t of [...new Set([5, at])].sort((a, b) => a - b)) {
       console.log(scoreLine(`at launch + ${t} min`, scoreReplay(loaded.cases, bars, t * MIN, P.watchMs, loaded.useTrades)));
+    }
+    /* `--judge-from 1,2,3`: the same cases with the pick's wait after launch shortened, each scored at
+       its own wait + 1 minute and at `--at`, beside today's — the copy-test before the wait is changed. */
+    const waits = (process.argv[process.argv.indexOf('--judge-from') + 1] ?? '').split(',').map(Number).filter((n) => process.argv.includes('--judge-from') && Number.isFinite(n) && n >= 0);
+    for (const w of waits) {
+      const shorter = { ...bars, judgeFromMs: w * MIN };
+      for (const t of [...new Set([w + 1, at])].sort((a, b) => a - b)) {
+        console.log(scoreLine(`wait ${w} min, at + ${t} min`, scoreReplay(loaded.cases, shorter, t * MIN, P.watchMs, loaded.useTrades)));
+      }
     }
     const by = new Map<string, number>();
     for (const t of loaded.truths.values()) by.set(t.by, (by.get(t.by) ?? 0) + 1);
