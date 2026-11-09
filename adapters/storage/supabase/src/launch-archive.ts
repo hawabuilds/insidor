@@ -75,6 +75,10 @@ export interface OutcomeRecord {
   readonly bundleSoldShare: number | null;
   readonly trades: number;
   readonly buys: number;
+  /** Share of supply held by the 10 biggest wallets, from their own trades (wallet moves not seen); null when not followed or capped. */
+  readonly top10Share: number | null;
+  /** Wallets holding any of it, by the same count; null when not recorded. */
+  readonly holders: number | null;
 }
 
 export interface GraduationRecord {
@@ -157,6 +161,7 @@ export function decodeOutcomes(bytes: Uint8Array): OutcomeRecord[] {
       graduatedAt: num(o['graduatedAt']), devFirstSellAt: num(o['devFirstSellAt']), devSoldShare: num(o['devSoldShare']),
       bundleFirstSellAt: num(o['bundleFirstSellAt']), bundleSoldShare: num(o['bundleSoldShare']),
       trades: num(o['trades']) ?? 0, buys: num(o['buys']) ?? 0,
+      top10Share: num(o['top10Share']), holders: num(o['holders']),
     }];
   });
 }

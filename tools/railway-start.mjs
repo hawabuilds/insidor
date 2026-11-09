@@ -132,7 +132,7 @@ if (service in MAIN) {
        (tools/launch-intel.ts) — smart wallets, teams, rug and peak tables, copy-tests of pushes and picks —
        read from the launch archive bucket; the database is read once a night for yesterday's picks and
        pushes (indexed, a few thousand rows). Asked every ten minutes; runs once a UTC day after 01:00.
-       Owner-only: one summary to the owner, nothing changed. Helius capped at 1,000 calls a night. */
+       Owner-only: one summary to the owner, nothing changed. Helius capped at 1,000 calls a night, 500 ms apart. */
     { name: 'launch-intel', everyMs: 600_000, args: ['tools/launch-intel.ts', 'due'] },
     /* Posts that never made For You, slimmed a week after we found them (tools/post-slim.ts,
        Policy.slim): a minute or so a run, one short transaction per 500 posts. Says "off" and exits

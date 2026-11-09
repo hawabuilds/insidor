@@ -111,3 +111,13 @@ test('a name that arrives after the launch (the listing, minutes later) still re
   assert.equal(r.creator, 'dev');
   assert.equal(r.metadataUri, 'https://x/m.json');
 });
+
+test('top-10 holder share comes from each wallet’s own trades; a sale lowers it', () => {
+  const b = launched();
+  const o1 = b.outcomeRecord(b.coins.get(COIN)!, '1h');
+  assert.equal(o1.holders, 4);
+  assert.equal(o1.top10Share, (50 + 30 + 30 + 1) / 1_000);
+  tr(b, 'sell', 'b1', T0 + 2 * M, 6_000, 30_000_000);
+  const o2 = b.outcomeRecord(b.coins.get(COIN)!, '1h');
+  assert.equal(o2.holders, 3);
+});

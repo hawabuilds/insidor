@@ -38,7 +38,7 @@ import { archiveGet, archiveList, archivePut, readArchiveConfig, type ArchiveCon
 import { decodeGraduations, decodeLaunches, decodeOutcomes, encodeRecords, type LaunchRecord, type OutcomeRecord } from '../adapters/storage/supabase/src/launch-archive.ts';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import {
-  BOT_MAX_LAUNCHES, buildTeams, copyTestEarlyLine, copyTestPicks, copyTestRugHold, earlyWallets, peakTable, ran, rugRisk, rugTable, smartWallets, tallyWallets,
+  BOT_MAX_LAUNCHES, buildTeams, copyTestEarlyLine, copyTestPicks, copyTestRugHold, earlyWallets, peakTable, ran, rate, rugRisk, rugTable, smartWallets, tallyWallets,
   type Outcomes, type PickCase, type PushCase, type RugFacts, type TeamLaunch,
 } from './lib/launch-intel.ts';
 
@@ -49,7 +49,7 @@ const RUN_AFTER_UTC_HOUR = 1;
 const FUNDER_CAP_CALLS = 1_000;
 const FUNDER_PAGE = 100;
 const FUNDER_MAX_PAGES = 3;
-const FUNDER_PACE_MS = 300;
+const FUNDER_PACE_MS = 500;
 const FUNDER_RATE_WAIT_MS = 10_000;
 const RAN_IN_HOUR_USD = 15_000;
 const EARLY_LINE_TEST_USD = 13_000;
@@ -185,7 +185,15 @@ for (const h of ['1h', '24h', '7d'] as const) {
 }
 const graduated = new Set((await readAll('graduations/', decodeGraduations)).map((g) => g.address));
 const funders = new Map<string, string | null>();
-for (const k of await archiveList(A, fetch, 'funders/')) { const b = await archiveGet(A, fetch, k); if (b !== null) for (const [w, f] of Object.entries(ungz<Record<string, string | null>>(b))) funders.set(w, f); }
+/** When each looked-up creator wallet first did anything on chain: its age at launch says "fresh deployer". */
+const firstSeen = new Map<string, number | null>();
+for (const k of await archiveList(A, fetch, 'funders/')) {
+  const b = await archiveGet(A, fetch, k);
+  if (b === null) continue;
+  for (const [w, v] of Object.entries(ungz<Record<string, string | null | { f: string | null; at: number | null }>>(b))) {
+    if (v !== null && typeof v === 'object') { funders.set(w, v.f); firstSeen.set(w, v.at); } else funders.set(w, v);
+  }
+}
 const narrative: (PickRow | PushRow)[] = [];
 for (const k of (await archiveList(A, fetch, 'narrative/')).filter(inWindow)) {
   const b = await archiveGet(A, fetch, k);
@@ -221,31 +229,37 @@ async function rpc(method: string, params: unknown[]): Promise<unknown> {
   return j.result;
 }
 class Refused extends Error {}
-async function funderOf(wallet: string): Promise<string | null> {
+async function funderOf(wallet: string): Promise<{ f: string | null; at: number | null }> {
   let before: string | undefined;
   let oldest: string | null = null;
+  let oldestAt: number | null = null;
+  let whole = false;
   for (let page = 0; page < FUNDER_MAX_PAGES; page += 1) {
-    const sigs = (await rpc('getSignaturesForAddress', [wallet, { limit: FUNDER_PAGE, ...(before === undefined ? {} : { before }) }])) as { signature: string }[] | null;
-    if (sigs === null || sigs.length === 0) break;
-    oldest = sigs[sigs.length - 1]!.signature;
-    if (sigs.length < FUNDER_PAGE) break;
+    const sigs = (await rpc('getSignaturesForAddress', [wallet, { limit: FUNDER_PAGE, ...(before === undefined ? {} : { before }) }])) as { signature: string; blockTime?: number | null }[] | null;
+    if (sigs === null || sigs.length === 0) { whole = true; break; }
+    const last = sigs[sigs.length - 1]!;
+    oldest = last.signature;
+    oldestAt = typeof last.blockTime === 'number' ? last.blockTime * 1000 : null;
+    if (sigs.length < FUNDER_PAGE) { whole = true; break; }
     before = oldest;
   }
-  if (oldest === null) return null;
+  /* Past FUNDER_MAX_PAGES the wallet is older than we read back: its first activity is unknown, never "the oldest we saw". */
+  if (oldest === null) return { f: null, at: null };
+  const at = whole ? oldestAt : null;
   const tx = (await rpc('getTransaction', [oldest, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }])) as { transaction?: { message?: { instructions?: unknown[] } }; meta?: { innerInstructions?: { instructions?: unknown[] }[] } } | null;
   const all = [...(tx?.transaction?.message?.instructions ?? []), ...(tx?.meta?.innerInstructions ?? []).flatMap((i) => i.instructions ?? [])] as { parsed?: { type?: string; info?: { source?: string; destination?: string } } }[];
   const t = all.find((i) => i.parsed?.type === 'transfer' && i.parsed.info?.destination === wallet && typeof i.parsed.info.source === 'string');
-  return t?.parsed?.info?.source ?? null;
+  return { f: whole ? t?.parsed?.info?.source ?? null : null, at };
 }
 const pushedOrPicked = new Set(narrative.flatMap((r) => (r.kind === 'push' ? [r.address] : r.address !== null ? [r.address] : [])));
 const wantFunder = [...launches.values()]
-  .filter((l) => l.creator !== null && !funders.has(l.creator) && (pushedOrPicked.has(l.a) || winner(l.a)))
+  .filter((l) => l.creator !== null && !firstSeen.has(l.creator) && (pushedOrPicked.has(l.a) || winner(l.a)))
   .sort((x, y) => Number(pushedOrPicked.has(y.a)) - Number(pushedOrPicked.has(x.a)) || y.t - x.t);
-const newFunders: Record<string, string | null> = {};
+const newFunders: Record<string, { f: string | null; at: number | null }> = {};
 if (heliusKey !== '' && write) {
   for (const l of wantFunder) {
     if (funderCalls >= FUNDER_CAP_CALLS - FUNDER_MAX_PAGES - 1) { funderStopped = 'cap'; break; }
-    try { const f = await funderOf(l.creator!); newFunders[l.creator!] = f; funders.set(l.creator!, f); } catch (e) {
+    try { const r = await funderOf(l.creator!); newFunders[l.creator!] = r; funders.set(l.creator!, r.f); firstSeen.set(l.creator!, r.at); } catch (e) {
       if (e instanceof Refused || (e instanceof Error && e.message === 'cap')) { funderStopped = e.message; break; }
       funderSkipped += 1;
     }
@@ -328,6 +342,11 @@ const report = {
     holdRugRisk: copyTestRugHold(pushCases),
     picks: copyTestPicks(pickCases),
   },
+  freshDeployers: (() => {
+    const ages = allLaunches.flatMap((l) => { const at = l.creator === null ? undefined : firstSeen.get(l.creator); return at === undefined || at === null ? [] : [{ ageH: (l.t - at) / 3_600_000, rug: ows(l.a).h1?.complete === true ? ows(l.a).h1!.crashAt !== null : null, won: winner(l.a) }]; });
+    const fresh = ages.filter((x) => x.ageH < 1);
+    return { lookedUp: ages.length, under1h: fresh.length, freshRug: rate(fresh.filter((x) => x.rug === true).length, fresh.filter((x) => x.rug !== null).length), freshWon: rate(fresh.filter((x) => x.won).length, fresh.length) };
+  })(),
   funderLookups: { calls: funderCalls, found: Object.keys(newFunders).length, skipped: funderSkipped, wanted: wantFunder.length, stopped: funderStopped },
 };
 

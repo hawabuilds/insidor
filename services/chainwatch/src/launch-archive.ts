@@ -45,7 +45,8 @@ const MINUTE_MS = 60_000;
 const SETTLE_MS = 3 * MINUTE_MS;
 const HORIZONS = { '1h': HOUR_MS, '24h': 24 * HOUR_MS, '7d': 7 * 24 * HOUR_MS } as const;
 type Horizon = keyof typeof HORIZONS;
-const CHECKPOINT_EVERY_MS = 15 * MINUTE_MS;
+/* Every 3 minutes: a redeploy's own save on the way out did not land in time (9 Nov), so a restart loses at most this. */
+const CHECKPOINT_EVERY_MS = 3 * MINUTE_MS;
 const PASS_EVERY_MS = MINUTE_MS;
 /** Kept past 24 hours only when at least this big, or when it traded within `QUIET_MS`. */
 const ALIVE_CAP_USD = 5_000;
@@ -55,6 +56,8 @@ const CRASH_SHARE = 0.2;
 const CRASH_MIN_RUN = 2;
 const MAX_MINUTE_BUYS = 80;
 const MAX_BUNDLE_WALLETS = 40;
+/* Holders followed per coin, from trades (buys less sells); past this new wallets are not added and the share is marked capped. */
+const MAX_HOLDERS = 5_000;
 /** A hard ceiling on coins followed at once: past it new launches are counted and skipped, never crash the process. */
 const MAX_COINS = 250_000;
 const META_KEEP_MS = 15 * MINUTE_MS;
@@ -69,7 +72,7 @@ export interface ArchivePort {
 
 export interface LaunchMeta { readonly name: string | null; readonly symbol: string | null; readonly creator: string | null; readonly metadataUri: string | null }
 
-interface Snap { peak: number | null; peakAt: number | null; end: number | null; crashAt: number | null; grad: number | null; devFirstSell: number | null; devSoldShare: number | null; bundleFirstSell: number | null; bundleSoldShare: number | null; trades: number; buys: number }
+interface Snap { peak: number | null; peakAt: number | null; end: number | null; crashAt: number | null; grad: number | null; devFirstSell: number | null; devSoldShare: number | null; bundleFirstSell: number | null; bundleSoldShare: number | null; trades: number; buys: number; top10Share: number | null; holders: number | null }
 
 interface Coin {
   a: string; t: number; pool: string | null; creator: string | null;
@@ -80,6 +83,8 @@ interface Coin {
   bundle: string[]; bundleTokens: number; bundleSold: number; bundleFirstSell: number | null;
   openCap: number | null; peak: number | null; peakAt: number | null; end: number | null; crashAt: number | null;
   grad: number | null; trades: number; buys: number; last: number;
+  /** Each wallet's tokens from its own trades (buys less sells); wallet moves are not seen. */
+  held: Record<string, number>; heldCapped: boolean;
   snaps: Partial<Record<Horizon, Snap>>;
 }
 
@@ -129,12 +134,21 @@ export class LaunchBook {
       buys1m: [], firstSec: [], devBuySol: null, devBuyUsd: null,
       blockTokens: 0, devTokens: 0, devSold: 0, devFirstSell: null,
       bundle: [], bundleTokens: 0, bundleSold: 0, bundleFirstSell: null,
-      openCap: null, peak: null, peakAt: null, end: null, crashAt: null, grad: null, trades: 0, buys: 0, last: atMs, snaps: {},
+      openCap: null, peak: null, peakAt: null, end: null, crashAt: null, grad: null, trades: 0, buys: 0, last: atMs, held: {}, heldCapped: false, snaps: {},
     });
+  }
+
+  private holderFacts(c: Coin): { top10Share: number | null; holders: number | null } {
+    if (c.held === undefined) return { top10Share: null, holders: null };
+    const pos = Object.values(c.held).filter((v) => v > 0).sort((a, b) => b - a);
+    if (pos.length === 0) return { top10Share: null, holders: 0 };
+    const top = pos.slice(0, 10).reduce((x, y) => x + y, 0);
+    return { top10Share: c.heldCapped ? null : Math.min(1, top / SIGNALS.supplyTokens), holders: pos.length };
   }
 
   private snap(c: Coin): Snap {
     return {
+      ...this.holderFacts(c),
       peak: c.peak, peakAt: c.peakAt, end: c.end, crashAt: c.crashAt, grad: c.grad,
       devFirstSell: c.devFirstSell, devSoldShare: c.devTokens > 0 ? Math.min(1, c.devSold / c.devTokens) : null,
       bundleFirstSell: c.bundleFirstSell, bundleSoldShare: c.bundleTokens > 0 ? Math.min(1, c.bundleSold / c.bundleTokens) : null,
@@ -153,6 +167,10 @@ export class LaunchBook {
     if (c.pool === null) c.pool = t.pool;
     else if (t.pool !== c.pool && c.grad === null) { c.grad = t.atMs; grad = { address: c.a, seenAt: t.atMs, pool: t.pool }; }
     const isDev = c.creator !== null && t.maker === c.creator;
+    if (c.held !== undefined) {
+      if (c.held[t.maker] !== undefined || Object.keys(c.held).length < MAX_HOLDERS) c.held[t.maker] = (c.held[t.maker] ?? 0) + (t.side === 'buy' ? t.tokens : -t.tokens);
+      else c.heldCapped = true;
+    }
     if (t.side === 'buy') {
       c.buys += 1;
       if (c.buys1m !== null && ms < MINUTE_MS && c.buys1m.length < MAX_MINUTE_BUYS) c.buys1m.push({ w: t.maker, sol: t.sol, ms });
@@ -196,7 +214,7 @@ export class LaunchBook {
       address: c.a, launchedAt: c.t, horizon: h, complete: this.complete(c, h),
       peakCapUsd: s.peak, peakAt: s.peakAt, endCapUsd: s.end, crashAt: s.crashAt, graduatedAt: s.grad,
       devFirstSellAt: s.devFirstSell, devSoldShare: s.devSoldShare, bundleFirstSellAt: s.bundleFirstSell, bundleSoldShare: s.bundleSoldShare,
-      trades: s.trades, buys: s.buys,
+      trades: s.trades, buys: s.buys, top10Share: s.top10Share, holders: s.holders,
     };
   }
 
