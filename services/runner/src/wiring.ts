@@ -58,7 +58,7 @@ import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
 import { languageAlarm } from './language-alarm.ts';
 import { diskAlarm } from './disk-alarm.ts';
 import { judgeCostAlarm } from './judge-cost-alarm.ts';
-import { onOutOfCredit } from '@insidor/vendor-kit';
+import { onOutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { CoinPostCheckPort, JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
@@ -135,6 +135,7 @@ import {
 
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
+import { gatewayRest, isRateLimit } from './work/gateway-rest.ts';
 import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { earlyJudge, type EarlyResult } from './work/early-judge.ts';
@@ -1309,18 +1310,22 @@ export async function withRuntime<T>(
       const platforms = watchedRegistry(resolvePlatforms(cfg.sourceEnv, runtimeDeps), watch);
 
       /* Each coin's metadata document, through each gateway in turn; the last one's failure is the
-         coin's, retried later. Shared by the universe loop and the coin-link finder. */
+         coin's, retried later. Shared by the universe loop and the coin-link finder. A gateway that
+         answers 429 rests a minute (work/gateway-rest.ts), and while all rest nothing is asked. */
+      const gatewaysRest = gatewayRest(60_000, () => Date.now());
       const metadataReader: MetadataReader = {
         read: async (uri) => {
           let failure: unknown = null;
           for (const gateway of cfg.metadataGateways) {
+            if (!gatewaysRest.usable(gateway)) continue;
             try {
               return await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes });
             } catch (e) {
+              if (isRateLimit(e)) gatewaysRest.rest(gateway);
               failure = e;
             }
           }
-          throw failure ?? new Error('no metadata gateway configured');
+          throw failure ?? new VendorUnavailable('ipfs-gateway', 'GET /ipfs/{cid}', 'every gateway is resting after a 429', 429);
         },
       };
       /* The documents the universe loop reads first, handed to the coin-link finder for their links
