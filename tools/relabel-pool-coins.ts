@@ -15,7 +15,7 @@
  * match (store one-coin.ts and the runner's launchpad sweep) — so a relabelled coin leaves all three
  * within one runner pass and the store's ten-minute hold.
  *
- * ★ HARD CAP ON CHAIN CALLS (memory research-keys: a bulk read once exhausted the live keys). At most
+ * ★ HARD CAP ON CHAIN CALLS (29 Oct: an uncapped bulk read exhausted the live keys). At most
  * `--max-calls` reads (default 30 = 3,000 coins), on HELIUS_RESEARCH_KEY when set, else
  * HELIUS_API_KEY. A coin the chain could not answer for is left as it is — unknown is never "no curve".
  *
