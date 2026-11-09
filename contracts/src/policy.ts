@@ -4088,6 +4088,10 @@ export interface NotifyPolicy {
      * push time is missing or under this is not pushed; its post and coin stay unspent, so it is pushed on a
      * later pass once a real cap is read, or never if it ages out first. 2-8 Nov: 26 of 116 pushes about a
      * coin that did not run had no cap or ~$0.23 from a junk pool; no such push was ever about a runner.
+     * ★ $8K FROM policy.v234 (the owner, 2026-11-09: "fewer rugs, miss no real runner"). Over 19 Oct-9 Nov,
+     * 114 of 1,032 pushes went out under $8k and 111 of them rugged within six hours; none was a real runner
+     * (peak $250k+ or 10x, still $50k+ six hours in). A coin under the floor is held, not dropped, so a
+     * runner that passes $8k is still pushed.
      */
     readonly minPushCapUsd: number;
     readonly postsWithinMs: number;
@@ -6265,7 +6269,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v233',
+  version: 'policy.v234',
 
   admit: {
     maxAgeMin: 240,
@@ -7910,7 +7914,7 @@ const POLICY_V1: Policy = {
       dayMs: 86_400_000,
       maxLaunchAgeMs: 10_800_000, // three hours
       lateRunningMs: 86_400_000, // a day, while running (policy.v164)
-      minPushCapUsd: 1_000, // policy.v231: no push with no cap or a junk pool's
+      minPushCapUsd: 8_000, // policy.v234: under $8k at push is almost always a rug (111 of 114, no real runner); v231 was $1k
       postsWithinMs: 172_800_000, // two days, oneCoin.linkMaxAgeMs
       ownerAlarmsPush: true,
     },

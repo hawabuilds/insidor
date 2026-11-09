@@ -186,6 +186,8 @@ test('★ no push without a real cap: missing or under the floor is held, its ke
   assert.equal(heldKeys(p, min, min), null);
   assert.deepEqual(heldKeys(p, null, min), ['c:COIN1', 'p:x:1']);
   assert.deepEqual(heldKeys(p, 0.23, min), ['c:COIN1', 'p:x:1']);
+  /* policy.v234: a coin still under $8k is almost always a rug; held until it passes, never dropped. */
+  assert.deepEqual(heldKeys(p, 5_000, min), ['c:COIN1', 'p:x:1']);
   assert.deepEqual(heldKeys({ ...p, revival: true }, null, min), ['c:COIN1', 'p:x:1', revivalKey(p.itemId)]);
   assert.deepEqual(heldKeys({ ...p, runner: true }, null, min), ['c:COIN1', 'p:x:1', runnerKey(p.itemId, 'COIN1')]);
 });
