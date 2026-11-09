@@ -2699,6 +2699,15 @@ export interface OneCoinPolicy {
    */
   readonly maxCapPerBuyer: number;
   /**
+   * ★ BUNDLED HOLDERS (policy.v233; the owner, 2026-11-09, $GTA6). Before a coin can be any post's or
+   * narrative's pick, the chain's twenty largest holders are read once (runner work/one-coin.ts
+   * `screenBundles`); `sameAmountMin` or more holding one whole-token amount is one holder in many
+   * wallets (core match/bundle.ts), and the coin is never picked. Coins at `fromCapUsd` or more are
+   * read, at most `perPass` a pass; a coin found clean is read again after `cleanForMs`, a bundle never
+   * is. A coin not read yet is not picked, and one already held keeps its pick until it is read.
+   */
+  readonly bundle: { readonly on: boolean; readonly sameAmountMin: number; readonly fromCapUsd: number; readonly perPass: number; readonly cleanForMs: number };
+  /**
    * ★ OUR OWN CANDLES OVER THE READINGS (policy.v209; the owner, 2026-10-29: "i approve 3"). For a
    * launchpad candidate we chart (0144), the newest one-minute close and the highest close stand in for
    * its market reading wherever the rule reads one, when that close is at most `freshMs` old. The
@@ -6256,7 +6265,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v232',
+  version: 'policy.v233',
 
   admit: {
     maxAgeMin: 240,
@@ -8019,6 +8028,12 @@ const POLICY_V1: Policy = {
        lets through $60k / 15 buyers = $4k (the minimum cap with the minimum buyers) but stops the
        dev-concentrated pattern. Zero disables. */
     maxCapPerBuyer: 4_000,
+    /* policy.v233. GTA6 (9 Nov): 19 of its top 20 at exactly 301,080 tokens. Five of twenty: buyers
+       paying different prices almost never share a whole-token amount. $10k: the lowest cap any path
+       shows a coin at (the race); 405 candidate coins passed it in the 24 hours to 9 Nov and 192 coins
+       were held, so ~600 reads a day with a clean answer kept for a day. Twenty a pass reads them all
+       within minutes of a restart. */
+    bundle: { on: true, sameAmountMin: 5, fromCapUsd: 10_000, perPass: 20, cleanForMs: 86_400_000 },
     /* policy.v209. Replayed over 22-29 Oct on 186 posts whose launchpad coin passed $25k, beside v208's
        rules: runner picked 49% -> 52%, before take-off 17% -> 19%, dud picks unchanged (32 on runner
        posts, 8 of 186 posts where nothing ran). Half an hour: the replay's bar; a staler close falls back

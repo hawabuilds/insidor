@@ -90,6 +90,19 @@ export async function curvePlaces(config: CurveRpcConfig, mints: readonly string
 }
 
 /**
+ * A coin's largest holders' balances in whole tokens, largest first (the chain's own top twenty).
+ * One call. For core's bundle rule (match/bundle.ts): whole tokens, because a bundler's equal split
+ * is equal to the token, not always to the last unit. A coin the chain does not know answers empty.
+ */
+export async function topHolders(config: CurveRpcConfig, mint: string): Promise<readonly string[]> {
+  const result = rec(await call(config, 'getTokenLargestAccounts', [mint, { commitment: 'confirmed' }]));
+  return arr(result.value).flatMap((v) => {
+    const s = str(rec(v).uiAmountString);
+    return s === null ? [] : [s.split('.')[0] ?? '0'];
+  });
+}
+
+/**
  * One confirmed transaction's log lines, or null when the chain does not have it (yet). One call.
  * Version 1 is asked for because launches now come in version-1 transactions (19 Oct: the node
  * refused one asked for at version 0), and a lower ceiling fails the read rather than answering.

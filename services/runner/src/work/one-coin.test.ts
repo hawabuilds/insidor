@@ -13,7 +13,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { CandidateRow, ExistingCoinRow, PickWrite, PriorCoinRow, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
-import { holderOf, newOneCoinState, oneCoinPass, pickWrite, withCandleCaps, type OneCoinDeps } from './one-coin.ts';
+import { gateWrite, holderOf, newOneCoinState, oneCoinPass, pickWrite, withCandleCaps, type OneCoinDeps } from './one-coin.ts';
 
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet } as unknown as Logger;
 const MIN = 60_000;
@@ -342,6 +342,77 @@ test('★ the launchpad sweep: a held pick on a coin that did not launch on the 
   const s2 = deps(w2);
   await oneCoinPass({ ...s2, repo: { ...s2.repo, openCandidates: async () => [], heldOffLaunchpadPicks: async (kind) => (kind === 'post' ? [{ pick: held, members: [ID] }] : []) } }, newOneCoinState());
   assert.notEqual(w2.picks.get(ID)?.address, 'POOLONLY');
+});
+
+test('★ the bundle screen: a pick moving to a bundled coin waits, the bundle leaves the candidates, and the next pass picks the clean coin', async () => {
+  /* GTA6 (9 Nov): 19 of its top 20 holders at exactly 301,080 tokens, at $5.9M four minutes after launch. */
+  const ID = 'x:gta';
+  const row = (address: string): CandidateRow => ({ itemId: ID, address, path: 'launch', evidence: { ties: ['link'] }, launchedAtMs: NOW - 30 * MIN, foundAtMs: NOW - 10 * MIN });
+  const w = world({
+    candidates: [row('BUNDLE'), row('CLEAN')],
+    trades: null,
+    market: new Map([['BUNDLE', { capUsd: 5_900_000, peakCapUsd: 5_900_000, readAtMs: NOW - MIN, liquidityUsd: 190_000 }], ['CLEAN', { capUsd: 90_000, peakCapUsd: 90_000, readAtMs: NOW - MIN, liquidityUsd: 30_000 }]]),
+  });
+  const read: string[] = [];
+  const holders = async (mint: string) => (read.push(mint), mint === 'BUNDLE' ? ['16019181', ...Array.from({ length: 19 }, () => '301080')] : ['9000000', '4400000', '3100000', '2500000', '1000000']);
+  const state = newOneCoinState();
+  await oneCoinPass({ ...deps(w), holders }, state);
+  assert.equal(w.picks.get(ID)?.outcome, 'waiting');
+  assert.equal(w.picks.get(ID)?.evidence['reason'], 'bundled_holders');
+  assert.equal(w.picks.get(ID)?.evidence['heldBack'], 'BUNDLE');
+  await oneCoinPass({ ...deps(w), holders }, state);
+  assert.equal(w.picks.get(ID)?.address, 'CLEAN');
+  assert.deepEqual(read, ['BUNDLE', 'CLEAN'], 'each coin read once; a bundle is never read again');
+
+  /* Holders that cannot be read: a new pick waits; it is never taken as clean. */
+  const w2 = world({ candidates: [row('CLEAN')], trades: null, market: new Map([['CLEAN', { capUsd: 90_000, peakCapUsd: 90_000, readAtMs: NOW - MIN, liquidityUsd: 30_000 }]]) });
+  await oneCoinPass({ ...deps(w2), holders: async () => { throw new Error('429'); } }, newOneCoinState());
+  assert.equal(w2.picks.get(ID)?.evidence['reason'], 'holders_unread');
+
+  /* No holder reader (no chain endpoint): nothing is held back, as before. */
+  const w3 = world({ candidates: [row('CLEAN')], trades: null, market: new Map([['CLEAN', { capUsd: 90_000, peakCapUsd: 90_000, readAtMs: NOW - MIN, liquidityUsd: 30_000 }]]) });
+  await oneCoinPass(deps(w3), newOneCoinState());
+  assert.equal(w3.picks.get(ID)?.address, 'CLEAN');
+});
+
+test('★ the bundle sweep: a pick held on a coin found bundled is judged again without it', async () => {
+  const ID = 'x:held';
+  const held: StoredPick = { subjectId: ID, address: 'BUNDLE', outcome: 'picked', decidedAtMs: NOW - 4 * 60 * MIN, evidence: {} };
+  const cand: CandidateRow = { itemId: ID, address: 'BUNDLE', path: 'launch', evidence: { ties: ['link'] }, launchedAtMs: NOW - 5 * 60 * MIN, foundAtMs: NOW - 5 * 60 * MIN };
+  const w = world({ candidates: [cand], trades: null, picks: new Map([[ID, held]]) });
+  const d = deps(w);
+  const asked: string[][] = [];
+  await oneCoinPass({
+    ...d,
+    holders: async () => ['16019181', ...Array.from({ length: 19 }, () => '301080')],
+    repo: {
+      ...d.repo,
+      openCandidates: async () => [],
+      heldPickCoins: async () => ['BUNDLE'],
+      heldPicksOn: async (kind, addresses) => (asked.push([kind, ...addresses]), kind === 'post' ? [{ pick: held, members: [ID] }] : []),
+    },
+  }, newOneCoinState());
+  assert.deepEqual(asked, [['post', 'BUNDLE'], ['narrative', 'BUNDLE']]);
+  assert.equal(w.picks.get(ID)?.outcome, 'none');
+});
+
+test('gateWrite: a held unread coin keeps its pick, a held bundle does not, racing coins not read clean leave the race', () => {
+  const state = newOneCoinState();
+  const B = DEFAULT_POLICY.oneCoin.bundle;
+  state.bundles.set('CLEAN', { bundled: false, atMs: NOW });
+  state.bundles.set('BAD', { bundled: true, atMs: NOW });
+  const pick = (address: string, racing?: string[]): PickWrite => ({ subjectId: 'x:1', address, outcome: 'picked', decidedAtMs: NOW, evidence: { mode: 'live', ...(racing === undefined ? {} : { racing }) }, basis: 'trades' });
+  const prevOn = (address: string): StoredPick => ({ subjectId: 'x:1', address, outcome: 'picked', decidedAtMs: NOW - MIN, evidence: {} });
+  const back = new Set<string>();
+  assert.equal(gateWrite(pick('UNREAD'), prevOn('UNREAD'), state, NOW, B, back).address, 'UNREAD');
+  assert.equal(gateWrite(pick('BAD'), prevOn('BAD'), state, NOW, B, back).outcome, 'waiting');
+  assert.equal(gateWrite(pick('UNREAD'), undefined, state, NOW, B, back).evidence['reason'], 'holders_unread');
+  assert.deepEqual([...back], ['x:1']);
+  assert.deepEqual(gateWrite(pick('CLEAN', ['CLEAN', 'BAD', 'UNREAD']), undefined, state, NOW, B, new Set()).evidence['racing'], undefined, 'a race of one is no race');
+  state.bundles.set('CLEAN2', { bundled: false, atMs: NOW });
+  assert.deepEqual(gateWrite(pick('CLEAN', ['CLEAN', 'CLEAN2', 'BAD']), undefined, state, NOW, B, new Set()).evidence['racing'], ['CLEAN', 'CLEAN2']);
+  /* A clean read older than `cleanForMs` is read again before a new pick. */
+  assert.equal(gateWrite(pick('CLEAN'), undefined, state, NOW + B.cleanForMs, B, new Set()).outcome, 'waiting');
 });
 
 test('★ a held coin\'s rug grace is stored with the pick and read back as the holder, so a restart does not restart it', () => {

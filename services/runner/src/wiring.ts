@@ -170,7 +170,7 @@ import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/
 import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
 import { CREDIT_CHECK_MS, CREDIT_RATE_WINDOW_MS, creditWatch } from './open-credit.ts';
 import { secondVendorWatch } from './second-vendor.ts';
-import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
+import { chainClient, fetchDeclaredMetadata, fetchMetadata, topHolders } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { keepCoins } from './work/coin-keep.ts';
@@ -189,6 +189,8 @@ import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
+/** One holder read for the bundle screen: a slow answer leaves the coin unread for this pass, never clean. */
+const HOLDERS_TIMEOUT_MS = 8_000;
 /**
  * The posts supplier's endpoints on the X day's bill (`feed.searchDay`), as its adapter records them.
  * Not `responses`: the reply reads (work/crypto-attention.ts) keep their own count, `attention.postsPerDay`,
@@ -1743,6 +1745,8 @@ export async function withRuntime<T>(
                     return new Set([...newest].filter(([, v]) => v !== 'cleared').map(([id]) => id));
                   },
                   ...(embed === null ? {} : { embed: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => embedCoinPictures(pictures, coins, 'one coin') }),
+                  /* The bundle screen's holder reads (Policy.oneCoin.bundle): one chain call a coin, on the runner's own endpoint. */
+                  ...(cfg.chainRpcUrl === null ? {} : { holders: (mint: string) => topHolders({ rpcUrl: cfg.chainRpcUrl as string, fetch: globalThis.fetch, timeoutMs: HOLDERS_TIMEOUT_MS }, mint) }),
                   /* The judge's "no" on a name-only coin (work/coin-post-check.ts): read only while the check is on, so off undoes it whole. */
                   ...(policy.oneCoin.postCheck.on ? { refused: (pairs: readonly { readonly itemId: string; readonly address: string }[]) => new PgCoinPostCheckRepo(db).refused(pairs) } : {}),
                   policy,

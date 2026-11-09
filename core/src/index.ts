@@ -200,6 +200,8 @@ export { biggestOfName, guessBacked, hashGap, launchMatches, namedInText, oneCoi
 export { statedInText, statesName, type StatedBars } from './match/stated-name.ts';
 export { rankRunnerPosts, runnerTies, type RunnerBars, type RunnerCoin, type RunnerMatch, type RunnerPost } from './match/missed-runner.ts';
 export { runnerHandover, runsAt, type CoinHour, type HandoverBars, type HandoverCoin, type HandoverHeld, type HandoverOutcome } from './match/runner-handover.ts';
+/* A coin whose largest holders hold one same amount is one holder (match/bundle.ts, Policy.oneCoin.bundle). */
+export { bundledHolders } from './match/bundle.ts';
 /* The early pick under $20K, on the launch wave's market readings (match/early-pick.ts, Policy.oneCoin.early). */
 export { earlyPick, riseOf, type EarlyBars, type EarlyCoin, type EarlyPick } from './match/early-pick.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, PriorBars, PriorCoin, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';

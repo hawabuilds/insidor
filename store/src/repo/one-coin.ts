@@ -1238,16 +1238,44 @@ export class PgOneCoinRepo {
    * judges these again on their candidates, which no longer hold the coin. Only these few rows come back.
    */
   async heldOffLaunchpadPicks(kind: PickKind, sinceMs: number, limit: number): Promise<readonly { readonly pick: StoredPick; readonly members: readonly string[] }[]> {
+    return this.#heldPicksWhere(kind, `not exists (select 1 from public.asset a where a.chain = 'solana' and a.address = p.address and a.venue_id = $3)`, sinceMs, limit, LAUNCHPAD_VENUE);
+  }
+
+  /** Picks of `kind` held since `sinceMs` on one of these coins, with their posts (as `heldOffLaunchpadPicks`). */
+  async heldPicksOn(kind: PickKind, addresses: readonly string[], sinceMs: number, limit: number): Promise<readonly { readonly pick: StoredPick; readonly members: readonly string[] }[]> {
+    if (addresses.length === 0) return [];
+    return this.#heldPicksWhere(kind, `p.address = any($3::text[])`, sinceMs, limit, [...new Set(addresses)]);
+  }
+
+  /**
+   * Every coin a post's or a narrative's pick has held since `sinceMs`: the coins on cards, the Tape
+   * and in pushes, for the runner's bundle screen. Addresses only (~200, every few minutes).
+   */
+  async heldPickCoins(sinceMs: number): Promise<readonly string[]> {
+    try {
+      const rows = await this.#db.query<{ address: string }>(
+        `select address from internal.post_coin_pick where outcome = 'picked' and address is not null and updated_at >= $1
+         union select address from internal.narrative_coin_pick where outcome = 'picked' and address is not null and updated_at >= $1`,
+        [new Date(sinceMs).toISOString()],
+      );
+      return rows.map((r) => r.address);
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
+  /** Held picks of `kind` since `sinceMs` matching `where` (over `p`, its parameter `$3`), with their posts. */
+  async #heldPicksWhere(kind: PickKind, where: string, sinceMs: number, limit: number, third: unknown): Promise<readonly { readonly pick: StoredPick; readonly members: readonly string[] }[]> {
     const { table, key } = PICK_TABLE[kind];
     const members = kind === 'post' ? `array[p.${key}]` : `(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = p.${key})`;
     try {
       const rows = await this.#db.query<{ id: string; address: string; decided_at: string; evidence: Record<string, unknown>; members: string[] | null }>(
         `select p.${key} as id, p.address, p.decided_at, p.evidence, ${members} as members
            from ${table} p
-          where p.outcome = 'picked' and p.address is not null and p.updated_at >= $1
-            and not exists (select 1 from public.asset a where a.chain = 'solana' and a.address = p.address and a.venue_id = $3)
+          where p.outcome = 'picked' and p.address is not null and p.updated_at >= $1 and ${where}
           order by p.updated_at desc limit $2`,
-        [new Date(sinceMs).toISOString(), limit, LAUNCHPAD_VENUE],
+        [new Date(sinceMs).toISOString(), limit, third],
       );
       return rows.map((r) => ({ pick: { subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence ?? {} }, members: r.members ?? [] }));
     } catch (e) {

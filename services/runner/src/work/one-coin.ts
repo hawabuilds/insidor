@@ -61,7 +61,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, bundledHolders, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, CandleCap, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks' | 'heldOffLaunchpadPicks'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks' | 'heldOffLaunchpadPicks' | 'heldPicksOn' | 'heldPickCoins'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -120,6 +120,11 @@ export interface OneCoinDeps {
    * read once every `readEveryMs`, and laid over the readings the rule judges on. Absent: readings alone.
    */
   readonly candleCaps?: (addresses: readonly string[], sinceMs: number) => Promise<ReadonlyMap<string, CandleCap>>;
+  /**
+   * A coin's twenty largest holders in whole tokens (the venue adapter's `topHolders`), for the bundle
+   * screen (Policy.oneCoin.bundle). Absent: no coin is read and none is held back, as before policy.v233.
+   */
+  readonly holders?: (mint: string) => Promise<readonly string[]>;
   /** The paid picture path (work/coin-match.ts `embedCoinPictures`); absent: pictures are compared by hash only. */
   readonly embed?: (coins: readonly { readonly assetKey: string; readonly uri: string }[]) => Promise<number>;
   readonly policy: Policy;
@@ -139,9 +144,14 @@ export interface OneCoinState {
   linkingAt: number;
   /** Our candles' caps, and when they were read (Policy.oneCoin.candles.readEveryMs). */
   candleCaps: { readonly atMs: number; readonly caps: ReadonlyMap<string, CandleCap> } | null;
+  /** Each coin's holder read (Policy.oneCoin.bundle): bundled, or clean as of `atMs`. Lost on restart, and read again. */
+  readonly bundles: Map<string, { readonly bundled: boolean; readonly atMs: number }>;
+  /** The coins held by any pick of the last two days, and when they were listed (`bundleSweep`). */
+  heldCoins: readonly string[];
+  bundleHeldAt: number;
 }
 
-export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, linkingAt: 0, candleCaps: null });
+export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, linkingAt: 0, candleCaps: null, bundles: new Map(), heldCoins: [], bundleHeldAt: 0 });
 
 /**
  * How often every post of the window meets the coins linking it (a post new to the pass meets them at
@@ -353,19 +363,69 @@ export async function offLaunchpadSweep(
   if (repo.heldOffLaunchpadPicks === undefined) return 0;
   let changed = 0;
   for (const kind of ['post', 'narrative'] as const) {
-    const held = await repo.heldOffLaunchpadPicks(kind, now - RUG_SWEEP_MS, RUG_SWEEP_LIMIT);
-    if (held.length === 0) continue;
-    const rows = await repo.candidatesOf([...new Set(held.flatMap((h) => h.members))]);
-    const addresses = [...new Set(rows.map((r) => r.address))];
-    const { trades, watched, market: read } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
-    const market = await withFrozenPrices(repo, rows, read);
-    const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
-    const byItem = new Map<string, CandidateRow[]>();
-    for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
-    const prev = new Map(held.map((h) => [h.pick.subjectId, h.pick] as const));
-    /* Judged even with no candidate left: the rule then answers none, and the coin is let go. */
-    const writes = held.map((h) => pickWrite(h.pick.subjectId, judge(h.members.flatMap((m) => byItem.get(m) ?? []), h.pick, facts), h.pick, now, P.mode));
-    changed += await repo.writePicks(kind, writes, prev, P.mode, now);
+    changed += await judgeHeldAgain(repo, kind, await repo.heldOffLaunchpadPicks(kind, now - RUG_SWEEP_MS, RUG_SWEEP_LIMIT), judge, now, P, solUsd);
+  }
+  return changed;
+}
+
+/**
+ * Held picks judged again on their candidates as the pass's repo reads them now (without the coin a
+ * sweep let go), written as any pick is. Judged even with no candidate left: the rule then answers
+ * none, and the coin is let go. Returns how many changed.
+ */
+async function judgeHeldAgain(
+  repo: OneCoinDeps['repo'],
+  kind: 'post' | 'narrative',
+  held: readonly { readonly pick: StoredPick; readonly members: readonly string[] }[],
+  judge: (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }) => OneCoinOutcome,
+  now: number,
+  P: OneCoinDeps['policy']['oneCoin'],
+  solUsd: number | null,
+): Promise<number> {
+  if (held.length === 0) return 0;
+  const rows = await repo.candidatesOf([...new Set(held.flatMap((h) => h.members))]);
+  const addresses = [...new Set(rows.map((r) => r.address))];
+  const { trades, watched, market: read } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
+  const market = await withFrozenPrices(repo, rows, read);
+  const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
+  const byItem = new Map<string, CandidateRow[]>();
+  for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
+  const prev = new Map(held.map((h) => [h.pick.subjectId, h.pick] as const));
+  const writes = held.map((h) => pickWrite(h.pick.subjectId, judge(h.members.flatMap((m) => byItem.get(m) ?? []), h.pick, facts), h.pick, now, P.mode));
+  return repo.writePicks(kind, writes, prev, P.mode, now);
+}
+
+/** How often the bundle sweep re-reads the list of held coins (addresses only). */
+const BUNDLE_HELD_EVERY_MS = 5 * 60_000;
+
+/**
+ * ★ THE BUNDLE SWEEP (Policy.oneCoin.bundle; the owner, 2026-11-09, $GTA6). A new pick is screened as
+ * it is written (`gateWrite`), but a coin held before the screen existed — or before its holders could
+ * be read — keeps its pick until read. Every pass, the coins held by any pick of the last two days
+ * (listed again every `BUNDLE_HELD_EVERY_MS`) are read while the pass's reads last, and every held
+ * post and narrative pick on a coin found bundled is judged again without it. Returns how many changed.
+ */
+export async function bundleSweep(
+  deps: OneCoinDeps,
+  repo: OneCoinDeps['repo'],
+  state: OneCoinState,
+  screen: BundleScreen,
+  judge: (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }) => OneCoinOutcome,
+  now: number,
+  P: OneCoinDeps['policy']['oneCoin'],
+  solUsd: number | null = null,
+): Promise<number> {
+  if (!bundling(deps) || repo.heldPickCoins === undefined || repo.heldPicksOn === undefined) return 0;
+  if (now - state.bundleHeldAt >= BUNDLE_HELD_EVERY_MS) {
+    state.heldCoins = await repo.heldPickCoins(now - RUG_SWEEP_MS);
+    state.bundleHeldAt = now;
+  }
+  await screenBundles(deps, state, screen, state.heldCoins, now);
+  const bad = state.heldCoins.filter((a) => readBundled(state, a));
+  if (bad.length === 0) return 0;
+  let changed = 0;
+  for (const kind of ['post', 'narrative'] as const) {
+    changed += await judgeHeldAgain(repo, kind, await repo.heldPicksOn(kind, bad, now - RUG_SWEEP_MS, RUG_SWEEP_LIMIT), judge, now, P, solUsd);
   }
   return changed;
 }
@@ -513,14 +573,90 @@ export async function withoutRefused(deps: Pick<OneCoinDeps, 'refused' | 'log'>,
   return refused.size === 0 ? rows : rows.filter((r) => !(nameOnly(r) && refused.has(`${r.itemId}|${r.address}`)));
 }
 
-/** The pass's repo with its two candidate reads filtered by the judge's "no"; every other read as it is. */
-function refusing(deps: OneCoinDeps): OneCoinDeps['repo'] {
+/** A pass's holder reads: how many are left, the subjects whose new coin was held back, and the failed reads. */
+export interface BundleScreen {
+  left: number;
+  readonly heldBack: Set<string>;
+  failed: number;
+}
+
+type BundleBars = OneCoinDeps['policy']['oneCoin']['bundle'];
+const readBundled = (state: OneCoinState, a: string): boolean => state.bundles.get(a)?.bundled === true;
+const readClean = (state: OneCoinState, a: string, now: number, B: BundleBars): boolean => {
+  const r = state.bundles.get(a);
+  return r !== undefined && !r.bundled && now - r.atMs < B.cleanForMs;
+};
+const bundling = (deps: OneCoinDeps): boolean => deps.policy.oneCoin.bundle.on && deps.holders !== undefined;
+const racingOf = (p: PickWrite): string[] => (Array.isArray(p.evidence['racing']) ? p.evidence['racing'].filter((a): a is string => typeof a === 'string') : []);
+
+/**
+ * Reads the holders of these coins not read fresh (core `bundledHolders`), while the pass's reads last.
+ * A bundle is never read again; a clean coin after `cleanForMs`; a failed read leaves the coin unread.
+ */
+export async function screenBundles(deps: OneCoinDeps, state: OneCoinState, screen: BundleScreen, addresses: readonly string[], now: number): Promise<void> {
+  const B = deps.policy.oneCoin.bundle;
+  const holders = deps.holders;
+  if (!B.on || holders === undefined) return;
+  for (const a of new Set(addresses)) {
+    if (screen.left <= 0) return;
+    if (readBundled(state, a) || readClean(state, a, now, B)) continue;
+    screen.left -= 1;
+    try {
+      const bundled = bundledHolders(await holders(a), B.sameAmountMin);
+      state.bundles.set(a, { bundled, atMs: now });
+      if (bundled) deps.log.info('one coin: a coin whose largest holders hold one same amount is never picked', { address: a });
+    } catch (e) {
+      screen.failed += 1;
+      if (screen.failed === 1) deps.log.warn('one coin: holders not read; a new pick on such a coin waits for the next pass', { address: a, err: errorText(e) });
+    }
+  }
+}
+
+/**
+ * ★ A PICK PAST THE BUNDLE SCREEN. A pick that moves to a coin not read clean — a bundle, or not read
+ * yet — is written as waiting instead, and the subject noted so its early push is not sent; a coin held
+ * before it was read keeps its pick until the read. A bundle is never held. Racing coins not read clean
+ * are left off the race. Exported for its test.
+ */
+export function gateWrite(p: PickWrite, prev: StoredPick | undefined, state: OneCoinState, now: number, B: BundleBars, heldBack: Set<string>): PickWrite {
+  let w = p;
+  const racing = racingOf(w);
+  if (racing.length > 0) {
+    const kept = racing.filter((a) => readClean(state, a, now, B));
+    if (kept.length !== racing.length) w = { ...w, evidence: Object.fromEntries(Object.entries(w.evidence).filter(([k]) => k !== 'racing').concat(kept.length > 1 ? [['racing', kept]] : [])) };
+  }
+  if (w.outcome !== 'picked' || w.address === null) return w;
+  const a = w.address;
+  if (!readBundled(state, a) && (readClean(state, a, now, B) || prev?.address === a)) return w;
+  heldBack.add(w.subjectId);
+  return { subjectId: w.subjectId, address: null, outcome: 'waiting', decidedAtMs: prev?.outcome === 'waiting' ? prev.decidedAtMs : now, evidence: { mode: w.evidence['mode'], reason: readBundled(state, a) ? 'bundled_holders' : 'holders_unread', heldBack: a }, basis: w.basis };
+}
+
+/**
+ * The pass's repo: its two candidate reads filtered by the judge's "no" and by the bundle screen (a
+ * bundled coin is no candidate, so no rule, sweep or hand-over meets it), and its pick writes gated
+ * (`gateWrite`); every other read as it is.
+ */
+function passRepo(deps: OneCoinDeps, state: OneCoinState, screen: BundleScreen, now: number): OneCoinDeps['repo'] {
   const base = deps.repo;
-  if (deps.refused === undefined) return base;
+  const screening = bundling(deps);
+  if (deps.refused === undefined && !screening) return base;
+  const keep = async (rows: readonly CandidateRow[]): Promise<readonly CandidateRow[]> => {
+    const r = deps.refused === undefined ? rows : await withoutRefused(deps, rows);
+    return screening ? r.filter((x) => !readBundled(state, x.address)) : r;
+  };
+  const B = deps.policy.oneCoin.bundle;
   return new Proxy(base, {
     get(target, key) {
-      if (key === 'openCandidates') return async (...a: Parameters<typeof target.openCandidates>) => withoutRefused(deps, await target.openCandidates(...a));
-      if (key === 'candidatesOf') return async (ids: readonly string[]) => withoutRefused(deps, await target.candidatesOf(ids));
+      if (key === 'openCandidates') return async (...a: Parameters<typeof target.openCandidates>) => keep(await target.openCandidates(...a));
+      if (key === 'candidatesOf') return async (ids: readonly string[]) => keep(await target.candidatesOf(ids));
+      if (key === 'writePicks' && screening) {
+        return async (...[kind, picks, previous, mode, at]: Parameters<typeof target.writePicks>) => {
+          const fresh = picks.flatMap((p) => [...(p.outcome === 'picked' && p.address !== null && previous.get(p.subjectId)?.address !== p.address ? [p.address] : []), ...racingOf(p)]);
+          await screenBundles(deps, state, screen, fresh, now);
+          return target.writePicks(kind, picks.map((p) => gateWrite(p, previous.get(p.subjectId), state, now, B, screen.heldBack)), previous, mode, at);
+        };
+      }
       const v: unknown = Reflect.get(target, key);
       return typeof v === 'function' ? v.bind(target) : v;
     },
@@ -531,8 +667,11 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const P = deps.policy.oneCoin;
   const now = deps.now();
   /* ★ Every read of the candidates this pass makes — the decision, the narratives, both sweeps and the
-     hand-over — goes through the judge's "no" (withoutRefused), so no path re-picks a refused coin. */
-  const repo = refusing(deps);
+     hand-over — goes through the judge's "no" (withoutRefused), so no path re-picks a refused coin; and
+     every pick it writes through the bundle screen (passRepo, `gateWrite`). */
+  const screen: BundleScreen = { left: P.bundle.perPass, heldBack: new Set(), failed: 0 };
+  for (const [a, r] of state.bundles) if (!r.bundled && now - r.atMs >= P.bundle.cleanForMs) state.bundles.delete(a);
+  const repo = passRepo(deps, state, screen, now);
   if (now - state.postsReadAt >= POSTS_REFRESH_MS) {
     state.posts = await repo.recentPosts(now - P.postWindowMs, POSTS_READ, HASH_VERSION);
     state.postsReadAt = now;
@@ -729,6 +868,8 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const launchedOf = new Map(open.filter((r) => r.launchedAtMs !== null).map((r) => [r.address, r.launchedAtMs] as const));
   const postPicks = [...holdEarly(judged, prevPosts, launchedOf, deps.policy.oneCoin.early.rivalWithinMs), ...early.map((d) => d.write)].map(withRace);
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);
+  /* An early pick the bundle screen held back was written as waiting: it is not told. */
+  early = early.filter((d) => !screen.heldBack.has(d.itemId));
   if (early.length > 0 && deps.early !== undefined) {
     for (const d of early) deps.log.info('early pick', { itemId: d.itemId, address: d.pick.address, capUsd: d.pick.capUsd, ageMs: d.pick.ageMs, riseUsd: d.pick.riseUsd, rivalRiseUsd: d.pick.rivalRiseUsd, rivals: d.pick.rivals, rivalsUnread: d.pick.rivalsUnread, told: (d.write.evidence['earlyPick'] as EarlyRecord).told });
     await tellEarly(early, deps.early, deps.log);
@@ -748,6 +889,8 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   if (swept > 0) deps.log.info('one coin: the rug sweep moved held picks whose coin crashed', { changed: swept });
   const offPad = await offLaunchpadSweep(repo, judge, now, P, solUsd);
   if (offPad > 0) deps.log.info('one coin: the launchpad sweep let go of coins that did not launch on the launchpad', { changed: offPad });
+  const unbundled = await bundleSweep(deps, repo, state, screen, judge, now, P, solUsd);
+  if (unbundled > 0) deps.log.info('one coin: the bundle sweep let go of coins whose holders are one holder', { changed: unbundled });
   const unfrozen = await frozenNarrativeSweep(repo, new Set(narratives.keys()), judge, now, P, solUsd);
   if (unfrozen > 0) deps.log.info('one coin: the narrative sweep let go of coins on a frozen price', { changed: unfrozen });
   /* ── the waiting sweep: a post left waiting at its hour's end whose coin ran later ── */
