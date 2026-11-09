@@ -19,6 +19,13 @@
  * chainwatch confirmed its subscription and while no cap, outage or restart ended it; a coin it
  * stopped measuring has no trade facts at all, so the rule reads it as unknown.
  *
+ * ★ LAUNCHPAD COINS ONLY (the owner, 2026-11-09: "we should only be showing tokens that have launched
+ * and pumped through the actual launch pad"). Every coin read here as a launch, a named coin or a
+ * candidate must carry the launchpad's venue (`LAUNCHPAD_VENUE`); a coin first seen in a pool, or whose
+ * row says it never had a curve, is not one, and a coin with no row is a coin we cannot place. The
+ * launch and name reads filter in their SQL; the candidate reads drop such coins after the mirror
+ * (`#onLaunchpad`), so a coin found before the rule, or relabelled since, leaves every judgement.
+ *
  * What breaks if changed carelessly: the trade roll-up. Net buying is the sum of the minutes, and
  * buyers the state's distinct count (else the minutes' new buyers summed); reading `buyers` per
  * minute and adding them counts a wallet that bought in two minutes twice, and the buyer bar with it.
@@ -242,6 +249,18 @@ const HELD_PICKS_MAX = 20_000;
 /** Past this many coins `watched` holds, it starts over: a coin leaves the sweeps when its watch ends. */
 const HELD_WATCH_MAX = 50_000;
 
+/**
+ * The launchpad's venue id as its adapter writes it (adapters/venue/solana-pumpfun ids.ts `VENUE_ID`,
+ * notify coin-gate.ts `LAUNCHPAD_VENUE`). Spelled here because the store may not import an adapter.
+ */
+export const LAUNCHPAD_VENUE = 'solana:pumpfun';
+/**
+ * How long `#onLaunchpad` trusts its answer for a coin. A coin's venue changes only when a repair
+ * relabels it, so a held answer is right for minutes; asked again after this, a relabelled coin
+ * leaves the candidates within it, while the sweeps send each candidate address once a window.
+ */
+const LAUNCHPAD_HELD_MS = 10 * 60_000;
+
 export class PgOneCoinRepo {
   readonly #db: Db;
   /**
@@ -266,6 +285,8 @@ export class PgOneCoinRepo {
    * answer is the one before.
    */
   readonly #watchedHeld = new Map<string, boolean>();
+  /** `#onLaunchpad`'s answer by coin, and when it was read (epoch ms, this process's clock). */
+  readonly #launchpadHeld = new Map<string, { readonly on: boolean; readonly atMs: number }>();
 
   constructor(db: Db, opts: { readonly mirrorCandidates?: boolean } = {}) {
     this.#db = db;
@@ -441,7 +462,7 @@ export class PgOneCoinRepo {
          from public.asset a
          left join internal.coin_metadata m on m.asset_key = a.asset_key and m.outcome = 'read'
          left join internal.image_hash h on h.uri = coalesce(m.image_uri, a.image_uri) and h.version = ${hashAt} and h.bits is not null
-        where ${where}
+        where a.venue_id = '${LAUNCHPAD_VENUE}' and (${where})
         order by a.first_seen_at desc
         limit ${limitAt}`,
       [...params, limit, hashVersion],
@@ -582,8 +603,43 @@ export class PgOneCoinRepo {
     }
   }
 
-  /** Every candidate of posts with one found or launched since `sinceMs`: the subjects still being judged. */
+  /** Every candidate of posts with one found or launched since `sinceMs`: the subjects still being judged. Launchpad coins only. */
   async openCandidates(sinceMs: number, limit: number): Promise<readonly CandidateRow[]> {
+    return this.#onLaunchpad(await this.#openCandidates(sinceMs, limit));
+  }
+
+  /** Every candidate of these posts, open or not: a narrative is judged over all its posts'. Launchpad coins only. */
+  async candidatesOf(itemIds: readonly string[]): Promise<readonly CandidateRow[]> {
+    return this.#onLaunchpad(await this.#candidatesOf(itemIds));
+  }
+
+  /**
+   * These rows less the ones whose coin is not a launchpad coin (`LAUNCHPAD_VENUE`), or has no row.
+   * Only coins not held fresh are asked, and only the ones that fail come back.
+   */
+  async #onLaunchpad(rows: readonly CandidateRow[]): Promise<readonly CandidateRow[]> {
+    if (rows.length === 0) return rows;
+    const now = Date.now();
+    const held = this.#launchpadHeld;
+    /* Cleared before the asking, so every coin of these rows is asked again rather than dropped. */
+    if (held.size > HELD_WATCH_MAX) held.clear();
+    const ask = [...new Set(rows.map((r) => r.address))].filter((a) => {
+      const h = held.get(a);
+      return h === undefined || now - h.atMs >= LAUNCHPAD_HELD_MS;
+    });
+    if (ask.length > 0) {
+      const off = await this.#db.query<{ address: string }>(
+        `select x.address from unnest($1::text[]) as x(address)
+          where not exists (select 1 from public.asset a where a.chain = 'solana' and a.address = x.address and a.venue_id = $2)`,
+        [ask, LAUNCHPAD_VENUE],
+      );
+      const offSet = new Set(off.map((r) => r.address));
+      for (const a of ask) held.set(a, { on: !offSet.has(a), atMs: now });
+    }
+    return rows.filter((r) => held.get(r.address)?.on === true);
+  }
+
+  async #openCandidates(sinceMs: number, limit: number): Promise<readonly CandidateRow[]> {
     const mirror = this.#mirror;
     if (mirror !== null && (await this.#syncMirror(mirror)) && (mirror.prunedBelowMs === null || sinceMs >= mirror.prunedBelowMs)) {
       /* The statement below, over the mirror: posts with a candidate found or launched since
@@ -615,8 +671,7 @@ export class PgOneCoinRepo {
     }
   }
 
-  /** Every candidate of these posts, open or not: a narrative is judged over all its posts'. */
-  async candidatesOf(itemIds: readonly string[]): Promise<readonly CandidateRow[]> {
+  async #candidatesOf(itemIds: readonly string[]): Promise<readonly CandidateRow[]> {
     if (itemIds.length === 0) return [];
     const mirror = this.#mirror;
     if (mirror !== null) {
@@ -922,7 +977,7 @@ export class PgOneCoinRepo {
                  left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
                                      where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
                 where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
-                  and a.venue_id = 'solana:pumpfun'
+                  and a.venue_id = '${LAUNCHPAD_VENUE}'
                 order by r.cap desc nulls last
                 limit $3) x
          ${PROMO_OF('x')}
@@ -951,7 +1006,7 @@ export class PgOneCoinRepo {
                  left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
                                      where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
                 where (lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[]))
-                  and a.venue_id = 'solana:pumpfun'
+                  and a.venue_id = '${LAUNCHPAD_VENUE}'
                   and n.launched_at >= $3 and n.launched_at < $4
                 order by r.cap desc nulls last
                 limit $5) x
@@ -1177,6 +1232,30 @@ export class PgOneCoinRepo {
    * did not report is unknown, never zero, so its coin is not in the set. One indexed newest reading
    * a coin (market_reading_latest_idx); the runner asks it only for the second path's older coins.
    */
+  /**
+   * Picks of `kind` held since `sinceMs` whose coin is not a launchpad coin (`LAUNCHPAD_VENUE`, or no
+   * row), each with its posts — a post's own id, a narrative's members: the runner's launchpad sweep
+   * judges these again on their candidates, which no longer hold the coin. Only these few rows come back.
+   */
+  async heldOffLaunchpadPicks(kind: PickKind, sinceMs: number, limit: number): Promise<readonly { readonly pick: StoredPick; readonly members: readonly string[] }[]> {
+    const { table, key } = PICK_TABLE[kind];
+    const members = kind === 'post' ? `array[p.${key}]` : `(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = p.${key})`;
+    try {
+      const rows = await this.#db.query<{ id: string; address: string; decided_at: string; evidence: Record<string, unknown>; members: string[] | null }>(
+        `select p.${key} as id, p.address, p.decided_at, p.evidence, ${members} as members
+           from ${table} p
+          where p.outcome = 'picked' and p.address is not null and p.updated_at >= $1
+            and not exists (select 1 from public.asset a where a.chain = 'solana' and a.address = p.address and a.venue_id = $3)
+          order by p.updated_at desc limit $2`,
+        [new Date(sinceMs).toISOString(), limit, LAUNCHPAD_VENUE],
+      );
+      return rows.map((r) => ({ pick: { subjectId: r.id, address: r.address, outcome: 'picked' as const, decidedAtMs: new Date(r.decided_at).getTime(), evidence: r.evidence ?? {} }, members: r.members ?? [] }));
+    } catch (e) {
+      if (missingTable(e)) return [];
+      throw e;
+    }
+  }
+
   /**
    * Narrative picks held since `sinceMs` whose coin's newest reading is a frozen price (as
    * `frozenPrices` reads it), with their members: the runner's narrative sweep judges these again,

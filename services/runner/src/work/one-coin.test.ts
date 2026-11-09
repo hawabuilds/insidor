@@ -317,6 +317,33 @@ test('★ $trump (9 Nov): an older coin on a frozen price is not picked, and a h
   assert.deepEqual(narrativeWrites.map((p) => [p.subjectId, p.outcome, p.address]), [[N, 'waiting', null]]);
 });
 
+test('★ the launchpad sweep: a held pick on a coin that did not launch on the launchpad is let go, post and narrative', async () => {
+  /* JENSEN (9 Nov): a pool opened for a coin made elsewhere, held on a post past its hour. The candidate
+     read no longer returns it (store `#onLaunchpad`), so the held pick is judged on what is left. */
+  const ID = 'x:jensen';
+  const N = 'n-x:jensen';
+  const held: StoredPick = { subjectId: ID, address: 'POOLONLY', outcome: 'picked', decidedAtMs: NOW - 4 * 60 * MIN, evidence: {} };
+  const nHeld: StoredPick = { ...held, subjectId: N };
+  const w = world({ candidates: [], trades: new Map(), picks: new Map([[ID, held]]) });
+  const s = deps(w);
+  const asked: string[] = [];
+  await oneCoinPass({ ...s, repo: {
+    ...s.repo,
+    openCandidates: async () => [],
+    heldOffLaunchpadPicks: async (kind) => (asked.push(kind), kind === 'post' ? [{ pick: held, members: [ID] }] : [{ pick: nHeld, members: [ID] }]),
+  } }, newOneCoinState());
+  assert.deepEqual(asked, ['post', 'narrative']);
+  assert.equal(w.picks.get(ID)?.outcome, 'none');
+  assert.equal(w.picks.get(ID)?.address, null);
+
+  /* A launchpad coin made for the post is still a candidate: it is judged on its own, not kept off. */
+  const rival: CandidateRow = { itemId: ID, address: 'PADCOIN', path: 'launch', evidence: { ties: ['link'] }, launchedAtMs: NOW - 5 * 60 * MIN, foundAtMs: NOW - 5 * 60 * MIN };
+  const w2 = world({ candidates: [rival], trades: new Map(), picks: new Map([[ID, held]]), market: new Map([['PADCOIN', { capUsd: 80_000, peakCapUsd: 80_000, readAtMs: NOW - MIN, liquidityUsd: null }]]) });
+  const s2 = deps(w2);
+  await oneCoinPass({ ...s2, repo: { ...s2.repo, openCandidates: async () => [], heldOffLaunchpadPicks: async (kind) => (kind === 'post' ? [{ pick: held, members: [ID] }] : []) } }, newOneCoinState());
+  assert.notEqual(w2.picks.get(ID)?.address, 'POOLONLY');
+});
+
 test('★ a held coin\'s rug grace is stored with the pick and read back as the holder, so a restart does not restart it', () => {
   const since = NOW - 7 * MIN;
   const write = pickWrite('x:1', { kind: 'picked', address: 'A', sinceMs: NOW - 20 * MIN, confirmed: true, handedOverFrom: null, underShareSinceMs: since, basis: 'market_readings', standings: [] }, undefined, NOW, 'live');

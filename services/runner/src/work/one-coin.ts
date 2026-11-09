@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks' | 'heldOffLaunchpadPicks'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -331,6 +331,43 @@ export async function rugSweep(
     return rs === undefined || rs.length === 0 ? [] : [pickWrite(p.subjectId, judge(rs, p, facts), p, now, P.mode)];
   });
   return writes.length === 0 ? 0 : repo.writePicks('post', writes, prev, P.mode, now);
+}
+
+/**
+ * ★ THE LAUNCHPAD SWEEP (the owner, 2026-11-09: a coin that did not launch on the launchpad is never
+ * matched to a post, put on the Tape or pushed — those coins are the ones whose pool is pulled). The
+ * candidate reads drop such a coin (store one-coin.ts `#onLaunchpad`), but a held pick is judged again
+ * only inside its hour or by a sweep, and an early pick is held against the rule's "none" — so a pick
+ * made before the rule, or on a coin relabelled since, would keep its coin. Every pass, after this
+ * pass's writes, the held post and narrative picks of the last two days still on such a coin (one
+ * light query each, which returns only those) are judged again on their launchpad candidates: another
+ * coin made for the post, or none. Returns how many changed.
+ */
+export async function offLaunchpadSweep(
+  repo: OneCoinDeps['repo'],
+  judge: (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }) => OneCoinOutcome,
+  now: number,
+  P: OneCoinDeps['policy']['oneCoin'],
+  solUsd: number | null = null,
+): Promise<number> {
+  if (repo.heldOffLaunchpadPicks === undefined) return 0;
+  let changed = 0;
+  for (const kind of ['post', 'narrative'] as const) {
+    const held = await repo.heldOffLaunchpadPicks(kind, now - RUG_SWEEP_MS, RUG_SWEEP_LIMIT);
+    if (held.length === 0) continue;
+    const rows = await repo.candidatesOf([...new Set(held.flatMap((h) => h.members))]);
+    const addresses = [...new Set(rows.map((r) => r.address))];
+    const { trades, watched, market: read } = await factsOf(repo, addresses, now, { marketSinceMs: now - RUG_SWEEP_MS, trades: true, hoursSinceMs: null });
+    const market = await withFrozenPrices(repo, rows, read);
+    const facts = { trades: trades === null ? null : withDollarCaps(trades, market, solUsd ?? solPriceOf(trades, market)), watched, market };
+    const byItem = new Map<string, CandidateRow[]>();
+    for (const r of rows) byItem.set(r.itemId, [...(byItem.get(r.itemId) ?? []), r]);
+    const prev = new Map(held.map((h) => [h.pick.subjectId, h.pick] as const));
+    /* Judged even with no candidate left: the rule then answers none, and the coin is let go. */
+    const writes = held.map((h) => pickWrite(h.pick.subjectId, judge(h.members.flatMap((m) => byItem.get(m) ?? []), h.pick, facts), h.pick, now, P.mode));
+    changed += await repo.writePicks(kind, writes, prev, P.mode, now);
+  }
+  return changed;
 }
 
 /**
@@ -709,6 +746,8 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   /* ── the rug sweep: a held pick past its hour whose coin crashed ── */
   const swept = await rugSweep(repo, new Set(byPost.keys()), judge, now, P, solUsd);
   if (swept > 0) deps.log.info('one coin: the rug sweep moved held picks whose coin crashed', { changed: swept });
+  const offPad = await offLaunchpadSweep(repo, judge, now, P, solUsd);
+  if (offPad > 0) deps.log.info('one coin: the launchpad sweep let go of coins that did not launch on the launchpad', { changed: offPad });
   const unfrozen = await frozenNarrativeSweep(repo, new Set(narratives.keys()), judge, now, P, solUsd);
   if (unfrozen > 0) deps.log.info('one coin: the narrative sweep let go of coins on a frozen price', { changed: unfrozen });
   /* ── the waiting sweep: a post left waiting at its hour's end whose coin ran later ── */

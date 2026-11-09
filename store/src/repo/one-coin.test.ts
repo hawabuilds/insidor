@@ -17,11 +17,18 @@ import { PgOneCoinRepo } from './one-coin.ts';
 
 interface Row { item_id: string; address: string; path: 'launch' | 'existing'; evidence: Record<string, unknown>; launched_at: string | null; found_at: string; updated: number }
 
-function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[]; asideReads: string[][] } {
+function fakeDb(table: Row[], offPad: ReadonlySet<string> = new Set()): { db: Db; bounds: (number | null)[]; asideReads: string[][]; padAsks: string[][] } {
   const bounds: (number | null)[] = [];
   const asideReads: string[][] = [];
+  const padAsks: string[][] = [];
   const db: Db = {
     query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
+      /* The launchpad check: the asked coins that are not launchpad coins. */
+      if (sql.includes('from unnest($1::text[]) as x(address)') && sql.includes('public.asset')) {
+        const asked = (params?.[0] ?? []) as string[];
+        padAsks.push(asked);
+        return asked.filter((a) => offPad.has(a)).map((address) => ({ address }) as R);
+      }
       if (!sql.includes('from internal.one_coin_candidate')) throw new Error(`unexpected statement: ${sql}`);
       /* The table's own open read (no mirror, or a window wider than it holds): every row, here. */
       if (sql.includes('order by max(found_at) desc')) {
@@ -38,7 +45,7 @@ function fakeDb(table: Row[]): { db: Db; bounds: (number | null)[]; asideReads: 
       return table.filter((r) => bound === null || r.updated >= bound).map((r) => ({ ...r, u: r.updated }) as R);
     },
   } as Db;
-  return { db, bounds, asideReads };
+  return { db, bounds, asideReads, padAsks };
 }
 
 const at = (ms: number): string => new Date(ms).toISOString();
@@ -120,6 +127,21 @@ test('a pruned post asked about is read once and held while it is asked about, t
   }
   assert.deepEqual((await repo.candidatesOf(['x:old'])).map((r) => r.address), ['A']);
   assert.deepEqual(asideReads, [['x:old'], ['x:old']]);
+});
+
+test('★ a candidate whose coin is not a launchpad coin is dropped from every read; each coin is asked about once a hold', async () => {
+  const T = 1_800_000_000_000;
+  const table: Row[] = [
+    { item_id: 'x:1', address: 'PAD', path: 'launch', evidence: {}, launched_at: at(T), found_at: at(T), updated: T },
+    { item_id: 'x:1', address: 'POOLONLY', path: 'existing', evidence: {}, launched_at: null, found_at: at(T), updated: T },
+  ];
+  for (const mirror of [true, false]) {
+    const { db, padAsks } = fakeDb(table, new Set(['POOLONLY']));
+    const repo = new PgOneCoinRepo(db, { mirrorCandidates: mirror });
+    assert.deepEqual((await repo.openCandidates(T - 3_600_000, 10)).map((r) => r.address), ['PAD']);
+    assert.deepEqual((await repo.candidatesOf(['x:1'])).map((r) => r.address), ['PAD']);
+    assert.deepEqual(padAsks, [['PAD', 'POOLONLY']], 'held: asked once, not every read');
+  }
 });
 
 test('without the mirror every read goes to the table', async () => {
