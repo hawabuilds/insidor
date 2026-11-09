@@ -128,6 +128,12 @@ if (service in MAIN) {
        already short of disk, for a list nothing reads yet. Back on once it is made light enough to
        finish. */
     // { name: 'smart-wallets', everyMs: 600_000, args: ['tools/smart-wallets.ts', 'due'] },
+    /* Its replacement, off the database (the owner, 2026-11-09): the nightly launch-intelligence run
+       (tools/launch-intel.ts) — smart wallets, teams, rug and peak tables, copy-tests of pushes and picks —
+       read from the launch archive bucket; the database is read once a night for yesterday's picks and
+       pushes (indexed, a few thousand rows). Asked every ten minutes; runs once a UTC day after 01:00.
+       Owner-only: one summary to the owner, nothing changed. Helius capped at 1,000 calls a night. */
+    { name: 'launch-intel', everyMs: 600_000, args: ['tools/launch-intel.ts', 'due'] },
     /* Posts that never made For You, slimmed a week after we found them (tools/post-slim.ts,
        Policy.slim): a minute or so a run, one short transaction per 500 posts. Says "off" and exits
        while Policy.slim.on is false. */

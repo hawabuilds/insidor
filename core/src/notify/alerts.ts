@@ -82,6 +82,8 @@ export const ALERT_KINDS = [
   'coin_matched',
   'supplier_warning',
   'retune_summary',
+  /* The nightly launch-intelligence summary (tools/launch-intel.ts): owner-only, like the re-tune's. */
+  'launch_intel',
   'supplier_account',
   'comment_useful',
   'post_coin',
@@ -141,6 +143,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   coin_matched: 'coins',
   supplier_warning: 'always',
   retune_summary: 'always',
+  launch_intel: 'always',
   supplier_account: 'always',
   comment_useful: 'useful',
   post_coin: 'coins',
@@ -274,7 +277,7 @@ export const PUSHED_KINDS: readonly AlertKind[] = ['coin_launched', 'watched_fir
  * person's other pushes. The deliverer leaves them out of both counts.
  */
 export const UNCOUNTED_PUSH_KINDS: readonly AlertKind[] = ['watched_first_coin'];
-export const OWNER_ALARM_KINDS: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'outage', 'retune_summary'];
+export const OWNER_ALARM_KINDS: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'outage', 'retune_summary', 'launch_intel'];
 export const pushable = (kind: AlertKind, P?: NotifyPolicy): boolean => PUSHED_KINDS.includes(kind) || (OWNER_ALARM_KINDS.includes(kind) && (P?.launch.ownerAlarmsPush ?? true));
 
 /**

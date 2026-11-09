@@ -399,7 +399,7 @@ const SPEND_SQL = `
    group by 1, 2`;
 
 /** Kinds that are about the system, not a post or a coin (services/notify): counted apart. */
-const SYSTEM_KINDS: ReadonlySet<string> = new Set(['outage', 'supplier_account', 'supplier_warning', 'retune_summary', 'push_test']);
+const SYSTEM_KINDS: ReadonlySet<string> = new Set(['outage', 'supplier_account', 'supplier_warning', 'retune_summary', 'launch_intel', 'push_test']);
 
 const ms = (v: Date | string): number => new Date(v).getTime();
 

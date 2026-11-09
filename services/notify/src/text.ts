@@ -623,6 +623,16 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         body: `You called ${wrong === null ? 'some' : wrong} of ${labelled === null ? 'the' : labelled} coins it found wrong or no coin${before === null ? '' : `, against ${share(before)} of shown coins the day before`}. Coins and Create are back to the judge's names.`,
       };
     }
+    case 'launch_intel': {
+      /* The nightly launch-intelligence summary (tools/launch-intel.ts), the owner's only: what was collected,
+         and what the copy-tests say a rule would have done. A number resting on too few cases says so. */
+      const pct = (v: unknown): string => (n(v) === null ? 'too few yet' : `${n(v)}%`);
+      const count = (v: unknown): string => (n(v) ?? 0).toLocaleString('en-US');
+      return {
+        title: `Launch data: ${count(f['launches'])} launches, ${count(f['smart'])} smart wallets, ${count(f['teams'])} teams`,
+        body: `Rug within an hour: ${pct(f['rugPct'])} of ${count(f['rugN'])}. Pushes about a coin that ran: ${pct(f['pushBefore'])}, ${pct(f['pushAfter'])} with a $13k early line (${count(f['pushN'])} pushes). Picks naming the biggest coin: ${pct(f['picksAsPicked'])} as picked, ${pct(f['picksWithRule'])} with the rug and smart-wallet rule (${count(f['picksN'])} posts). Nothing changed; yours to decide.`,
+      };
+    }
     case 'retune_summary': {
       const applied = f['applied'] === true;
       /* The gate (hand gold and live non-memes), then the missed posts. Auto gold is information,

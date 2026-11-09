@@ -290,3 +290,11 @@ test('★ a PvP on a post already pushed: the new coin passed the first, both ca
   assert.equal(t.title, "PvP on @cb_doge's post: $KJI just passed $KIJ");
   assert.equal(t.body, '$KJI $51K, $KIJ $12K. Tap to see both.');
 });
+
+test('the nightly launch summary: counts, rates with their bases, "too few yet" for a rate with none, and that nothing changed', () => {
+  const t = alertText('launch_intel', { launches: 477265, smart: 45, teams: 4323, rugPct: 31.2, rugN: 407, pushBefore: 86, pushAfter: null, pushN: 12, picksAsPicked: 46, picksWithRule: 52.5, picksN: 120 });
+  assert.equal(t.title, 'Launch data: 477,265 launches, 45 smart wallets, 4,323 teams');
+  assert.match(t.body, /Rug within an hour: 31\.2% of 407\./);
+  assert.match(t.body, /86%, too few yet with a \$13k early line \(12 pushes\)/);
+  assert.match(t.body, /Nothing changed; yours to decide\./);
+});
