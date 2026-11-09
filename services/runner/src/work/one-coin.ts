@@ -554,7 +554,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     const coins = await repo.coinsNamed(names, NAMED_COINS_READ);
     /* Only a coin the launch path cannot reach: launched more than the lead before the post. */
     const older = coins.filter((c) => c.launchedAtMs !== null && c.launchedAtMs < p.postedAtMs - P.launchLeadMs);
-    const best = biggestOfName(p, older, { minVariantLength: bars.minVariantLength, readingWithinMs: P.existing.readingWithinMs, minCapUsd: P.existing.minCapUsd }, now);
+    const best = biggestOfName(p, older, { minVariantLength: bars.minVariantLength, readingWithinMs: P.existing.readingWithinMs, minCapUsd: P.existing.minCapUsd, minLiquidityUsd: P.minLiquidityUsd }, now);
     const pool = await repo.coinsLaunchedBetween(names, wordsOf(p.text), p.postedAtMs - P.existing.lookbackMs, p.postedAtMs - P.launchLeadMs, PRIOR_COINS_READ);
     const prior = priorCoins(p, pool, { minVariantLength: bars.minVariantLength, launchLeadMs: P.launchLeadMs, lookbackMs: P.existing.lookbackMs, lookbackCoins: P.existing.lookbackCoins, minLiquidityUsd: P.minLiquidityUsd });
     const chosen = new Map<string, { launchedAtMs: number | null; capUsd: number | null; ties: MatchEvidence[] }>();

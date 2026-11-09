@@ -290,7 +290,7 @@ test('★ without trade data the replay\'s cap-climb rule decides, and the basis
 
 test('second path: the biggest coin of the exact name with a fresh reading over the bar', () => {
   const now = 2_000 * MIN;
-  const bars = { minVariantLength: 4, readingWithinMs: 30 * MIN, minCapUsd: 15_000 };
+  const bars = { minVariantLength: 4, readingWithinMs: 30 * MIN, minCapUsd: 15_000, minLiquidityUsd: 100 };
   const coins = [
     { address: 'small', name: 'Pancake', ticker: 'PAN', capUsd: 16_000, readAtMs: now - MIN },
     { address: 'big', name: 'Pancake', ticker: 'PANCAKE', capUsd: 90_000, readAtMs: now - MIN },
@@ -299,6 +299,22 @@ test('second path: the biggest coin of the exact name with a fresh reading over 
   ];
   assert.equal(biggestOfName(post(), coins, bars, now)?.address, 'big');
   assert.equal(biggestOfName(post({ judgeNames: [] }), coins, bars, now), null);
+});
+
+test('second path: a coin with known sub-threshold liquidity is excluded; null liquidity (on-curve) passes', () => {
+  const now = 2_000 * MIN;
+  const bars = { minVariantLength: 4, readingWithinMs: 30 * MIN, minCapUsd: 15_000, minLiquidityUsd: 100 };
+  /* scam copy: highest cap but Liq <$0.01 — should be excluded */
+  const scam = { address: 'scam', name: 'Jensen', ticker: 'JENSEN', capUsd: 97_000, readAtMs: now - MIN, liquidityUsd: 0.01 };
+  /* real coin: lower cap, real pool */
+  const real = { address: 'real', name: 'Jensen', ticker: 'JENSEN', capUsd: 74_000, readAtMs: now - MIN, liquidityUsd: 21_000 };
+  /* on-curve coin: null liquidity — unknown, not a frozen quote */
+  const curve = { address: 'curve', name: 'Jensen', ticker: 'JENSEN', capUsd: 60_000, readAtMs: now - MIN, liquidityUsd: null };
+  assert.equal(biggestOfName(post({ judgeNames: ['Jensen'] }), [scam, real, curve], bars, now)?.address, 'real');
+  /* with only the scam and on-curve coins (no graduated coin), on-curve passes */
+  assert.equal(biggestOfName(post({ judgeNames: ['Jensen'] }), [scam, curve], bars, now)?.address, 'curve');
+  /* with only the scam, it is excluded and nothing is returned */
+  assert.equal(biggestOfName(post({ judgeNames: ['Jensen'] }), [scam], bars, now), null);
 });
 
 test('replay: a rug that led early is dropped and the real coin taken when it clears', () => {

@@ -103,6 +103,8 @@ export interface ExistingCoinRow {
   readonly launchedAtMs: number | null;
   readonly capUsd: number | null;
   readonly readAtMs: number | null;
+  /** The newest reading's pool liquidity; null when the reading had none (a coin on its curve) or there is no reading. */
+  readonly liquidityUsd: number | null;
   /** The coin's promotion (`PROMO_OF`): its description and the post its link names; null when none is on file. */
   readonly promo?: string | null;
 }
@@ -910,12 +912,12 @@ export class PgOneCoinRepo {
     const lower = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))];
     const compact = [...new Set(names.map((n) => n.replace(/[^\p{L}\p{N}]+/gu, '').toUpperCase()).filter((n) => n !== ''))];
     if (lower.length === 0 && compact.length === 0) return [];
-    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; at: string | null; promo: string | null }>(
-      `select x.address, x.name, x.ticker, x.launched_at, x.cap, x.at, pr.promo
-         from (select n.address, n.name, n.ticker, n.launched_at, r.cap, r.at, a.asset_key
+    const rows = await this.#db.query<{ address: string; name: string | null; ticker: string | null; launched_at: string | null; cap: number | null; liq: number | null; at: string | null; promo: string | null }>(
+      `select x.address, x.name, x.ticker, x.launched_at, x.cap, x.liq, x.at, pr.promo
+         from (select n.address, n.name, n.ticker, n.launched_at, r.cap, r.liq, r.at, a.asset_key
                  from public.coin_name n
                  join public.asset a on a.address = n.address
-                 left join lateral (select market_cap_usd as cap, taken_at as at from public.market_reading m
+                 left join lateral (select market_cap_usd as cap, liquidity_usd as liq, taken_at as at from public.market_reading m
                                      where m.asset_key = a.asset_key and m.market_cap_usd is not null order by taken_at desc limit 1) r on true
                 where lower(n.name) = any($1::text[]) or upper(n.ticker) = any($2::text[])
                 order by r.cap desc nulls last
@@ -924,7 +926,7 @@ export class PgOneCoinRepo {
         order by x.cap desc nulls last`,
       [lower, compact, limit],
     );
-    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), readAtMs: ms(r.at), promo: r.promo }));
+    return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAtMs: ms(r.launched_at), capUsd: num(r.cap), liquidityUsd: num(r.liq), readAtMs: ms(r.at), promo: r.promo }));
   }
 
   /**

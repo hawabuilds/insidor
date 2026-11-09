@@ -288,6 +288,8 @@ export interface ExistingCoin {
   readonly ticker: string | null;
   readonly capUsd: number | null;
   readonly readAtMs: number | null;
+  /** The newest reading's pool liquidity; null when the reading had none (a coin on its curve) or there is no reading. */
+  readonly liquidityUsd?: number | null;
   /** The coin's promotion: the posts its metadata links and its description, joined; null or absent when none is on file. */
   readonly promo?: string | null;
 }
@@ -295,7 +297,7 @@ export interface ExistingCoin {
 export function biggestOfName<C extends ExistingCoin>(
   post: Pick<MatchPost, 'judgeNames' | 'guessNames' | 'postedAtMs' | 'text'>,
   coins: readonly C[],
-  bars: Pick<LaunchMatchBars, 'minVariantLength'> & { readonly readingWithinMs: number; readonly minCapUsd: number },
+  bars: Pick<LaunchMatchBars, 'minVariantLength'> & { readonly readingWithinMs: number; readonly minCapUsd: number; readonly minLiquidityUsd: number },
   nowMs: number,
 ): C | null {
   const names = [...post.judgeNames, ...post.guessNames];
@@ -304,7 +306,10 @@ export function biggestOfName<C extends ExistingCoin>(
   const named = (c: C): boolean =>
     (post.judgeNames.length > 0 && nameMatch(post.judgeNames, c, bars) === 'exact') ||
     (post.guessNames.length > 0 && nameMatch(post.guessNames, c, bars) === 'exact' && guessBacked(post, c, bars));
-  const live = coins.filter((c) => c.capUsd !== null && c.capUsd >= bars.minCapUsd && c.readAtMs !== null && nowMs - c.readAtMs <= bars.readingWithinMs && named(c));
+  /* A known pool under the bar is a frozen quote (same rule as `priorCoins` and `standingOf`): exclude it.
+     Null liquidity (coin on its bonding curve, pool not yet reported) is unknown and passes. */
+  const hasPool = (c: C): boolean => c.liquidityUsd == null || c.liquidityUsd >= bars.minLiquidityUsd;
+  const live = coins.filter((c) => c.capUsd !== null && c.capUsd >= bars.minCapUsd && c.readAtMs !== null && nowMs - c.readAtMs <= bars.readingWithinMs && named(c) && hasPool(c));
   return live.sort((a, b) => (b.capUsd ?? 0) - (a.capUsd ?? 0) || a.address.localeCompare(b.address))[0] ?? null;
 }
 

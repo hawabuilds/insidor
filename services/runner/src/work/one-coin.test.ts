@@ -250,8 +250,8 @@ test('second path: a post whose coin launched long before it gets the biggest co
   const w = world({
     posts: [post],
     named: [
-      { address: 'OLDBIG', name: 'Pancake', ticker: 'PANCAKE', launchedAtMs: NOW - 3 * 24 * 60 * MIN, capUsd: 400_000, readAtMs: NOW - MIN },
-      { address: 'OLDSMALL', name: 'Pancake', ticker: 'PNK', launchedAtMs: NOW - 2 * 24 * 60 * MIN, capUsd: 20_000, readAtMs: NOW - MIN },
+      { address: 'OLDBIG', name: 'Pancake', ticker: 'PANCAKE', launchedAtMs: NOW - 3 * 24 * 60 * MIN, capUsd: 400_000, readAtMs: NOW - MIN, liquidityUsd: 25_000 },
+      { address: 'OLDSMALL', name: 'Pancake', ticker: 'PNK', launchedAtMs: NOW - 2 * 24 * 60 * MIN, capUsd: 20_000, readAtMs: NOW - MIN, liquidityUsd: 5_000 },
     ],
     market: new Map([['OLDBIG', { capUsd: 400_000, peakCapUsd: 410_000, readAtMs: NOW - MIN }]]),
   });
