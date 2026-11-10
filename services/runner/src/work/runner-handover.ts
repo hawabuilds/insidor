@@ -1,7 +1,7 @@
 /**
  * THE RUNNER HAND-OVER, IN THE RUNNER (Policy.runnerLink.handover, core match/runner-handover.ts):
  * every held post pick of the last two days, looked at again with the later coins made for the post
- * whenever the market reader's readings land, and handed to one that runs at three times the held
+ * whenever the market reader's readings land, and handed to one that runs at `switchRatio` times the held
  * coin's hour — with the change recorded (coin_pick_change) and the evidence kept on the pick.
  *
  * Why its own step and not the one-coin rule's: that rule judges only posts with a candidate found in
@@ -18,7 +18,7 @@
  *              in its last hour (0127), and its cap
  *   decide     core `runnerHandover` on the saved-post push's bars (Policy.notify.savedPost), the
  *              pick's cap bar (Policy.oneCoin.minCapUsd) and its hand-over ratio
- *              (Policy.oneCoin.handOverRatio) — never on a post the owner made a coin call on
+ *              (Policy.oneCoin.switchRatio) — never on a post the owner made a coin call on
  *   write      the new pick, `runner_handover` in its evidence with both coins' hours; the push is
  *              services/notify launch.ts, which reads that evidence
  *
@@ -76,7 +76,7 @@ export const handoverBars = (P: Policy): HandoverBars => ({
   minVolume1hUsd: P.notify.savedPost.minVolume1hUsd,
   minTrades1h: P.notify.savedPost.minTrades1h,
   minCapUsd: P.oneCoin.minCapUsd,
-  ratio: P.oneCoin.handOverRatio,
+  ratio: P.oneCoin.switchRatio,
 });
 
 /** One pass. Returns the hand-overs written. */

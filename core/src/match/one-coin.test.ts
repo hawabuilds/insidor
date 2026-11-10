@@ -199,12 +199,12 @@ test('★ $Laura (20 Oct): the dip from $51k to $12k keeps the card on the coin 
   assert.deepEqual(bare, [[at('13:10'), 'LAURA'], [at('13:19'), null], [at('13:37'), 'LAURA']]);
 });
 
-test('★ hand-over only at three times the holder\'s net buying', () => {
+test('★ hand-over only at `switchRatio` (1.5) times the holder\'s net buying (policy.v238)', () => {
   const holder = { address: 'A', sinceMs: 1_011 * MIN };
-  const kept = pickOneCoin([c('A', 1_005, trades({ netBuy: 30 })), c('B', 1_006, trades({ netBuy: 80 }))], holder, NOW, true, BARS);
+  const kept = pickOneCoin([c('A', 1_005, trades({ netBuy: 30 })), c('B', 1_006, trades({ netBuy: 40 }))], holder, NOW, true, BARS);
   assert.equal(kept.kind === 'picked' && kept.address, 'A');
   assert.equal(kept.kind === 'picked' && kept.sinceMs, 1_011 * MIN);
-  const handed = pickOneCoin([c('A', 1_005, trades({ netBuy: 30 })), c('B', 1_006, trades({ netBuy: 95 }))], holder, NOW, true, BARS);
+  const handed = pickOneCoin([c('A', 1_005, trades({ netBuy: 30 })), c('B', 1_006, trades({ netBuy: 50 }))], holder, NOW, true, BARS);
   assert.equal(handed.kind === 'picked' && handed.address, 'B');
   assert.equal(handed.kind === 'picked' && handed.handedOverFrom, 'A');
 });
@@ -372,7 +372,7 @@ test('★ an unmeasured rival is weighed before the held coin: a runner the trad
   assert.equal(o.kind === 'picked' && o.handedOverFrom, 'DUD');
   assert.equal(o.kind === 'picked' && o.basis, 'market_readings');
   /* Under the hand-over bar on readings the held coin stays. */
-  const near = c('RUN', 1_006, null, { market: { capUsd: 40_000, peakCapUsd: 40_000 } });
+  const near = c('RUN', 1_006, null, { market: { capUsd: 25_000, peakCapUsd: 25_000 } });
   const kept = pickOneCoin([dud, near], holder, NOW, true, BARS);
   assert.equal(kept.kind === 'picked' && kept.address, 'DUD');
 });

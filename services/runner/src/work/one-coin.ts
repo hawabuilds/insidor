@@ -61,7 +61,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, bundledHolders, volumeBot, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, bundledHolders, volumeBot, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinBars, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, CandleCap, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -869,10 +869,14 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
   const solUsd = trades === null ? null : solPriceOf(trades, market);
   const tradesUsd = trades === null ? null : withDollarCaps(trades, market, solUsd);
   const ruleBars = oneCoinBars(P, fit);
-  const judge = (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }): OneCoinOutcome =>
+  const judgeOn = (bars: OneCoinBars) => (rs: readonly CandidateRow[], prev: StoredPick | undefined, facts?: { trades: ReadonlyMap<string, TradeRollup> | null; watched: ReadonlySet<string>; market: ReadonlyMap<string, MarketFacts> }): OneCoinOutcome =>
     facts === undefined
-      ? pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, ruled), holderOf(prev), now, running, ruleBars)
-      : pickOneCoin(contendersOf(rs, running ? facts.trades : null, facts.watched, facts.market), holderOf(prev), now, running, ruleBars);
+      ? pickOneCoin(contendersOf(rs, running ? tradesUsd : null, watched, ruled), holderOf(prev), now, running, bars)
+      : pickOneCoin(contendersOf(rs, running ? facts.trades : null, facts.watched, facts.market), holderOf(prev), now, running, bars);
+  const judge = judgeOn(ruleBars);
+  /* ★ A post the owner made a coin call on keeps the hand-over bar it had before policy.v238 (`handOverRatio`,
+     the refit's where one is applied): the lower switch bar was approved for our own picks, not to move his. */
+  const judgeCalled = judgeOn({ ...ruleBars, switchRatio: ruleBars.handOverRatio });
   /* ★ The owner's coin call stands: his posts are judged without the stated-name tie. */
   const called = deps.ownerCalled === undefined || byPost.size === 0 ? new Set<string>() : await deps.ownerCalled([...byPost.keys()]);
   const withoutStated = (rs: readonly CandidateRow[]): CandidateRow[] => rs.map((r) => (Array.isArray(r.evidence['ties']) && r.evidence['ties'].includes('name_stated') ? { ...r, evidence: { ...r.evidence, ties: r.evidence['ties'].filter((t: unknown) => t !== 'name_stated') } } : r));
@@ -901,7 +905,7 @@ export async function oneCoinPass(deps: OneCoinDeps, state: OneCoinState): Promi
     const racing = racingCoins(contendersOf(rs, running ? tradesUsd : null, watched, ruled), now, raceBars);
     return racing.length === 0 ? w : { ...w, evidence: { ...w.evidence, racing } };
   };
-  const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, judge(called.has(id) ? withoutStated(rs) : rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
+  const judged = open1.filter(([id]) => !earlyIds.has(id)).map(([id, rs]) => pickWrite(id, called.has(id) ? judgeCalled(withoutStated(rs), prevPosts.get(id)) : judge(rs, prevPosts.get(id)), prevPosts.get(id), now, P.mode));
   const launchedOf = new Map(open.filter((r) => r.launchedAtMs !== null).map((r) => [r.address, r.launchedAtMs] as const));
   const postPicks = [...holdEarly(judged, prevPosts, launchedOf, deps.policy.oneCoin.early.rivalWithinMs), ...early.map((d) => d.write)].map(withRace);
   const changedPosts = await repo.writePicks('post', postPicks, prevPosts, P.mode, now);

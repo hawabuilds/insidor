@@ -1,6 +1,6 @@
 /**
  * The runner hand-over step over a fake store, on the 24 Oct baldcat case: the held $CAT pick goes to
- * baldcat once it runs at three times $CAT's hour — the evidence saying so — and not with one bar
+ * baldcat once it runs at `switchRatio` times $CAT's hour — the evidence saying so — and not with one bar
  * alone, not over the owner's coin call, and not back again by the one-coin rule or the missed-runner
  * net: only by this rule's own test against the new coin.
  */
@@ -69,8 +69,8 @@ test('★ both bars: the later runner takes the pick, with both hours and the re
 test('★ one bar is not enough', async () => {
   const notRunning = world({ CAT: DEAD, BALDCAT: { volume1hUsd: 19_999, trades1h: 400, capUsd: 52_785 } });
   assert.equal((await runnerHandoverPass(deps(notRunning))).length, 0, 'three times a dead coin, under the dollar bar');
-  const notAhead = world({ CAT: { volume1hUsd: 200_000, trades1h: 3_000, capUsd: 300_000 }, BALDCAT: RUNNING });
-  assert.equal((await runnerHandoverPass(deps(notAhead))).length, 0, 'running, under three times the held hour');
+  const notAhead = world({ CAT: { volume1hUsd: 400_000, trades1h: 3_000, capUsd: 300_000 }, BALDCAT: RUNNING });
+  assert.equal((await runnerHandoverPass(deps(notAhead))).length, 0, 'running, under 1.5 times the held hour');
   const unread = world({ BALDCAT: RUNNING });
   assert.equal((await runnerHandoverPass(deps(unread))).length, 0, 'the held coin unread: unknown, not quiet');
 });
@@ -85,12 +85,12 @@ test('★ never over the owner\'s coin call', async () => {
 test('★ no ping-pong: the old coin back only by the same test against the new one', async () => {
   const w = world({ CAT: DEAD, BALDCAT: RUNNING });
   await runnerHandoverPass(deps(w));
-  w.hours.set('CAT', { volume1hUsd: 1_000_000, trades1h: 9_000, capUsd: 400_000 });
-  assert.equal((await runnerHandoverPass(deps(w))).length, 0, 'under three times the new one: stays');
+  w.hours.set('CAT', { volume1hUsd: 700_000, trades1h: 9_000, capUsd: 400_000 });
+  assert.equal((await runnerHandoverPass(deps(w))).length, 0, 'under 1.5 times the new one: stays');
   assert.equal(w.picks.get(POST)?.address, 'BALDCAT');
   w.hours.set('CAT', { volume1hUsd: 1_600_000, trades1h: 20_000, capUsd: 900_000 });
   const back = await runnerHandoverPass(deps(w));
-  assert.deepEqual(back.map((h) => [h.from, h.to]), [['BALDCAT', 'CAT']], 'at three times it, back by the same rule');
+  assert.deepEqual(back.map((h) => [h.from, h.to]), [['BALDCAT', 'CAT']], 'at 1.5 times it or more, back by the same rule');
 });
 
 test('★ the one-coin rule leaves a pick the hand-over wrote alone', async () => {

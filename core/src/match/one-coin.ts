@@ -18,7 +18,7 @@
  *                              its own peak (the replay's rugs: $508k at +10 min, $1.9k at +1 h)
  *                      pick    cap at least `minCapUsd`, net buying at least `leadRatio` times every
  *                              rival's, at least `minUniqueBuyers` distinct buyers
- *                      keep    a held coin is handed over only to a rival with `handOverRatio` times
+ *                      keep    a held coin is handed over only to a rival with `switchRatio` times
  *                              its net buying; a held coin that goes out is dropped and the rest
  *                              judged afresh — except a fall from its peak, see below
  *                    otherwise no pick: `waiting` while there are candidates, `none` without.
@@ -367,7 +367,10 @@ export interface OneCoinBars {
   readonly minCapUsd: number;
   readonly leadRatio: number;
   readonly minUniqueBuyers: number;
+  /** A later name-only coin over an older coin of the post's name (`behindOlder`). */
   readonly handOverRatio: number;
+  /** A held coin is handed to a rival only at this many times its strength (Policy.oneCoin.switchRatio). */
+  readonly switchRatio: number;
   readonly rugShareOfPeak: number;
   /** A HELD coin under the share is kept until its cap is under this, in USD… */
   readonly rugFloorUsd: number;
@@ -604,7 +607,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
     const challenger = ranked.find((s) => s.address !== holder.address);
     const holdStrength = Math.max(held.strength ?? 0, floor);
     /* On grace a rival takes it on the bar of a fresh pick against it; standing, only at the hand-over bar. */
-    const ratio = onGrace ? bars.leadRatio : bars.handOverRatio;
+    const ratio = onGrace ? bars.leadRatio : bars.switchRatio;
     if (challenger !== undefined && challenger.clears && strength(challenger) >= ratio * holdStrength) return picked(challenger.address, nowMs, holder.address);
     return picked(holder.address, holder.sinceMs, null, onGrace ? under : null);
   }
@@ -625,7 +628,7 @@ export function pickOneCoin(contenders: readonly Contender[], holder: Holder | n
  * (internal.one_coin_fit, 0113). Every bar not in the refit stays the policy's.
  */
 export function oneCoinBars(
-  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly creatorDumpShareOfPeak: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number; readonly maxCapToPool: number; readonly maxCapPerBuyer: number },
+  p: { readonly judgeFromMs: number; readonly confirmByMs: number; readonly minCapUsd: number; readonly leadRatio: number; readonly minUniqueBuyers: number; readonly handOverRatio: number; readonly switchRatio: number; readonly rugShareOfPeak: number; readonly rugFloorUsd: number; readonly rugGraceMs: number; readonly rugKeepAboveUsd: number; readonly creatorDumpShareOfPeak: number; readonly crashCapRatio: number; readonly openingCapUsd: number; readonly minLiquidityUsd: number; readonly maxCapToPool: number; readonly maxCapPerBuyer: number },
   fit: Partial<Pick<OneCoinBars, 'minCapUsd' | 'leadRatio' | 'handOverRatio' | 'minUniqueBuyers'>> | null = null,
 ): OneCoinBars {
   return {
@@ -635,6 +638,8 @@ export function oneCoinBars(
     leadRatio: fit?.leadRatio ?? p.leadRatio,
     minUniqueBuyers: fit?.minUniqueBuyers ?? p.minUniqueBuyers,
     handOverRatio: fit?.handOverRatio ?? p.handOverRatio,
+    /* Never from a refit: the owner set it (policy.v238). */
+    switchRatio: p.switchRatio,
     rugShareOfPeak: p.rugShareOfPeak,
     rugFloorUsd: p.rugFloorUsd,
     rugGraceMs: p.rugGraceMs,

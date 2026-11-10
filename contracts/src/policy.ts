@@ -2651,8 +2651,13 @@ export interface OneCoinPolicy {
   readonly leadRatio: number;
   /** …and when this many distinct wallets bought it. */
   readonly minUniqueBuyers: number;
-  /** A held coin is handed over only to a rival with this many times its net buying. */
+  /** A later name-only coin replaces an OLDER coin already trading on the post's name only at this many
+      times its strength (one-coin.ts `behindOlder`). A refit may set it. */
   readonly handOverRatio: number;
+  /** A held coin is handed over only to a rival with this many times its net buying (the one-coin keep
+      check) — and the runner hand-over moves a pick only at this many times the held coin's last hour of
+      dollars. No refit overrides it: the owner set it. */
+  readonly switchRatio: number;
   /** A coin whose cap fell under this share of its peak is out (the rugs of the replay)… */
   readonly rugShareOfPeak: number;
   /** …except a HELD coin, kept until its cap is also under this many USD… */
@@ -5689,7 +5694,7 @@ export interface RunnerLinkPolicy {
    * (Policy.market.readingFreshnessMs), BOTH hold:
    *   - it is running at the saved-post push's bars (Policy.notify.savedPost: dollars AND trades in the
    *     last hour) and trades at the pick's own cap bar (Policy.oneCoin.minCapUsd);
-   *   - its last hour's dollars are at least Policy.oneCoin.handOverRatio times the held coin's.
+   *   - its last hour's dollars are at least Policy.oneCoin.switchRatio times the held coin's.
    * Never over the owner's coin call. A coin it handed the pick to is never re-judged by the one-coin
    * rule; only this rule moves it again, and the coin it was taken from may take it back only by
    * this same test against the new one (core match/runner-handover.ts). No number of its own: every
@@ -6296,7 +6301,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v237',
+  version: 'policy.v238',
 
   admit: {
     maxAgeMin: 240,
@@ -8031,6 +8036,14 @@ const POLICY_V1: Policy = {
     leadRatio: 3,
     minUniqueBuyers: 15,
     handOverRatio: 3,
+    /* ★ THE SWITCH TO A LATER COIN (policy.v238, the owner, 2026-11-10: "3x the first coin isn't a good rule …
+       if the first one's at 30k, we're finding the other one at 90k plus"). Was the hand-over ratio: 3 for the
+       runner hand-over, 5 for the keep check through the 26 Oct refit. Replayed 2-9 Nov on the 26 owner-verified
+       runners with stored trades: 1.5x reached 25 against 3x's 18 in their first hour and missed none 3x
+       reached ($HODL at $970k, $RAMBO $621k, $VETO $377k/$633k, $PUSSY, $AMC, $MAGGIE newly reached); cost
+       about 4 more moves a day onto coins that never passed $30k, and 2 posts where the pick later left $VETO
+       for a $207k coin. 2x reached the same runners later; 1.5x off the first pick then 3x missed $MAGGIE. */
+    switchRatio: 1.5,
     rugShareOfPeak: 0.3,
     /* A held coin's dip (the owner's "more forgiving", 20 Oct, after $Laura blanked for 18 minutes).
        Replayed on readings since live: of 22 drops kept at $10k / 30 min, 12 came back over the
