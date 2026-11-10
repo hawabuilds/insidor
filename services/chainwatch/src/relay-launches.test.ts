@@ -67,3 +67,19 @@ test('★ through the listing: a relay launch we do not hold is added with its o
   assert.deepEqual(added, ['NEW:https://ipfs.io/ipfs/NEW']);
   assert.equal(res.added, 1);
 });
+
+test('★ free details spend no credit: a capped day never leaves a relay launch without its link', async () => {
+  let t = 1_000_000;
+  const r = createRelayLaunches(600_000, () => t as Millis);
+  const listing = createListing(
+    { page: async (n) => (n === 1 ? r.page() : []), known: async () => new Set(), details: async (as) => r.details(as), add: async (ls) => ls.map((l) => l.hit.address), now: () => t as Millis, note: () => undefined },
+    { pagesPerPass: 2, maxAgeMs: 600_000, accountsPerCall: 100, creditsPerCall: 1, detailsCreditsPerCall: 0, dayCapCredits: 1, dayCapPages: Number.POSITIVE_INFINITY, paceSlackPages: Number.POSITIVE_INFINITY },
+  );
+  for (const a of ['A', 'B', 'C']) {
+    r.hooks.onCreate(create(a, t));
+    const res = await listing.pass();
+    assert.equal(res.withoutDetails, 0, a);
+    assert.equal(res.credits, 0, a);
+    t += 1_000;
+  }
+});

@@ -323,7 +323,7 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, a
       ? null
       : createListing(
           { ...shared, page: async (n) => (n === 1 ? relay.page() : []), details: async (addresses) => relay.details(addresses), note: (msg, fields) => relayLog.warn(msg, fields) },
-          { pagesPerPass: 2, maxAgeMs: lp.maxAgeMs, accountsPerCall: ACCOUNTS_PER_CALL, creditsPerCall: lp.creditsPerCall, dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits, dayCapPages: Number.POSITIVE_INFINITY, paceSlackPages: Number.POSITIVE_INFINITY },
+          { pagesPerPass: 2, maxAgeMs: lp.maxAgeMs, accountsPerCall: ACCOUNTS_PER_CALL, creditsPerCall: lp.creditsPerCall, detailsCreditsPerCall: 0, dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits, dayCapPages: Number.POSITIVE_INFINITY, paceSlackPages: Number.POSITIVE_INFINITY },
         );
   if (relayListing !== null) relayLog.info('relay listing on: the paid listing pages only while the relay is quiet', { freshMs: lp.relay.freshMs, everyMs: lp.relay.everyMs });
   return { listing, relayListing };

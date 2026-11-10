@@ -106,6 +106,9 @@ export interface ListingOptions {
   /** Coins one chain read can ask about, and what one read costs on the key's day. */
   readonly accountsPerCall: number;
   readonly creditsPerCall: number;
+  /** What one `details` read costs, when not `creditsPerCall`: 0 where the details come free (relay-launches.ts),
+      so a free read never spends the day's cap and leaves later launches without their link. */
+  readonly detailsCreditsPerCall?: number;
   /** The most credits the chain reads may cost in a UTC day; past it, coins are added without details. */
   readonly dayCapCredits: number;
   /** The most listing pages a UTC day may ask for; past it, passes read nothing until 00:00 UTC. */
@@ -271,7 +274,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
 
       /* ★ THE DAY'S CREDIT CAP: the chain reads share a key's free day with the trade feed. Past the
          cap a coin is still added, from the listing's own name and ticker, without its link. */
-      const cost = Math.ceil(fresh.length / Math.max(1, opts.accountsPerCall)) * opts.creditsPerCall;
+      const cost = Math.ceil(fresh.length / Math.max(1, opts.accountsPerCall)) * (opts.detailsCreditsPerCall ?? opts.creditsPerCall);
       let details: ReadonlyMap<string, ChainDetails> = new Map();
       let credits = paired.credits;
       if (!spendCredits(nowMs, cost)) {
