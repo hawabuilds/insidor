@@ -34,6 +34,7 @@ import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-p
 import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
+import { withCardVideos } from './card-video.ts';
 import { errorText, type Logger } from './log.ts';
 import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
@@ -343,15 +344,17 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
 
 /**
  * A feed's cards with their English (translations.ts), their narrative (story-tags.ts), our copy
- * of their picture (post-pics.ts) and the face of the account a card quotes (quote-faces.ts), the
- * four reads sent at once. Each leaves a card it adds nothing
+ * of their picture (post-pics.ts), the face of the account a card quotes (quote-faces.ts) and the
+ * video the card can play (card-video.ts), the five reads sent at once. Each leaves a card it adds nothing
  * to as the same object, so the answers are put together card by card.
  */
 async function withCardAdditions(db: Deps['db'], cards: readonly unknown[]): Promise<readonly unknown[]> {
-  const [translated, tagged, files, faces] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards), pictureFiles(db, cards.flatMap(pictureLinks)), quoteFaces(db, cards)]);
+  const [translated, tagged, files, faces, videos] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards), pictureFiles(db, cards.flatMap(pictureLinks)), quoteFaces(db, cards), withCardVideos(db, cards)]);
   return translated.map((card, i) => {
     const tag = tagged[i];
-    const out = tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
+    const withTag = tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
+    const video = videos[i] === cards[i] ? undefined : (videos[i] as Record<string, unknown> | undefined)?.['video'];
+    const out = video === undefined ? withTag : { ...(withTag as Record<string, unknown>), video };
     return withQuoteFace(withFile(out, files), faces);
   });
 }

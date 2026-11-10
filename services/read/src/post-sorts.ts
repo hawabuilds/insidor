@@ -89,6 +89,7 @@ import { withPictureFiles } from './post-pics.ts';
 import { withQuoteFaces } from './quote-faces.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
+import { withCardVideos } from './card-video.ts';
 
 export type SortBy = 'trending' | 'most_viewed';
 
@@ -249,7 +250,7 @@ export function createSorts(now: () => number = Date.now, policy: Policy = DEFAU
     const cards = ids.length === 0 ? [] : await db.query(SORT_CARDS_SQL, [ids]);
     const byId = new Map(cards.flatMap((c) => (typeof c['item_id'] === 'string' && c['payload'] != null ? [[c['item_id'], withCurrentMarket(c['payload'], msOf(c['payload_at']), nowMs)] as const] : [])));
     const shown = page.filter((x) => byId.has(x.id));
-    const posts = await withQuoteFaces(db, await withPictureFiles(db, await withStoryTags(db, await withTranslations(db, shown.map((x) => byId.get(x.id))))));
+    const posts = await withCardVideos(db, await withQuoteFaces(db, await withPictureFiles(db, await withStoryTags(db, await withTranslations(db, shown.map((x) => byId.get(x.id)))))));
     if (legacy) return { tick, by, window, posts, gained: Object.fromEntries(shown.map((x) => [x.id, Math.round(x.gained)])) };
     const end = cursor + page.length;
     const next = end < hit.list.length ? String(end) : null;
