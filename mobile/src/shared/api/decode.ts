@@ -27,7 +27,7 @@ import { postPicFile } from '../post-pic.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink, RacingCoin } from './wire/coin.ts';
-import type { OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, SharedBy, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
+import type { CardVideo, OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, SharedBy, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -667,6 +667,7 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     runningOlder: o.runningOlder === undefined || o.runningOlder === null ? [] : arr(o.runningOlder, `${path}.runningOlder`).map((c, i) => decodeOlderCoin(c, `${path}.runningOlder[${i}]`)),
     ...decodeTranslation(o.translation, `${path}.translation`),
     ...decodeInStory(o.inStory),
+    ...decodeCardVideo(o.video),
     ...decodeQuote(o.quote, `${path}.quote`),
     ...decodeDeleted(o.deletedAt),
     ...decodeSharedBy(o.sharedBy, `${path}.sharedBy`),
@@ -779,6 +780,18 @@ function decodeInStory(raw: unknown): { inStory?: PostInStory } {
   const title = typeof o['title'] === 'string' && o['title'].trim() !== '' ? o['title'] : null;
   const posts = typeof o['posts'] === 'number' && Number.isInteger(o['posts']) && o['posts'] > 0 ? o['posts'] : null;
   return { inStory: { storyId, title, posts } };
+}
+
+/**
+ * The video a card can play in the feed (services/read card-video.ts). Absent, or anything but an
+ * https mp4: none, and the card shows its still and opens the sheet on a tap, as before.
+ */
+function decodeCardVideo(raw: unknown): { video?: CardVideo } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const o = raw as Record<string, unknown>;
+  const playUrl = httpsOrNull(o['playUrl']);
+  if (playUrl === null || !/\.mp4(\?|$)/i.test(playUrl)) return {};
+  return { video: { playUrl, loops: o['loops'] === true } };
 }
 
 /** One older coin trading since a post: a number we were not sent is a dash, never zero. */

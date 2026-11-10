@@ -1,0 +1,33 @@
+/* A feed card's playing video (FeedVideo.tsx): it fills the card's media box exactly as the still
+   under it does, so the box never jumps when the video starts. The sound button sits bottom right,
+   clear of the narrative tag at bottom left, with a 44px tap area. */
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: transparent;
+}
+
+.sound {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+}
+
+.sound::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}

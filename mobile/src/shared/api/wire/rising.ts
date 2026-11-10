@@ -79,6 +79,18 @@ export interface RisingPost {
    * face; `postedAt` above stays the post's own time, and `sharedBy.at` is when it was shared.
    */
   readonly sharedBy?: SharedBy;
+  /**
+   * The post's own video file, which the card plays muted while it is on screen (services/read
+   * card-video.ts). Absent for a picture, a TikTok video (played in TikTok's player from `id`), a
+   * video with no file the app can play, and from an older server: the card shows its still.
+   */
+  readonly video?: CardVideo;
+}
+
+/** A video a feed card can play: an https mp4, and whether it is a GIF that loops with no sound. */
+export interface CardVideo {
+  readonly playUrl: string;
+  readonly loops: boolean;
 }
 
 /** Who shared a post just now (with their picture), how, when, and a link to the share. */

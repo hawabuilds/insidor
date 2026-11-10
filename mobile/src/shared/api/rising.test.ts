@@ -59,6 +59,16 @@ test('a video preview decodes with its play flag; a row from before the flag sho
   assert.throws(() => decodeRisingPost({ ...POST, thumbIsVideo: 'yes' }));
 });
 
+test('a card video decodes when it is an https mp4; anything else is none and the card shows its still', () => {
+  const mp4 = 'https://video.twimg.com/ext_tw_video/1/pu/vid/a.mp4?tag=12';
+  assert.deepEqual(decodeRisingPost({ ...POST, video: { playUrl: mp4, loops: true } }).video, { playUrl: mp4, loops: true });
+  assert.deepEqual(decodeRisingPost({ ...POST, video: { playUrl: mp4 } }).video, { playUrl: mp4, loops: false });
+  assert.equal(decodeRisingPost({ ...POST, video: { playUrl: 'http://video.twimg.com/a.mp4' } }).video, undefined);
+  assert.equal(decodeRisingPost({ ...POST, video: { playUrl: 'https://video.twimg.com/a.m3u8' } }).video, undefined);
+  assert.equal(decodeRisingPost({ ...POST, video: 'yes' }).video, undefined);
+  assert.equal(decodeRisingPost(POST).video, undefined);
+});
+
 test("the poster's picture decodes when it is an https link; absent or anything else is no picture", () => {
   assert.equal(decodeRisingPost({ ...POST, authorPictureUrl: 'https://pbs.twimg.com/profile_images/1/a_400x400.jpg' }).authorPictureUrl, 'https://pbs.twimg.com/profile_images/1/a_400x400.jpg');
   assert.equal(decodeRisingPost(POST).authorPictureUrl, null, 'a server from before the field');

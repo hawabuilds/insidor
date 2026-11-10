@@ -225,6 +225,7 @@ export function Feed({
     'memory',
   );
   const [buying, setBuying] = useState<CoinFace | null>(null);
+  const [buyingPost, setBuyingPost] = useState<{ readonly address: string; readonly ticker: string | null; readonly name: string | null } | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
   const reload = useCallback(() => {
     reloadBoard();
@@ -312,10 +313,12 @@ export function Feed({
           <AutoBuyStrip post={p} onOpen={() => setAutoBuyFor(p)} />
         </>
       }
-      watch={<WatchStar postId={p.id} onWatched={autoBuyAllowed && awaitsCoin(p) ? () => setAutoBuyFor(p) : undefined} />}
+      watch={<WatchStar postId={p.id} size="bare" onWatched={autoBuyAllowed && awaitsCoin(p) ? () => setAutoBuyFor(p) : undefined} />}
       sortLine={ranked === null ? null : ranked.by === 'trending' ? speedLineOf(ranked.speeds.get(p.id)) : gainedLineOf(ranked.gained.get(p.id), ranked.window)}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
+        /* Buy on a card opens the buy ticket at once, over the feed (BuyOpen.tsx). */
+        buy: (coin) => setBuyingPost({ address: coin.address, ticker: coin.ticker, name: coin.name }),
         create: () => onCreatePost(p),
         seeCoins: () => setSheet({ id: p.id, start: 'coins' }),
         /* The card's own coin is the post's proven one: its page, with the narrative around it when there is one
@@ -473,6 +476,7 @@ export function Feed({
           </>
         ) : null}
         {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
+        {buyingPost !== null ? <BuyOpen mint={buyingPost.address} ticker={buyingPost.ticker ?? buyingPost.name ?? ''} onClose={() => setBuyingPost(null)} onNote={setNote} /> : null}
         <SheetToast note={note} onDone={() => setNote(null)} />
 
         {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}

@@ -1,29 +1,46 @@
 /**
- * One single post on the For You or Popular feed, as a card.
+ * One single post on the For You or Popular feed, as a card, laid out like the feeds people already
+ * scroll (the owner, 2026-11-10, feed-best): a head line, the post's words across the card's whole
+ * width, its picture or video at full width, then the coin and Buy.
  *
- * The story card's layout (row.module.css) with a post's facts in it: the post's own picture
- * with its platform badge, its words as the title, who posted it (with their profile picture) and
- * how long ago, its views and views line. This is the card as it looked before the post sheet was
- * built, kept that way on purpose: the owner asked for the old look back.
- * A post with no picture or video has no thumbnail box at all, so its words use the card's full
- * width; a card with media is unchanged. The picture is asked for at the card's size
- * (picture-size.ts, inside Thumb, which falls back to the link as it came), never the full posted
- * size: a long feed decodes hundreds of them.
+ * ★ THE HEAD IS ONE LINE: the poster's picture, their @handle, the platform's mark, "·" and the
+ * age on the left, and the views number on the right, all centred on the same line. A long handle
+ * ends in "…"; the mark, the age and the views are never cut. Nothing hangs under the views: a
+ * second line there is what made the head look misaligned in every earlier try.
+ *
+ * ★ THE WORDS GET THE CARD'S FULL WIDTH, up to three lines, then "Show more", which opens the rest
+ * inside the card (it never opens the sheet). "Translated from …" sits under the words because it
+ * is about the words, and the list's own line (today's gain, Trending's speed) under that.
+ *
+ * ★ THE MEDIA IS ONE FIXED HEIGHT ON EVERY CARD (row.module.css `.media`), so the feed scrolls with
+ * an even rhythm. An X video or GIF plays in it, muted, while it is on screen (FeedVideo.tsx, the
+ * server's `video`); a TikTok video shows its cover with a play icon and plays in the sheet, where
+ * TikTok's player is. The narrative tag sits on the media's bottom left; a card with no media shows
+ * it under the words. A post with no picture, or one that will not load, has no media box at all.
  *
  * A post written in another language shows its English, with "Translated from <language>" and
  * "Show original" under it (shared/ui/Translated.tsx); a tap there swaps the words and never opens
  * the sheet.
  *
- * ★ A TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet): the card, its title, Buy and View
- * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
- * post, and See N coins opens the sheet on Choose coin, with its quick buy. The button's WORDS come
- * from the coin line below, so the card says what the post's coin is before anyone taps.
+ * ★ TWO WAYS OUT, THE WAY SOCIAL APPS DO THEM: the platform's mark beside the handle opens the post
+ * on its source (as pump.fun's callouts do; a deleted post's mark is no link), and Share in the foot
+ * row sends the post's page in the app (shared/share-link.ts, the sheet's own share).
+ *
+ * ★ THE CARD IS READ IN THE FEED; A TAP ON IT OPENS NOTHING (the owner, 2026-11-10: "get rid of the
+ * view pop up", for For You cards only). Its words open with Show more, its video plays in place and
+ * a tap on a video turns its sound on, a TikTok video plays in TikTok's player inside the card. Buy
+ * opens the buy ticket at once (`buy`, BuyOpen.tsx), never the post sheet; the coin's name opens its
+ * chart. The post sheet is still where a PvP's Buy, View coins and See N coins go (a choice between
+ * coins, with its warnings), and where shared links and alerts open. Create coin opens the create
+ * flow. The button's WORDS come from the coin line below, so the card says what the post's coin is
+ * before anyone taps.
  * ★ A TAP ON THE CARD'S COIN (its logo and ticker, when the card names one coin) OPENS THAT COIN'S
  * TOKEN PAGE (`openCoin`, the owner 2026-10-14): every coin tap in the app opens the coin.
  *
  * ★ EVERY CARD ENDS IN ONE ROW, AND IT IS THE SERVER'S ANSWER, NOT OURS (coin-status.ts `cardRow`; the
  * owner's cards-clean.html, 2026-10-31): at the foot of the card (no divider), the coin (logo, ticker,
- * market cap) or a few grey words, then its buttons, all 40px with one corner, and the Watch star:
+ * market cap) or a few grey words, then Share and the Watch star as plain icons with no box (the owner's
+ * option E, 2026-11-10: Buy is the only solid shape on the card), then its buttons, 44px, last:
  *
  *   matched / one → the coin and Buy; no sentence and no tie line ("Links this post, Same picture…"
  *              is said in the post pop-up, PostSheet, never lost)
@@ -65,7 +82,7 @@
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
 import type { Measured } from '../format/measure.ts';
 import { quotePictureLeads, sharedByLabel, type PostInStory } from '../api/wire/rising.ts';
@@ -75,21 +92,31 @@ import { pvpCoins } from '../pvp.ts';
 import { formatUsd } from '../format/number.ts';
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
-import { compact, formatCount } from '../format/number.ts';
+import { formatCount } from '../format/number.ts';
 import { tickerText } from '../format/ticker.ts';
 import { deletedLine, platformOf } from '../platform.ts';
+import { postPicSources } from '../post-pic.ts';
 import { CoinLogo } from './CoinLogo.tsx';
+import { FeedVideo } from './FeedVideo.tsx';
+import { TikTokPlayer } from '../../features/post-sheet/TikTokPlayer.tsx';
+import { tiktokVideoId } from '../../features/post-sheet/tiktok-player.ts';
+import { PlayIcon, ShareIcon } from './icons.tsx';
+import { sharePage } from '../share-link.ts';
+import { useToast } from './ComingSoon.tsx';
+import { PlatformMark } from './PlatformMark.tsx';
+import { POST_PIC_BASE } from './post-pic-base.ts';
 import { QuoteInset } from './QuoteInset.tsx';
+import { usePictureTries } from './usePictureTries.ts';
 import { usePosterPic } from './usePosterPic.ts';
-import { Sparkline } from './Sparkline.tsx';
-import { Thumb } from './Thumb.tsx';
 import { TranslatedLine, useShownWords } from './Translated.tsx';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
 
 export interface PostHandlers {
-  /** Opens the post sheet: a tap on the card, its title, Buy or View coins. */
+  /** Opens the post sheet: View coins, and Buy when the card is a PvP or `buy` is absent. */
   readonly open: () => void;
+  /** Opens the buy ticket for the card's one coin straight from the feed. Absent: Buy opens the post sheet. */
+  readonly buy?: (coin: BuyCoin) => void;
   /** Opens the create flow from this post. */
   readonly create: () => void;
   /** Opens the post sheet on Choose coin: every coin with the post's name. */
@@ -99,6 +126,12 @@ export interface PostHandlers {
   /** Opens the narrative the post is part of. Absent (as on that narrative's own page): no tag. */
   readonly openStory?: (storyId: string) => void;
 }
+
+/** The media box's height on every card, in px (row.module.css `.media`). */
+const MEDIA_HEIGHT = 168;
+
+/** The coin a card's Buy is for. */
+export type BuyCoin = Extract<CardAction, { readonly kind: 'buy' }>['coin'];
 
 const NO_COIN = { known: false, pending: 'not_minted' } as const;
 
@@ -126,93 +159,170 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
   /* The English when the post was written in another language, with its line (Translated.tsx). */
   const words = useShownWords(post);
 
+  const platform = platformOf(post.sourceLabel);
+  /* A deleted post's page is gone: its mark is no link out (RisingPost.deletedAt). */
+  const sourceLink = post.permalink !== null && post.deletedAt === undefined ? post.permalink : null;
+  const tag = post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null;
+
   return (
-    <article className={styles['card']} onClick={handlers.open} ref={cardRef}>
-      <div className={styles['body']}>
-        {/* A post with no picture or video has no thumbnail box: its words take the card's width. */}
-        {post.thumbUrl !== null || post.thumbIsVideo ? (
-          <Thumb
-            url={post.thumbUrl}
-            file={post.thumbFile}
-            video={post.thumbIsVideo}
-            width={84}
-            height={98}
-            radius={14}
-            platform={platformOf(post.sourceLabel)}
-            platformLabel={post.sourceLabel}
-          />
-        ) : null}
-        <div className={styles['content']}>
-          <div className={styles['top']}>
-            <a
-              className={styles['postText']}
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handlers.open();
-              }}
-            >
-              {words.text}
+    <article className={styles['card']} ref={cardRef}>
+      {/* ★ THE HEAD: picture, @handle, the platform's mark (a link to the post on its source), "·", the age; views on the right. */}
+      <div className={styles['head']}>
+        <PosterPic key={`${post.authorPictureFile ?? ''} ${post.authorPictureUrl ?? ''}`} file={post.authorPictureFile} url={post.authorPictureUrl} label={post.authorLabel} big />
+        <span className={styles['who']}>
+          <b className={styles['handle']}>{post.authorLabel}</b>
+          {platform !== null && sourceLink !== null ? (
+            <a className={styles['source']} href={sourceLink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`} onClick={(e) => e.stopPropagation()}>
+              <PlatformMark platform={platform} size={13} />
             </a>
-            <TranslatedLine line={words.line} compact className={styles['translatedLine']} />
-            <span className={styles['spark']}>
-              <Sparkline points={post.spark.points} windowMs={post.spark.windowMs} width={44} label={`Views over time for this post by ${post.authorLabel}`} />
-            </span>
-            <div className={styles['views']}>
-              <Value r={formatCount(post.reach)} className={styles['viewsN']} />
-              <span className={styles['viewsL']}>views</span>
-            </div>
-            <div className={styles['byline']}>
-              <span>
-                <PosterPic key={`${post.authorPictureFile ?? ''} ${post.authorPictureUrl ?? ''}`} file={post.authorPictureFile} url={post.authorPictureUrl} label={post.authorLabel} />
-                {post.authorLabel}
-              </span>
-              <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
-            </div>
-            {post.sharedBy !== undefined ? (
-              <div className={styles['shared']}>
-                <span>
-                  <PosterPic key={`${post.sharedBy.authorPictureFile ?? ''} ${post.sharedBy.authorPictureUrl ?? ''}`} file={post.sharedBy.authorPictureFile} url={post.sharedBy.authorPictureUrl} label={post.sharedBy.authorLabel} />
-                  {sharedByLabel(post.sharedBy)}
-                </span>
-                <Value r={formatAge(post.sharedBy.at, now)} className={styles['age']} />
-              </div>
-            ) : null}
-            {post.deletedAt !== undefined ? <span className={styles['gone']}>{deletedLine(post.sourceLabel)}</span> : null}
-            {sortLine !== null ? <span className={sortLine.up ? styles['gained'] : styles['speed']}>{sortLine.text}</span> : null}
-          </div>
-        </div>
+          ) : platform !== null ? (
+            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={13} /></span>
+          ) : null}
+          <span className={styles['sep']} aria-hidden="true">·</span>
+          <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
+        </span>
+        <span className={styles['views']}>
+          <Value r={formatCount(post.reach)} className={styles['viewsN']} />
+          <span className={styles['viewsL']}>views</span>
+        </span>
       </div>
+
+      <PostWords text={words.text} />
+      <TranslatedLine line={words.line} compact className={styles['translatedLine']} />
+      {sortLine !== null ? <span className={sortLine.up ? styles['gained'] : styles['speed']}>{sortLine.text}</span> : null}
+      {post.sharedBy !== undefined ? (
+        <div className={styles['shared']}>
+          <span>
+            <PosterPic key={`${post.sharedBy.authorPictureFile ?? ''} ${post.sharedBy.authorPictureUrl ?? ''}`} file={post.sharedBy.authorPictureFile} url={post.sharedBy.authorPictureUrl} label={post.sharedBy.authorLabel} />
+            {sharedByLabel(post.sharedBy)}
+          </span>
+          <Value r={formatAge(post.sharedBy.at, now)} className={styles['age']} />
+        </div>
+      ) : null}
+      {post.deletedAt !== undefined ? <span className={styles['gone']}>{deletedLine(post.sourceLabel)}</span> : null}
+
+      {/* The picture or video at full width, the narrative tag on it; with no media, the tag alone. */}
+      <CardMedia post={post} tag={tag} />
 
       {/* The post this one quotes, inside the card (QuoteInset.tsx); its picture only when it is not already the card's. */}
       {post.quote !== undefined ? <QuoteInset quote={post.quote} showPicture={!quotePictureLeads(post)} now={now} /> : null}
 
-      {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
-
-      {/* ★ THE ONE ROW (coin-status.ts `cardRow`, cards-clean.html): at the foot of the card, no divider, the coin or a few grey words, then the buttons and the star. */}
+      {/* ★ THE ONE ROW (coin-status.ts `cardRow`): the coin or a few grey words, then Share and the star as plain icons, then the row's buttons last, under the thumb. */}
       <div className={styles['row']}>
         {shown !== null ? (
           <span
             className={styles['coin']}
             onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(shown.coinId); } : undefined}
           >
-            <CoinLogo small address={shown.address} ticker={shown.ticker} imageUrl={shown.imageUrl} size={28} />
+            <CoinLogo small address={shown.address} ticker={shown.ticker} imageUrl={shown.imageUrl} size={32} />
             <b className={styles['ticker']}>{tickerText(shown.ticker)}</b>
             {/* A cap not read is a dash with its reason (Value), never left blank or "$0". */}
             <Value r={formatUsd(shown.marketCapUsd)} className={styles['cap']} num />
           </span>
         ) : null}
         {note !== null ? <span className={styles['note']}>{note}</span> : null}
-        {actions.length > 0 || watch !== null ? (
-          <span className={styles['actions']}>
-            {actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}
-            {watch}
-          </span>
-        ) : null}
+        <span className={styles['actions']}>
+          <ShareButton postId={post.id} title={`${post.authorLabel} on Insidor`} />
+          {watch}
+          {actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} buyDirect={pvp === null ? handlers.buy : undefined} />)}
+        </span>
       </div>
       {extra}
     </article>
+  );
+}
+
+/**
+ * The post's words across the card's width: three lines, then "Show more", which opens the rest in
+ * the card. "Show more" is there only when the words were really cut, measured after drawing, so a
+ * short post never offers more than it has.
+ */
+function PostWords({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || expanded) return;
+    const measure = () => setCut(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const watcher = new ResizeObserver(measure);
+    watcher.observe(el);
+    return () => watcher.disconnect();
+  }, [text, expanded]);
+  return (
+    <div className={styles['words']}>
+      <p ref={ref} className={expanded ? styles['postTextOpen'] : styles['postText']}>
+        {text}
+      </p>
+      {cut && !expanded ? (
+        <button type="button" className={styles['more']} onClick={() => setExpanded(true)}>
+          Show more
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The card's picture or video at full width, one height on every card. Our stored copy at the
+ * sheet's size first (post-pic.ts), then the link as it came. An X video or GIF plays in the box
+ * (FeedVideo.tsx); a video that fails shows its still, and a still that will not load takes the box
+ * away, leaving the narrative tag alone under the words.
+ */
+function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
+  const sources = postPicSources(post.thumbFile, post.thumbUrl === null ? [] : [post.thumbUrl], POST_PIC_BASE, 'sheet');
+  const { src, tryKey, fail } = usePictureTries(sources);
+  const [videoFailed, setVideoFailed] = useState(false);
+  /* A TikTok video has no file we can play: a tap puts TikTok's own player in the box (TikTokPlayer.tsx). */
+  const tiktok = post.video === undefined && post.thumbIsVideo && platformOf(post.sourceLabel) === 'tiktok' ? tiktokVideoId(post.id) : null;
+  const [tiktokOn, setTiktokOn] = useState(false);
+  const video = post.video !== undefined && !videoFailed ? post.video : null;
+  if (src === null && video === null) return tag;
+  return (
+    <div className={styles['media']}>
+      {src !== null ? <img key={tryKey} className={styles['mediaImg']} src={src} alt="" loading="lazy" decoding="async" onError={() => fail(src)} /> : null}
+      {video !== null ? <FeedVideo src={video.playUrl} poster={src} silent={video.loops} onFail={() => setVideoFailed(true)} /> : null}
+      {tiktok !== null && tiktokOn && src !== null ? (
+        <div className={styles['mediaFill']}>
+          <TikTokPlayer id={tiktok} posterUrl={src} height={MEDIA_HEIGHT} onFail={() => setTiktokOn(false)} />
+        </div>
+      ) : null}
+      {video === null && post.thumbIsVideo && !tiktokOn ? (
+        tiktok !== null ? (
+          <button type="button" className={styles['mediaPlay']} aria-label="Play the video" onClick={() => setTiktokOn(true)}>
+            <PlayIcon size={18} />
+          </button>
+        ) : (
+          <span className={styles['mediaPlay']} aria-label="Video">
+            <PlayIcon size={18} />
+          </span>
+        )
+      ) : null}
+      {tag !== null ? <div className={styles['mediaTag']}>{tag}</div> : null}
+    </div>
+  );
+}
+
+/** Share the post's page in the app (shared/share-link.ts): the phone's share sheet, or the link copied. */
+function ShareButton({ postId, title }: { postId: string; title: string }) {
+  const toast = useToast();
+  return (
+    <button
+      type="button"
+      className={styles['iconButton']}
+      aria-label="Share this post"
+      onClick={(e) => {
+        e.stopPropagation();
+        void sharePage({ screen: 'post', postId }, title).then((o) => {
+          if (o === 'copied') toast('Link copied');
+          else if (o === 'failed') toast("Couldn't share the link");
+        });
+      }}
+    >
+      <ShareIcon size={18} />
+    </button>
   );
 }
 
@@ -221,10 +331,10 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
  * else the source's link (usePosterPic.ts). The handle's first letter only when the account has no
  * picture stored or none of them will load.
  */
-function PosterPic({ file, url, label }: { file: string | null; url: string | null; label: string }) {
+function PosterPic({ file, url, label, big = false }: { file: string | null; url: string | null; label: string; big?: boolean }) {
   const { src, tryKey, onError } = usePosterPic(file, url);
-  if (src !== null) return <img key={tryKey} className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
-  return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
+  if (src !== null) return <img key={tryKey} className={big ? styles['headPic'] : styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
+  return <span className={big ? styles['headLetter'] : styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
 }
 
 /**
@@ -258,7 +368,8 @@ interface RowCoin {
 }
 
 /** One button the row asked for, and never one it did not; all one height and corner (row.module.css). */
-function ActionButton({ action, handlers }: { action: CardAction; handlers: PostHandlers }) {
+/** `buyDirect`: Buy opens the ticket at once; absent (a PvP, whose sheet warns of the bigger coin), Buy opens the post sheet. */
+function ActionButton({ action, handlers, buyDirect }: { action: CardAction; handlers: PostHandlers; buyDirect?: ((coin: BuyCoin) => void) | undefined }) {
   const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     fn();
@@ -267,7 +378,7 @@ function ActionButton({ action, handlers }: { action: CardAction; handlers: Post
     case 'create':
       return <button type="button" className={styles['create']} onClick={tap(handlers.create)}>Create coin</button>;
     case 'buy':
-      return <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(action.coin.ticker)}`} onClick={tap(handlers.open)}>Buy</button>;
+      return <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(action.coin.ticker)}`} onClick={tap(buyDirect !== undefined ? () => buyDirect(action.coin) : handlers.open)}>Buy</button>;
     case 'view':
       return <button type="button" className={styles['ghost']} onClick={tap(handlers.open)}>View coins</button>;
     case 'see':

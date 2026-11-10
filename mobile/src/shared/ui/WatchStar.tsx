@@ -21,7 +21,8 @@ export function useWatchedPostIds(): readonly string[] {
   return useSyncExternalStore(watchedPosts.subscribe, watchedPosts.ids, watchedPosts.ids);
 }
 
-export function WatchStar({ postId, size = 'card', onWatched }: { postId: string; size?: 'card' | 'sheet'; /** After a watch the server agreed to: the owner's auto buy sheet opens (features/autobuy). */ onWatched?: (() => void) | undefined }) {
+/** `bare`: the For You card's star, a plain icon with no box beside Share (PostRow.tsx); purple and filled while watched. */
+export function WatchStar({ postId, size = 'card', onWatched }: { postId: string; size?: 'card' | 'sheet' | 'bare'; /** After a watch the server agreed to: the owner's auto buy sheet opens (features/autobuy). */ onWatched?: (() => void) | undefined }) {
   const on = useWatchedPostIds().includes(postId);
   const toast = useToast();
   const tap = (e: MouseEvent) => {
@@ -38,7 +39,7 @@ export function WatchStar({ postId, size = 'card', onWatched }: { postId: string
   return (
     <button
       type="button"
-      className={`${styles['star']} ${size === 'sheet' ? styles['big'] : ''} ${on ? styles['on'] : ''}`}
+      className={`${styles['star']} ${size === 'sheet' ? styles['big'] : size === 'bare' ? styles['bare'] : ''} ${on ? styles['on'] : ''}`}
       aria-pressed={on}
       aria-label={on ? 'Stop watching this post' : 'Watch this post'}
       onClick={tap}

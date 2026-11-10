@@ -1,88 +1,204 @@
-/* One story as a card. 22px gutters, 12px between cards, no strip or stripe of colour on
-   any edge: a card is a fact, and colour on this screen is reserved for meaning. The card is the
-   approved system's card (#131317 on a #1f1f26 hairline, tokens.css), the same as every other
-   card in the app. */
+/* One single post as a card (PostRow.tsx), laid out like the feeds people already scroll: a head
+   line, the words at full width, the media at one fixed height, then the coin row. No strip or
+   stripe of colour on any edge: a card is a fact, and colour on this screen is reserved for meaning.
+   The card is the approved system's card (#131317 on a #1f1f26 hairline, tokens.css). Only PostRow
+   uses this file; the narrative and search pages draw their own rows. */
 
+/* The card itself opens nothing (it is read in the feed), so it has no pointer and no pressed look. */
 .card {
   --badge-ring: var(--card);
-  margin: 0 var(--gutter) 12px;
-  padding: 18px;
+  margin: 0 10px 10px;
+  padding: 14px;
   border-radius: var(--r-card);
   border: 1px solid var(--card-line);
   background: var(--card);
+  display: grid;
+  gap: 10px;
+}
+
+.card > * {
+  min-width: 0;
+}
+
+/* ★ THE HEAD: one 36px line, everything centred on it. Only the handle is ever cut, with "…". */
+.head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  min-height: 36px;
+}
+
+.headPic,
+.headLetter {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--hover);
+}
+
+.headPic {
+  object-fit: cover;
+  display: block;
+}
+
+.headLetter {
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+/* The platform's mark: a link to the post on its source, with a 44px tap area around a 13px mark. */
+.source,
+.sourceMark {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.source::after {
+  content: '';
+  position: absolute;
+  inset: calc((13px - var(--tap)) / 2);
+}
+
+.sep {
+  flex: none;
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+.age {
+  flex: none;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.views {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.viewsN {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewsL {
+  font-size: var(--type-caption);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ★ THE WORDS: the card's full width, three lines, then Show more (which opens them in the card). */
+.words {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.postText,
+.postTextOpen {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.38;
+  letter-spacing: -0.005em;
+  color: var(--text-1);
+}
+
+.postText {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.card:active {
-  background: var(--popup);
-}
-
-/* The picture on the left; everything else beside it, not under it. */
-.body {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.content {
-  flex: 1;
+/* "Translated from …" under the words (Translated.tsx). */
+.translatedLine {
   min-width: 0;
+  margin-top: -6px;
 }
 
-.top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas:
-    'title spark views'
-    'trans trans views'
-    'byline byline views'
-    'shared shared shared'
-    'gone gone gone'
-    'sortline sortline sortline';
-  column-gap: 8px;
-  align-items: start;
+/* The list's own line under the words: green when gaining faster than the hour before, as every
+   gain in the app; the quieter text colour otherwise. */
+.gained,
+.speed {
+  margin-top: -4px;
+  font-size: var(--type-secondary);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
-.title {
-  grid-area: title;
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--type-section);
-  font-weight: var(--type-section-weight);
-  letter-spacing: -0.015em;
+.gained {
+  color: var(--up);
 }
 
-.spark {
-  grid-area: spark;
-  margin-top: 2px;
+.speed {
+  color: var(--text-3);
 }
 
-.byline {
-  grid-area: byline;
-  margin-top: 3px;
+/* A huge account that just shared the post (RisingPost.sharedBy): "Quoted by @elonmusk · 2h", one
+   line with that account's face like every @handle. */
+.shared {
   display: flex;
   gap: 8px;
   align-items: baseline;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-3);
+  font-weight: 600;
+  color: var(--text-2);
   line-height: 1.3;
-  min-width: 0;
 }
 
-/* The handle or posts line wraps at spaces rather than truncating: "14 posts on X, Tik…"
-   hides which sites, which is the half of the line worth reading. */
-.byline > :first-child {
+.shared > :first-child {
   min-width: 0;
   overflow-wrap: break-word;
 }
 
-/* The poster's picture, small and inline before the handle on a post card, so the line keeps the
-   baseline the story cards share. The letter stands in only when the picture fails to load, at
-   the caption size (12px, the floor for any text), so the picture is 20px to hold it. */
+/* The small face beside a shared-by handle, inline so the line keeps its baseline. The letter
+   stands in only when the picture fails, at the caption size (12px, the floor for any text). */
 .posterPic {
   display: inline-block;
   width: 20px;
@@ -109,117 +225,75 @@
   line-height: 1;
 }
 
-.age {
-  color: var(--text-2);
-  font-weight: 600;
-  flex: none;
-}
-
-.views {
-  grid-area: views;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.viewsN {
-  font-size: var(--type-body);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-/* Trending's speed line under the byline, the card's full width: green when it is gaining faster
-   than the hour before, as every gain in the app; the quieter text colour otherwise. */
-.gained,
-.speed {
-  grid-area: sortline;
-  margin-top: 4px;
-  font-size: var(--type-secondary);
-  font-weight: 700;
-}
-
-.gained {
-  color: var(--up);
-}
-
-.speed {
-  color: var(--text-3);
-}
-
-/* A huge account that just shared the post (RisingPost.sharedBy): "Quoted by @elonmusk · 2h", one
-   line under the byline at its size, with that account's face like every @handle. A fact about the
-   post, in the byline's colour; the share's age beside it in the age's weight. */
-.shared {
-  grid-area: shared;
-  margin-top: 3px;
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-  line-height: 1.3;
-}
-
-.shared > :first-child {
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
-/* A post deleted from its source (RisingPost.deletedAt): one quiet line under the byline, the
-   byline's own size and colour — a fact about the post, not an alarm. */
+/* A post deleted from its source: one quiet line, a fact about the post, not an alarm. */
 .gone {
-  grid-area: gone;
-  margin-top: 3px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-3);
 }
 
-.viewsL {
-  font-size: var(--type-caption);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.summary {
-  margin: 10px 0 0;
-  font-size: var(--type-body);
-  line-height: 1.45;
-  color: var(--text-2);
-}
-
-/* A single post's own words, in the title's place. Up to three lines and then cut: a post is
-   read by its text, and one truncated line of somebody else's sentence says nothing. */
-/* A translated post's "Translated from …" line, under its words across the words' and the
-   sparkline's width (Translated.tsx). The row is empty, and takes no height, on every other card. */
-.translatedLine {
-  grid-area: trans;
-  min-width: 0;
-}
-
-.postText {
-  grid-area: title;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+/* ★ THE MEDIA: full width, one height on every card, so the feed scrolls with an even rhythm. */
+.media {
+  position: relative;
+  height: 168px;
+  border-radius: 14px;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: -0.01em;
+  background: var(--hover);
 }
 
-/* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`): no divider, the card stays one smooth
-   surface as before; the coin or a few grey words at the left and the buttons and star at the right,
-   every button 40px with one corner. */
+.mediaImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* TikTok's own player, filling the box once its play is tapped (TikTokPlayer.tsx). */
+.mediaFill {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+
+.mediaPlay {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+}
+
+/* The narrative tag on the media's bottom left, clear of the sound button at the right. */
+.mediaTag {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 60px);
+  display: flex;
+}
+
+.mediaTag .storyTag {
+  margin: 0;
+  background: rgba(10, 10, 12, 0.72);
+  color: #fff;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`): no divider; the coin or a few grey
+   words at the left, the buttons, Share and the star at the right, every one 44px with one corner. */
 .row {
-  margin-top: 16px;
-  min-height: 40px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -233,7 +307,7 @@
 }
 
 .ticker {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--text-1);
   overflow: hidden;
@@ -258,14 +332,20 @@
 .actions {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
+}
+
+/* Buy (or Create coin, See coins) a little apart from the two plain icons before it. */
+.actions > :nth-child(3) {
+  margin-left: 6px;
 }
 
 .buy,
 .create,
 .ghost {
-  height: 40px;
+  height: 44px;
   border-radius: 12px;
   flex: none;
   display: inline-flex;
@@ -278,17 +358,19 @@
 
 .buy:active,
 .create:active,
-.ghost:active {
+.ghost:active,
+.iconButton:active {
   transform: scale(0.97);
 }
 
 /* Buy says only "Buy": the ticker and the cap are already on the row to its left. */
 .buy {
+  min-width: 88px;
   padding: 0 20px;
   background: var(--sheet-action);
   color: #fff;
   font-weight: 800;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .create {
@@ -313,13 +395,30 @@
   font-weight: 800;
 }
 
-/* The narrative a post is part of (PostRow StoryTag): a small grey pill under the card's words, one
-   line, the title cut before the count. Grey, not purple: a tag is a fact, not the card's action. */
+/* Share: a plain icon with no box, like the Watch star beside it (watch-star.module.css `.bare`),
+   so Buy is the only solid shape on the card; a 40x44 tap area. */
+.iconButton {
+  width: 40px;
+  height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+/* The narrative a post is part of (PostRow StoryTag): a small grey pill, one line, the title cut
+   before the count. Grey, not purple: a tag is a fact, not the card's action. */
 .storyTag {
   display: flex;
   max-width: 100%;
-  margin: 10px 0 0;
+  justify-self: start;
   padding: 4px 10px;
+  border: 0;
   border-radius: 999px;
   background: var(--tag-bg);
   color: var(--text-2);
@@ -327,6 +426,7 @@
   font-weight: 700;
   line-height: 16px;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .storyTagName {

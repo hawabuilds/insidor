@@ -5,7 +5,9 @@
  * about behaviour: a middle dot, a "•••" menu or a `disabled` button is a decision made in the
  * source, and the source is where it is cheapest to refuse.
  *
- *   - No middle dots, bullets or "…" menus anywhere. Separation is spacing.
+ *   - No middle dots, bullets or "…" menus anywhere. Separation is spacing. One exception, the
+ *     owner's (2026-11-10): the feed card's head line, "@handle 𝕏 · 12h" (shared/ui/PostRow.tsx),
+ *     holds exactly one "·" between the platform's mark and the age. Nowhere else.
  *   - No disabled buttons. A control that cannot be used is not rendered.
  *   - Nothing but `shared/api/client.ts` touches the network.
  *   - Nothing calls `submitTrade`. Buy and Sell open the order sheet only when the build has
@@ -40,10 +42,15 @@ test('the walk is reading the package', () => {
   assert.ok(ALL.length >= 30, `found only ${ALL.length} files`);
 });
 
+const HEAD_LINE_DOT = join('shared', 'ui', 'PostRow.tsx');
+
 test('no middle dots, bullets or dot menus', () => {
   for (const f of ALL) {
     const c = code(f);
+    const allowed = f.endsWith(HEAD_LINE_DOT) ? c.split('·').length - 1 : 0;
+    assert.ok(allowed <= 1, `${relative(SRC, f)} has more than the head line's one "·"`);
     for (const bad of ['·', '•', '⋯', '⋮', '...</', '>...']) {
+      if (bad === '·' && allowed === 1) continue;
       assert.ok(!c.includes(bad), `${relative(SRC, f)} contains "${bad}"`);
     }
   }

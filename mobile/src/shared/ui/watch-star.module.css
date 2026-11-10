@@ -38,3 +38,21 @@
   box-shadow: none;
   color: #fff;
 }
+
+/* The For You card's star (PostRow.tsx, the owner's option E, 2026-11-10): a plain icon with no box,
+   so Buy is the only solid shape on the card; a 40x44 tap area. Watched, it is the filled star in
+   purple on the card, not a purple square. */
+.bare {
+  width: 40px;
+  height: 44px;
+  box-shadow: none;
+}
+
+.bare::after {
+  inset: 0;
+}
+
+.bare.on {
+  background: transparent;
+  color: var(--brand, #9945ff);
+}

@@ -123,6 +123,8 @@ export const RISING_POST_FIELDS = [
   'deletedAt',
   /* A huge account that just shared the post (services/project resurfaced.ts `sharedBy`). */
   'sharedBy',
+  /* The video the card plays in the feed (services/read card-video.ts). */
+  'video',
 ] as const;
 
 /** A huge account's share of a card's post (`RisingPost.sharedBy`). */
