@@ -116,7 +116,8 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
      a restart asks it once more at once, never misses it. See `watchEveryMs`. */
   const watch = memoryWatchClock();
   /* Where each fresh band's last ask ended (`feed.fresh`), in this process: a restart reaches back
-     the band's cap once, never leaves a gap. Unused while fresh discovery is off. */
+     the band's cap once — and a language on its own spacing the spacing too (core langBandWindow) —
+     so it never leaves a gap. Unused while fresh discovery is off. */
   const fresh = memoryFreshClock();
   return {
     stage: 'discover',

@@ -148,8 +148,12 @@ test('★ the discover pass as shipped asks every fresh band once per language, 
   const windows = [...new Set(seen.map((s) => s.q.untilMs))];
   assert.equal(windows.length, 2 + lateBands);
   for (const window of windows) {
+    /* Each band asks each of its languages once. In what order is the longest-waited first: on a first pass
+       that is the one whose first ask reaches back furthest (its own spacing, core langBandWindow). */
     const langs = seen.filter((s) => s.q.untilMs === window).map((s) => s.lang);
-    assert.ok(JSON.stringify(langs) === JSON.stringify([...LANGS]) || JSON.stringify(langs) === JSON.stringify(lateLangs), `each band asks its languages in policy order: ${langs.join(',')}`);
+    const sorted = JSON.stringify([...langs].sort());
+    assert.ok(sorted === JSON.stringify([...LANGS].sort()) || sorted === JSON.stringify([...lateLangs].sort()), `each band asks each of its languages once: ${langs.join(',')}`);
+    assert.equal(new Set(langs).size, langs.length);
   }
   assert.equal(r.itemsSeen, 2 * (7 + 2 * (LANGS.length - 1)) + lateBands * (7 + 2 * (lateLangs.length - 1)));
   assert.equal(stored.filter((s) => [...new Set(s.langs)].sort().join() === [...LANGS].sort().join()).length, 2, 'one store per fresh band, holding every language');
@@ -290,7 +294,10 @@ test('★ a band keeps each language\'s window on its own clock: a failed langua
     floors: { floors: async () => ({}), set: async () => undefined }, dailyCapUsd: 1, fresh: clock,
   });
   const band6 = seen.filter((s) => s.q.untilMs === later - 6 * MIN);
-  assert.equal(band6.find((s) => s.lang === 'pt')?.q.sinceMs, later - 6 * MIN - policy.feed.fresh.maxWindowMin * MIN);
+  /* pt never answered, so its ask is a first one: back the band cap and its own spacing, at most the spacing's ceiling. */
+  const ptSince = band6.find((s) => s.lang === 'pt')?.q.sinceMs ?? Number.NaN;
+  assert.ok(ptSince <= later - 6 * MIN - policy.feed.fresh.maxWindowMin * MIN, 'at least the band cap');
+  assert.ok(ptSince >= later - 6 * MIN - policy.feed.fresh.maxWindowMin * MIN - policy.feed.langSplit.maxEveryMs, 'no further than the spacing allows');
   assert.equal(band6.find((s) => s.lang === 'en')?.q.sinceMs, NOW - 6 * MIN);
 });
 

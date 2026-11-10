@@ -207,7 +207,7 @@ test('★ a language is spaced so each ask buys minPostsPerAsk posts a band, nev
 
 test('★ a language window goes once it spans the spacing, and reaches back that far beyond the cap', () => {
   const now = 1_000 * MIN;
-  assert.deepEqual(langBandWindow(6, null, now, 30 * MIN, SPLIT), { since: now - 21 * MIN, until: now - 6 * MIN }, 'a first ask goes at once, back the band cap');
+  assert.deepEqual(langBandWindow(6, null, now, 30 * MIN, SPLIT), { since: now - 51 * MIN, until: now - 6 * MIN }, 'a first ask (a restart) goes at once, back the spacing plus the cap: no hole behind a restart');
   assert.equal(langBandWindow(6, now - 30 * MIN, now, 30 * MIN, SPLIT), null, '24 minutes of posting time: not yet');
   assert.deepEqual(langBandWindow(6, now - 40 * MIN, now, 30 * MIN, SPLIT), { since: now - 40 * MIN, until: now - 6 * MIN });
   assert.deepEqual(langBandWindow(6, now - 120 * MIN, now, 30 * MIN, SPLIT), { since: now - 51 * MIN, until: now - 6 * MIN }, 'after a gap, the spacing plus the cap and no more');

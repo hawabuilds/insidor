@@ -121,7 +121,8 @@ test('★ a day with room for one page asks the language that has waited longest
   const second = await pass((NOW + 2 * MIN) as Millis, ONE_PAGE, clock);
   assert.deepEqual(second.asked.map(langOf), ['ja'], 'Japanese was left out and its window is still open: it goes first');
   const ja = second.asked[0]!;
-  assert.equal(ja.untilMs! - ja.sinceMs!, 15 * MIN, 'its whole window, from where it stood');
+  /* A first ask reaches back the cap plus the language's own spacing (core langBandWindow): Japanese's is under a second here. */
+  assert.ok(ja.untilMs! - ja.sinceMs! >= 15 * MIN && ja.untilMs! - ja.sinceMs! < 16 * MIN, 'its whole window, from where it stood');
   const third = await pass((NOW + 4 * MIN) as Millis, ONE_PAGE, clock);
   assert.deepEqual(third.asked.map(langOf), ['en'], 'and back: English has now waited longest');
 });

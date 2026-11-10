@@ -105,7 +105,13 @@ export function langEveryMs(lang: string, usdPerPost: number, p: Policy): number
  * One language's band window this pass (`feed.langSplit`): like `bandWindow`, but only once it spans
  * `everyMs` of posting time (null before), and reaching back `everyMs` beyond `fresh.maxWindowMin` so
  * a language asked every half hour is not cut to the last quarter-hour. A first ask (no `lastUntil`)
- * reaches back `fresh.maxWindowMin`, as a band's does, and goes at once.
+ * goes at once and reaches back as far as any ask may: `everyMs` beyond `fresh.maxWindowMin`.
+ *
+ * ★ A FIRST ASK IS USUALLY A RESTART, NOT A NEW LANGUAGE. The clock lives in the process, so every
+ * deploy forgets where each language stopped. Reaching back only `fresh.maxWindowMin` left a hole of
+ * up to `everyMs` behind each restart: on 10 Nov three restarts in an hour cost the hourly languages
+ * (Korean, Arabic, Thai, Indonesian) most of an hour of posts. The full reach covers the hole; at
+ * worst it re-reads posts the last ask already returned, the price of one ordinary ask.
  *
  * What breaks if changed carelessly: a cap on the reach-back shorter than `everyMs` leaves posts no
  * ask of that language ever looks at.
@@ -113,7 +119,7 @@ export function langEveryMs(lang: string, usdPerPost: number, p: Policy): number
 export function langBandWindow(ageMin: number, lastUntil: number | null, now: number, everyMs: number, p: Policy): { readonly since: number; readonly until: number } | null {
   const until = now - ageMin * MS_PER_MINUTE;
   const reach = p.feed.fresh.maxWindowMin * MS_PER_MINUTE;
-  if (lastUntil === null) return { since: until - reach, until };
+  if (lastUntil === null) return { since: until - reach - Math.max(0, everyMs), until };
   const since = Math.max(lastUntil, until - reach - Math.max(0, everyMs));
   if (until - since < Math.max(0, everyMs) || since >= until) return null;
   return { since, until };

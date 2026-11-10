@@ -165,11 +165,12 @@ test('★ a late band on a spacing (policy.v185 `fresh.late.everyMs`): asked onc
   const lateOf = (qs: readonly DiscoveryQuery[]) => qs.filter((q) => q.untilMs !== null && NOW - q.untilMs >= 200 * MIN);
   const seen: DiscoveryQuery[] = [];
   const clock = memoryFreshClock();
-  /* A first ask (a fresh process) goes at once, reaching back the bands' fifteen minutes. */
+  /* A first ask (a fresh process, usually a restart) goes at once, reaching back the bands' fifteen
+     minutes plus its own ten: a restart leaves no hole behind it. */
   await run(source(seen), SPACED, clock, NOW, undefined, { ...held });
   const first = lateOf(seen);
   assert.equal(first.length, 1);
-  assert.equal(first[0]!.untilMs! - first[0]!.sinceMs!, SPACED.feed.fresh.maxWindowMin * MIN);
+  assert.equal(first[0]!.untilMs! - first[0]!.sinceMs!, (SPACED.feed.fresh.maxWindowMin + 10) * MIN);
   /* Two and eight minutes on: the window holds less than ten minutes of posting, so the band waits. */
   for (const later of [2, 8]) {
     seen.length = 0;
