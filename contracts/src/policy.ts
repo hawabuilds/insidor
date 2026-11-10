@@ -1608,6 +1608,15 @@ export interface LaunchListingPolicy {
    */
   readonly dayCapPages: number;
   readonly paceSlackPages: number;
+  /**
+   * ★ THE RELAY LISTING (policy.v237; the owner, 2026-11-10: "could pump api replace these"). With the trade
+   * relay on, every launchpad `create` it sends is held (chainwatch relay-launches.ts) and added through this
+   * same listing every `everyMs`, with the coin's own name, ticker and metadata link and no page or chain read
+   * billed. Sampled 10 Nov: 37 creates in two minutes, every launch the store then held among them and 31 it did
+   * not yet hold. While a create arrived within `freshMs` the paid listing above reads nothing (`held: relay`);
+   * once the relay is quiet longer, it pages as before, so a relay outage costs lateness, never a launch.
+   */
+  readonly relay: { readonly on: boolean; readonly everyMs: number; readonly freshMs: number };
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -6287,7 +6296,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v236',
+  version: 'policy.v237',
 
   admit: {
     maxAgeMin: 240,
@@ -6866,6 +6875,8 @@ const POLICY_V1: Policy = {
          446k of 500k at the other readers' month-to-date rate. The slack is an hour of the cap. */
       dayCapPages: 6_000,
       paceSlackPages: 250,
+      /* policy.v237: launches from the relay's creates; the paid listing only while the relay is quiet two minutes. */
+      relay: { on: true, everyMs: 10_000, freshMs: 120_000 },
     },
   },
 

@@ -56,6 +56,8 @@ export interface RelayTradeSocketOptions {
   readonly live?: LiveHooks;
   /** ★ THE CHARTS (chart.ts in chainwatch): every trade of every coin, so a coin's candles start at its first trade. */
   readonly chart?: ChartHooks;
+  /** Every launch on the curve as the relay sees it (LaunchHooks). Absent: creates are only charted. */
+  readonly launches?: LaunchHooks;
 }
 
 /** One trade as it lands, for the screens: facts of the trade, never anything of the rule. */
@@ -98,6 +100,57 @@ export interface LiveHooks {
 export interface ChartHooks {
   /** One frame's legs of `coin`; `launch` when the frame is the coin's own creation (it may carry no leg). */
   readonly onTrades: (coin: string, ticks: readonly LiveTick[], launch: boolean, seenAtMs: number) => void;
+}
+
+/**
+ * ★ EVERY LAUNCH ON THE CURVE, AS IT HAPPENS (the owner, 2026-11-10: "could pump api replace these"). The
+ * relay sends a `create` frame for each coin made on the launchpad — every transaction version, unlike the
+ * launch socket, which misses version-1 launches — carrying the coin's own name, ticker and metadata link.
+ * Sampled 10 Nov 01:20 UTC: 37 creates in two minutes, every launch our store then held among them, the
+ * others reaching us only minutes later through the paid listing. chainwatch adds them as the listing
+ * does (its relay listing), so the paid listing becomes a backup for when the relay is silent.
+ */
+export interface LaunchHooks {
+  readonly onCreate: (c: RelayCreate) => void;
+}
+
+/** A launch read off a relay `create` frame. */
+export interface RelayCreate {
+  readonly address: string;
+  readonly name: string | null;
+  readonly ticker: string | null;
+  /** The coin's curve account, where its progress is read. */
+  readonly marketAddress: string | null;
+  /** The creation's chain time, ms. */
+  readonly createdAt: number;
+  readonly marketCapUsd: number | null;
+  /** The token its curve is priced in, when that is not SOL (a launch paired against another token). */
+  readonly pairedWith: { readonly address: string; readonly symbol: string | null; readonly name: string | null } | null;
+  /** The coin's own name, ticker and metadata link, when the frame carried all three. */
+  readonly details: { readonly name: string; readonly symbol: string; readonly uri: string } | null;
+}
+
+/** A relay frame read as a launch on the launchpad's curve, or null for anything else. Pure. */
+export function readRelayCreate(frame: Record<string, unknown>): RelayCreate | null {
+  if (frame['action'] !== 'create' || frame['pool'] !== 'pump') return null;
+  const address = str(frame['mint']);
+  const createdAt = num(frame['timestamp']);
+  if (address === null || createdAt === null) return null;
+  const name = str(frame['name']);
+  const symbol = str(frame['symbol']);
+  const uri = str(frame['uri']);
+  const quoteMint = str(frame['quoteMint']);
+  const cap = num(frame['marketCapUsd']);
+  return {
+    address,
+    name,
+    ticker: symbol,
+    marketAddress: str(frame['poolId']),
+    createdAt,
+    marketCapUsd: cap !== null && cap > 0 ? cap : null,
+    pairedWith: quoteMint === null || quoteMint === WRAPPED_SOL ? null : { address: quoteMint, symbol: str(frame['quoteSymbol']), name: str(frame['quoteName']) },
+    details: name !== null && symbol !== null && uri !== null ? { name, symbol, uri } : null,
+  };
 }
 
 /** The stablecoin and wrapped SOL, as the relay names them: their trades give SOL's dollar price. */
@@ -308,6 +361,12 @@ export function createRelayTradeSocket(opts: RelayTradeSocketOptions): TradeSock
         const ticks = liveTicksOf(f, seenAt);
         if (ticks.length > 0 || f['action'] === 'create') chart.onTrades(coin, ticks, f['action'] === 'create', seenAt);
       }
+    }
+    /* A launch: the text test first, so a frame that is not a create is never parsed for it. */
+    if (opts.launches !== undefined && data.includes('"action":"create"')) {
+      const f = parse();
+      const c = f === null ? null : readRelayCreate(f);
+      if (c !== null) opts.launches.onCreate(c);
     }
     if (!wanted.has(coin)) return;
     const frame = parse();

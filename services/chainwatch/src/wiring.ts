@@ -84,6 +84,7 @@ import type { ChainwatchConfig } from './config.ts';
 import { coldCursor, type CursorStore } from './cursor.ts';
 import type { MintFeed, MintSink } from './feed.ts';
 import { createListing, type Listing } from './listing.ts';
+import { createRelayLaunches, type RelayLaunches } from './relay-launches.ts';
 import type { Logger } from './log.ts';
 import { NotImplemented } from './not-implemented.ts';
 import type { StageRunRecorder } from './run-record.ts';
@@ -98,6 +99,8 @@ export interface Runtime {
   readonly feed: MintFeed;
   /** The second way launches arrive (listing.ts). Null when the policy turns it off. */
   readonly listing: Listing | null;
+  /** The relay's launchpad creates as a listing (relay-launches.ts). Null with no relay or its policy off. */
+  readonly relayListing: Listing | null;
   readonly sink: MintSink;
   readonly cursors: CursorStore;
   readonly stageRuns: StageRunRecorder;
@@ -244,9 +247,9 @@ function lockKey(name: string): number {
  * listing, and its mint time is the listing's pool creation, ('vendor_field', 'bounded'). It is
  * added only when no row exists, so a coin the socket delivered first is never touched.
  */
-function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, archive: LaunchArchive): Listing | null {
+function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, archive: LaunchArchive, relay: RelayLaunches | null): { readonly listing: Listing | null; readonly relayListing: Listing | null } {
   const lp = DEFAULT_POLICY.assets.launchListing;
-  if (!lp.on) return null;
+  if (!lp.on) return { listing: null, relayListing: null };
   const keyed = cfg.listingMarketKey;
   const market = geckoterminal(
     keyed === null
@@ -256,12 +259,10 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, a
   const listingLog = log.child({ part: 'launch-listing' });
   const rpcUrl = cfg.listingRpcUrl ?? (cfg.tradeFeedKey === null ? null : TRADE_RPC_URL + cfg.tradeFeedKey);
   listingLog.info('launch listing on', { chainReads: cfg.listingRpcUrl !== null ? 'LISTING_RPC_URL' : rpcUrl !== null ? 'HELIUS_API_KEY' : 'none', dayCapCredits: lp.dayCapCredits, listingPlan: keyed?.plan ?? 'free', dayCapPages: keyed === null ? null : lp.dayCapPages });
-  return createListing(
-    {
-      page: (n) => market.newLaunches(n),
-      known: (addresses) => assets.knownAddresses(CHAIN, addresses),
-      details: async (addresses) => (rpcUrl === null ? new Map() : tokenMetadata({ rpcUrl, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, addresses)),
-      add: (launches, seenAt) =>
+  /* What both listings share: which coins we hold, how a launch is added, how a paired token is settled. */
+  const shared = {
+      known: (addresses: readonly string[]) => assets.knownAddresses(CHAIN, addresses),
+      add: (launches: readonly { readonly hit: Parameters<typeof assetFromSearch>[0]; readonly details: { readonly name: string; readonly symbol: string; readonly uri: string } | null }[], seenAt: Millis) =>
         assets.addListed(
           launches.flatMap(({ hit, details }) => {
             const asset = assetFromSearch(
@@ -292,7 +293,15 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, a
             },
           }),
       now: () => Date.now() as Millis,
+  };
+  const listing = createListing(
+    {
+      ...shared,
+      page: (n) => market.newLaunches(n),
+      details: async (addresses) => (rpcUrl === null ? new Map() : tokenMetadata({ rpcUrl, fetch: globalThis.fetch, timeoutMs: lp.timeoutMs }, addresses)),
       note: (msg, fields) => listingLog.warn(msg, fields),
+      /* ★ A BACKUP WHILE THE RELAY DELIVERS (Policy.assets.launchListing.relay): no page is read, so no credit is spent. */
+      ...(relay === null ? {} : { skip: () => relay.fresh(lp.relay.freshMs) }),
     },
     {
       pagesPerPass: lp.pagesPerPass,
@@ -306,6 +315,18 @@ function buildListing(cfg: ChainwatchConfig, assets: PgAssetRepo, log: Logger, a
       paceSlackPages: keyed === null ? Number.POSITIVE_INFINITY : lp.paceSlackPages,
     },
   );
+  /* ★ THE RELAY LISTING: the relay's creates as one page, their own details, nothing billed and no chain read
+     but the paired-token check (rare: a launch priced in another token), counted on the same day's credits. */
+  const relayLog = log.child({ part: 'relay-listing' });
+  const relayListing =
+    relay === null
+      ? null
+      : createListing(
+          { ...shared, page: async (n) => (n === 1 ? relay.page() : []), details: async (addresses) => relay.details(addresses), note: (msg, fields) => relayLog.warn(msg, fields) },
+          { pagesPerPass: 2, maxAgeMs: lp.maxAgeMs, accountsPerCall: ACCOUNTS_PER_CALL, creditsPerCall: lp.creditsPerCall, dayCapCredits: rpcUrl === null ? Number.POSITIVE_INFINITY : lp.dayCapCredits, dayCapPages: Number.POSITIVE_INFINITY, paceSlackPages: Number.POSITIVE_INFINITY },
+        );
+  if (relayListing !== null) relayLog.info('relay listing on: the paid listing pages only while the relay is quiet', { freshMs: lp.relay.freshMs, everyMs: lp.relay.everyMs });
+  return { listing, relayListing };
 }
 
 /** The chain socket and RPC behind the trade feed, keyed. */
@@ -316,7 +337,7 @@ const TRADE_RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=';
  * The trade feed, and the third place this service names a vendor. Off when the policy says so
  * or no key is set: every watched coin then stays unmeasured, and the rule judges on readings.
  */
-function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, charts: Charts, archive: LaunchArchive): Runtime['trades'] {
+function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, charts: Charts, archive: LaunchArchive, relayLaunches: RelayLaunches | null): Runtime['trades'] {
   const tf = DEFAULT_POLICY.oneCoin.tradeFeed;
   const tradeLog = log.child({ part: 'trade-feed' });
   if (!tf.on || cfg.tradeFeedKey === null) {
@@ -343,6 +364,7 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, 
           schedule,
           note: (msg, fields) => tradeLog.warn(msg, fields),
           live: live.hooks,
+          ...(relayLaunches === null ? {} : { launches: relayLaunches.hooks }),
           /* The candles first, then the launch archive, from the same trades; the archive never throws. */
           chart: { onTrades: (coin, ticks, launch, seenAtMs) => { charts.hooks.onTrades(coin, ticks, launch, seenAtMs); archive.onTrades(coin, ticks, launch, seenAtMs); } },
         })
@@ -452,10 +474,18 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
    */
   const stageRuns: StageRunRecorder = new PgStageRunRepo(db);
 
+  /* ★ The relay's launches feed a listing only when the relay is what the trade feed reads: its socket is the one that hears them. */
+  const lp = DEFAULT_POLICY.assets.launchListing;
+  const relayLaunches =
+    lp.on && lp.relay.on && cfg.tradeRelayUrl !== null && DEFAULT_POLICY.oneCoin.tradeFeed.on && cfg.tradeFeedKey !== null
+      ? createRelayLaunches(lp.maxAgeMs, () => Date.now() as Millis)
+      : null;
+  const { listing, relayListing } = buildListing(cfg, assets, log, archive, relayLaunches);
   return {
     feed: createFeed(cfg, log),
-    listing: buildListing(cfg, assets, log, archive),
-    trades: buildTrades(cfg, db, log, live, charts, archive),
+    listing,
+    relayListing,
+    trades: buildTrades(cfg, db, log, live, charts, archive, relayLaunches),
     live,
     charts,
     archive,

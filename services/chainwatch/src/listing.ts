@@ -93,6 +93,11 @@ export interface ListingDeps {
   add(launches: readonly { readonly hit: CoinSearchHit; readonly details: ChainDetails | null }[], seenAt: Millis): Promise<readonly string[]>;
   readonly now: () => Millis;
   readonly note: (msg: string, fields: Readonly<Record<string, unknown>>) => void;
+  /**
+   * True while another source is already delivering every launch (the relay listing, relay-launches.ts):
+   * the pass then reads nothing (`held: 'relay'`), so a backup listing spends no pages while it is not needed.
+   */
+  readonly skip?: () => boolean;
 }
 
 export interface ListingOptions {
@@ -123,8 +128,8 @@ export interface ListingPassResult {
   readonly behind: boolean;
   /** Credits this pass's chain reads cost (counted when asked, whether or not they answered). */
   readonly credits: number;
-  /** Why the pass read no page at all: the day's page cap, or running ahead of the day's pace. */
-  readonly held: 'cap' | 'pace' | null;
+  /** Why the pass read no page at all: the day's page cap, running ahead of the day's pace, or another source covering it. */
+  readonly held: 'cap' | 'pace' | 'relay' | null;
   /** A page after the first was refused: what the earlier pages listed is added, the place is kept. */
   readonly refused: string | null;
   /** Paired tokens this pass marked as not launches. */
@@ -193,6 +198,7 @@ export function createListing(deps: ListingDeps, opts: ListingOptions): Listing 
          the pass is held and the next one reads further back — so a busy hour spaces the passes
          out instead of raising the day's total. */
       const startMs = deps.now();
+      if (deps.skip?.() === true) return nothing({ held: 'relay' });
       const today = new Date(startMs).toISOString().slice(0, 10);
       if (asked.day !== today) Object.assign(asked, { day: today, pages: 0, capSaid: false });
       if (asked.pages >= opts.dayCapPages) {

@@ -3,8 +3,28 @@ import { test } from 'node:test';
 
 import type { Millis } from '@insidor/contracts';
 
-import { createRelayTradeSocket, firstMint, readRelayFrame } from './relay-trade-socket.ts';
+import { createRelayTradeSocket, firstMint, readRelayCreate, readRelayFrame } from './relay-trade-socket.ts';
 import type { StreamHandlers } from './stream.ts';
+
+/* A create frame as the relay sent it on 10 Nov (trimmed to the fields read). */
+const CREATE = {
+  action: 'create', pool: 'pump', mint: '6B391tGMFXGuR171nPdrDYcXQK5o8X251m9j7gnpump', poolId: '9nx4ydS4eFdWEhVRnnUJnENuPx5YDqXvVRvonxuJeYmf',
+  quoteMint: 'So11111111111111111111111111111111111111112', timestamp: 1_762_738_000_000, marketCapUsd: 2485.3,
+  name: 'Let’sStickToGoingBackwards', symbol: '76 Coin', uri: 'https://ipfs.io/ipfs/QmTxnFdsr1eppyRXpkkd2EQhDK4PPW7depCXwnacgZkS4T',
+};
+
+test('★ a launchpad create is a launch with its own name, ticker and metadata link; anything else is not', () => {
+  assert.deepEqual(readRelayCreate(CREATE), {
+    address: CREATE.mint, name: CREATE.name, ticker: CREATE.symbol, marketAddress: CREATE.poolId, createdAt: CREATE.timestamp, marketCapUsd: 2485.3,
+    pairedWith: null, details: { name: CREATE.name, symbol: CREATE.symbol, uri: CREATE.uri },
+  });
+  assert.equal(readRelayCreate({ ...CREATE, action: 'buy' }), null, 'a trade');
+  assert.equal(readRelayCreate({ ...CREATE, pool: 'raydium-launchpad' }), null, 'another launchpad');
+  assert.equal(readRelayCreate({ ...CREATE, timestamp: undefined }), null, 'no time, no launch');
+  const paired = readRelayCreate({ ...CREATE, quoteMint: 'Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw', quoteSymbol: 'ANTHROPIC', quoteName: 'PreStocks' });
+  assert.deepEqual(paired?.pairedWith, { address: 'Pren1FvFX6J3E4kXhJuCiAD5aDmGEb7qJRncwA8Lkhw', symbol: 'ANTHROPIC', name: 'PreStocks' });
+  assert.equal(readRelayCreate({ ...CREATE, uri: undefined })?.details, null, 'details only when all three are there');
+});
 
 const COIN = 'HwFM5tAJA99h7PDwXYVaXyd8suubFjtvG31rAdVipump';
 const SOL = 'So11111111111111111111111111111111111111112';

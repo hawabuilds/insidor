@@ -157,7 +157,10 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
 
   // The launch listing runs beside the socket's cycle on its own clock (listing.ts), and ends
   // with it: the same abort, awaited before the server closes and the lock is released.
-  const listingDone = runtime.listing === null ? Promise.resolve() : runListing(runtime.listing, ac.signal);
+  const lp = DEFAULT_POLICY.assets.launchListing;
+  const listingDone = runtime.listing === null ? Promise.resolve() : runListing(runtime.listing, lp.everyMs, 'launch listing', ac.signal);
+  // The relay's own launches (relay-launches.ts) on a faster clock: nothing is billed, so nothing waits.
+  const relayListingDone = runtime.relayListing === null ? Promise.resolve() : runListing(runtime.relayListing, lp.relay.everyMs, 'relay listing', ac.signal);
   // The trade feed likewise: its own clock, the same abort, its socket closed on the way out.
   const tradesDone = runtime.trades === null ? Promise.resolve() : runTrades(runtime.trades, ac.signal);
   // Our own candles (chart.ts) on their own clock too; with no relay they are fed nothing and write nothing.
@@ -368,6 +371,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   }
 
   await listingDone;
+  await relayListingDone;
   await tradesDone;
   await chartsDone;
   await archiveDone;
@@ -389,8 +393,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
 const LISTING_MAX_WAIT_MS = 300_000;
 const LISTING_SUMMARY_PASSES = 40;
 
-async function runListing(listing: Listing, signal: AbortSignal): Promise<void> {
-  const everyMs = DEFAULT_POLICY.assets.launchListing.everyMs;
+async function runListing(listing: Listing, everyMs: number, label: string, signal: AbortSignal): Promise<void> {
   let failures = 0;
   let passes = 0;
   const totals = { listed: 0, added: 0, withoutDetails: 0, behind: 0, credits: 0, pages: 0, held: 0, refused: 0, pairedMarked: 0 };
@@ -401,7 +404,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
       // A page refused after the first: what was read is added, and the wait still grows.
       if (r.refused !== null) {
         failures += 1;
-        if (failures === 1 || failures % 10 === 0) log.warn('launch listing page refused; the pages before it were kept', { err: r.refused, failures });
+        if (failures === 1 || failures % 10 === 0) log.warn(`${label} page refused; the pages before it were kept`, { err: r.refused, failures });
       } else failures = 0;
       passes += 1;
       totals.pages += r.pagesRead;
@@ -414,7 +417,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
       totals.behind += r.behind ? 1 : 0;
       totals.pairedMarked += r.pairedMarked;
       if (passes % LISTING_SUMMARY_PASSES === 0) {
-        log.info('launch listing', { passes: LISTING_SUMMARY_PASSES, ...totals });
+        log.info(label, { passes: LISTING_SUMMARY_PASSES, ...totals });
         totals.listed = 0;
         totals.added = 0;
         totals.withoutDetails = 0;
@@ -427,7 +430,7 @@ async function runListing(listing: Listing, signal: AbortSignal): Promise<void> 
       }
     } catch (e) {
       failures += 1;
-      if (failures === 1 || failures % 10 === 0) log.warn('launch listing pass failed', { err: errorText(e), failures });
+      if (failures === 1 || failures % 10 === 0) log.warn(`${label} pass failed`, { err: errorText(e), failures });
     }
     const wait = Math.min(LISTING_MAX_WAIT_MS, everyMs * 2 ** Math.min(failures, 5));
     await sleep(Math.max(MIN_SLEEP_MS, wait - (Date.now() - started)), signal);
