@@ -1248,6 +1248,26 @@ export class PgOneCoinRepo {
   }
 
   /**
+   * Each of these coins' trade minutes since `sinceMs` (0112 internal.coin_trade_minute), in time order: the
+   * volume-bot screen's input (Policy.oneCoin.volumeBot). A coin with no minute is absent. One indexed read a
+   * pass for the coins being screened, so it costs the database a few hundred small rows.
+   */
+  async botMinutes(addresses: readonly string[], sinceMs: number): Promise<ReadonlyMap<string, readonly { readonly t: number; readonly buys: number; readonly buyers: number; readonly newBuyers: number }[]>> {
+    if (addresses.length === 0) return new Map();
+    const rows = await this.#db.query<{ address: string; minute: string | Date; buys: number; buyers: number; new_buyers: number }>(
+      `select address, minute, buys, buyers, new_buyers from internal.coin_trade_minute where address = any($1::text[]) and minute >= $2 order by address, minute`,
+      [[...new Set(addresses)], new Date(sinceMs).toISOString()],
+    );
+    const out = new Map<string, { t: number; buys: number; buyers: number; newBuyers: number }[]>();
+    for (const r of rows) {
+      const list = out.get(r.address) ?? [];
+      list.push({ t: new Date(r.minute).getTime(), buys: Number(r.buys), buyers: Number(r.buyers), newBuyers: Number(r.new_buyers) });
+      out.set(r.address, list);
+    }
+    return out;
+  }
+
+  /**
    * Every coin a post's or a narrative's pick has held since `sinceMs`: the coins on cards, the Tape
    * and in pushes, for the runner's bundle screen. Addresses only (~200, every few minutes).
    */

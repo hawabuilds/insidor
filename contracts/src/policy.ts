@@ -2708,6 +2708,15 @@ export interface OneCoinPolicy {
    */
   readonly bundle: { readonly on: boolean; readonly sameAmountMin: number; readonly fromCapUsd: number; readonly perPass: number; readonly cleanForMs: number };
   /**
+   * ★ A VOLUME BOT IS NEVER PICKED (policy.v236; the owner, 2026-11-10, $Grok: "that's clearly a scam"). A coin
+   * whose minute trades show both signs of core `volumeBot` — mostly returning wallets at `minBuyers`+ a minute
+   * under `newShareBelow` new, and a buy count steady within `steadyWithin` — each for `minutes` minutes in a row,
+   * within the last `lookbackMs`, is treated as the bundle screen treats a bundle: never picked, and a pick held on
+   * it is judged again without it, so it is never pushed. Replayed 3-10 Nov: no verified runner, 8 pushed coins, 7
+   * of them rugged within six hours.
+   */
+  readonly volumeBot: { readonly on: boolean; readonly minutes: number; readonly minBuyers: number; readonly newShareBelow: number; readonly steadyMinBuys: number; readonly steadyWithin: number; readonly lookbackMs: number };
+  /**
    * ★ OUR OWN CANDLES OVER THE READINGS (policy.v209; the owner, 2026-10-29: "i approve 3"). For a
    * launchpad candidate we chart (0144), the newest one-minute close and the highest close stand in for
    * its market reading wherever the rule reads one, when that close is at most `freshMs` old. The
@@ -6278,7 +6287,7 @@ const POLICY_V1: Policy = {
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v235',
+  version: 'policy.v236',
 
   admit: {
     maxAgeMin: 240,
@@ -8048,6 +8057,8 @@ const POLICY_V1: Policy = {
        were held, so ~600 reads a day with a clean answer kept for a day. Twenty a pass reads them all
        within minutes of a restart. */
     bundle: { on: true, sameAmountMin: 5, fromCapUsd: 10_000, perPass: 20, cleanForMs: 86_400_000 },
+    /* policy.v236: the $Grok pattern; both signs for four minutes, as replayed (no verified runner marked). */
+    volumeBot: { on: true, minutes: 4, minBuyers: 100, newShareBelow: 0.3, steadyMinBuys: 30, steadyWithin: 2, lookbackMs: 7_200_000 },
     /* policy.v209. Replayed over 22-29 Oct on 186 posts whose launchpad coin passed $25k, beside v208's
        rules: runner picked 49% -> 52%, before take-off 17% -> 19%, dud picks unchanged (32 on runner
        posts, 8 of 186 posts where nothing ran). Half an hour: the replay's bar; a staler close falls back

@@ -396,6 +396,30 @@ test('★ the bundle sweep: a pick held on a coin found bundled is judged again 
   assert.equal(w.picks.get(ID)?.outcome, 'none');
 });
 
+test('★ the volume-bot screen ($Grok, 10 Nov): a pick held on a coin traded by a bot is let go, though its holders read clean', async () => {
+  const ID = 'x:grok';
+  const held: StoredPick = { subjectId: ID, address: 'BOT', outcome: 'picked', decidedAtMs: NOW - 20 * MIN, evidence: {} };
+  const cand: CandidateRow = { itemId: ID, address: 'BOT', path: 'launch', evidence: { ties: ['name_text'] }, launchedAtMs: NOW - 25 * MIN, foundAtMs: NOW - 25 * MIN };
+  const w = world({ candidates: [cand], trades: null, picks: new Map([[ID, held]]) });
+  const d = deps(w);
+  /* 133, 133, 133, 129 buys a minute, three in four buyers seen before. */
+  const bot = [133, 133, 133, 132].map((buys, i) => ({ t: NOW - (10 - i) * MIN, buys, buyers: buys, newBuyers: 35 }));
+  const state = newOneCoinState();
+  await oneCoinPass({
+    ...d,
+    holders: async () => Array.from({ length: 20 }, (_, i) => String(1_000_000 + i * 7_919)),
+    repo: {
+      ...d.repo,
+      openCandidates: async () => [],
+      heldPickCoins: async () => ['BOT'],
+      heldPicksOn: async (kind) => (kind === 'post' ? [{ pick: held, members: [ID] }] : []),
+      botMinutes: async () => new Map([['BOT', bot]]),
+    },
+  }, state);
+  assert.ok(state.volumeBots.has('BOT'));
+  assert.equal(w.picks.get(ID)?.outcome, 'none');
+});
+
 test('gateWrite: a held unread coin keeps its pick, a held bundle does not, racing coins not read clean leave the race', () => {
   const state = newOneCoinState();
   const B = DEFAULT_POLICY.oneCoin.bundle;

@@ -61,7 +61,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { biggestOfName, bundledHolders, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
+import { biggestOfName, bundledHolders, volumeBot, launchMatches, oneCoinBars, pickOneCoin, priorCoins, racingCoins, statedInText, statesName, type Contender, type OneCoinHolder as Holder, type LaunchMatch, type MarketFacts, type MatchEvidence, type OneCoinOutcome } from '@insidor/core';
 import type { CandidateRow, CandleCap, PgOneCoinRepo, PickWrite, RecentLaunch, RecentPost, StoredPick, TradeRollup } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -88,7 +88,7 @@ const wordsOf = (text: string | null): string[] =>
   text === null ? [] : [...new Set(text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, WORDS_READ);
 
 export interface OneCoinDeps {
-  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks' | 'heldOffLaunchpadPicks' | 'heldPicksOn' | 'heldPickCoins'>>;
+  readonly repo: Pick<PgOneCoinRepo, 'recentLaunches' | 'recentPosts' | 'postsByIds' | 'similarities' | 'unembedded' | 'upsertCandidates' | 'watch' | 'openCandidates' | 'candidatesOf' | 'narrativesOf' | 'tradeFeedAt' | 'watched' | 'tradeFacts' | 'marketFacts' | 'coinsNamed' | 'coinsLaunchedBetween' | 'picks' | 'writePicks' | 'appliedFit'> & Partial<Pick<PgOneCoinRepo, 'heldPostPicks' | 'waitingPostPicks' | 'lastHours' | 'launchesLinking' | 'coinFacts' | 'frozenPrices' | 'heldFrozenNarrativePicks' | 'heldOffLaunchpadPicks' | 'heldPicksOn' | 'heldPickCoins' | 'botMinutes'>>;
   /**
    * The coin-first route's launches (store `coinFirstLaunches`): coins tying a post the route recorded,
    * looked at for the whole watch rather than `rematchMs`, since such a post is judged only once its
@@ -146,12 +146,16 @@ export interface OneCoinState {
   candleCaps: { readonly atMs: number; readonly caps: ReadonlyMap<string, CandleCap> } | null;
   /** Each coin's holder read (Policy.oneCoin.bundle): bundled, or clean as of `atMs`. Lost on restart, and read again. */
   readonly bundles: Map<string, { readonly bundled: boolean; readonly atMs: number }>;
+  /** Coins whose minute trades showed a volume bot (Policy.oneCoin.volumeBot): treated as a bundle, for good. Lost on restart, and read again. */
+  readonly volumeBots: Set<string>;
+  /** When each coin's minutes were last judged: a coin is read again at most once a minute, as often as a minute closes. */
+  readonly volumeCheckedAt: Map<string, number>;
   /** The coins held by any pick of the last two days, and when they were listed (`bundleSweep`). */
   heldCoins: readonly string[];
   bundleHeldAt: number;
 }
 
-export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, linkingAt: 0, candleCaps: null, bundles: new Map(), heldCoins: [], bundleHeldAt: 0 });
+export const newOneCoinState = (): OneCoinState => ({ postsReadAt: 0, posts: [], existingDone: new Set(), watchMissingSaid: false, handoverAt: 0, linkingAt: 0, candleCaps: null, bundles: new Map(), volumeBots: new Set(), volumeCheckedAt: new Map(), heldCoins: [], bundleHeldAt: 0 });
 
 /**
  * How often every post of the window meets the coins linking it (a post new to the pass meets them at
@@ -581,7 +585,39 @@ export interface BundleScreen {
 }
 
 type BundleBars = OneCoinDeps['policy']['oneCoin']['bundle'];
-const readBundled = (state: OneCoinState, a: string): boolean => state.bundles.get(a)?.bundled === true;
+/* A volume bot (screenVolumeBots) is held back exactly as a bundle is. */
+const readBundled = (state: OneCoinState, a: string): boolean => state.bundles.get(a)?.bundled === true || state.volumeBots.has(a);
+
+/**
+ * ★ THE VOLUME-BOT SCREEN (Policy.oneCoin.volumeBot; the owner, 2026-11-10, $Grok). The coins' minute trades of
+ * the last `lookbackMs` read in one statement (our own table, no call), each judged by core `volumeBot`; a coin
+ * found trading by a bot joins `state.volumeBots` for good and from then on reads as bundled everywhere: never
+ * picked, a held pick judged again without it. A coin with no minute is not judged, and a read that fails leaves
+ * every coin as it was (logged once a pass).
+ */
+const VOLUME_RECHECK_MS = 60_000;
+
+export async function screenVolumeBots(deps: OneCoinDeps, state: OneCoinState, addresses: readonly string[], now: number): Promise<void> {
+  const V = deps.policy.oneCoin.volumeBot;
+  const read = deps.repo.botMinutes;
+  if (!V.on || read === undefined) return;
+  const ask = [...new Set(addresses)].filter((a) => !state.volumeBots.has(a) && now - (state.volumeCheckedAt.get(a) ?? -Infinity) >= VOLUME_RECHECK_MS);
+  if (ask.length === 0) return;
+  for (const a of ask) state.volumeCheckedAt.set(a, now);
+  /* Forget coins not asked about in a day, so the map does not grow with every coin ever screened. */
+  if (state.volumeCheckedAt.size > 5_000) for (const [a, t] of state.volumeCheckedAt) if (now - t > 86_400_000) state.volumeCheckedAt.delete(a);
+  try {
+    const minutes = await read.call(deps.repo, ask, now - V.lookbackMs);
+    for (const [a, ms] of minutes) {
+      if (volumeBot(ms, V)) {
+        state.volumeBots.add(a);
+        deps.log.info('one coin: a coin traded by a volume bot is never picked', { address: a });
+      }
+    }
+  } catch (e) {
+    deps.log.warn('one coin: trade minutes not read; the volume-bot screen waits for the next pass', { err: errorText(e) });
+  }
+}
 const readClean = (state: OneCoinState, a: string, now: number, B: BundleBars): boolean => {
   const r = state.bundles.get(a);
   return r !== undefined && !r.bundled && now - r.atMs < B.cleanForMs;
@@ -594,6 +630,7 @@ const racingOf = (p: PickWrite): string[] => (Array.isArray(p.evidence['racing']
  * A bundle is never read again; a clean coin after `cleanForMs`; a failed read leaves the coin unread.
  */
 export async function screenBundles(deps: OneCoinDeps, state: OneCoinState, screen: BundleScreen, addresses: readonly string[], now: number): Promise<void> {
+  await screenVolumeBots(deps, state, addresses, now);
   const B = deps.policy.oneCoin.bundle;
   const holders = deps.holders;
   if (!B.on || holders === undefined) return;
@@ -629,7 +666,7 @@ export function gateWrite(p: PickWrite, prev: StoredPick | undefined, state: One
   const a = w.address;
   if (!readBundled(state, a) && (readClean(state, a, now, B) || prev?.address === a)) return w;
   heldBack.add(w.subjectId);
-  return { subjectId: w.subjectId, address: null, outcome: 'waiting', decidedAtMs: prev?.outcome === 'waiting' ? prev.decidedAtMs : now, evidence: { mode: w.evidence['mode'], reason: readBundled(state, a) ? 'bundled_holders' : 'holders_unread', heldBack: a }, basis: w.basis };
+  return { subjectId: w.subjectId, address: null, outcome: 'waiting', decidedAtMs: prev?.outcome === 'waiting' ? prev.decidedAtMs : now, evidence: { mode: w.evidence['mode'], reason: state.volumeBots.has(a) ? 'volume_bot' : readBundled(state, a) ? 'bundled_holders' : 'holders_unread', heldBack: a }, basis: w.basis };
 }
 
 /**

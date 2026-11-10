@@ -202,6 +202,8 @@ export { rankRunnerPosts, runnerTies, type RunnerBars, type RunnerCoin, type Run
 export { runnerHandover, runsAt, type CoinHour, type HandoverBars, type HandoverCoin, type HandoverHeld, type HandoverOutcome } from './match/runner-handover.ts';
 /* A coin whose largest holders hold one same amount is one holder (match/bundle.ts, Policy.oneCoin.bundle). */
 export { bundledHolders } from './match/bundle.ts';
+/* A coin traded by a volume bot: the same wallets and the same buy count minute after minute (match/volume-bot.ts, Policy.oneCoin.volumeBot). */
+export { volumeBot, type BotMinute, type VolumeBotBars } from './match/volume-bot.ts';
 /* The early pick under $20K, on the launch wave's market readings (match/early-pick.ts, Policy.oneCoin.early). */
 export { earlyPick, riseOf, type EarlyBars, type EarlyCoin, type EarlyPick } from './match/early-pick.ts';
 export type { Basis as OneCoinBasis, Contender, ExistingCoin, Holder as OneCoinHolder, LaunchMatch, LaunchMatchBars, LaunchSide, MarketFacts, MatchEvidence, MatchPost, OneCoinBars, OneCoinOutcome, OutReason, PriorBars, PriorCoin, Standing as OneCoinStanding, TradeFacts, WaitingReason } from './match/one-coin.ts';
