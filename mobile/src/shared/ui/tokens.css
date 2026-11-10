@@ -71,8 +71,11 @@
   /* Flat rows, 22px gutters. A row is a line on the page, not a card on it. */
   --gutter: 22px;
 
-  /* Room the floating tab bar takes at the bottom, so the last row can scroll clear of it. */
-  --tabbar-space: calc(96px + env(safe-area-inset-bottom));
+  /* Where the floating tab bar sits above the screen's bottom edge (ui.module.css `.tabbar`). */
+  --tabbar-bottom: max(8px, calc(env(safe-area-inset-bottom) - 12px));
+  /* Room the floating tab bar takes at the bottom, so the last row can scroll clear of it:
+     its height (58px) and 24px of air above where it sits. */
+  --tabbar-space: calc(var(--tabbar-bottom) + 82px);
 
   /* Room the phone's status bar takes at the top. Opened from the home screen the app draws
      under it (viewport-fit=cover, black-translucent in index.html), so without this the top
