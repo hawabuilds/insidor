@@ -8,7 +8,7 @@
  * Data comes from fomoapi.io, an independent FOMO data API (not affiliated with fomo.family).
  * One `FOMOAPI_KEY` on Railway is all the auth needed: a plain Bearer key, no session management.
  *
- * ★ ONLY THESES BACKED BY $250+. `threshold=250` is passed on every call; the API skips theses
+ * ★ ONLY THESES BACKED BY $1,000+. `threshold=1000` is passed on every call; the API skips theses
  * on positions under that size, so low-conviction dust trades never reach the chart.
  *
  * ★ THE POSITION COMES FROM THE THESIS ROW ITSELF. Each row carries the trade's size
@@ -37,7 +37,7 @@ import type { Logger } from './log.ts';
 
 const BASE_URL = 'https://api.fomoapi.io/v2/thesis/token';
 /** Default minimum position when the caller does not specify a threshold. */
-const DEFAULT_THRESHOLD_USD = 250;
+const DEFAULT_THRESHOLD_USD = 1_000;
 const TIMEOUT_MS = 8_000;
 /** The deeper read walks several upstream pages, so it is given longer. */
 const HISTORY_TIMEOUT_MS = 20_000;
