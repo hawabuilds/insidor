@@ -176,10 +176,20 @@ async function venueOf(mint: string, deps: TradeDeps): Promise<{ readonly route:
     return { route: 'unavailable', via: 'pool' };
   }
   const route = await routeAfter(state, () =>
-    deps.pool.quote({ inputMint: NATIVE, outputMint: mint, amount: BigInt(Math.round(deps.policy.probeSol * 1e9)), slippageBps: deps.policy.defaultSlippageBps }),
+    deps.pool.quote({ inputMint: NATIVE, outputMint: mint, amount: BigInt(Math.round(deps.policy.probeSol * 1e9)), slippageBps: deps.policy.defaultSlippageBps }).catch((e: unknown) => {
+      throw notTradable(e) ? new Error('no route') : e;
+    }),
   );
   return { route, via: state === 'paired' ? 'curve' : 'pool' };
 }
+
+/**
+ * The aggregator's "this token is not tradable" (its words, 2026-11-11, for a coin off its curve with
+ * no pair anywhere) is a fact about the coin, like "no route": the Buy sheet says "Can't be traded
+ * right now", never "Trading isn't available just now", which blames us. Read here and not in the
+ * shared rule, so the market reader's probing and the coin lists it feeds are unchanged.
+ */
+const notTradable = (e: unknown): boolean => e instanceof Error && /is not tradable|TOKEN_NOT_TRADABLE/i.test(e.message);
 
 /** A quote that came back through the browser, checked before it is built. */
 function readBack(raw: unknown): { readonly quote: CurveQuote | PoolQuote; readonly side: Side; readonly mint: string } | null {

@@ -32,6 +32,9 @@ const STRANGER = 'St11111111111111111111111111111111111111111';
 const CURVE_COIN = 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP';
 const BONDED_COIN = 'Bm4Czuq3X7BwgU429GiLb8wTHLNBiCzcysN8Gsqpump';
 const DEAD_COIN = 'Dd11111111111111111111111111111111111111111';
+/* Off its curve with no pair anywhere: the router says "not tradable" (4YAk…pump, 11 Nov 2026). */
+const UNLISTED_COIN = 'Un11111111111111111111111111111111111111111';
+const BUSY_COIN = 'Bz11111111111111111111111111111111111111111';
 /* On an open curve priced in a tokenised stock, not SOL: 2Nyb…pump, 23 Oct 2026. */
 const PAIRED_COIN = '2Nyb2GXVoXM42hVQxJg5RppTbiN5SCZFL4LtZVVDpump';
 
@@ -77,6 +80,8 @@ function deps(over: { trading?: boolean; allowlist?: string[] | 'everyone'; simu
       quote: async (r) => {
         calls.push('pool.quote');
         if (r.outputMint === DEAD_COIN || r.inputMint === DEAD_COIN) throw new Error('jupiter unavailable at GET /swap/v1/quote: no route');
+        if (r.outputMint === UNLISTED_COIN) throw new Error(`jupiter unavailable at GET /swap/v1/quote: The token ${UNLISTED_COIN} is not tradable`);
+        if (r.outputMint === BUSY_COIN) throw new Error('jupiter unavailable at GET /swap/v1/quote: rate limited; try again in a moment');
         return readQuote(BONDED_QUOTE);
       },
       build: async (q) => {
@@ -246,6 +251,12 @@ test('a coin on its curve trades there, a bonded one through the router, and one
   const r = await handle('GET', quoteUrl(DEAD_COIN, '1000'), null, d);
   assert.equal(r.status, 409);
   assert.equal(body(r).error, "This coin can't be traded right now.");
+});
+
+test('★ a coin the router calls "not tradable" is a coin that cannot be traded, never our outage; a rate limit still is ours', async () => {
+  const { d } = deps();
+  assert.equal(body(await handle('GET', `/venue/${UNLISTED_COIN}`, null, d)).kind, 'none', 'the sheet says "Can\'t be traded right now"');
+  assert.equal(body(await handle('GET', `/venue/${BUSY_COIN}`, null, d)).kind, 'unavailable', 'a rate limit is not a fact about the coin');
 });
 
 test('★ a coin whose curve is priced in another token (a stock pair) goes through the router, never the SOL curve', async () => {
