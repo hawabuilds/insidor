@@ -1,7 +1,8 @@
 /**
  * A POST'S VIDEO PLAYED INSIDE ITS FEED CARD: muted, looping, while the card is on screen, the way
- * X and TikTok play a feed. The card's still sits under it until the first frame draws, and a tap
- * on the video or its small sound button turns the sound on for this video.
+ * X and TikTok play a feed. The card's still sits under it until the first frame draws. Its small
+ * sound button turns the sound on here; a tap on the video opens it full screen (the post sheet's
+ * Viewer, with sound and controls) from the second it was at.
  *
  * ★ ONE VIDEO PLAYS AT A TIME. A video starts when it reaches the middle of the screen
  * (`PLAY_BAND`) and pauses when it leaves; the one that starts last stops the one before (`playing` below). Two half-shown
@@ -34,8 +35,12 @@ const PLAY_BAND = '-20% 0px -20% 0px';
 /** The one video playing in the feed right now; a video that starts pauses it. */
 let playing: HTMLVideoElement | null = null;
 
-/** `silent`: a GIF, which has no sound and so no sound button. */
-export function FeedVideo({ src, poster, silent, onFail }: { src: string; poster: string | null; silent: boolean; onFail: () => void }) {
+/**
+ * `silent`: a GIF, which has no sound and so no sound button. `onOpen`: a tap on the video, with
+ * the second it was at, so full screen carries on from there. `hold`: full screen is open over it,
+ * so it pauses, and plays again (if still in view) once that closes.
+ */
+export function FeedVideo({ src, poster, silent, hold, onOpen, onFail }: { src: string; poster: string | null; silent: boolean; hold: boolean; onOpen: (at: number) => void; onFail: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [seen, setSeen] = useState(false);
   const [inView, setInView] = useState(false);
@@ -62,7 +67,7 @@ export function FeedVideo({ src, poster, silent, onFail }: { src: string; poster
   useEffect(() => {
     const el = ref.current;
     if (el === null || !seen) return;
-    if (inView && active) {
+    if (inView && active && !hold) {
       if (playing !== null && playing !== el) playing.pause();
       playing = el;
       el.play().catch(() => undefined);
@@ -70,7 +75,7 @@ export function FeedVideo({ src, poster, silent, onFail }: { src: string; poster
       el.pause();
       if (playing === el) playing = null;
     }
-  }, [inView, active, seen]);
+  }, [inView, active, seen, hold]);
 
   useEffect(() => () => {
     if (playing === ref.current) playing = null;
@@ -97,7 +102,10 @@ export function FeedVideo({ src, poster, silent, onFail }: { src: string; poster
         playsInline
         preload={seen ? 'metadata' : 'none'}
         onError={onFail}
-        onClick={silent ? undefined : toggleSound}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen(ref.current?.currentTime ?? 0);
+        }}
       />
       {silent ? null : (
         <button type="button" className={styles['sound']} aria-label={muted ? 'Turn sound on' : 'Turn sound off'} onClick={toggleSound}>

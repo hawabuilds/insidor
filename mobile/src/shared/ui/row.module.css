@@ -233,8 +233,10 @@
 }
 
 /* ★ THE MEDIA: full width, one height on every card, so the feed scrolls with an even rhythm. */
+/* A tap on it opens it full screen (PostRow CardMedia), hence the pointer. */
 .media {
   position: relative;
+  cursor: pointer;
   height: 168px;
   border-radius: 14px;
   overflow: hidden;

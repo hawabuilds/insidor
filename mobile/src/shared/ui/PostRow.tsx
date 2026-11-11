@@ -99,6 +99,7 @@ import { postPicSources } from '../post-pic.ts';
 import { CoinLogo } from './CoinLogo.tsx';
 import { FeedVideo } from './FeedVideo.tsx';
 import { TikTokPlayer } from '../../features/post-sheet/TikTokPlayer.tsx';
+import { Viewer, type Full } from '../../features/post-sheet/PostMedia.tsx';
 import { tiktokVideoId } from '../../features/post-sheet/tiktok-player.ts';
 import { PlayIcon, ShareIcon } from './icons.tsx';
 import { sharePage } from '../share-link.ts';
@@ -278,12 +279,33 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
   /* A TikTok video has no file we can play: a tap puts TikTok's own player in the box (TikTokPlayer.tsx). */
   const tiktok = post.video === undefined && post.thumbIsVideo && platformOf(post.sourceLabel) === 'tiktok' ? tiktokVideoId(post.id) : null;
   const [tiktokOn, setTiktokOn] = useState(false);
+  /* ★ A TAP ON THE MEDIA OPENS IT FULL SCREEN (the post sheet's Viewer): a picture whole, a video
+     with sound and controls from the second it was at, a GIF looping. A TikTok video plays in
+     TikTok's player in the box instead, whose own full-screen button is the way to full screen. */
+  const [full, setFull] = useState<Full | null>(null);
   const video = post.video !== undefined && !videoFailed ? post.video : null;
   if (src === null && video === null) return tag;
+  const tap = () => {
+    if (tiktok !== null) setTiktokOn(true);
+    else if (src !== null) setFull({ kind: 'picture' });
+  };
+  /* The viewer sits beside the box, not in it: a portal's taps still reach its React parents, and
+     inside the box its X would reach `tap` and open it again. */
   return (
-    <div className={styles['media']}>
+    <>
+    {full !== null ? <Viewer media={{ playUrl: video?.playUrl ?? null, posterUrl: src ?? '' }} full={full} onClose={() => setFull(null)} /> : null}
+    <div className={styles['media']} onClick={tiktokOn ? undefined : tap}>
       {src !== null ? <img key={tryKey} className={styles['mediaImg']} src={src} alt="" loading="lazy" decoding="async" onError={() => fail(src)} /> : null}
-      {video !== null ? <FeedVideo src={video.playUrl} poster={src} silent={video.loops} onFail={() => setVideoFailed(true)} /> : null}
+      {video !== null ? (
+        <FeedVideo
+          src={video.playUrl}
+          poster={src}
+          silent={video.loops}
+          hold={full !== null}
+          onOpen={(at) => setFull({ kind: 'video', at, muted: video.loops, loop: video.loops })}
+          onFail={() => setVideoFailed(true)}
+        />
+      ) : null}
       {tiktok !== null && tiktokOn && src !== null ? (
         <div className={styles['mediaFill']}>
           <TikTokPlayer id={tiktok} posterUrl={src} height={MEDIA_HEIGHT} onFail={() => setTiktokOn(false)} />
@@ -291,7 +313,7 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
       ) : null}
       {video === null && post.thumbIsVideo && !tiktokOn ? (
         tiktok !== null ? (
-          <button type="button" className={styles['mediaPlay']} aria-label="Play the video" onClick={() => setTiktokOn(true)}>
+          <button type="button" className={styles['mediaPlay']} aria-label="Play the video" onClick={(e) => { e.stopPropagation(); setTiktokOn(true); }}>
             <PlayIcon size={18} />
           </button>
         ) : (
@@ -302,6 +324,7 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
       ) : null}
       {tag !== null ? <div className={styles['mediaTag']}>{tag}</div> : null}
     </div>
+    </>
   );
 }
 

@@ -97,7 +97,7 @@ export interface PostMediaProps {
 }
 
 /** What the full-screen viewer shows: the picture, or the video from a time, with or without sound. */
-type Full = { readonly kind: 'picture' } | { readonly kind: 'video'; readonly at: number; readonly muted: boolean; readonly loop: boolean };
+export type Full = { readonly kind: 'picture' } | { readonly kind: 'video'; readonly at: number; readonly muted: boolean; readonly loop: boolean };
 
 export function PostMedia({ media: given, height, onGone, postUrl = null, sourceLabel = null, tiktokId = null }: PostMediaProps) {
   const [broken, setBroken] = useState(false);
@@ -140,9 +140,10 @@ export function PostMedia({ media: given, height, onGone, postUrl = null, source
 /**
  * The media full screen, over everything (a portal on the page, so no sheet clips it): black, the
  * picture or video whole at its own shape, a 44px X at the top right. Closes with the X, a swipe
- * down, back or Escape, one layer like any pop-up (shared/ui/dismiss.ts), back to the sheet.
+ * down, back or Escape, one layer like any pop-up (shared/ui/dismiss.ts), back to where it opened.
+ * Shared with the For You card (shared/ui/PostRow.tsx), so a tap on a card's media opens the same view.
  */
-function Viewer({ media, full, onClose }: { media: SheetMedia; full: Full; onClose: () => void }) {
+export function Viewer({ media, full, onClose }: { media: Pick<SheetMedia, 'playUrl' | 'posterUrl'>; full: Full; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   useDismiss(onClose);
