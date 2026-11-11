@@ -42,6 +42,7 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import { LoadMore, PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import alerts from '../alerts/alerts.module.css';
 import { RankTag } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
@@ -66,6 +67,7 @@ const age = (at: number, now: number) => <Value r={formatAge({ known: true, at: 
 
 export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
   const now = useNow();
+  const active = useScreenActive();
   const { state } = useWallet();
   const account = state.kind === 'connected' ? state.account : 'signed-out';
   const [tab, setTab] = useState<FeedTab>('following');
@@ -76,14 +78,13 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
   const { pull, refreshing } = usePullToRefresh(async () => {
     await feed.refresh();
     onRefreshed();
-  });
+  }, active);
 
   /* Trador's sentences for an empty tab, and its "See all time" on a quiet week. */
   const empty = tab === 'following' ? 'Follow a few people and their buys, sells and takes land here.' : tab === 'top' ? (period === 'week' ? 'No calls this week yet.' : 'No calls yet.') : 'No takes yet. Open a coin and post the first one.';
 
   return (
     <>
-      <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={alerts['page']}>
         <header className={alerts['sticky']}>
           <ScreenHeader className={styles['titleRow']}>
@@ -99,7 +100,9 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
           </div>
         </header>
 
-        {/* Only the list follows the pull, never the sticky header (as on Notifications). */}
+        {/* Only the list follows the pull, never the sticky header (as on Notifications); the
+            spinner sits in the gap it opens, above the first row. */}
+        <PullIndicator pull={pull} refreshing={refreshing} />
         <div style={pullStyle(pull)}>
         {tab === 'top' ? (
           <div className={styles['windowRow']}>

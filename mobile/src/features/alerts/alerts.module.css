@@ -449,19 +449,28 @@
   color: var(--text-3);
 }
 
-/* The spinner that follows a pull down: Trador's 32px popup chip under the status bar. */
+/* The spinner that follows a pull down: Trador's 32px chip, in the gap the list opens under the
+   still rows (Parts.tsx PullIndicator). No height of its own, so the list below does not move twice. */
 .pull {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: calc(10px + var(--safe-top));
-  z-index: 30;
-  display: flex;
-  justify-content: center;
+  position: relative;
+  height: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
-.pull > span {
+.pullGap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pullGap > span {
+  flex: none;
   width: 32px;
   height: 32px;
   display: grid;

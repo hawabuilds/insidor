@@ -49,6 +49,8 @@ import starStyles from '../../shared/ui/watch-star.module.css';
 import { fresh, kept } from '../../shared/kept-reads.ts';
 import { firstPageKey, readFirstPage } from './first-page.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
+import { PullIndicator } from '../alerts/Parts.tsx';
+import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -111,6 +113,9 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const glide = useGlide(items?.map(itemKey).join(' ') ?? '');
   const places = useMemo(() => new Map((items ?? []).map((x, i) => [itemKey(x), i])), [items]);
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
+  /* Pull to refresh, as on For You: the first page is read again (the pages under it start over),
+     and the spinner stops when it is back. Only the list moves; the rows above stay still. */
+  const { pull, refreshing } = usePullToRefresh(list.refresh, useScreenActive());
 
   return (
     <section className={styles['screen']}>
@@ -149,6 +154,10 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         ) : null}
       </div>
 
+      {/* ★ Everything above stays still on a pull; only what is below the All / X / TikTok row
+          follows it, with the spinner in the gap above the first card (alerts/pull.ts). */}
+      <PullIndicator pull={pull} refreshing={refreshing} />
+      <div style={pullStyle(pull)}>
       <Notice notice={list.provenance === null ? null : boardNotice(list.provenance)} />
 
       {list.state === 'loading' && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
@@ -185,6 +194,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         ) : null}
       </div>
       {list.next !== null ? <More onMore={list.more} busy={list.state === 'loading'} failed={list.state === 'failed'} /> : null}
+      </div>
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
       <SheetToast note={note} onDone={() => setNote(null)} />
       {owner ? <NarrativeHideBar /> : null}
@@ -206,7 +216,7 @@ function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | nu
   return k === undefined ? null : { key, rows: realNarratives(k.value.stories), next: k.value.next, pages: 1, provenance: k.value.provenance };
 }
 
-function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boolean): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
+function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boolean): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void; readonly refresh: () => Promise<void> } {
   const key = `${sort}:${on ?? 'all'}:${noCoin ? 'no-coin' : 'any'}`;
   /* The list as this phone last read it, at once; the first page is read again under it. */
   const [got, setGot] = useState<Got | null>(() => keptFirst(key, sort, on, noCoin));
@@ -214,13 +224,14 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boo
   const asking = useRef<string | null>(null);
   const current = useRef(key);
   current.current = key;
-  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false, standIn = false) => {
+  /* Resolves when the read is back either way (pull to refresh waits on it); a read already on its way is not asked twice. */
+  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false, standIn = false): Promise<void> => {
     const ask = `${key}:${offset}:${pages}`;
-    if (asking.current === ask) return;
+    if (asking.current === ask) return Promise.resolve();
     asking.current = ask;
     if (!quiet) setState('loading');
     /* The first page goes through the kept reads, so a read ahead (shared/prefetch.ts) is shared, and the answer is kept for next time. */
-    (offset === 0 ? fresh(firstPageKey(sort, on, noCoin), readFirstPage(sort, on, noCoin), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on, noCoin)).then(
+    return (offset === 0 ? fresh(firstPageKey(sort, on, noCoin), readFirstPage(sort, on, noCoin), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on, noCoin)).then(
       (page) => {
         asking.current = null;
         if (current.current !== key) return;
@@ -246,7 +257,7 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boo
     const was = keptFirst(key, sort, on, noCoin);
     setGot(was);
     if (was !== null) setState('ready');
-    load(0, [], 0, was !== null, was !== null);
+    void load(0, [], 0, was !== null, was !== null);
     // `load` is a fresh closure every render; the sort, site and coin pill (all in `key`) decide a fresh list.
   }, [key]);
   const mine = got !== null && got.key === key ? got : null;
@@ -255,13 +266,13 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boo
   const active = useScreenActive();
   const wasActive = useRef(active);
   useEffect(() => {
-    if (active && !wasActive.current && firstOnly) load(0, [], 0, true);
+    if (active && !wasActive.current && firstOnly) void load(0, [], 0, true);
     wasActive.current = active;
   }, [active]);
   useEffect(() => {
     if (!firstOnly || !active) return;
     const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') load(0, [], 0, true);
+      if (document.visibilityState === 'visible') void load(0, [], 0, true);
     }, REFRESH_MS);
     return () => window.clearInterval(id);
   }, [key, firstOnly, active]);
@@ -271,8 +282,10 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boo
     provenance: mine?.provenance ?? null,
     state,
     more: () => {
-      if (mine !== null && mine.next !== null) load(mine.next, mine.rows, mine.pages);
+      if (mine !== null && mine.next !== null) void load(mine.next, mine.rows, mine.pages);
     },
+    /* Pull to refresh: the first page again, quietly over the list on screen, which it then replaces. */
+    refresh: () => load(0, [], 0, true),
   };
 }
 

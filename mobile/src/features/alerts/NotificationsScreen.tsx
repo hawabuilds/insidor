@@ -102,7 +102,6 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
 
   return (
     <>
-      <PullIndicator pull={pull} refreshing={refreshing} />
       <section className={styles['page']}>
         <header className={styles['sticky']}>
           <ScreenHeader className={`${styles['titleRow']} ${styles['titleOnly']}`}>
@@ -124,7 +123,9 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
         </header>
 
         {/* ★ Only the list follows the pull, never the sticky header: a moved header let rows show
-            above it while a refresh held the page down (the owner, 2026-11-01). */}
+            above it while a refresh held the page down (the owner, 2026-11-01). The spinner sits in
+            the gap the list opens, above the first row. */}
+        <PullIndicator pull={pull} refreshing={refreshing} />
         <div style={pullStyle(pull)}>
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
         {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications just now. Trying again.</p> : null}

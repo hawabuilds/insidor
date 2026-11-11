@@ -10,6 +10,12 @@
  * Separate from the screens because the page scrolls the window here (Trador has one scroll
  * container), so the listeners go on the document; and so the numbers live in one place.
  *
+ * ★ ONLY THE LIST MOVES (the owner, 2026-11-11): everything above the list (title, running coins,
+ * tabs, sort chips, the All / X / TikTok row) stays still; the list under it follows the pull and
+ * the spinner sits in the gap it opens, right above the first card (Parts.tsx PullIndicator, placed
+ * by each screen just before its moving list). The kept tabs are all mounted at once (App.tsx), so
+ * `enabled` is the screen being on show: a hidden tab neither refreshes nor swallows the touch.
+ *
  * What breaks if changed carelessly: the touchmove listener must stay non-passive, or
  * preventDefault is ignored and the browser's own bounce moves the page as well as the spinner.
  */
@@ -27,7 +33,7 @@ export const pullProgress = (pull: number): number => Math.min(1, pull / PULL_AT
 export const pullStyle = (pull: number): { transform?: string; transition?: string } => (pull > 0 ? { transform: `translateY(${pull * 0.6}px)` } : { transition: 'transform 220ms ease' });
 
 /** The pull in px, and whether a refresh is running. `refresh` must resolve when the list has been read. */
-export function usePullToRefresh(refresh: () => Promise<void>): { readonly pull: number; readonly refreshing: boolean } {
+export function usePullToRefresh(refresh: () => Promise<void>, enabled = true): { readonly pull: number; readonly refreshing: boolean } {
   const [pull, setPullState] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullRef = useRef(0);
@@ -36,6 +42,10 @@ export function usePullToRefresh(refresh: () => Promise<void>): { readonly pull:
   useEffect(() => {
     latest.current = refresh;
   }, [refresh]);
+  const on = useRef(enabled);
+  useEffect(() => {
+    on.current = enabled;
+  }, [enabled]);
   const setPull = useCallback((n: number) => {
     pullRef.current = n;
     setPullState(n);
@@ -46,7 +56,7 @@ export function usePullToRefresh(refresh: () => Promise<void>): { readonly pull:
     let tracking = false;
     const top = () => scrollTopNow() <= 0;
     const onStart = (e: TouchEvent) => {
-      if (!top() || busy.current || e.touches.length !== 1) return;
+      if (!on.current || !top() || busy.current || e.touches.length !== 1) return;
       /* A drag inside an open sheet or pop-up is that sheet's (its swipe to close), never a refresh. */
       if (e.target instanceof Element && e.target.closest('[role="dialog"]') !== null) return;
       startY = e.touches[0]?.clientY ?? null;

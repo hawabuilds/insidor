@@ -279,6 +279,7 @@ export function Feed({
         }),
       [reload, live.rebuildNext, older.reset],
     ),
+    active,
   );
 
   const onPosts = tab === 'fyp';
@@ -333,8 +334,7 @@ export function Feed({
 
   return (
     <>
-      <PullIndicator pull={pull} refreshing={refreshing} />
-      <section className={styles['screen']} style={pullStyle(pull)}>
+      <section className={styles['screen']}>
         <ScreenHeader as="header" gutter>
           <span className={styles['brand']}>
             <Mark size={26} />
@@ -391,6 +391,10 @@ export function Feed({
           ) : null}
         </div>
 
+        {/* ★ Everything above stays still on a pull; only what is below the All / X / TikTok row
+            follows it, with the spinner in the gap above the first post (alerts/pull.ts). */}
+        <PullIndicator pull={pull} refreshing={refreshing} />
+        <div style={pullStyle(pull)}>
         <Notice notice={notice} />
 
         {owner && onPosts ? (
@@ -475,6 +479,7 @@ export function Feed({
             <StarredNarratives starred={starred} list={narratives.state === 'ready' ? (narratives.value?.stories ?? null) : null} failed={narratives.state === 'failed'} now={now} onBuy={setBuying} onCreate={onCreateStory} />
           </>
         ) : null}
+        </div>
         {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
         {buyingPost !== null ? <BuyOpen mint={buyingPost.address} ticker={buyingPost.ticker ?? buyingPost.name ?? ''} onClose={() => setBuyingPost(null)} onNote={setNote} /> : null}
         <SheetToast note={note} onDone={() => setNote(null)} />

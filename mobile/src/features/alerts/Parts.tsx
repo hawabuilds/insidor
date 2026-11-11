@@ -104,17 +104,23 @@ export function Segmented<K extends string>({ options, current, onChange }: { op
   );
 }
 
-/** The spinner that follows the pull down from under the status bar. */
+/**
+ * The spinner in the gap the pull opens above the list: placed by each screen right before its
+ * moving list, it takes no room of its own, and the gap (0.6 of the pull, as pullStyle moves the
+ * list) clips it, so it grows out from under the still rows above rather than over them.
+ */
 export function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean }) {
   if (pull <= 0 && !refreshing) return null;
   const p = pullProgress(pull);
   return (
-    <div aria-hidden="true" className={styles['pull']} style={{ transform: `translateY(${pull * 0.6}px)`, opacity: refreshing ? 1 : p }}>
-      <span className={refreshing ? styles['spinning'] : ''} style={refreshing ? undefined : { transform: `rotate(${p * 270}deg)` }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8m0 0V4m0 4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 0v4m0-4h-4" />
-        </svg>
-      </span>
+    <div aria-hidden="true" className={styles['pull']}>
+      <div className={styles['pullGap']} style={{ height: `${pull * 0.6}px`, opacity: refreshing ? 1 : p }}>
+        <span className={refreshing ? styles['spinning'] : ''} style={refreshing ? undefined : { transform: `rotate(${p * 270}deg)` }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8m0 0V4m0 4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 0v4m0-4h-4" />
+          </svg>
+        </span>
+      </div>
     </div>
   );
 }
