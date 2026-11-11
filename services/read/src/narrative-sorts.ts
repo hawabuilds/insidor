@@ -42,6 +42,7 @@ import { DEFAULT_POLICY, type Policy } from '@insidor/contracts';
 import { narrativeTrendingIds, type NarrativeSpeeds } from '@insidor/core';
 
 import { coinsMade } from './coins-made.ts';
+import { rowPostsOf, withRowFaces } from './narrative-rows.ts';
 import { rankScale } from './post-sorts.ts';
 import type { Db, Row } from './queries.ts';
 
@@ -264,7 +265,9 @@ export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | '
  * GET /story/:id, still sends everything; a tap opens it.
  *
  * Each field cut is one the phone's decoder accepts as absent (a series or a map read as null) or
- * keeps as a list; nothing is renamed, and the payload's own `postCount` carries the count.
+ * keeps as a list; nothing is renamed, and the payload's own `postCount` carries the count. The
+ * tab's swipeable row travels beside the card as its own field, `rowPosts` (narrative-rows.ts),
+ * so the one `evidence` entry stays exactly as it was.
  */
 const CARD_DROPS = ['viewsGained', 'viewsGainedAll', 'viewsTotals', 'viewsTotalsAll', 'postViews'] as const;
 
@@ -275,6 +278,14 @@ export function cardOf(page: unknown): unknown {
   if (Array.isArray(out['evidence'])) out['evidence'] = out['evidence'].slice(0, 1);
   if (Array.isArray(out['discussion'])) out['discussion'] = [];
   return out;
+}
+
+/** The card, and beside it the narrative's swipeable row (narrative-rows.ts), built from the full page before it is trimmed. */
+function cardWithRow(page: unknown): unknown {
+  const card = cardOf(page);
+  if (typeof card !== 'object' || card === null || Array.isArray(card)) return card;
+  const row = rowPostsOf(page);
+  return row.length === 0 ? card : { ...(card as Record<string, unknown>), rowPosts: row };
 }
 
 export interface ListPage {
@@ -297,7 +308,7 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     const label = ask.on === null ? null : SITE_LABELS[ask.on];
     if (ask.sort === 'new' || ask.sort === 'viewed') {
       const rows = await db.query(ask.sort === 'viewed' ? LIST_VIEWED_SQL : LIST_NEW_SQL, [size, ask.offset, label, ask.noCoin]);
-      return { stories: await withCoinsMade(db, tick, rows.map((r) => cardOf(r['payload']))), next: rows.length < size ? null : ask.offset + rows.length };
+      return { stories: await withRowFaces(db, await withCoinsMade(db, tick, rows.map((r) => cardWithRow(r['payload'])))), next: rows.length < size ? null : ask.offset + rows.length };
     }
     const nowMs = now();
     const key = `${ask.sort}:${ask.on ?? 'all'}:${ask.noCoin ? 'no-coin' : 'any'}`;
@@ -311,7 +322,7 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     const pages = ids.length === 0 ? [] : await db.query(LIST_PAGES_SQL, [ids]);
     const byId = new Map(pages.flatMap((p) => (typeof p['story_id'] === 'string' ? [[p['story_id'], p['payload']] as const] : [])));
     const end = ask.offset + ids.length;
-    return { stories: await withCoinsMade(db, tick, ids.flatMap((id) => (byId.has(id) ? [cardOf(byId.get(id))] : []))), next: end < hit.ids.length ? end : null };
+    return { stories: await withRowFaces(db, await withCoinsMade(db, tick, ids.flatMap((id) => (byId.has(id) ? [cardWithRow(byId.get(id))] : [])))), next: end < hit.ids.length ? end : null };
   }
 
   /**
