@@ -225,6 +225,26 @@ export class PgImageHashRepo {
   }
 
   /**
+   * What is held for these pictures: the hash as hex, or null when it could not be read, and how
+   * many times it was tried. A picture never tried is absent. For a step that hashes the few it
+   * needs itself (the narratives' GIF thumbnails), so it neither re-asks an unreadable one forever
+   * nor scans the feed for them.
+   */
+  async heldOf(uris: readonly string[], version: string): Promise<ReadonlyMap<string, { readonly hex: string | null; readonly attempts: number }>> {
+    if (uris.length === 0) return new Map();
+    try {
+      const rows = await this.#db.query<{ uri: string; bits: string | null; attempts: number }>(
+        `select uri, bits::text as bits, attempts from internal.image_hash where uri = any($1::text[]) and (bits is null or version = $2)`,
+        [[...uris], version],
+      );
+      return new Map(rows.map((r) => [r.uri, { hex: r.bits === null ? null : fromBits(r.bits), attempts: Number(r.attempts) }]));
+    } catch (e) {
+      if (missingTable(e)) return new Map();
+      throw e;
+    }
+  }
+
+  /**
    * For each post picture, the coins minted in [post − allowance, post + window] whose logo is
    * within `maxDistance` bits of it: the picture search over the whole universe.
    */

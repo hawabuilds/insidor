@@ -129,6 +129,7 @@ import {
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
 import { videoKeyOf } from '@insidor/platform-registry';
+import { gifThumbOf, sameThumbKeys } from './same-thumb.ts';
 import { FIGHT_SEED_DECLINED, FIGHT_SEED_MODEL, OWNER_TITLE_MODEL, type FightPostRow, type NarrativePass, type NarrativePostRow, type PgNarrativeRepo, type StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -163,6 +164,11 @@ export interface NarrativeDeps {
   readonly policy: Policy;
   /** The space the post vectors were written in (the embed port's `postSpace`); null: none. */
   readonly postSpace: string | null;
+  /**
+   * The stored hashes of these GIF thumbnails (internal.image_hash, the picture-hash step), for one GIF
+   * uploaded twice (same-thumb.ts). Absent: each upload keeps its own key.
+   */
+  readonly gifHashes?: (uris: readonly string[]) => Promise<ReadonlyMap<string, string>>;
   readonly log: Logger;
   readonly now: () => Millis;
 }
@@ -235,11 +241,12 @@ const budgetOf = (meter: Meter, at: Millis, timeoutMs: number) => {
  * match: the regroup's input, compared in memory. Shared with tools/narrative-rebuild.ts, which
  * replays the regroup over stored days and must pair posts exactly as a pass does.
  */
-export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: ReadonlyMap<string, Float32Array>, pictureVectors: ReadonlyMap<string, Float32Array>, p: Policy): NarrativePair[] {
+export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: ReadonlyMap<string, Float32Array>, pictureVectors: ReadonlyMap<string, Float32Array>, p: Policy, videoKeys?: ReadonlyMap<string, string>): NarrativePair[] {
   const n = p.narrative;
   const pairs: NarrativePair[] = [];
-  /* ★ Each post's uploaded video, for the same-video link (adapters/platform/x video-key.ts). */
-  const videoOf = new Map(posts.flatMap((x) => { const k = videoKeyOf(x.media); return k === null ? [] : [[x.itemId, k] as const]; }));
+  /* ★ Each post's uploaded video, for the same-video link (adapters/platform/x video-key.ts); the pass
+     hands its own keys, with the uploads of one GIF made one (same-thumb.ts). */
+  const videoOf = videoKeys ?? postVideoKeys(posts);
   /* ★ Each sure post's distinctive judge name, and how many of these posts carry it (`narrative.rareName`). */
   const nameOf = new Map(posts.flatMap((x) => {
     const k = n.rareName.on && x.coinable === true && (x.confidence ?? 0) >= n.rareName.minConfidence ? subjectName(x.proposedName, p) : null;
@@ -283,6 +290,29 @@ export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: 
     }
   }
   return pairs;
+}
+
+/** Each post's own video key (adapters/platform/x video-key.ts); posts with none are left out. */
+export const postVideoKeys = (posts: readonly NarrativePostRow[]): ReadonlyMap<string, string> =>
+  new Map(posts.flatMap((x) => { const k = videoKeyOf(x.media); return k === null ? [] : [[x.itemId, k] as const]; }));
+
+/**
+ * The pass's video keys: each post's own, with two GIF uploads whose stored thumbnail hashes match
+ * made one (Policy.narrative.sameVideo.gifThumbMaxBits, same-thumb.ts). No hash reader, the switch
+ * off, or a failed read: each post keeps its own key, as before.
+ */
+export async function passVideoKeys(posts: readonly NarrativePostRow[], gifHashes: NarrativeDeps['gifHashes'], p: Policy, log: Logger): Promise<ReadonlyMap<string, string>> {
+  const own = postVideoKeys(posts);
+  const bar = p.narrative.sameVideo.gifThumbMaxBits;
+  if (gifHashes === undefined || bar === null) return own;
+  const thumbs = new Map(posts.flatMap((x) => { const u = own.has(x.itemId) ? gifThumbOf(x.media) : null; return u === null ? [] : [[x.itemId, u] as const]; }));
+  if (thumbs.size < 2) return own;
+  try {
+    return sameThumbKeys(own, thumbs, await gifHashes([...new Set(thumbs.values())]), bar);
+  } catch (e) {
+    log.warn('GIF thumbnail hashes unread; each upload keeps its own key this pass', { error: errorText(e) });
+    return own;
+  }
 }
 
 /** A stored post's standing as a pass reads it: its own model's cutoff, the owner, kinds and shills (core `narrativeStanding`). */
@@ -665,7 +695,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     for (let i = 0; i < withVectors.length - used.length; i += 1) count('over_cap');
     await vectorsFor(used.filter((r) => postPicture(r.media) !== null).map((r) => r.itemId), p.group.image.space, 'picture', pictureVectors);
 
-    const pairs = narrativePairs(used, postVectors, pictureVectors, p);
+    const pairs = narrativePairs(used, postVectors, pictureVectors, p, await passVideoKeys(used, deps.gifHashes, p, deps.log));
 
     /* The one-post narrative: clearly huge and climbing now. */
     const readings = await deps.repo.reach(used.map((r) => r.itemId), nowMs - n.single.growthWindowMs - READINGS_SLACK_MS);

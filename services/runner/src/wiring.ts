@@ -186,7 +186,7 @@ import { embedCoinPictures, pictureCoinMatches } from './work/coin-match.ts';
 import { newOneCoinState, oneCoinPass, type OneCoinResult } from './work/one-coin.ts';
 import { coinPostCheckPass, type CoinPostCheckResult } from './work/coin-post-check.ts';
 import { missedRunnerPass, newMissedRunnerState } from './work/missed-runners.ts';
-import { hashPictures } from './work/picture-hashes.ts';
+import { gifThumbHashes, hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
@@ -1985,6 +1985,7 @@ export async function withRuntime<T>(
                     }),
               embed: embedding,
               keepVectors: (rows, postSpace) => new PgPostEmbeddingRepo(db).putMany(rows, postSpace),
+              gifHashes: (uris) => gifThumbHashes({ hashes: new PgImageHashRepo(db), fetch: globalThis.fetch, policy, log: log.child({ step: 'narratives' }), now: () => Date.now() as Millis }, uris),
               meter,
               mode: cfg.spend.kind,
               policy,

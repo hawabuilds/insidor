@@ -4717,8 +4717,13 @@ export interface NarrativePolicy {
    * video (the platform adapter's video key) link whatever their words, within `maxGapMs`: a video post
    * has no picture vector, and captions in different languages read as different meanings. The owner's
    * "keep apart" and the average linkage still hold. Off: as before.
+   *
+   * `gifThumbMaxBits` (policy.v239; the owner, 2026-11-11, the boxing cat: one cat GIF reached X as two
+   * uploads, 23 posts and 5): two GIF uploads whose thumbnails' picture hashes differ by at most this
+   * many bits are one video (services/runner same-thumb.ts). 0: the same picture only — over three days
+   * of For You every such pair was one GIF re-uploaded, byte for byte. null: each upload is its own.
    */
-  readonly sameVideo: { readonly on: boolean; readonly maxGapMs: number };
+  readonly sameVideo: { readonly on: boolean; readonly maxGapMs: number; readonly gifThumbMaxBits: number | null };
   /**
    * ★ ONE DISTINCTIVE NAME (the owner, 2026-11-04: Elon's "Prophetic" over a Tolkien page on Gondor's
    * fallen kings and the Education Department's Aragorn clip "Get up, patriots", both judged ARAGORN,
@@ -6300,8 +6305,10 @@ const POLICY_V1: Policy = {
      dressed up as someone else has its posts left unstored, so they reach no feed, narrative or alert.
      v226 (2026-11-05) switches `ingest.reskin` off: a held post was never stored, so the coin-link
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
-     v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent. */
-  version: 'policy.v238',
+     v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent.
+     v239 (2026-11-11, the owner: the boxing cat) adds `narrative.sameVideo.gifThumbMaxBits`: two uploads
+     of one GIF, their thumbnails hashed alike, are one video for the narratives. */
+  version: 'policy.v239',
 
   admit: {
     maxAgeMin: 240,
@@ -8549,7 +8556,7 @@ const POLICY_V1: Policy = {
     maxSpanMs: 172_800_000, // two days
     minLinkShare: 0.5,
     /* Two days, the span a narrative may cover: further apart, the newer post joins through the live narrative's own path. */
-    sameVideo: { on: true, maxGapMs: 172_800_000 },
+    sameVideo: { on: true, maxGapMs: 172_800_000, gifThumbMaxBits: 0 }, // policy.v239: one GIF uploaded twice
     /* Six: a story's own name (ARAGORN, ANAKIN, PNUT) is on a handful of a pass's ~1,500 good posts,
        a kind's name (CAT, DOG) on dozens. 0.8: the judge sure of the name. Two days, as the video's. */
     /* 0.5: measured 4 Nov in the post space, the Aragorn pair 0.647 and two random posts 0.686 at the

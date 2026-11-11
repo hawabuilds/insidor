@@ -83,3 +83,42 @@ export async function hashPictures(deps: PictureHashDeps): Promise<{ readonly ha
   if (due.length > 0) deps.log.info('pictures hashed', { due: due.length, hashed, unreadable });
   return { hashed, unreadable };
 }
+
+export interface GifThumbHashDeps {
+  readonly hashes: Pick<PgImageHashRepo, 'heldOf' | 'record'>;
+  readonly fetch: typeof fetch;
+  readonly policy: Policy;
+  readonly log: Logger;
+  readonly now: () => Millis;
+}
+
+/** GIF thumbnails hashed on demand a pass, at most: a day of For You holds about thirty GIF posts. */
+const GIF_THUMBS_PER_PASS = 8;
+
+/**
+ * THE NARRATIVES' GIF THUMBNAILS (Policy.narrative.sameVideo.gifThumbMaxBits, same-thumb.ts): the
+ * stored hash of each, and the few not tried yet hashed now and stored, so one GIF uploaded twice is
+ * one video. Asked by the narratives pass for its own posts, not by this step: a GIF post has no
+ * picture vector, so this step's queue never lists it, and listing it there meant scanning the feed
+ * every pass (half a second on 2026-11-11) for about thirty pictures a day. A thumbnail that could
+ * not be read is tried `hashMaxAttempts` times in all, as this step's own pictures are.
+ */
+export async function gifThumbHashes(deps: GifThumbHashDeps, uris: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  const pc = deps.policy.postCoin;
+  const held = await deps.hashes.heldOf(uris, HASH_VERSION);
+  const out = new Map<string, string>();
+  for (const [uri, h] of held) if (h.hex !== null) out.set(uri, h.hex);
+  const due = uris.filter((u) => { const h = held.get(u); return h === undefined || (h.hex === null && h.attempts < pc.hashMaxAttempts); }).slice(0, GIF_THUMBS_PER_PASS);
+  await Promise.all(
+    due.map(async (uri) => {
+      const hex = await hashPicture(uri, deps.fetch, pc.hashTimeoutMs);
+      try {
+        await deps.hashes.record(uri, hex, HASH_VERSION, deps.now());
+      } catch (e) {
+        deps.log.warn('a GIF thumbnail hash could not be stored; it is hashed again next pass', { err: errorText(e) });
+      }
+      if (hex !== null) out.set(uri, hex);
+    }),
+  );
+  return out;
+}
