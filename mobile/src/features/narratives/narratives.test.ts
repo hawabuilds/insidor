@@ -61,7 +61,7 @@ test('★ the choice is remembered, a phone that cannot keep it gets the default
   saveChoice(store, pick('most_viewed', 'week', 'tiktok'));
   assert.deepEqual(loadChoice(store), pick('most_viewed', 'week', 'tiktok'));
   saveChoice(store, pick('trending', 'today', 'tiktok', true));
-  assert.deepEqual(loadChoice(store), pick('trending', 'today', 'tiktok', true), 'No coin yet is remembered with the site');
+  assert.deepEqual(loadChoice(store), pick('trending', 'today', 'tiktok'), 'the site is remembered; No coin yet, gone from the tab, is not');
   assert.deepEqual(loadChoice({ getItem: () => { throw new Error('private window'); } }), DEFAULT_CHOICE);
   assert.deepEqual(loadChoice({ getItem: () => '{"sort":"nonsense","span":7,"site":"facebook"}' }), DEFAULT_CHOICE);
   /* Stored before this design: { order, windows }. */
@@ -142,4 +142,11 @@ test('★ "See N coins" only when some were made: never "See 0 coins", and none 
   assert.equal(seeCoinsText(1), 'See 1 coin');
   assert.equal(seeCoinsText(0), null);
   assert.equal(seeCoinsText(null), null);
+});
+
+test('★ a saved "No coin yet" choice loads switched off: the pill is gone, so its filter never stays on', () => {
+  const mem = new Map<string, string>();
+  const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+  saveChoice(store, { ...DEFAULT_CHOICE, site: 'x', noCoin: true });
+  assert.deepEqual(loadChoice(store), { ...DEFAULT_CHOICE, site: 'x', noCoin: false });
 });

@@ -47,12 +47,14 @@ export interface Choice {
   /** Most viewed's span; the other sorts have none. */
   readonly span: ViewedSpan;
   readonly site: Site;
-  /** The "No coin yet" pill, on or off; it combines with the site. */
+  /**
+   * The old "No coin yet" pill. The pill is gone from the tab (the owner, 2026-11-11), so this is
+   * always false, a saved true included: a filter nobody can see must never stay on.
+   */
   readonly noCoin: boolean;
 }
 export const DEFAULT_CHOICE: Choice = { sort: FOR_YOU_DEFAULT.sort, span: FOR_YOU_DEFAULT.span, site: 'all', noCoin: false };
 /** The pill's words, the card's own. */
-export const NO_COIN_PILL = 'No coin yet';
 
 /**
  * The card's "See N coins", left of Create: null when none were made after its oldest post or the
@@ -173,7 +175,7 @@ export function loadChoice(store: Pick<Storage, 'getItem'> | null): Choice {
       const viewed = typeof w === 'object' && w !== null ? (w as Record<string, unknown>)['viewed'] : undefined;
       return { sort: order ?? DEFAULT_CHOICE.sort, span: viewed === 'all' ? 'all' : 'today', site: 'all', noCoin: false };
     }
-    return { sort: isSort(r['sort']) ? r['sort'] : DEFAULT_CHOICE.sort, span: isSpan(r['span']) ? r['span'] : DEFAULT_CHOICE.span, site: isSite(r['site']) ? r['site'] : DEFAULT_CHOICE.site, noCoin: r['noCoin'] === true };
+    return { sort: isSort(r['sort']) ? r['sort'] : DEFAULT_CHOICE.sort, span: isSpan(r['span']) ? r['span'] : DEFAULT_CHOICE.span, site: isSite(r['site']) ? r['site'] : DEFAULT_CHOICE.site, noCoin: false };
   } catch {
     return DEFAULT_CHOICE;
   }

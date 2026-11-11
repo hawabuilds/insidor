@@ -53,7 +53,7 @@ import { NO_RISERS, SORTS, SPANS, gainedLine, speedLine, type ViewedSpan } from 
 import feedStyles from '../feed/feed.module.css';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { NO_COIN_PILL, SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
+import { SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { WarCard } from './WorldWar.tsx';
 import { NarrativeRow } from './NarrativeRow.tsx';
@@ -129,9 +129,6 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
               {p.label}
             </button>
           ))}
-          <button type="button" className={`${feedStyles['quickPill']} ${choice.noCoin ? feedStyles['quickOn'] : ''}`} aria-pressed={choice.noCoin} onClick={() => setChoice({ ...choice, noCoin: !choice.noCoin })}>
-            {NO_COIN_PILL}
-          </button>
         </div>
         {choice.sort === 'most_viewed' ? (
           <div className={feedStyles['windows']} role="group" aria-label="Window">
