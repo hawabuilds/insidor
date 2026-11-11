@@ -21,8 +21,9 @@
  * and Buy, a top coin said as "Top coin, not checked" with Buy, or "No coin yet" with Create — and,
  * left of Create, "See N coins" when coins were made after its oldest post (the server's
  * `coinsMade`, the count its page's Choose coin lists), which opens the page on that pop-up. Buy
- * opens the existing Buy pop-up. A coin with Buy keeps its logo, name and Buy, and gets the same "See N
- * coins" left of Buy when more than one coin was made.
+ * opens the existing Buy pop-up. A top coin, not checked, keeps its logo, name and Buy, and gets the
+ * same "See N coins" left of Buy when more than one coin was made; a checked coin is the narrative's
+ * pick and is shown alone, with no "See N coins" (the owner, 2026-11-11).
  *
  * ★ FACTS ONLY. The order is the server's; the number behind it is never sent. A card shows only
  * what a reader can check: views, views gained, views a minute, posts, age.
@@ -390,8 +391,9 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
             </button>
             <span className={styles['coinActions']}>
             {/* More than one coin made after its oldest post (the owner, 2026-10-28): "See N coins" left of Buy,
-                as it sits left of Create; the coin, its name and Buy stay as they are. */}
-            {seeCoins !== null && (story.coinsMade ?? 0) > 1 ? (
+                as it sits left of Create; the coin, its name and Buy stay as they are. Only while the coin
+                is not picked (the owner, 2026-11-11): a narrative whose coin is checked shows that coin alone. */}
+            {coin.kind !== 'checked' && seeCoins !== null && (story.coinsMade ?? 0) > 1 ? (
               <button type="button" className={styles['seeCoins']} onClick={(e) => {
                 e.stopPropagation();
                 window.location.hash = hrefFor({ screen: 'story', storyId: story.id, coins: true });
