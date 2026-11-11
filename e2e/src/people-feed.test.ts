@@ -242,8 +242,10 @@ test("★ Top calls ranks every comment by holders' likes, newer first on a tie,
   await like(ids[1]!, a);
   await like(ids[1]!, c);
   await like(ids[3]!, a);
-  /* An old comment with the most likes: all time only. */
-  const [old] = await db.query<{ id: number }>(`insert into people.comment (author_id, subject_kind, subject_id, body, created_at) values ($1, 'coin', $2, 'old call', now() - interval '30 days') returning comment_id::int as id`, [a.userId, MINT]);
+  /* An old comment with the most likes: all time only. Dated from the test's clock, not the database's:
+     the week is measured back from NOW, so "30 days before the real today" fell inside it once the real
+     date passed NOW by more than three weeks. */
+  const [old] = await db.query<{ id: number }>(`insert into people.comment (author_id, subject_kind, subject_id, body, created_at) values ($1, 'coin', $2, 'old call', $3::timestamptz - interval '30 days') returning comment_id::int as id`, [a.userId, MINT, new Date(NOW).toISOString()]);
   for (const v of [me, b, c, d]) await like(old!.id, v);
 
   const week = (await as(me)('GET', '/feed?tab=top')).body['items'] as (Item & { likes: number })[];
