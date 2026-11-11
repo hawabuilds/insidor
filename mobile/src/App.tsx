@@ -299,7 +299,7 @@ export function App() {
   const inside = signedIn || (!SIGN_IN_CONFIGURED && entered);
 
   /* Who is asking, for the social and alert services: the sign-in's signed token, read when sent. */
-  useEffect(() => setTokenSource(() => wallet?.sessionToken() ?? null), [wallet]);
+  useEffect(() => setTokenSource({ held: () => wallet?.sessionToken() ?? null, fresh: async (force) => (await wallet?.freshSessionToken(force)) ?? null }), [wallet]);
   /* Signed in: the profile is brought up to date from the sign-in, once per session. */
   const myPicture = signedIn ? (wallet?.identity()?.pictureUrl ?? null) : null;
   useEffect(() => {

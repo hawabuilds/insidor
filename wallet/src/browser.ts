@@ -282,6 +282,7 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
     /* A browser extension wallet keeps its own key and its own export; there is nothing to show from here. */
     showKeyExport: async () => 'unavailable',
     sessionToken: () => null,
+    freshSessionToken: async () => null,
     linkedWallets: () => [],
     linkWallet: async () => 'unavailable',
     /* An extension wallet has no email sign-in. */

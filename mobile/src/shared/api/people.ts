@@ -5,6 +5,8 @@
  * ★ WHO IS ASKING TRAVELS AS THE SIGN-IN TOKEN, NOTHING ELSE. Each request carries the identity
  * token the wallet port hands out (`setTokenSource`, set once by App). The services read the
  * person — handle, wallet — from that signed token; nothing about the person is sent as data.
+ * The token lives hours, the session weeks, so each call takes it renewed when near its end, and a
+ * 401 is renewed and asked once more: a phone left open overnight is never told to sign in again.
  *
  * ★ NO SAMPLE PEOPLE. Every call goes to the services — at VITE_SOCIAL_URL / VITE_NOTIFY_URL, or
  * the same-origin `/api/social` and `/api/notify` the dev server and the deploy forward. A
@@ -23,13 +25,19 @@ import type { Alert, AlertPrefs, AlertSettings, Comment, CommentThread, LeaderRo
 const SOCIAL = (import.meta.env?.['VITE_SOCIAL_URL'] as string | undefined) || '/api/social';
 const NOTIFY = (import.meta.env?.['VITE_NOTIFY_URL'] as string | undefined) || '/api/notify';
 
-let tokenSource: () => string | null = () => null;
-/** Called once by App with the wallet port's `sessionToken`. */
-export function setTokenSource(source: () => string | null): void {
+export interface TokenSource {
+  /** The token as it stands, read without waiting. */
+  readonly held: () => string | null;
+  /** The token renewed first when near its end; `force` renews whatever it says. */
+  readonly fresh: (force: boolean) => Promise<string | null>;
+}
+let tokenSource: TokenSource = { held: () => null, fresh: async () => null };
+/** Called once by App with the wallet port's `sessionToken` and `freshSessionToken`. */
+export function setTokenSource(source: TokenSource): void {
   tokenSource = source;
 }
 /** The session token as it stands, for a screen that keeps what it read per person (features/alerts keep.ts). Never sent anywhere by that caller. */
-export const sessionToken = (): string | null => tokenSource();
+export const sessionToken = (): string | null => tokenSource.held();
 
 export class PeopleError extends Error {
   readonly status: number;
@@ -60,7 +68,13 @@ function checkKeys(raw: unknown, path = '$'): void {
 
 async function call(service: 'social' | 'notify', method: string, path: string, body?: unknown, keepalive = false): Promise<unknown> {
   const base = service === 'social' ? SOCIAL : NOTIFY;
-  const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body, keepalive);
+  const token = await tokenSource.fresh(false);
+  let response = await peopleRequest(`${base}${path}`, method, token, body, keepalive);
+  /* Refused while signed in: the token may have run out between the check and the service. Renewed once and asked again, never in a loop. */
+  if (response.status === 401 && token !== null) {
+    const renewed = await tokenSource.fresh(true);
+    if (renewed !== null && renewed !== token) response = await peopleRequest(`${base}${path}`, method, renewed, body, keepalive);
+  }
   const parsed = response.json;
   if (!response.ok) throw new PeopleError(response.status, typeof (parsed as { error?: unknown }).error === 'string' ? (parsed as { error: string }).error : 'That did not work. Try again.');
   checkKeys(parsed);

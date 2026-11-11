@@ -26,7 +26,7 @@
  * second confirmation appears over our own pop-ups, and the earlier crash note below applies again.
  */
 
-import { PrivyProvider, useIdentityToken, useLinkAccount, useLoginWithEmail, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
+import { getIdentityToken, PrivyProvider, useIdentityToken, useLinkAccount, useLoginWithEmail, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
 import { defaultSolanaRpcsPlugin, toSolanaWalletConnectors, useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, useRef, type ReactNode } from 'react';
 
@@ -82,7 +82,7 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
 }
 
 function VendorBridge({ bridge }: { bridge: Bridge }) {
-  const { ready, authenticated, user, logout } = usePrivy();
+  const { ready, authenticated, user, logout, getAccessToken } = usePrivy();
   const ended = {
     onComplete: () => bridge.signInEnded('done'),
     onError: (code: unknown) => bridge.signInEnded(typeof code === 'string' && DENIED_BY_PERSON.has(code) ? 'closed' : 'error'),
@@ -177,9 +177,12 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
         const { signedTransaction } = await signTransaction({ transaction: payload, wallet: signer, chain: 'solana:mainnet' });
         return signedTransaction;
       },
+      /* Asking for the access token is what makes the vendor renew the session; the identity
+         token is renewed with it and read after. Null from either means the session is gone. */
+      renewToken: async () => ((await getAccessToken()) === null ? null : getIdentityToken()),
     });
     return () => bridge.actions(null);
-  }, [bridge, initOAuth, sendCode, loginWithCode, logout, signer, signTransaction, exportWallet, linkWallet, address]);
+  }, [bridge, initOAuth, sendCode, loginWithCode, logout, signer, signTransaction, exportWallet, linkWallet, address, getAccessToken]);
 
   /* Who signed in, as the vendor reports it: the X account, or the Google account's name. An
      email address is never passed on — it is not a name, and nothing here needs it. */

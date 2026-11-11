@@ -7,10 +7,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { embeddedWallet, emailErrorOf, type Broadcast } from './store.ts';
+import { embeddedWallet, emailErrorOf, tokenExpiresAt, type Broadcast } from './store.ts';
 
-function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array>; exportWindow?: () => Promise<unknown>; email?: { send?: () => Promise<void>; login?: () => Promise<void> } } = {}) {
-  const { wallet, bridge } = embeddedWallet(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast });
+function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array>; exportWindow?: () => Promise<unknown>; email?: { send?: () => Promise<void>; login?: () => Promise<void> }; renew?: () => Promise<string | null>; now?: () => number } = {}) {
+  const { wallet, bridge } = embeddedWallet({ ...(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast }), ...(opts.now === undefined ? {} : { now: opts.now }) });
   const calls: string[] = [];
   bridge.actions({
     signIn: (via?: string) => void calls.push(via === undefined ? 'signIn' : `signIn:${via}`),
@@ -22,6 +22,10 @@ function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<
     signTransaction: opts.sign ?? (async (p) => {
       calls.push('sign');
       return new Uint8Array([...p, 9]);
+    }),
+    renewToken: opts.renew ?? (async () => {
+      calls.push('renew');
+      return null;
     }),
   });
   bridge.snapshot({ ready: true, signedIn: false, address: null });
@@ -186,6 +190,49 @@ test('the identity token is offered only while signed in', () => {
   assert.equal(wallet.sessionToken(), null);
   bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: 'id-token' });
   assert.equal(wallet.sessionToken(), 'id-token');
+});
+
+/** A token-shaped string whose `exp` is `expSec`; nothing here verifies the signature. */
+const tokenUntil = (expSec: number, tag = 'a'): string => `h.${btoa(JSON.stringify({ exp: expSec, tag })).replace(/=+$/, '')}.s`;
+
+test('tokenExpiresAt reads exp in ms, and null from anything that is not a token', () => {
+  assert.equal(tokenExpiresAt(tokenUntil(1_000)), 1_000_000);
+  assert.equal(tokenExpiresAt('not-a-token'), null);
+  assert.equal(tokenExpiresAt(''), null);
+});
+
+test('★ a token with time left is sent as held; one near its end is renewed first, and the renewal is kept', async () => {
+  let t = 0;
+  let renewals = 0;
+  const { wallet, bridge } = setup({ now: () => t, renew: async () => (renewals += 1, tokenUntil(100_000, 'new')) });
+  const old = tokenUntil(3_600);
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: old });
+  assert.equal(await wallet.freshSessionToken(), old, 'an hour left: no renewal');
+  assert.equal(renewals, 0);
+  t = 3_570_000; /* thirty seconds left */
+  const fresh = await wallet.freshSessionToken();
+  assert.equal(fresh, tokenUntil(100_000, 'new'));
+  assert.equal(renewals, 1);
+  assert.equal(wallet.sessionToken(), fresh, 'the renewed token is the one held now');
+});
+
+test('★ a token already run out is renewed, ten calls at once renew once, and force renews a token with time left', async () => {
+  let renewals = 0;
+  const { wallet, bridge } = setup({ now: () => 10_000_000, renew: async () => (renewals += 1, tokenUntil(99_999, String(renewals))) });
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: tokenUntil(1) });
+  const all = await Promise.all(Array.from({ length: 10 }, () => wallet.freshSessionToken()));
+  assert.equal(renewals, 1);
+  assert.ok(all.every((x) => x === tokenUntil(99_999, '1')));
+  assert.equal(await wallet.freshSessionToken(true), tokenUntil(99_999, '2'));
+});
+
+test('a renewal that fails sends what is held, and signed out there is no token to renew', async () => {
+  const { wallet, bridge, calls } = setup({ now: () => 10_000_000, renew: async () => Promise.reject(new Error('offline')) });
+  assert.equal(await wallet.freshSessionToken(), null);
+  const held = tokenUntil(1);
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: held });
+  assert.equal(await wallet.freshSessionToken(), held);
+  assert.ok(!calls.includes('renew'));
 });
 
 test('★ email sign-in: a code sent, the right code signs in and the state follows; nothing throws', async () => {

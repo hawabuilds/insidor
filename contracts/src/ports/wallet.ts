@@ -255,6 +255,12 @@ export interface Wallet {
    * asking; null when signed out. It proves identity only: it signs nothing and moves nothing.
    */
   sessionToken(): string | null;
+  /**
+   * The same token, renewed first when it has run out or is about to (`force`: renewed whatever
+   * it says, after a service refused it). The token lives hours, a session weeks: a phone left
+   * open past the token's life must renew it, never be told to sign in again. Null when signed out.
+   */
+  freshSessionToken(force?: boolean): Promise<string | null>;
   /** Outside wallets (Phantom) this person joined for viewing. Read-only: their keys never leave those wallets. */
   linkedWallets(): readonly string[];
   /** Open the provider's own flow to join an outside wallet for viewing. Resolves with how it ended — never a key. */

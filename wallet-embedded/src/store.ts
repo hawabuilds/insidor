@@ -14,6 +14,9 @@
  *   - Signed in but the embedded wallet not yet created is `connecting`, not connected.
  *   - `signer()` is null in this phase: nothing signs until the trade path exists (Phase 5),
  *     and a signer handed out before then is a capability nobody asked for.
+ *   - ★ An identity token near its end is renewed before it is sent (`freshSessionToken`). The
+ *     vendor renews it only when asked; before 2026-11-11 nothing asked, so a phone left open
+ *     past the token's life was refused by every service and its person told to sign in again.
  *
  * Sign-in is ours to draw (the owner, 2026-10-22: no vendor screens): Apple, Google and X leave for
  * the provider's own page and come back; email is two calls, a code sent and a code typed, each
@@ -55,6 +58,22 @@ export interface Actions {
   linkWallet(): void;
   /** The vendor's signature on a transaction, from the embedded wallet. The key stays in the vendor's wallet. */
   signTransaction(payload: Uint8Array): Promise<Uint8Array>;
+  /** Renews the session and answers the new identity token; null when the session itself is gone. */
+  renewToken(): Promise<string | null>;
+}
+
+/** A token with less than this left is renewed before it is sent, so it cannot run out on the way. */
+const RENEW_BEFORE_MS = 60_000;
+
+/** When a token runs out, ms, read from its unverified `exp`; null when it carries none. The services verify; this only decides when to renew. */
+export function tokenExpiresAt(token: string): number | null {
+  try {
+    const part = token.split('.')[1] ?? '';
+    const exp = (JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: unknown }).exp;
+    return typeof exp === 'number' ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Sends a signed transaction: the trade service, which broadcasts it. */
@@ -90,9 +109,12 @@ export interface Bridge {
 /** The network every address here is on. The embedded wallet is created on mainnet only. */
 const NETWORK = 'solana:mainnet';
 
-export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {}): { readonly wallet: Wallet; readonly bridge: Bridge } {
+export function embeddedWallet(options: { readonly broadcast?: Broadcast; readonly now?: () => number } = {}): { readonly wallet: Wallet; readonly bridge: Bridge } {
+  const now = options.now ?? Date.now;
   let snap: Snapshot = { ready: false, signedIn: false, address: null };
   let act: Actions | null = null;
+  /* One renewal at a time: a screen firing ten calls at once renews the session once, not ten times. */
+  let renewing: Promise<string | null> | null = null;
   /* The outcome of the last sign-in attempt, shown until the snapshot says something newer. */
   let attempt: 'none' | 'pending' | 'closed' | 'error' = 'none';
   let current: WalletState = { kind: 'unavailable' };
@@ -178,6 +200,27 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
     },
     signer: () => null,
     sessionToken: () => (snap.signedIn ? (snap.token ?? null) : null),
+    async freshSessionToken(force = false) {
+      if (!snap.signedIn) return null;
+      const held = snap.token ?? null;
+      const exp = held === null ? null : tokenExpiresAt(held);
+      if (!force && held !== null && (exp === null || exp - now() > RENEW_BEFORE_MS)) return held;
+      const actions = act;
+      if (actions === null) return held;
+      renewing ??= actions
+        .renewToken()
+        .then((t) => {
+          if (t !== null && snap.signedIn) snap = { ...snap, token: t };
+          return t;
+        })
+        .catch(() => null)
+        .finally(() => {
+          renewing = null;
+        });
+      /* A renewal that could not be made sends what is held: the service's answer, not ours, says whether it still works. */
+      const renewed = await renewing;
+      return snap.signedIn ? (renewed ?? held) : null;
+    },
     linkedWallets: () => (snap.signedIn ? (snap.linked ?? []) : []),
     linkWallet() {
       if (current.kind !== 'connected' || act === null) return Promise.resolve<LinkOutcome>('unavailable');
