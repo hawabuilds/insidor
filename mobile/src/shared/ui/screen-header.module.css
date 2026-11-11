@@ -10,8 +10,9 @@
  * home-screen app the headings landed anywhere from 67px to 134px down on the same phone.
  *
  * ★ THE STATUS BAR IS ROOM `#root` ALREADY KEEPS (tokens.css, padding-top: var(--safe-top)), so
- * nothing here adds it again. A sticky header that holds this row sticks at `top: var(--safe-top)`
- * for the same reason, so the row sits at the same height stuck or not. Adding the inset here
+ * nothing here adds it again. A sticky header that holds this row sticks at `top: 0` for the same
+ * reason (its offset counts from inside #root's padding), so the row sits at the same height
+ * stuck or not. Adding the inset here
  * as well is exactly the bug this file removes.
  *
  * ★ THE ROW IS A FIXED BOX: 16px of room, then 48px (the Portfolio's avatar, the tallest thing

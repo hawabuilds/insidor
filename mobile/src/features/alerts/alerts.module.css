@@ -13,14 +13,15 @@
   padding: 0 var(--gutter) var(--tabbar-space);
 }
 
-/* Trador's StickyPageHeader: opaque, a soft shadow under it. It sticks under the status bar
-   (`#root` keeps that room and body::before paints it), not at the very top with the inset as
-   padding: that added the inset twice before scrolling, so the Feed's title sat a whole status
-   bar lower than every other tab's. The title row inside is the shared one
-   (shared/ui/screen-header.module.css). */
+/* Trador's StickyPageHeader: opaque, a soft shadow under it. It sticks under the status bar at
+   `top: 0`, because `#root` is the scroller and its padding-top already keeps the status bar's
+   room: a sticky offset counts from inside that padding, so `top: var(--safe-top)` added the
+   inset a second time and the Feed's title sat a whole status bar lower than every other tab's,
+   even before scrolling (the owner, 2026-11-11). Neither padding nor top may add the inset here.
+   The title row inside is the shared one (shared/ui/screen-header.module.css). */
 .sticky {
   position: sticky;
-  top: var(--safe-top);
+  top: 0;
   z-index: 20;
   margin: 0 calc(-1 * var(--gutter));
   padding: 0 var(--gutter);
