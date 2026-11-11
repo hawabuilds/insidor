@@ -51,7 +51,6 @@ import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { NO_RISERS, SORTS, SPANS, gainedLine, speedLine, type ViewedSpan } from '../feed/feed-sort.ts';
 import feedStyles from '../feed/feed.module.css';
-import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { NO_COIN_PILL, SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
@@ -108,9 +107,8 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   return (
     <section className={styles['screen']}>
       <ScreenHeader as="header" gutter className={styles['header']}>
+        {/* No "Live" beside the title (the owner, 2026-11-11): the list keeps itself current either way. */}
         <ScreenTitle>Narratives</ScreenTitle>
-        {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
-        {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
         <NotificationBell />
       </ScreenHeader>
       {/* The coins of the posts we found that are trading now (shared/ui/RunningCoins.tsx). */}

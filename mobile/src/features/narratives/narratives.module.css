@@ -11,14 +11,9 @@
 }
 
 /* The title row is the shared one (shared/ui/screen-header.module.css): its place and the title's face are
-   set there, the same as every tab. Here only "Live" at its right end. */
+   set there, the same as every tab. Here only the notification bell at its right end. */
 .header {
   justify-content: space-between;
-}
-
-.live {
-  color: var(--text-2);
-  font-size: var(--type-body);
 }
 
 .empty {
