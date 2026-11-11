@@ -28,7 +28,7 @@ import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink, RacingCoin } from './wire/coin.ts';
 import type { CardVideo, OlderCoin, PostInStory, PostTranslation, QuotedPost, RisingFeed, SharedBy, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, RowPost, Story, StoryProvenance, ViewsGained, WarCoin } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketPair, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -506,6 +506,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     viewsTotals: decodeViewsGained(o.viewsTotals),
     viewsTotalsAll: decodeViewsGained(o.viewsTotalsAll),
     postViews: decodePostViews(o.postViews),
+    rowPosts: decodeRowPosts(o.rowPosts),
     inWindow: decodeInWindow(o.inWindow, `${path}.inWindow`),
     /* A top coin that does not decode is dropped, never the page: the card then says no coin is settled. */
     topCoin: (() => {
@@ -564,6 +565,43 @@ function decodeViewsGained(raw: unknown): ViewsGained | null {
 }
 
 /** Each listed post's newest views and last-hour gain, by post id; null when the server sent none. */
+/**
+ * A narrative card's row (services/read narrative-rows.ts). A post that does not read (no id, no
+ * site or handle, no words) is left out, never the card; absent, or anything but a list, is no row.
+ */
+function decodeRowPosts(raw: unknown): readonly RowPost[] {
+  if (!Array.isArray(raw)) return [];
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return raw.flatMap((p): RowPost[] => {
+    if (typeof p !== 'object' || p === null || Array.isArray(p)) return [];
+    const r = p as Record<string, unknown>;
+    const id = text(r['id']), sourceLabel = text(r['sourceLabel']), authorLabel = text(r['authorLabel']), excerpt = typeof r['excerpt'] === 'string' ? r['excerpt'] : null;
+    if (id === null || sourceLabel === null || authorLabel === null || excerpt === null) return [];
+    let postedAt: Instant;
+    try {
+      postedAt = instantAt(r['postedAt'], '$.rowPosts.postedAt', 'not_reported');
+    } catch {
+      postedAt = instantFrom(null, 'not_reported');
+    }
+    const views = typeof r['views'] === 'number' && Number.isFinite(r['views']) ? r['views'] : null;
+    return [{
+      id,
+      sourceLabel,
+      authorLabel,
+      authorPictureUrl: httpsOrNull(r['authorPictureUrl']),
+      authorPictureFile: posterPicFile(r['authorPictureFile']),
+      permalink: httpsOrNull(r['permalink']),
+      excerpt,
+      thumbUrl: httpsOrNull(r['thumbUrl']),
+      thumbFile: postPicFile(r['thumbFile']),
+      thumbIsVideo: r['thumbIsVideo'] === true,
+      ...decodeCardVideo(r['video']),
+      postedAt,
+      views,
+    }];
+  });
+}
+
 function decodePostViews(raw: unknown): ReadonlyMap<string, PostViews> | null {
   if (!Array.isArray(raw)) return null;
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);

@@ -286,7 +286,14 @@ function PostWords({ text }: { text: string }) {
  * (FeedVideo.tsx); a video that fails shows its still, and a still that will not load takes the box
  * away, leaving the narrative tag alone under the words.
  */
-function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
+/** What a media box needs of a post: a For You card's post, or one post of a narrative's row (Story.rowPosts). */
+export type MediaPost = Pick<RisingPost, 'id' | 'sourceLabel' | 'thumbUrl' | 'thumbFile' | 'thumbIsVideo' | 'video'>;
+
+/**
+ * `height`: the box's height (the card's MEDIA_HEIGHT by default). `badge`: something laid on the
+ * box's bottom left, under nothing else (the narrative row's views); `tag` sits there on a card.
+ */
+export function CardMedia({ post, tag = null, badge = null, height = MEDIA_HEIGHT }: { post: MediaPost; tag?: ReactNode; badge?: ReactNode; height?: number }) {
   const sources = postPicSources(post.thumbFile, post.thumbUrl === null ? [] : [post.thumbUrl], POST_PIC_BASE, 'sheet');
   const { src, tryKey, fail } = usePictureTries(sources);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -307,8 +314,13 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
      inside the box its X would reach `tap` and open it again. */
   return (
     <>
-    {full !== null ? <Viewer media={{ playUrl: video?.playUrl ?? null, posterUrl: src ?? '' }} full={full} onClose={() => setFull(null)} /> : null}
-    <div className={styles['media']} onClick={tiktokOn ? undefined : tap}>
+    {/* Its taps are stopped here too: on a narrative card (a tap target itself) the X would otherwise also open the narrative. */}
+    {full !== null ? (
+      <span onClick={(e) => e.stopPropagation()}>
+        <Viewer media={{ playUrl: video?.playUrl ?? null, posterUrl: src ?? '' }} full={full} onClose={() => setFull(null)} />
+      </span>
+    ) : null}
+    <div className={styles['media']} style={{ height }} onClick={tiktokOn ? undefined : (e) => { e.stopPropagation(); tap(); }}>
       {src !== null ? <img key={tryKey} className={styles['mediaImg']} src={src} alt="" loading="lazy" decoding="async" onError={() => fail(src)} /> : null}
       {video !== null ? (
         <FeedVideo
@@ -322,7 +334,7 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
       ) : null}
       {tiktok !== null && tiktokOn && src !== null ? (
         <div className={styles['mediaFill']}>
-          <TikTokPlayer id={tiktok} posterUrl={src} height={MEDIA_HEIGHT} onFail={() => setTiktokOn(false)} />
+          <TikTokPlayer id={tiktok} posterUrl={src} height={height} onFail={() => setTiktokOn(false)} />
         </div>
       ) : null}
       {video === null && post.thumbIsVideo && !tiktokOn ? (
@@ -337,6 +349,7 @@ function CardMedia({ post, tag }: { post: RisingPost; tag: ReactNode }) {
         )
       ) : null}
       {tag !== null ? <div className={styles['mediaTag']}>{tag}</div> : null}
+      {badge !== null ? <div className={styles['mediaBadge']}>{badge}</div> : null}
     </div>
     </>
   );

@@ -302,6 +302,16 @@
   color: #fff;
 }
 
+/* Something laid on the media's bottom left by the caller (the narrative row's views), clear of the sound button. */
+.mediaBadge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+
 /* The narrative tag on the media's bottom left, clear of the sound button at the right. */
 .mediaTag {
   position: absolute;

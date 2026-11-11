@@ -93,6 +93,8 @@ export const STORY_FIELDS = [
   'viewsGainedWeek',
   /* The Narratives card's "See N coins": coins made after its oldest post (services/read coins-made.ts). */
   'coinsMade',
+  /* The Narratives tab's swipeable row: the most viewed posts, each with its views (services/read narrative-rows.ts). */
+  'rowPosts',
 ] as const;
 
 /** A single post on the For You or Popular feed. See wire/rising.ts. */

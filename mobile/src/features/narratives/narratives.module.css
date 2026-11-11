@@ -77,6 +77,16 @@
   font-weight: var(--type-section-weight);
 }
 
+/* A card with the swipeable row has no picture beside its title, so the title wraps to its full
+   length instead of being cut ("names are far too long… cut offs", the owner, 2026-11-11). */
+.titleWrap {
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
 .sub {
   display: flex;
   gap: 8px;

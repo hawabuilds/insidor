@@ -99,3 +99,21 @@ test('★ the Twitter World War coin: the coin\'s facts, an absence keeps its re
   assert.equal(decodeWarCoin(null), null);
   assert.equal(decodeNarratives({ tick: 1, stories: [], provenance: { kind: 'observed' } }).warCoin, null, 'an older server sends none: no coin, not an error');
 });
+
+test('a narrative card\'s row posts decode with their views, face and video; a broken one is dropped, never the card', () => {
+  const raw = fixtureStory(decodeBoardTick(fixtureBoard()).order[0] ?? '');
+  const mp4 = 'https://video.twimg.com/a.mp4';
+  const s = decodeStory({ ...(raw as object), rowPosts: [
+    { id: 'x:1', sourceLabel: 'X', authorLabel: '@a', permalink: 'https://x.com/a/status/1', excerpt: 'words', thumbUrl: 'https://pbs.twimg.com/a.jpg', postedAt: { at: 5 }, views: 1200, authorPictureUrl: 'https://pbs.twimg.com/p.jpg', thumbIsVideo: true, video: { playUrl: mp4, loops: false } },
+    { id: 'tt:2', sourceLabel: 'TikTok', authorLabel: '@b', excerpt: 'more', postedAt: 'nonsense', views: null },
+    { id: '', sourceLabel: 'X', authorLabel: '@c', excerpt: 'no id' },
+  ] });
+  assert.equal(s.rowPosts.length, 2);
+  assert.equal(s.rowPosts[0]?.views, 1200);
+  assert.deepEqual(s.rowPosts[0]?.video, { playUrl: mp4, loops: false });
+  assert.equal(s.rowPosts[0]?.authorPictureUrl, 'https://pbs.twimg.com/p.jpg');
+  assert.equal(s.rowPosts[1]?.views, null);
+  assert.equal(s.rowPosts[1]?.postedAt.known, false);
+  assert.equal(s.rowPosts[1]?.video, undefined);
+  assert.deepEqual(decodeStory(raw).rowPosts, []);
+});

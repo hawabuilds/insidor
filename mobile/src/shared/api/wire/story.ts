@@ -144,6 +144,12 @@ export interface Story {
   /** Each listed post's newest views, its own last-hour gain and when we found it, by post id. Null from an older server. */
   readonly postViews: ReadonlyMap<string, PostViews> | null;
   /**
+   * The Narratives tab's swipeable row: the narrative's most viewed posts, at most five, most viewed
+   * first (services/read narrative-rows.ts). Only the tab's lists send it; empty from the narrative's
+   * own page and from an older server, and the card then draws no row.
+   */
+  readonly rowPosts: readonly RowPost[];
+  /**
    * The Narratives tab's orders by window, keyed by hours (1, 6, 24): views gained in it, posts
    * found in it, and its place in Trending for it (1 first). The place is a position, nothing more.
    * Null from an older server.
@@ -184,6 +190,26 @@ export interface ViewsGained {
   readonly fromMs: number;
   readonly stepMs: number;
   readonly values: readonly (number | null)[];
+}
+
+/** One post in a narrative card's swipeable row (`Story.rowPosts`). */
+export interface RowPost {
+  readonly id: string;
+  readonly sourceLabel: string;
+  readonly authorLabel: string;
+  readonly authorPictureUrl: string | null;
+  readonly authorPictureFile: string | null;
+  /** Null when the server holds no link — never a guessed one. */
+  readonly permalink: string | null;
+  readonly excerpt: string;
+  readonly thumbUrl: string | null;
+  readonly thumbFile: string | null;
+  readonly thumbIsVideo: boolean;
+  /** Its own playable file, as a For You card's (`RisingPost.video`); absent for a picture or TikTok. */
+  readonly video?: { readonly playUrl: string; readonly loops: boolean };
+  readonly postedAt: Instant;
+  /** Its newest views; null when they were never read, shown as nothing, never as 0. */
+  readonly views: number | null;
 }
 
 export interface PostViews {

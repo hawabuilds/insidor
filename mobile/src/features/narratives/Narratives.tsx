@@ -57,6 +57,7 @@ import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { NO_COIN_PILL, SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { WarCard } from './WorldWar.tsx';
+import { NarrativeRow } from './NarrativeRow.tsx';
 import { itemKey, withWarUmbrella, type ListItem } from './world-war.ts';
 import { useIsOwner } from '../owner/hooks.ts';
 import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
@@ -323,6 +324,8 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
  */
 export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, extra = null }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void; extra?: ReactNode }) {
   const coin = storyCoinState(story);
+  /* The swipeable row on the tab's own lists (`view` set) when the list sent its posts; Home's Watchlist keeps its card. */
+  const withRow = view !== undefined && story.rowPosts.length > 0;
   const seeCoins = seeCoinsText(story.coinsMade);
   const right = view === undefined ? hourGainText(story) : viewsText(story);
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
@@ -338,9 +341,10 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
     }}>
       <div className={styles['top']}>
         {place !== null ? <span className={styles['place']}>{place}</span> : null}
-        <Thumb url={story.thumbUrl} file={story.thumbFile} size={64} radius={16} hideEmpty />
+        {/* With the row (the tab's lists), its posts are the pictures; without one, the narrative's picture as before. */}
+        {withRow ? null : <Thumb url={story.thumbUrl} file={story.thumbFile} size={64} radius={16} hideEmpty />}
         <div className={styles['text']}>
-          <b className={styles['title']}>{story.title}</b>
+          <b className={withRow ? styles['titleWrap'] : styles['title']}>{story.title}</b>
           <span className={styles['sub']}>
             {(line ?? cardLine(story, now)).map((w) => <span key={w}>{w}</span>)}
           </span>
@@ -356,6 +360,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
           {gainLine !== null ? <span className={gainLine.up ? styles['up'] : ''}>{gainLine.text}</span> : null}
         </div>
       </div>
+      {withRow ? <NarrativeRow story={story} now={now} /> : null}
       <div className={styles['coin']}>
         {coin.kind === 'checked' || coin.kind === 'top' ? (
           <>

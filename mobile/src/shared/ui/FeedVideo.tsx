@@ -29,8 +29,12 @@ import { useScreenActive } from '../screen-active.ts';
 import { SoundOffIcon, SoundOnIcon } from '../../features/post-sheet/sheet-icons.tsx';
 import styles from './feed-video.module.css';
 
-/** The middle band of the screen a video plays in: the top and bottom 20% trimmed off. */
-const PLAY_BAND = '-20% 0px -20% 0px';
+/**
+ * The middle of the screen a video plays in: the top and bottom 20% trimmed off, and the sides too,
+ * so in a narrative's swipeable row only the post resting in view plays, never the next one
+ * peeking in at the edge.
+ */
+const PLAY_BAND = '-20% -20% -20% -20%';
 
 /** The one video playing in the feed right now; a video that starts pauses it. */
 let playing: HTMLVideoElement | null = null;

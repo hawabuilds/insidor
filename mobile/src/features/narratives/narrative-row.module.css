@@ -1,0 +1,156 @@
+/* The Narratives tab's swipeable row (NarrativeRow.tsx): posts side by side, each one card-wide
+   less a peek of the next, snapping as they are swiped. The rail runs to the card's edges so a
+   swipe starts anywhere on the card's width, and its first post lines up with the card's text. */
+
+.row {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rail {
+  display: flex;
+  gap: 8px;
+  margin: 0 -14px;
+  padding: 0 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 14px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.slide {
+  flex: 0 0 84%;
+  min-width: 0;
+  scroll-snap-align: start;
+  border-radius: 14px;
+  border: 1px solid var(--card-line);
+  background: var(--popup);
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+}
+
+/* The media box's own corners are the slide's; it fills the slide's width. */
+.slide > div:first-child {
+  border-radius: 0;
+}
+
+.views {
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.cap {
+  padding: 9px 10px 10px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Who posted it, on which site, and when: one line, spacing between, only the handle ever cut. */
+.who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.face,
+.faceLetter {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--hover);
+}
+
+.face {
+  object-fit: cover;
+}
+
+.faceLetter {
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: var(--type-caption);
+  font-weight: 700;
+}
+
+.handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.mark {
+  flex: none;
+  display: inline-grid;
+  color: var(--text-2);
+}
+
+.age {
+  flex: none;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.text,
+.textOnly {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.text {
+  -webkit-line-clamp: 2;
+}
+
+/* A post with no picture has its words in the picture's room. */
+.textOnly {
+  -webkit-line-clamp: 7;
+  min-height: 132px;
+}
+
+.viewsLine {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Where the row rests: one short bar per post, the shown one lit. */
+.position {
+  display: flex;
+  gap: 3px;
+}
+
+.position i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--tag-bg);
+}
+
+.position i.on {
+  background: var(--text-2);
+}
