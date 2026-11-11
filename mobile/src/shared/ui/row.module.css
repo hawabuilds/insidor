@@ -97,11 +97,19 @@
   font-weight: 700;
 }
 
+/* The dot and the age are lowered with the X (the owner's pick B, 2026-11-11), so the X and the
+   time sit level with each other, all three optically centred on the mostly lowercase handle. */
 .age {
   flex: none;
   color: var(--text-3);
   font-size: 15px;
   font-weight: 600;
+}
+
+.who > .sep,
+.who > .age {
+  position: relative;
+  top: 0.55px;
 }
 
 /* The mark's box is padded on every side (icons.tsx `Filled`), equally, so its drawn X is centred
