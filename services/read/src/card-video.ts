@@ -4,7 +4,7 @@
  * while it is on screen, the way the post sheet already plays it.
  *
  * ★ THE POST SHEET'S RULE, NOT A SECOND ONE. Which entry counts and whether it loops is
- * post-sheet.ts `sheetMedia`, so a card never plays a file the sheet would refuse, and a GIF loops
+ * sheet-media.ts `sheetMedia`, so a card never plays a file the sheet would refuse, and a GIF loops
  * in both. A TikTok video has no file it can play (TikTok answers 403 to any page but its own), so it
  * gets no field here; the phone plays it in TikTok's player from the post's id, as the sheet does.
  *
@@ -17,7 +17,7 @@
  * picture of the post it quotes must not play some other file under that picture.
  */
 
-import { sheetMedia } from './post-sheet.ts';
+import { sheetMedia } from './sheet-media.ts';
 import type { Db } from './queries.ts';
 
 export const CARD_VIDEO_SQL = `select item_id, media from public.item where item_id = any($1::text[])`;

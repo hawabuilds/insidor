@@ -11,7 +11,7 @@
  * ★ BUILT FROM THE PAGE'S OWN FACTS, PLUS ONE READ. Which posts, and their views, come from the
  * projected page (`evidence`, `postViews`, the numbers the narrative page already shows). The face
  * and the video come from one statement for the whole page of cards, the post sheet's media rule
- * (post-sheet.ts `sheetMedia`) and the narrative sheet's face read (story-sheet.ts). A post with no
+ * (sheet-media.ts `sheetMedia`) and the narrative sheet's face read (story-sheet.ts). A post with no
  * views read has `views: null`, never 0, and sorts after every post that has them.
  *
  * What breaks if changed carelessly: ROW_MAX is also the reply's size. The list was trimmed to one
@@ -19,7 +19,7 @@
  * the row needs and stays far under that.
  */
 
-import { sheetMedia } from './post-sheet.ts';
+import { sheetMedia } from './sheet-media.ts';
 import type { Db } from './queries.ts';
 import { cardText } from './translations.ts';
 
