@@ -100,12 +100,26 @@ export interface Whitespace { readonly time: number }
 
 const usableLevel = (n: number | undefined, close: number): number | null => (n !== undefined && isPlausiblePrice(n, close) ? n : null);
 
+/**
+ * ★ A WICK FAR PAST ITS OWN BODY IS A BAD PRINT (the owner, 2026-11-11: mihao's 1h chart drawn as a
+ * flat line under one spike). The source sent an hour that opened at $0.012, closed at $0.015 and
+ * "touched" $1.30 — 85x, inside the 100x bad-print rule, so the axis stretched to $1.5B of market cap
+ * and every real candle sat on the floor. Real wicks on that coin stayed under 1.8x their body; the
+ * bad ones were 85x and 500,000x. Past this ratio the wick is dropped and the candle ends at its body:
+ * a level the coin did print, never one made up.
+ */
+const WICK_BODY_RATIO = 10;
+
 /** A candle with every level checked against its close; a missing open is the last close. */
 export function candleFromPoint(point: ChartPoint, prevClose?: number): CandlePoint {
   const close = point.price;
   const open = usableLevel(point.open, close) ?? (prevClose !== undefined && prevClose > 0 ? prevClose : close);
-  const high = usableLevel(point.high, close);
-  const low = usableLevel(point.low, close);
+  const top = Math.max(open, close);
+  const bottom = Math.min(open, close);
+  const rawHigh = usableLevel(point.high, close);
+  const rawLow = usableLevel(point.low, close);
+  const high = rawHigh !== null && rawHigh <= top * WICK_BODY_RATIO ? rawHigh : null;
+  const low = rawLow !== null && rawLow >= bottom / WICK_BODY_RATIO ? rawLow : null;
   return {
     time: toUtcSeconds(point.t),
     open,

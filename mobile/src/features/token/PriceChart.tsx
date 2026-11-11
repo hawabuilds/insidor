@@ -33,6 +33,7 @@ import {
 import {
   CHART_WINDOW_BARS,
   TIMEFRAME_MS,
+  candleFromPoint,
   gapBreakMsForWindow,
   isHistoryPrepend,
   isLiveEdgeUpdate,
@@ -280,7 +281,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
       }
       const x = ch.timeScale().timeToCoordinate(toUtcSeconds(at.t) as UTCTimestamp);
       /* Just above the candle's wick, as pump.fun's bubbles sit: the candle stays readable under it. */
-      const y = ser.priceToCoordinate((at.high ?? at.price) * k);
+      const y = ser.priceToCoordinate(candleFromPoint(at).high * k);
       if (x === null || y === null) { hide(); return; }
       /* ★ WHERE WE TOLD PEOPLE, AS PUMP.FUN'S TRADER BUBBLES (the owner, 2026-10-27: "when we notified
          users of the coin"): our logo in a ringed circle just above the candle of our first push —
@@ -308,7 +309,7 @@ export function PriceChart({ points, rising, windowMs, wholeLife = false, scale 
         const pt = pts.find((p) => p.t === bucketT);
         if (pt === undefined) continue;
         const bx = ch.timeScale().timeToCoordinate(toUtcSeconds(bucketT) as UTCTimestamp);
-        const by = ser.priceToCoordinate((pt.high ?? pt.price) * k);
+        const by = ser.priceToCoordinate(candleFromPoint(pt).high * k);
         if (bx === null || by === null) continue;
         const pad = (THESIS_TAP_PX - THESIS_PX) / 2;
         const shown = list.slice(0, STACK_MAX);

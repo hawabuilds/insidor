@@ -25,6 +25,18 @@ test('★ a bad print is dropped, never drawn as a wick', () => {
   assert.deepEqual(toLineData([p(0, 0), p(MIN, 1)]).map((d) => d.value), [1], 'a zero price is not drawn');
 });
 
+test('★ a wick far past its own body is dropped: one spike never flattens the chart (mihao, 2026-11-11)', () => {
+  /* The real hour: opened 0.012, closed 0.0153, "touched" 1.295 — 85x, under the 100x rule against the close. */
+  const spike = candleFromPoint(p(0, 0.0152691550993583, { open: 0.0120547322173764, high: 1.29544383082339, low: 0.00937472392331954 }));
+  assert.equal(spike.high, 0.0152691550993583, 'the candle ends at its body');
+  assert.equal(spike.low, 0.00937472392331954, 'a real low is kept');
+  const dip = candleFromPoint(p(0, 0.0232, { open: 0.0246, high: 0.0277, low: 1.97e-10 }));
+  assert.equal(dip.low, 0.0232, 'a low a hundred million times under the body is dropped');
+  assert.equal(dip.high, 0.0277, 'a real high is kept');
+  const real = candleFromPoint(p(0, 0.0144, { open: 0.0033, high: 0.0175, low: 0.0028 }));
+  assert.deepEqual([real.high, real.low], [0.0175, 0.0028], 'a run-up hour keeps both wicks');
+});
+
 test('★ a hole stays a hole: a long silence breaks the line in a few empty slots, never a made-up price', () => {
   const bars = [{ time: 0, value: 1 }, { time: 86_400, value: 2 }];
   const out = withCompressedBreaks(bars, [0, 86_400_000], gapBreakMsForWindow(chartWindowMs('1h')));
