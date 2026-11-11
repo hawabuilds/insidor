@@ -7,7 +7,7 @@ import { decodeStory } from '../../shared/api/decode.ts';
 import type { Evidence, Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { allBucketMs } from '../post-sheet/gain-chart.ts';
-import { firstPosted, moments, newestFirst, startedByHandle } from './posts-order.ts';
+import { firstPosted, moments, mostViewedFirst, newestFirst, startedByHandle } from './posts-order.ts';
 
 const base = decodeStory(fixtureStory(sampleNarrativeIds()[0] ?? '')) as Story;
 const template = base.evidence[0] as Evidence;
@@ -54,4 +54,9 @@ test('★ "Started by @handle" only with the server\'s proof, and only for the p
   assert.equal(startedByHandle({ ...s, earliestPost: { known: true, at: 100, authorLabel: '@someoneElse', permalink: null, startedBy: 'quoted' } }, first), null, 'never another account than the post pinned under it');
   assert.equal(startedByHandle({ ...s, earliestPost: { known: false, pending: 'not_read_yet' } }, first), null);
   assert.equal(startedByHandle(proven, null), null);
+});
+
+test('most viewed first: by each post\'s newest views, a post never read after every read one, ties in the page\'s order', () => {
+  const s: Story = { ...base, evidence: [post('a', 1), post('b', 2), post('c', 3), post('d', 4)], postViews: new Map([['a', { views: 10, gainedLastHour: null, foundAt: null }], ['b', { views: null, gainedLastHour: null, foundAt: null }], ['c', { views: 900, gainedLastHour: null, foundAt: null }], ['d', { views: 10, gainedLastHour: null, foundAt: null }]]) };
+  assert.deepEqual(mostViewedFirst(s).map((e) => e.evidenceId), ['c', 'a', 'd', 'b']);
 });

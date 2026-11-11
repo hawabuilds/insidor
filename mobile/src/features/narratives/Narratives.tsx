@@ -334,9 +334,14 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
   const hourGain = view?.sort === 'trending' && speeds === null ? hourGainText(story) : null;
   const gainLine = view !== undefined && gained !== null ? gainedLine(gained, view.span) : hourGain !== null && hourGain !== '+0' && !hourGain.startsWith('-') ? { text: `${hourGain} last hour`, up: true } : null;
   return (
-    <article className={styles['card']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
-      if (e.key === 'Enter') onOpen();
-    }}>
+    /* ★ WITH THE ROW, THE CARD ITSELF OPENS NOTHING (the owner, 2026-11-11: "get rid of narratives pop
+       up", for the tab only): it is read and scrolled where it is, and a narrative with more posts than
+       its row shows ends the row with "See all N posts", which opens the page. Without a row (Home's
+       Watchlist, an older server) a tap opens the page as before. */
+    <article
+      className={withRow ? styles['cardStill'] : styles['card']}
+      {...(withRow ? {} : { role: 'button', tabIndex: 0, onClick: onOpen, onKeyDown: (e: { key: string }) => { if (e.key === 'Enter') onOpen(); } })}
+    >
       <div className={styles['top']}>
         {place !== null ? <span className={styles['place']}>{place}</span> : null}
         {/* With the row (the tab's lists), its posts are the pictures; without one, the narrative's picture as before. */}
@@ -358,7 +363,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
           {gainLine !== null ? <span className={gainLine.up ? styles['up'] : ''}>{gainLine.text}</span> : null}
         </div>
       </div>
-      {withRow ? <NarrativeRow story={story} now={now} /> : null}
+      {withRow ? <NarrativeRow story={story} now={now} onSeeAll={onOpen} /> : null}
       <div className={styles['coin']}>
         {coin.kind === 'checked' || coin.kind === 'top' ? (
           <>

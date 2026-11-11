@@ -58,57 +58,6 @@
   min-width: 0;
 }
 
-/* Who posted it, on which site, and when: one line, spacing between, only the handle ever cut. */
-.who {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-  font-size: 13px;
-}
-
-.face,
-.faceLetter {
-  width: 20px;
-  height: 20px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--hover);
-}
-
-.face {
-  object-fit: cover;
-}
-
-.faceLetter {
-  display: grid;
-  place-items: center;
-  color: var(--text-2);
-  font-size: var(--type-caption);
-  font-weight: 700;
-}
-
-.handle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 700;
-  color: var(--text-1);
-}
-
-.mark {
-  flex: none;
-  display: inline-grid;
-  color: var(--text-2);
-}
-
-.age {
-  flex: none;
-  color: var(--text-3);
-  font-weight: 600;
-}
-
 .text,
 .textOnly {
   margin: 0;
@@ -136,6 +85,29 @@
   font-weight: 800;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* The row's last stop when the narrative has more posts than it carries: opens its screen. */
+.seeAll {
+  flex: 0 0 46%;
+  scroll-snap-align: start;
+  border: 1px dashed #2c2c36;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-1);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 16px;
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.seeAll svg {
+  color: var(--text-2);
 }
 
 /* Where the row rests: one short bar per post, the shown one lit. */

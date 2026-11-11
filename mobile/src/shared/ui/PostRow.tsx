@@ -141,8 +141,9 @@ const NO_COIN = { known: false, pending: 'not_minted' } as const;
  * `watch`: the Watch star, last on the coin line's row, drawn by the caller (shared/ui/WatchStar.tsx).
  * `cardRef`: the card's element, for a caller that times what is on screen (the owner's, features/owner/useSeen.ts).
  * `owner`: the owner is looking, so a list kept for the owner (`ownerList`) is offered; false for everyone else.
+ * `coinRow` false: no coin row (the narrative screen, whose head carries the coin); the foot is `footLabel` ("First post") and Share and the star.
  */
-export function PostRow({ post, now, handlers, extra = null, watch = null, sortLine = null, cardRef, owner = false }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; sortLine?: { readonly text: string; readonly up: boolean } | null; cardRef?: ((el: Element | null) => void) | undefined; owner?: boolean }) {
+export function PostRow({ post, now, handlers, extra = null, watch = null, sortLine = null, cardRef, owner = false, coinRow = true, footLabel = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; sortLine?: { readonly text: string; readonly up: boolean } | null; cardRef?: ((el: Element | null) => void) | undefined; owner?: boolean; coinRow?: boolean; footLabel?: string | null }) {
   /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
      so the card says what the sheet and token page say. The card itself never polls. */
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
@@ -204,7 +205,17 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
       {/* The post this one quotes, inside the card (QuoteInset.tsx); its picture only when it is not already the card's. */}
       {post.quote !== undefined ? <QuoteInset quote={post.quote} showPicture={!quotePictureLeads(post)} now={now} /> : null}
 
-      {/* ★ THE ONE ROW (coin-status.ts `cardRow`): the coin or a few grey words, then Share and the star as plain icons, then the row's buttons last, under the thumb. */}
+      {/* On the narrative screen (`coinRow` false) the narrative's coin is in the screen's head: the card's foot is a label and Share and the star. */}
+      {!coinRow ? (
+        <div className={styles['row']}>
+          {footLabel !== null ? <span className={styles['footLabel']}>{footLabel}</span> : null}
+          <span className={styles['actions']}>
+            <ShareButton postId={post.id} title={`${post.authorLabel} on Insidor`} />
+            {watch}
+          </span>
+        </div>
+      ) : (
+      /* ★ THE ONE ROW (coin-status.ts `cardRow`): the coin or a few grey words, then Share and the star as plain icons, then the row's buttons last, under the thumb. */
       <div className={styles['row']}>
         {shown !== null ? (
           <span
@@ -231,6 +242,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
           {actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} buyDirect={pvp === null ? handlers.buy : undefined} />)}
         </span>
       </div>
+      )}
       {extra}
     </article>
   );

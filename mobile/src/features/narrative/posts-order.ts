@@ -67,3 +67,16 @@ export function newestFirst(story: Story, pinned: string | null): readonly Evide
   const at = (e: Evidence) => (e.postedAt.known ? e.postedAt.at : 0);
   return [...known].sort((a, b) => at(b) - at(a)).concat(unknown);
 }
+
+/**
+ * Every listed post, most viewed first (the narrative screen's first order, the owner's 2026-11-11
+ * design): each post's newest views from the page (`postViews`), a post never read after every one
+ * that was, the page's own order breaking ties. Never a zero for an unread post.
+ */
+export function mostViewedFirst(story: Story): readonly Evidence[] {
+  const views = (e: Evidence): number | null => story.postViews?.get(e.evidenceId)?.views ?? null;
+  return story.evidence
+    .map((e, i) => ({ e, i, v: views(e) }))
+    .sort((a, b) => (a.v === null ? (b.v === null ? a.i - b.i : 1) : b.v === null ? -1 : b.v - a.v || a.i - b.i))
+    .map((x) => x.e);
+}

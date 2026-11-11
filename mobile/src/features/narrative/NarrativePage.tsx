@@ -1,38 +1,28 @@
 /**
- * THE NARRATIVE PAGE — one narrative on one phone screen, as the owner drew it (2026-10-17):
+ * THE NARRATIVE SCREEN — a narrative as a feed of its posts (the owner, 2026-11-11: the old page with
+ * its chart, range buttons and small rows was "too much", and "I don't want that old pop up anywhere").
+ * Every way in still lands here, at the same address (`#/story/<id>`): the Narratives tab's "See all N
+ * posts", a narrative tag on For You, the Watchlist, Search, shared links and alerts, and "See N
+ * coins" (`#/story/<id>/coins`, which opens Choose coin over it).
  *
- *   Top      back, the watch star, and Edit for the owner's wallet only (NarrativeEdit.tsx)
- *   Head     picture and title; "61 posts since Thu   4.2M views"
- *   Facts    ONE line under the head, following the chart's interval (15m on All): "Last 15m +420K
- *            MC +12%   Found 58m before $GTA". Real numbers only, no scores, no opinions
- *   Chart    views gained per interval across all its posts (GainChart.tsx), 5m 15m 1h 4h 1D and
- *            All — the whole story from its first post, the page's first view — with We found it
- *            and the coin's launch at their exact times wherever they fall inside the span; hidden,
- *            not the page, when there is no history
- *   Posts    THE WHOLE STORY (posts-order.ts): the page's two moments, "First post: Thu 09:12" (the
- *            earliest post we know of, even if we found it later) and "We found it: Fri 14:03" (the
- *            earliest save of any post listed), the first post pinned under them, then every other
- *            post, newest first,
- *            twenty at a time as the list's end comes into view. Each row: thumbnail with its site's
- *            badge, one line of text, handle and age, views and the last hour's gain; a tap opens
- *            the post sheet (or the post where it lives)
- *   Coin bar above the tab bar where the token page's Buy and Sell sit: the coin line's three
- *            states (story-coin.ts); Buy opens the existing Buy pop-up, a tap on the bar opens the
- *            token page, "All N coins" opens Choose coin. `#/story/<id>/coins` (the Narratives
- *            card's "See N coins") opens the page with Choose coin already up
+ *   Head     stays at the top as the posts scroll under it: back, Watch, Share (and Edit for the
+ *            owner's wallet only, NarrativeEdit.tsx); the whole title, wrapped, never cut; posts,
+ *            views and the last hour's gain; and the narrative's ONE coin row (story-coin.ts's three
+ *            states): the coin and Buy, or No coin yet and Create, with "See N coins" beside them
+ *   Posts    every listed post as the For You card (shared/ui/PostRow.tsx, its head line, words,
+ *            picture or playing video, full screen on a tap) without the card's own coin row, the
+ *            narrative's coin being in the head; most viewed first, or newest first on a tap; the
+ *            post that started it labelled "First post"; twenty at a time as the list's end comes in
+ *   Up next  the next narrative on the Narratives tab's Most viewed list, under the last post
  *
- * ★ THE NUMBERS ARE THE PROJECTOR'S (core narrativeReach): the total is each post's newest count,
- * the line and "Last 15m" the posts' gains added up five minutes at a time, so the end label and
- * the fact line are one number. "12 of 14 posts counted" when some posts have no reading at all.
- * ★ THE TIMES ARE THE PROOF (gain-chart.ts): We found it is the earliest save of any post listed
- * now; the launch is printed only from the create transaction's block time (the server sends no
- * other clock as known); "Found Xm before $COIN" only when our find is before that block, "Coin was
- * Xm before we found it" when it is not, and nothing when either time is not known.
+ * ★ NO CHART AND NO MOMENTS. The numbers left are the page's own facts: the total is each post's
+ * newest count (core narrativeReach), the gain the last hour's, and a narrative with no reading says
+ * "— views", never 0.
  *
- * What breaks if changed carelessly: the page reads two replies, the story and its sheet, and the
+ * What breaks if changed carelessly: the screen reads two replies, the story and its sheet, and the
  * cards of each further screenful of a long story by id (`fetchStoryPosts`). The story alone draws
- * the page and lists every post; a sheet failing costs the coin's market details and the post sheets
- * for the posts it would have carried, never the page or a row.
+ * the screen and lists every post; a post no feed holds is drawn from its listing (picture, words,
+ * head line, views) rather than left out, and a sheet failing costs only the coin's market details.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,6 +30,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Evidence, RisingPost, SheetCoin, Story, StorySheet } from '../../shared/api/index.ts';
 import type { PostTranslation } from '../../shared/api/wire/rising.ts';
 import { fetchStoryPosts, fetchStorySheet } from '../../shared/api/index.ts';
+import { fresh } from '../../shared/kept-reads.ts';
+import { firstPageKey, readFirstPage } from '../narratives/first-page.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
@@ -51,40 +43,35 @@ import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { watchlist } from '../../shared/watchlist.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
+import { HeadLine } from '../../shared/ui/HeadLine.tsx';
 import { BackIcon, ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
+import { CardMedia, PostRow } from '../../shared/ui/PostRow.tsx';
 import { Sheet } from '../../shared/ui/Sheet.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { TranslatedLine, useShownWords } from '../../shared/ui/Translated.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { WatchStar } from '../../shared/ui/WatchStar.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { useSeenOnScreen } from '../owner/useSeen.ts';
-import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
+import { BuyOpen, ChooseCoin, SheetToast, plus, pctText, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
-import { PAGE, firstPosted, moments, newestFirst, startedByHandle, type Moment } from './posts-order.ts';
+import { PAGE, firstPosted, mostViewedFirst, newestFirst } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
-import { Avatar } from '../portfolio/Avatar.tsx';
 import styles from './narrative.module.css';
 import { Num } from '../../shared/ui/Num.tsx';
 import { COIN_LEAD_MS, coinsMadeAfter } from '../../shared/coins-made.ts';
 import { sharePage } from '../../shared/share-link.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 
-/* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
-   carry hundreds of posts, and each row has a picture. A row's height before it is measured, and
-   how far beyond the screen rows stay drawn. */
-const ROW_GUESS_PX = 72;
-const ROWS_BEYOND_PX = 1200;
+/* The posts list draws only the cards near the screen (shared/ui/WindowList.tsx): a narrative can
+   carry hundreds of posts, each with a picture or a video. A card's height before it is measured
+   (For You's card with media), and how far beyond the screen cards stay drawn. */
+const CARD_GUESS_PX = 430;
+const CARDS_BEYOND_PX = 1600;
 const evidenceKey = (e: Evidence): string => e.evidenceId;
-
-/** The chart opens on the whole story (the owner's design, 2026-10-17). */
-const FIRST_INTERVAL: ChartInterval = 'All';
-/** The fact line's interval on All: the chart's whole span has no "last" to speak of. */
-const ALL_FACTS: GainInterval = '15m';
-/** The plot's own height, in px: what is left of a 390x844 screen with the head, posts' top and the coin bar. */
-const PLOT_HEIGHT = 150;
 
 export function NarrativePage({ storyId, openCoins = false, onCreate }: {
   storyId: string;
@@ -100,11 +87,12 @@ export function NarrativePage({ storyId, openCoins = false, onCreate }: {
   const ready = story.state === 'ready' ? story.value : null;
   const read = sheet.state === 'ready' ? sheet.value : null;
   return (
-    <section className={styles['page']}>
-      <TopBar storyId={storyId} onEdit={owner && ready !== null ? () => setEditing(true) : null} />
+    <section className={styles['feedPage']}>
+      {/* Before the story is read the head is only its top bar, so Back works from the first frame. */}
+      {ready === null ? <TopBar storyId={storyId} onEdit={null} /> : null}
       {story.state === 'loading' ? <p className={styles['empty']}>Loading.</p> : null}
       {story.state === 'failed' ? <p className={styles['empty']}>This narrative couldn't be read. It may not be on the read service.</p> : null}
-      {ready !== null ? <Body story={ready} sheet={read} openCoins={openCoins} onCreate={onCreate} /> : null}
+      {ready !== null ? <Body story={ready} sheet={read} openCoins={openCoins} onCreate={onCreate} onEdit={owner ? () => setEditing(true) : null} /> : null}
       {editing && ready !== null ? <NarrativeEdit story={ready} sheet={read} onClose={() => setEditing(false)} /> : null}
     </section>
   );
@@ -143,152 +131,82 @@ function TopBar({ storyId, onEdit }: { storyId: string; onEdit: (() => void) | n
   );
 }
 
-/** "since 13:20" today, "since Thu" on another day: when its first post went up. */
-function sinceText(at: number, now: number): string {
-  const d = new Date(at);
-  return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
-}
-
-function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: StorySheet | null; openCoins: boolean; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void }) {
+function Body({ story, sheet, openCoins, onCreate, onEdit }: { story: Story; sheet: StorySheet | null; openCoins: boolean; onCreate: (s: Story, from?: { readonly link: string; readonly postId: string }) => void; onEdit: (() => void) | null }) {
   const now = useNow();
-  const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
-  const factsAt: GainInterval = interval === 'All' ? ALL_FACTS : interval;
-  const [open, setOpen] = useState<string | null>(null);
   const [buying, setBuying] = useState<CoinFace | null>(null);
-  /* Open from the card's "See N coins" (`#/story/<id>/coins`): the pop-up shows once the sheet is
-     read. The link is left as it is (the sheet's own history entry, dismiss.ts, is under it), so a
-     Back from a coin opened in it returns to the list. */
+  /* Open from the card's "See N coins" (`#/story/<id>/coins`): the pop-up shows once the sheet is read. */
   const [choosing, setChoosing] = useState(openCoins);
   const [note, setNote] = useState<SheetNote | null>(null);
+  const [order, setOrder] = useState<'viewed' | 'newest'>('viewed');
 
   const posts = story.postCount ?? story.evidence.length;
-  const slots = story.viewsGained;
-  const hasHistory = slots !== null && slots.values.some((v) => v !== null);
-  const gain = lastGain(slots, factsAt);
   const coin = storyCoinState(story, sheet);
-  const checked = coin.kind === 'checked' ? coin.coin : null;
-  const mc = useMcChange(checked?.address ?? null, factsAt);
-  const ticker = checked !== null ? tickerText(checked.ticker ?? checked.name ?? checked.address.slice(0, 4)) : '';
-  const launch = checked === null ? null : launchTime(checked.sheet?.launchedAt.known === true ? checked.sheet.launchedAt.at : null, checked.sheet?.launchClock ?? { kind: 'unknown' }, now);
-  const foundAt = story.foundAt?.known === true ? story.foundAt.at : null;
-  const first = firstWords(foundAt, launch ?? { kind: 'unknown' }, ticker);
   const firstPost = useMemo(() => {
     const t = story.evidence.flatMap((e) => (e.postedAt.known ? [e.postedAt.at] : []));
     return t.length === 0 ? null : Math.min(...t);
   }, [story.evidence]);
   const total = story.viewsTotal;
-  const counted = story.viewsTotalPosts !== null && story.viewsTotalPosts !== posts ? `${story.viewsTotalPosts} of ${posts} posts counted` : null;
+  const hourGain = story.viewsGained1h !== null && story.viewsGained1h.known && story.viewsGained1h.amount > 0 ? story.viewsGained1h.amount : null;
 
-  const markers: ChartMarker[] = [
-    ...(foundAt !== null ? [{ key: 'found', tone: 'found' as const, text: `We found it ${hm(foundAt, now)}`, at: foundAt }] : []),
-    ...(launch === null ? [] : launch.kind === 'at'
-      ? [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launched ${launch.text}`, at: launch.at }]
-      : [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launch time not known`, at: null }]),
-  ];
-
-  /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, the bar says so, offers
-     Create, and beside it "All N coins" opens the coins its posts made, oldest first. */
-  /* Only coins made after the narrative's first post (a few minutes' lead for a coin launched as it went
-     up): an older coin of the same name was not made from these posts (the owner, 2026-10-24: "really
-     old coins … that don't closely match the post"). A coin whose launch we do not know is left out too. */
+  /* ★ NO CLEAR RUNNER (the owner, 2026-10-24): when no coin is the narrative's, the row says so, offers
+     Create, and beside it "See N coins" opens the coins its posts made, oldest first. Only coins made
+     after the narrative's first post count (a few minutes' lead for one launched as it went up). */
   const madeHere = useMemo(() => (sheet === null ? [] : coinsMadeAfter(sheet.coins, firstPost)), [sheet, firstPost]);
   const unclear = coin.kind !== 'checked' && madeHere.length > 0;
-  /* An unchecked top coin older than the narrative is no offer either: the bar says No coin yet, with Create. */
   const oldTop = coin.kind === 'top' && firstPost !== null && coin.coin.sheet !== null && coin.coin.sheet.launchedAt.known && coin.coin.sheet.launchedAt.at < firstPost - COIN_LEAD_MS;
   const barState: StoryCoinState | { readonly kind: 'unclear' } = unclear ? { kind: 'unclear' } : oldTop ? { kind: 'none' } : coin;
   const oldestFirst = useMemo(() => [...madeHere].sort((a, b) => (a.launchedAt.known ? a.launchedAt.at : Infinity) - (b.launchedAt.known ? b.launchedAt.at : Infinity)), [madeHere]);
   const openCoin = (c: CoinFace) => (window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id)));
   const pinned = useMemo(() => firstPosted(story), [story]);
-  const when = useMemo(() => moments(story), [story]);
-  const momentText = (m: Moment) => (m.known ? hm(m.at, now) : `— ${m.why}`);
-  const rest = useMemo(() => newestFirst(story, pinned?.post.evidenceId ?? null), [story, pinned]);
-  const [shownCount, setShownCount] = useState(PAGE);
-  const visible = rest.slice(0, shownCount);
-  const { cards, faces } = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
-  const pinnedCard = pinned === null ? undefined : cards.get(pinned.post.evidenceId);
-  const pinnedFace = pinned === null ? undefined : faces.get(pinned.post.evidenceId);
-  const started = startedByHandle(story, pinned?.post ?? null);
-  /* Create from the narrative's starting post, as For You's popup does from its post (the owner, 2026-10-24). */
+  /* Create from the narrative's starting post, as For You's does from its post (the owner, 2026-10-24). */
   const create = () => onCreate(story, pinned === null ? undefined : { link: pinned.post.permalink, postId: pinned.post.evidenceId });
-  const end = useEndInView(() => setShownCount((n) => (n < rest.length ? n + PAGE : n)));
-  /* The owner's screen (features/owner/useSeen.ts): this page's posts in view for two seconds, the owner's sign-in only. */
+
+  const ordered = useMemo(() => (order === 'viewed' ? mostViewedFirst(story) : newestFirst(story, null)), [story, order]);
+  const [shownCount, setShownCount] = useState(PAGE);
+  const visible = ordered.slice(0, shownCount);
+  const { cards, faces } = useCards(story.id, sheet, visible);
+  const [atEnd, setAtEnd] = useState(false);
+  const end = useEndInView(() => {
+    if (shownCount < ordered.length) setShownCount((n) => n + PAGE);
+    else setAtEnd(true);
+  });
+  /* The owner's screen (features/owner/useSeen.ts): this screen's posts in view for two seconds, the owner's sign-in only. */
   const owner = useIsOwner();
   const seen = useSeenOnScreen('narrative', owner);
-  const row = (e: Evidence) => (
-    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} face={faces.get(e.evidenceId)} now={now} onOpen={setOpen} rowRef={owner ? seen(e.evidenceId) : undefined} />
+  const item = (e: Evidence) => (
+    <FeedItem key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} face={faces.get(e.evidenceId)} now={now} first={pinned?.post.evidenceId === e.evidenceId} onCreate={create} rowRef={owner ? seen(e.evidenceId) : undefined} />
   );
 
   return (
     <>
-      <header className={styles['head']}>
-        <Thumb url={story.thumbUrl} file={story.thumbFile} size={52} radius={14} hideEmpty />
-        <div className={styles['headText']}>
+      <header className={styles['feedHead']}>
+        <TopBar storyId={story.id} onEdit={onEdit} />
+        <div className={styles['feedTitle']}>
           <h1>{story.title}</h1>
-          <span className={styles['meta']}>
-            <span>{posts === 1 ? '1 post' : `${posts} posts`}{firstPost !== null ? ` ${sinceText(firstPost, now)}` : ''}</span>
-            <span>{total !== null && total.known ? `${compact(total.amount)} views` : '— views'}</span>
+          <span className={styles['feedFacts']}>
+            <span><b>{posts.toLocaleString('en')}</b> {posts === 1 ? 'post' : 'posts'}</span>
+            <span>{total !== null && total.known ? <><b>{compact(total.amount)}</b> views</> : '— views'}</span>
+            {hourGain !== null ? <span className={styles['up']}>{plus(hourGain)} last hour</span> : null}
           </span>
         </div>
+        <CoinBar inHead state={barState} coins={madeHere.length} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
       </header>
-      {total === null || !total.known ? <p className={styles['why']}>{total === null ? 'Total views are not read for this narrative yet' : 'No post has a view reading yet'}</p> : counted !== null ? <p className={styles['why']}>{counted}</p> : null}
-
-      <p className={styles['facts']}>
-        {hasHistory ? (
-          <span>
-            {LAST_WORDS[factsAt]} {gain !== null ? <b className={gain > 0 ? styles['up'] : styles['plain']}>{plus(gain)}</b> : 'not read'}
-          </span>
-        ) : null}
-        {checked !== null && mc !== null ? (
-          <span>
-            MC <b className={mc >= 0 ? styles['up'] : styles['down']}><Num>{pctText(mc)}</Num></b>
-          </span>
-        ) : null}
-        {first !== null ? (
-          <span>
-            {first.lead} <b className={styles['plain']}>{first.gap}</b> {first.tail}
-          </span>
-        ) : null}
-      </p>
-
-      {hasHistory && slots !== null ? (
-        <div className={styles['chartBox']}>
-          <GainChart slots={slots} allSlots={story.viewsGainedAll} total={story.viewsTotal?.known === true ? story.viewsTotal.amount : null} totalSlots={story.viewsTotals} totalAllSlots={story.viewsTotalsAll} intervals={CHART_INTERVALS} firstAt={firstPost} firstWord="first post" now={now} interval={interval} onInterval={setIntervalPick} markers={markers} height={PLOT_HEIGHT} />
-        </div>
-      ) : null}
 
       <Notice notice={noticeFor(story)} />
 
-
-      {story.evidence.length > 0 ? (
-        <div className={styles['firstCard']}>
-          {started !== null ? (
-            <span className={styles['startedBy']}>
-              Started by
-              {/* Every @handle with its picture (the owner, 2026-10-21). */}
-              <Avatar name={started.replace(/^@/, '')} seed={started} src={pinnedCard?.authorPictureUrl ?? pinnedFace?.url ?? null} file={pinnedCard?.authorPictureFile ?? pinnedFace?.file ?? null} size={20} />
-              <b>{started}</b>
-            </span>
-          ) : null}
-          <span className={styles['firstTimes']}>
-            <span>First post: <b>{momentText(when.firstPost)}</b></span>
-            <span>We found it: <b>{momentText(when.found)}</b></span>
-          </span>
-          {pinned !== null ? <div className={styles['posts']}>{row(pinned.post)}</div> : null}
-        </div>
-      ) : null}
-
-      <div className={styles['postsHead']}>
-        <h2>{pinned !== null ? 'All posts' : 'Posts'}</h2>
-        <span>Newest first</span>
+      <div className={styles['sortLine']}>
+        <b>Posts</b>
+        <button type="button" className={styles['sortToggle']} onClick={() => {
+          setOrder(order === 'viewed' ? 'newest' : 'viewed');
+          setShownCount(PAGE);
+        }}>{order === 'viewed' ? 'Most viewed' : 'Newest'}</button>
       </div>
-      <div className={styles['posts']}>
-        <WindowList items={visible} keyOf={evidenceKey} render={row} guess={ROW_GUESS_PX} overscan={ROWS_BEYOND_PX} nearEnd={0} />
-        {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
+      <div className={styles['feed']}>
+        <WindowList items={visible} keyOf={evidenceKey} render={item} guess={CARD_GUESS_PX} overscan={CARDS_BEYOND_PX} nearEnd={0} />
+        <div ref={end} className={styles['more']}>{visible.length < ordered.length ? 'Loading more posts' : ''}</div>
+        {atEnd ? <UpNext storyId={story.id} /> : null}
       </div>
 
-      <CoinBar state={barState} coins={madeHere.length} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={create} />
-
-      {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
       {choosing && sheet !== null ? (
         <Sheet label="Choose coin" onClose={() => setChoosing(false)}>
           <ChooseCoin data={{ coins: oldestFirst, coinName: story.title, sourcesMissing: sheet.sourcesMissing }} order="Oldest first" onBack={() => setChoosing(false)} onOpenCoin={(c: SheetCoin) => openCoin({ address: c.address, ticker: c.ticker, name: c.name, imageUrl: c.imageUrl, marketCapUsd: c.marketCapUsd, changePct: c.changePct24h, sheet: c })} onCreate={create} onNote={setNote} />
@@ -300,40 +218,89 @@ function Body({ story, sheet, openCoins, onCreate }: { story: Story; sheet: Stor
   );
 }
 
-/** One post row: thumbnail with its site's badge, a line of text, handle and age, views and the last hour. */
-function PostRow({ e, story, card, face, now, onOpen, rowRef }: { e: Evidence; story: Story; card: RisingPost | undefined; face: Face | undefined; now: number; onOpen: (id: string) => void; rowRef?: ((el: Element | null) => void) | undefined }) {
-  const platform = platformOf(e.sourceLabel);
+/**
+ * One post of the narrative as the For You card, without its coin row (the narrative's coin is in the
+ * head). A post no feed holds has no card: it is drawn from its listing (its head line, words,
+ * picture and views), never left out.
+ */
+function FeedItem({ e, story, card, face, now, first, onCreate, rowRef }: { e: Evidence; story: Story; card: RisingPost | undefined; face: Face | undefined; now: number; first: boolean; onCreate: () => void; rowRef?: ((el: Element | null) => void) | undefined }) {
+  const label = first ? 'First post' : null;
+  if (card !== undefined) {
+    /* The sheet sends each poster's face beside the card (`face`); a card that carries none takes it. */
+    const withFace: RisingPost = { ...card, authorPictureUrl: card.authorPictureUrl ?? face?.url ?? null, authorPictureFile: card.authorPictureFile ?? face?.file ?? null };
+    return (
+      <PostRow
+        post={withFace}
+        now={now}
+        coinRow={false}
+        footLabel={label}
+        cardRef={rowRef}
+        watch={<WatchStar postId={card.id} size="bare" />}
+        handlers={{ open: () => undefined, create: onCreate, seeCoins: () => undefined }}
+      />
+    );
+  }
   const pv = story.postViews?.get(e.evidenceId) ?? null;
-  const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
-  const age = formatAge(e.postedAt, now);
-  /* In English when it was written in another language, as on For You (Translated.tsx): the card's
-     English first, else the sheet's own for a post no feed holds; the original one tap away. */
-  const translation = card?.translation ?? face?.translation;
+  const translation = face?.translation;
+  return <ListedPost e={e} views={pv?.views ?? null} face={face} translation={translation} now={now} label={label} rowRef={rowRef} />;
+}
+
+/** A listed post no feed holds, drawn from its listing in the card's shape. */
+function ListedPost({ e, views, face, translation, now, label, rowRef }: { e: Evidence; views: number | null; face: Face | undefined; translation: PostTranslation | undefined; now: number; label: string | null; rowRef?: ((el: Element | null) => void) | undefined }) {
   const words = useShownWords(translation === undefined ? { excerpt: e.excerpt } : { excerpt: e.excerpt, translation });
-  const tap = () => {
-    if (card !== undefined) onOpen(card.id);
-    else window.open(e.permalink, '_blank', 'noopener');
-  };
+  const platform = platformOf(e.sourceLabel);
   return (
-    <button type="button" className={styles['row']} onClick={tap} ref={rowRef}>
-      <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} file={e.thumbUrl !== null ? e.thumbFile : (card?.thumbFile ?? null)} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} hideEmpty />
-      <span className={styles['rowText']}>
-        <span className={styles['rowLine']}>{words.text}</span>
-        <TranslatedLine line={words.line} compact className={styles['rowTranslated']} />
-        <span className={styles['rowBy']}>
-          {/* Every @handle with its picture (the owner, 2026-10-21): the stored copy first, then the link, then the letter. */}
-          <Avatar name={e.authorLabel.replace(/^@/, '')} seed={e.authorLabel} src={card?.authorPictureUrl ?? face?.url ?? null} file={card?.authorPictureFile ?? face?.file ?? null} size={18} />
-          <span className={styles['rowHandle']}>
-            {e.authorLabel}
-            {age.kind === 'value' ? ` ${age.text}` : ''}
-          </span>
+    <article className={styles['listed']} ref={rowRef}>
+      <HeadLine
+        face={{ file: face?.file ?? null, url: face?.url ?? null }}
+        label={e.authorLabel}
+        platform={platform}
+        sourceLabel={e.sourceLabel}
+        sourceLink={e.permalink}
+        age={formatAge(e.postedAt, now)}
+        right={views !== null ? <span className={styles['listedViews']}><b>{compact(views)}</b><small>views</small></span> : null}
+      />
+      <p className={styles['listedText']}>{words.text}</p>
+      <TranslatedLine line={words.line} compact />
+      {e.thumbUrl !== null || e.thumbFile !== null ? <CardMedia post={{ id: e.evidenceId, sourceLabel: e.sourceLabel, thumbUrl: e.thumbUrl, thumbFile: e.thumbFile, thumbIsVideo: false }} /> : null}
+      {label !== null ? <span className={styles['listedLabel']}>{label}</span> : null}
+    </article>
+  );
+}
+
+/**
+ * The next narrative, under the last post (the owner's design, 2026-11-11): the one after this one on
+ * the Narratives tab's Most viewed list, else that list's first; the tab's own kept first page when
+ * it is fresh, and asked for only once the last post is in view. A tap opens it.
+ */
+function UpNext({ storyId }: { storyId: string }) {
+  const [next, setNext] = useState<Story | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    /* The tab's own kept first page of Most viewed (first-page.ts) when it is fresh: usually no read at all. */
+    fresh(firstPageKey('viewed', null, false), readFirstPage('viewed', null, false), true, ac.signal)
+      .then((page) => {
+        const list = page.stories.filter((s) => s.id !== storyId);
+        const at = page.stories.findIndex((s) => s.id === storyId);
+        setNext((at >= 0 ? page.stories[at + 1] : undefined) ?? list[0] ?? null);
+      })
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [storyId]);
+  if (next === null) return null;
+  const views = next.viewsTotal !== null && next.viewsTotal.known ? `${compact(next.viewsTotal.amount)} views` : null;
+  const n = next.postCount ?? next.evidence.length;
+  return (
+    <a className={styles['upNext']} href={hrefFor({ screen: 'story', storyId: next.id })}>
+      <span className={styles['upNextLabel']}>Up next</span>
+      <span className={styles['upNextRow']}>
+        <Thumb url={next.thumbUrl} file={next.thumbFile} size={44} radius={10} hideEmpty />
+        <span className={styles['upNextText']}>
+          <b>{next.title}</b>
+          <span>{n === 1 ? '1 post' : `${n} posts`}{views !== null ? `  ${views}` : ''}</span>
         </span>
       </span>
-      <span className={styles['rowNums']}>
-        <b>{views !== null ? compact(views) : '—'}</b>
-        {pv !== null && pv.gainedLastHour !== null && pv.gainedLastHour > 0 ? <span className={styles['up']}>{plus(pv.gainedLastHour)}</span> : null}
-      </span>
-    </button>
+    </a>
   );
 }
 
@@ -398,7 +365,9 @@ function useEndInView(onEnd: () => void): (el: HTMLDivElement | null) => void {
  * "MC" (or "Top coin, not checked"), "See N coins" when it made more than one, and Buy; "No coin yet"
  * with "See N coins" and Create; or the narrative's own line.
  */
-function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
+function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate, inHead = false }: {
+  /* In the narrative screen's head (it scrolls with nothing; the head stays put), not pinned above the tab bar. */
+  inHead?: boolean;
   /* `unclear`: coins exist but none is the narrative's; they are listed on the page, and the bar offers Create. */
   state: StoryCoinState | { readonly kind: 'unclear' };
   coins: number;
@@ -424,14 +393,14 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
     }}>All 1 coin</button>
   ) : null;
   return (
-    <div className={styles['bar']}>
+    <div className={inHead ? styles['headCoin'] : styles['bar']}>
       <div className={styles['barPanel']}>
         {face !== null ? (
           <>
             <div className={styles['barCoin']} role="button" tabIndex={0} onClick={() => onOpen(face)} onKeyDown={(e) => {
               if (e.key === 'Enter') onOpen(face);
             }}>
-              <CoinLogo small address={face.address} ticker={face.ticker ?? face.name} imageUrl={face.imageUrl} size={48} />
+              <CoinLogo small address={face.address} ticker={face.ticker ?? face.name} imageUrl={face.imageUrl} size={inHead ? 34 : 48} />
               <span className={styles['barText']}>
                 <span className={styles['barTop']}>
                   <b>{tickerText(face.ticker ?? face.name ?? face.address.slice(0, 4))}</b>

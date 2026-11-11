@@ -578,3 +578,205 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* ── the narrative screen as a feed (NarrativePage.tsx, the owner's 2026-11-11 design) ───────────── */
+
+.feedPage {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-1);
+  padding-bottom: calc(var(--tabbar-space) + 16px);
+}
+
+/* The head stays at the top while the posts scroll under it: the top bar, the title and facts, and
+   the narrative's one coin row. */
+.feedHead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  padding-bottom: 12px;
+  background: rgb(10 10 12 / 92%);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--card-line);
+}
+
+.feedHead .top {
+  padding-top: 4px;
+  height: 48px;
+}
+
+.feedTitle {
+  display: grid;
+  gap: 4px;
+  padding: 0 var(--gutter);
+}
+
+/* The whole title, wrapped: never cut ("names are far too long… cut offs", the owner). */
+.feedTitle h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.feedFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.feedFacts b {
+  color: var(--text-1);
+}
+
+.feedFacts .up {
+  font-weight: 800;
+}
+
+/* The coin row in the head: the pinned bar's panel, lying in the head instead of floating. */
+.headCoin {
+  padding: 0 12px;
+}
+
+.headCoin .barPanel {
+  min-height: 56px;
+  border-radius: 16px;
+  padding: 6px 6px 6px 12px;
+  box-shadow: none;
+  background: var(--card);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.sortLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px var(--gutter) 10px;
+}
+
+.sortLine b {
+  font-size: 15px;
+}
+
+/* Most viewed or Newest, a tap switching between them. */
+.sortToggle {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tag-bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feed {
+  display: grid;
+}
+
+/* A listed post no feed holds, in the For You card's shape (shared/ui/row.module.css `.card`). */
+.listed {
+  margin: 0 10px 10px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--card-line);
+  background: var(--card);
+  display: grid;
+  gap: 10px;
+}
+
+/* The views as a For You card draws them (row.module.css `.views`): the number, then VIEWS. */
+.listedViews {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.listedViews b {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.listedViews small {
+  font-size: var(--type-caption);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.listedText {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.listedLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+/* The next narrative under the last post: a tap opens it, so the scroll goes on. */
+.upNext {
+  margin: 6px 10px 12px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  border: 1px dashed #2c2c36;
+  display: grid;
+  gap: 10px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.upNextLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.upNextRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.upNextText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.upNextText b {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.upNextText span {
+  font-size: 12.5px;
+  color: var(--text-3);
+  font-weight: 600;
+  white-space: pre;
+}

@@ -289,6 +289,13 @@
   color: var(--text-3);
 }
 
+/* The narrative screen's foot label ("First post"), where the coin sits on For You. */
+.footLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
 .actions {
   margin-left: auto;
   display: flex;
