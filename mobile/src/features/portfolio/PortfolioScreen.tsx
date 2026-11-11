@@ -21,10 +21,10 @@
  */
 
 import { NotificationBell } from '../../shared/ui/NotificationBell.tsx';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import { fetchMe } from '../../shared/api/people.ts';
+import { fetchMe, type ProfileCard } from '../../shared/api/people.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { keep, kept } from '../../shared/kept-reads.ts';
 import { LINKED_WALLET } from '../../shared/notice.ts';
@@ -57,11 +57,13 @@ interface WhoAmI {
 /* Read once, at build time, like the trade bar: a deploy turns Send on, never a page. */
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
 
-function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
+function Loaded({ who, load, history, canAct, restoring = false, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
   who: WhoAmI;
   load: (signal: AbortSignal) => Promise<PortfolioData>;
   history: (signal: AbortSignal, range: ProfileRange) => Promise<readonly BalancePoint[]>;
   canAct: boolean;
+  /** Your own wallet while the session comes back: not a linked one, and your card shown as last read. */
+  restoring?: boolean;
   exportKey: (() => void) | null;
   /** The signed-in person's own wallet, for the menu's card, whichever wallet is shown. */
   ownAddress?: string;
@@ -79,8 +81,21 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   /* Your profile card (banner, bio, counts): for you, not for a linked wallet's view. */
   /* Read whenever you are signed in, not only when the sign-in carries an X handle: an email or Google
      member has no handle there, and their chosen username and sign-up photo live only on this card. */
-  const meKey = canAct ? (ownAddress ?? who.address) : profileKey;
-  const [card, reloadCard] = useLoad(`me:${meKey ?? 'none'}`, () => (meKey === null ? Promise.resolve(null) : fetchMe()), 'memory');
+  /* ★ KEPT ON THE PHONE, SHOWN AT ONCE (the owner, 2026-11-11: while the session came back the head
+     said 0 Following, 0 Followers, as if signed out). While restoring there is no token to ask with,
+     so the card is the one this phone last read; the moment the session is back it is read again. */
+  const mine = canAct || restoring;
+  const meKey = mine ? (ownAddress ?? who.address) : profileKey;
+  const [card, reloadCard] = useLoad(
+    `me:${meKey ?? 'none'}`,
+    () => (meKey === null ? Promise.resolve(null) : restoring ? Promise.resolve(kept<ProfileCard | null>(`me:${meKey}`)?.value ?? null) : fetchMe()),
+    'phone',
+  );
+  const wasRestoring = useRef(restoring);
+  useEffect(() => {
+    if (wasRestoring.current && !restoring) reloadCard();
+    wasRestoring.current = restoring;
+  }, [restoring, reloadCard]);
   const now = useNow();
   const read: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
   /* Each fresh read's prices are kept on the phone, and the last read with a total too, so a read
@@ -105,7 +120,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
     }
   };
 
-  const myCard = canAct && card.state === 'ready' ? card.value : null;
+  const myCard = mine && card.state === 'ready' ? card.value : null;
   /* Over the banner, before the gear: Send in a trading build. Receive is in the gear's wallet card. */
   const over = (
     <>
@@ -118,7 +133,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         handle={myCard?.handle ?? who.handle}
         pictureUrl={myCard?.pictureUrl ?? who.pictureUrl}
         pictureFile={myCard?.pictureFile ?? null}
-        onEdit={myCard !== null ? () => setEditing(true) : null}
+        onEdit={myCard !== null && !restoring ? () => setEditing(true) : null}
         signIn={canAct && who.signedInWith != null ? { with: who.signedInWith, handle: who.handle } : null}
         address={ownAddress ?? who.address}
         onCopy={() => void copy()}
@@ -138,7 +153,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
     <>
       <OwnProfile
         who={{ userId: who.address, handle: who.handle, name: who.name, pictureUrl: who.pictureUrl, bio: '', followers: 0, following: 0 }}
-        card={canAct && card.state === 'ready' ? card.value : null}
+        card={myCard}
         reloadCard={reloadCard}
         address={who.address}
         data={portfolio}
@@ -152,7 +167,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
         below={
           <>
             {switcher}
-            {!canAct ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
+            {!mine ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
           </>
         }
         now={now}
@@ -288,6 +303,7 @@ export function PortfolioScreen() {
           key={last.address}
           who={{ name: last.name, handle: last.handle, pictureUrl: last.pictureUrl, address: last.address }}
           canAct={false}
+          restoring
           load={(signal) => fetchPortfolio(last.address, '24h', signal)}
           history={(signal, range) => fetchWalletHistory(last.address, range, signal)}
           exportKey={() => undefined}

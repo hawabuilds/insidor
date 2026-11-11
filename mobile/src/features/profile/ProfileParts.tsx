@@ -139,8 +139,9 @@ export function ProfileHead({ who, back = false, over, beside = null, besideHand
             </>
           ) : (
             <>
-              <span><b>{who.following.toLocaleString('en-US')}</b> Following</span>
-              <span><b>{who.followers.toLocaleString('en-US')}</b> Followers</span>
+              {/* No card read yet: a count we have not read is a dash, never a 0 that says nobody follows you. */}
+              <span title="Not read yet"><b>—</b> Following</span>
+              <span title="Not read yet"><b>—</b> Followers</span>
             </>
           )}
         </div>
