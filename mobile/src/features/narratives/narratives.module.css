@@ -145,10 +145,15 @@
   color: var(--down);
 }
 
+/* ★ NOTHING LEAVES THE CARD (the owner, 2026-11-11: Buy broke out beside "See 8 coins"): the coin
+   on the left takes what room is left and the buttons stay together on the right; when they do not
+   fit beside it, they move to their own line, right-aligned, as on a For You card. */
 .coin {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  row-gap: 6px;
   min-height: 36px;
   /* Apart from the story above by space, not a rule: the same as a For You card's foot. */
   margin-top: 14px;
@@ -156,10 +161,34 @@
 
 .ticker {
   font-size: 15px;
+  overflow-wrap: anywhere;
 }
 
-/* The coin's logo and ticker as one tap that opens its chart; it looks as it did. */
+.coinText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.coinActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+
+.coinActions > :last-child {
+  margin-left: 6px;
+}
+
+/* The coin's logo, ticker and cap as one tap that opens its chart. */
 .coinOpen {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -173,7 +202,7 @@
 }
 
 .coinSub {
-  flex: 1;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -184,6 +213,7 @@
 
 .coinNone {
   flex: 1;
+  min-width: 0;
   color: var(--text-2);
   font-size: var(--type-body);
 }

@@ -380,11 +380,15 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
               window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id));
             }}>
               <CoinLogo small address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
-              <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
+              {/* The ticker over its cap, as on a For You card: the ticker is always shown whole. */}
+              <span className={styles['coinText']}>
+                <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
+                <span className={styles['coinSub']}>
+                  {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} story={story} />}
+                </span>
+              </span>
             </button>
-            <span className={styles['coinSub']}>
-              {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} story={story} />}
-            </span>
+            <span className={styles['coinActions']}>
             {/* More than one coin made after its oldest post (the owner, 2026-10-28): "See N coins" left of Buy,
                 as it sits left of Create; the coin, its name and Buy stay as they are. */}
             {seeCoins !== null && (story.coinsMade ?? 0) > 1 ? (
@@ -398,10 +402,12 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
               e.stopPropagation();
               onBuy(coin.coin);
             }}>Buy</button>
+            </span>
           </>
         ) : coin.kind === 'none' ? (
           <>
             <span className={styles['coinNone']}>No coin yet</span>
+            <span className={styles['coinActions']}>
             {/* The coins made after its oldest post, as its page's Choose coin lists them (the owner, 2026-10-24). */}
             {seeCoins !== null ? (
               <button type="button" className={styles['seeCoins']} onClick={(e) => {
@@ -414,11 +420,12 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
               e.stopPropagation();
               onCreate();
             }}>Create</button>
+            </span>
           </>
         ) : (
           <>
             <span className={styles['coinNone']}>{coin.line}</span>
-            {view !== undefined ? <CardIcons storyId={story.id} /> : null}
+            {view !== undefined ? <span className={styles['coinActions']}><CardIcons storyId={story.id} /></span> : null}
           </>
         )}
       </div>
