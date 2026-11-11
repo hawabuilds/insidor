@@ -1,0 +1,123 @@
+/* The post head line (HeadLine.tsx). Every length below is in ems of the line's own font size, so
+   the small caption is the card's alignment scaled down, never a second set of numbers.
+
+   ★ ONE CENTRE LINE (the owner, 2026-11-11: "perfectly aligned"): every word is one size of Inter,
+   and Inter centres its capitals and digits in its line box, so plain centring puts the handle, the
+   mark, the dot and the age on the same middle. The drawn X is the capitals' height
+   (HeadLine `MARK_BOX`).
+   ★ OPTICAL, NOT GEOMETRIC ("slightly high", then pick B): a handle is mostly lowercase, so its
+   visual middle sits below the capitals'. The X, the dot and the age are lowered together by
+   0.0367em (0.55px at 15px): the X and the time sit level, all three optically centred. */
+
+.line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+}
+
+.card {
+  font-size: 15px;
+  min-height: 36px;
+}
+
+.small {
+  font-size: 13px;
+  column-gap: 6px;
+}
+
+.face,
+.letter {
+  border-radius: 50%;
+  background: var(--hover);
+}
+
+.card .face,
+.card .letter {
+  width: 36px;
+  height: 36px;
+}
+
+.small .face,
+.small .letter {
+  width: 20px;
+  height: 20px;
+}
+
+.face {
+  display: block;
+  object-fit: cover;
+}
+
+.letter {
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 0.86em;
+  font-weight: 700;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+/* The platform's mark: a link to the post on its source, with a 44px tap area around it. */
+.source {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+a.source::after {
+  content: '';
+  position: absolute;
+  inset: calc((0.7267em - var(--tap)) / 2);
+}
+
+/* The mark's box is padded equally on every side (icons.tsx `Filled`), so centring the box centres
+   the X; negative margins give the padding back, so the gaps beside it match the gaps between words. */
+.source svg {
+  display: block;
+  position: relative;
+  top: 0.0367em;
+  margin: -0.14em;
+}
+
+/* At 13px the line box rounds differently from 15px, and the X sat 0.27px above the time; measured
+   again with the X lowered 0.25px more, the X and the time are level and the X meets the capitals as
+   on a card. */
+.small .source svg {
+  top: calc(0.0367em + 0.25px);
+}
+
+.sep {
+  flex: none;
+  color: var(--text-3);
+  font-weight: 700;
+  position: relative;
+  top: 0.0367em;
+}
+
+.age {
+  flex: none;
+  color: var(--text-3);
+  font-size: 1em;
+  font-weight: 600;
+  position: relative;
+  top: 0.0367em;
+}

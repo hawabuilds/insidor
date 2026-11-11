@@ -6,8 +6,9 @@
  * source, and the source is where it is cheapest to refuse.
  *
  *   - No middle dots, bullets or "…" menus anywhere. Separation is spacing. One exception, the
- *     owner's (2026-11-10): the feed card's head line, "@handle 𝕏 · 12h" (shared/ui/PostRow.tsx),
- *     holds exactly one "·" between the platform's mark and the age. Nowhere else.
+ *     owner's (2026-11-10): the post head line, "@handle 𝕏 · 12h" (shared/ui/HeadLine.tsx, drawn
+ *     on every post in the app), holds exactly one "·" between the platform's mark and the age.
+ *     Nowhere else.
  *   - No disabled buttons. A control that cannot be used is not rendered.
  *   - Nothing but `shared/api/client.ts` touches the network.
  *   - Nothing calls `submitTrade`. Buy and Sell open the order sheet only when the build has
@@ -42,7 +43,7 @@ test('the walk is reading the package', () => {
   assert.ok(ALL.length >= 30, `found only ${ALL.length} files`);
 });
 
-const HEAD_LINE_DOT = join('shared', 'ui', 'PostRow.tsx');
+const HEAD_LINE_DOT = join('shared', 'ui', 'HeadLine.tsx');
 
 test('no middle dots, bullets or dot menus', () => {
   for (const f of ALL) {

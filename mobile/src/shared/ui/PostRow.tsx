@@ -104,7 +104,7 @@ import { tiktokVideoId } from '../../features/post-sheet/tiktok-player.ts';
 import { PlayIcon, ShareIcon } from './icons.tsx';
 import { sharePage } from '../share-link.ts';
 import { useToast } from './ComingSoon.tsx';
-import { PlatformMark } from './PlatformMark.tsx';
+import { HeadLine } from './HeadLine.tsx';
 import { POST_PIC_BASE } from './post-pic-base.ts';
 import { QuoteInset } from './QuoteInset.tsx';
 import { usePictureTries } from './usePictureTries.ts';
@@ -127,13 +127,6 @@ export interface PostHandlers {
   /** Opens the narrative the post is part of. Absent (as on that narrative's own page): no tag. */
   readonly openStory?: (storyId: string) => void;
 }
-
-/**
- * The platform mark's box in the head line, in px. The X fills 72% of its padded box (icons.tsx
- * `Filled`), so this box draws it 10.9px tall: the capitals of the handle's 15px Inter
- * (row.module.css `.who`, which also lowers it to sit optically centred).
- */
-const MARK_BOX = 15.1;
 
 /** The media box's height on every card, in px (row.module.css `.media`). */
 const MEDIA_HEIGHT = 168;
@@ -174,26 +167,22 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
 
   return (
     <article className={styles['card']} ref={cardRef}>
-      {/* ★ THE HEAD: picture, @handle, the platform's mark (a link to the post on its source), "·", the age; views on the right. */}
-      <div className={styles['head']}>
-        <PosterPic key={`${post.authorPictureFile ?? ''} ${post.authorPictureUrl ?? ''}`} file={post.authorPictureFile} url={post.authorPictureUrl} label={post.authorLabel} big />
-        <span className={styles['who']}>
-          <b className={styles['handle']}>{post.authorLabel}</b>
-          {platform !== null && sourceLink !== null ? (
-            <a className={styles['source']} href={sourceLink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`} onClick={(e) => e.stopPropagation()}>
-              <PlatformMark platform={platform} size={MARK_BOX} />
-            </a>
-          ) : platform !== null ? (
-            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={MARK_BOX} /></span>
-          ) : null}
-          <span className={styles['sep']} aria-hidden="true">·</span>
-          <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
-        </span>
-        <span className={styles['views']}>
-          <Value r={formatCount(post.reach)} className={styles['viewsN']} />
-          <span className={styles['viewsL']}>views</span>
-        </span>
-      </div>
+      {/* ★ THE HEAD (HeadLine.tsx, shared with every post in the app): picture, @handle, the platform's mark
+         (a link to the post on its source), "·", the age; views on the right. */}
+      <HeadLine
+        face={{ file: post.authorPictureFile, url: post.authorPictureUrl }}
+        label={post.authorLabel}
+        platform={platform}
+        sourceLabel={post.sourceLabel}
+        sourceLink={sourceLink}
+        age={formatAge(post.postedAt, now)}
+        right={
+          <span className={styles['views']}>
+            <Value r={formatCount(post.reach)} className={styles['viewsN']} />
+            <span className={styles['viewsL']}>views</span>
+          </span>
+        }
+      />
 
       <PostWords text={words.text} />
       <TranslatedLine line={words.line} compact className={styles['translatedLine']} />
@@ -381,10 +370,10 @@ function ShareButton({ postId, title }: { postId: string; title: string }) {
  * else the source's link (usePosterPic.ts). The handle's first letter only when the account has no
  * picture stored or none of them will load.
  */
-function PosterPic({ file, url, label, big = false }: { file: string | null; url: string | null; label: string; big?: boolean }) {
+function PosterPic({ file, url, label }: { file: string | null; url: string | null; label: string }) {
   const { src, tryKey, onError } = usePosterPic(file, url);
-  if (src !== null) return <img key={tryKey} className={big ? styles['headPic'] : styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
-  return <span className={big ? styles['headLetter'] : styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
+  if (src !== null) return <img key={tryKey} className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
+  return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
 }
 
 /**
