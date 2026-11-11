@@ -24,7 +24,7 @@ import { CandleIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { CHART_WINDOW_BARS, candleFromPoint, changePctForPoints, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
 import { VIEWS, fetchTimeframe, periodMs, tradesToCandles, viewLabel, type ChartView } from './chart-view.ts';
-import { chartNote, clock, movePercent } from './chart-format.ts';
+import { chartNote, clock, movePercent, spanLabel } from './chart-format.ts';
 import { readChartStyle, writeChartStyle } from './chart-style.ts';
 import { PRICE_CHART } from '../../shared/preload.ts';
 import styles from './token.module.css';
@@ -89,7 +89,9 @@ export function CoinChart({ market, state, view, onView, ageMs, notified, price,
   const fallback = formatChangePercent(change24h);
   const direction = move !== null ? (move > 0 ? 'up' : move < 0 ? 'down' : 'flat') : fallback.direction;
   const moveText: Rendered = move !== null ? value(movePercent(move)) : fallback.text;
-  const label = scrubbed !== null ? clock(scrubbed.t) : move !== null ? viewLabel(view) : '24H';
+  /* All says All; every other view says how long its move covers (chart-format.ts `spanLabel`). */
+  const firstT = points[0]?.t;
+  const label = scrubbed !== null ? clock(scrubbed.t) : move === null ? '24H' : view === 'all' || firstT === undefined ? viewLabel(view) : spanLabel(firstT, Date.now());
   /* ★ THE AXIS IN MARKET CAP (the owner, 2026-10-27): every price times the supply the cap was read at
      (cap over the latest price). Unknown cap: the axis stays in price, never a guessed supply. */
   const supply = cap !== 'loading' && cap.known && latest !== null && latest > 0 ? cap.amount / latest : null;

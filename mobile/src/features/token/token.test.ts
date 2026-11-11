@@ -106,3 +106,12 @@ test('★ two candles for one minute are one candle, never a page the chart libr
   assert.deepEqual(pts.map((p) => p.t), [0, 2 * MIN], 'oldest first, one per time');
   assert.deepEqual(pts[1], { t: 2 * MIN, price: 2.4, open: 3, high: 3, low: 2.4 }, 'first open, highest high, lowest low, last close');
 });
+
+test('★ the header move says how long it covers, never the candle size (mihao "46123% 1h", 2026-11-11)', async () => {
+  const { spanLabel } = await import('./chart-format.ts');
+  const H = 60 * MIN;
+  assert.equal(spanLabel(0, 45 * MIN), '45m');
+  assert.equal(spanLabel(0, 16 * H), '16h');
+  assert.equal(spanLabel(0, 15 * 24 * H), '15d');
+  assert.equal(spanLabel(0, 10_000), '1m', 'under a minute still reads as a minute');
+});
