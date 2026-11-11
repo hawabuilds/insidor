@@ -18,6 +18,9 @@
     { "post": "x:2115848622822838294", "at": "2026-10-29T20:49:00Z", "expect": "on", "why": "@ayeciza, missed 29 Oct (owner pasted 30 Oct)" },
     { "post": "x:2116228697761943566", "at": "2026-10-30T22:00:00Z", "expect": "on", "why": "@dexerto Sonic, missed 30 Oct (owner pasted 30 Oct)" }
   ],
+  "narratives": [
+    { "posts": ["x:2120080430388937046", "x:2119869530327732250", "x:2120227259474981353", "x:2120160248111538657"], "coin": "CQ8zNLYwMEAVVBHEswusZrsUraCvc7HjiBPwgTbRpump", "why": "cat shadow boxing: one GIF uploaded twice, captioned \"you can copy GIFs\" in eight languages, was grouped by its words into a copy-GIF narrative; the GIF key was never read (the owner, 11 Nov)" }
+  ],
   "coins": [
     { "post": "x:2115715264528675106", "coin": "55WJkT2DFozHTS32ZZrXhrRGvQuESo1tuv2oDc9Fpump", "expect": "no", "why": "$vanilla linking @AFP's vanilla video, on a Yokohama post about a dog called Vanilla (the owner, 29 Oct)" },
     { "post": "x:2115394164372431253", "coin": "DWL514CQK5CDvJ83w2NSMhHjWJ8LwFvEgkwthuKupump", "expect": "no", "why": "$SI (\"Shiba Inu\") on the Akita dog filming post: a look-alike breed, another dog — passes only on full-size pictures" },
