@@ -38,7 +38,13 @@ import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type Narratives
 import type { Measured } from '../../shared/format/measure.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
-import { useNow } from '../../shared/hooks.ts';
+import { useNow, useWatchlist } from '../../shared/hooks.ts';
+import { sharePage } from '../../shared/share-link.ts';
+import { watchlist } from '../../shared/watchlist.ts';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import { ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
+import rowStyles from '../../shared/ui/row.module.css';
+import starStyles from '../../shared/ui/watch-star.module.css';
 import { fresh, kept } from '../../shared/kept-reads.ts';
 import { firstPageKey, readFirstPage } from './first-page.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
@@ -52,6 +58,7 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { NO_RISERS, SORTS, SPANS, gainedLine, speedLine, type ViewedSpan } from '../feed/feed-sort.ts';
 import feedStyles from '../feed/feed.module.css';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
+import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { SITES, cardLine, seeCoinsText, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, viralLine, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
@@ -364,8 +371,17 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
       <div className={styles['coin']}>
         {coin.kind === 'checked' || coin.kind === 'top' ? (
           <>
-            <CoinLogo small address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
-            <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
+            {/* The coin's logo and ticker open its chart (the owner, 2026-11-11), by the narrative
+                screen's own rule: a checked coin opens with this narrative around it, a top coin by
+                its own id, marked not proven. */}
+            <button type="button" className={styles['coinOpen']} aria-label={`Open ${tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))} chart`} onClick={(e) => {
+              e.stopPropagation();
+              const c = coin.coin;
+              window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id));
+            }}>
+              <CoinLogo small address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
+              <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
+            </button>
             <span className={styles['coinSub']}>
               {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} story={story} />}
             </span>
@@ -377,6 +393,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
                 window.location.hash = hrefFor({ screen: 'story', storyId: story.id, coins: true });
               }}>{seeCoins}</button>
             ) : null}
+            {view !== undefined ? <CardIcons storyId={story.id} /> : null}
             <button type="button" className={styles['buy']} onClick={(e) => {
               e.stopPropagation();
               onBuy(coin.coin);
@@ -392,17 +409,53 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, e
                 window.location.hash = hrefFor({ screen: 'story', storyId: story.id, coins: true });
               }}>{seeCoins}</button>
             ) : null}
+            {view !== undefined ? <CardIcons storyId={story.id} /> : null}
             <button type="button" className={styles['create']} onClick={(e) => {
               e.stopPropagation();
               onCreate();
             }}>Create</button>
           </>
         ) : (
-          <span className={styles['coinNone']}>{coin.line}</span>
+          <>
+            <span className={styles['coinNone']}>{coin.line}</span>
+            {view !== undefined ? <CardIcons storyId={story.id} /> : null}
+          </>
         )}
       </div>
       {extra}
     </article>
+  );
+}
+
+/**
+ * Share and the Watch star on a Narratives tab card, as For You's card draws them (the owner,
+ * 2026-11-11: "be consistent with the For You page"): plain icons with no box, left of Buy or Create,
+ * so Buy stays the only solid shape. Share sends the narrative's page; the star adds the narrative to
+ * the Watchlist, as the narrative screen's star does. Home's Watchlist cards draw neither: they are
+ * that list already.
+ */
+function CardIcons({ storyId }: { storyId: string }) {
+  const starred = useWatchlist().includes(storyId);
+  const toast = useToast();
+  return (
+    <>
+      <button type="button" className={rowStyles['iconButton']} aria-label="Share this narrative" onClick={(e) => {
+        e.stopPropagation();
+        void sharePage({ screen: 'story', storyId }, 'A narrative on Insidor').then((o) => {
+          if (o === 'copied') toast('Link copied');
+          else if (o === 'failed') toast("Couldn't share the link");
+        });
+      }}>
+        <ShareIcon size={18} />
+      </button>
+      <button type="button" className={`${starStyles['star']} ${starStyles['bare']} ${starred ? starStyles['on'] : ''}`} aria-pressed={starred} aria-label={starred ? 'Stop watching this narrative' : 'Watch this narrative'} onClick={(e) => {
+        e.stopPropagation();
+        watchlist.toggle(storyId);
+        toast(starred ? 'Removed from your Watchlist' : 'Added to your Watchlist');
+      }}>
+        <StarIcon size={18} filled={starred} />
+      </button>
+    </>
   );
 }
 

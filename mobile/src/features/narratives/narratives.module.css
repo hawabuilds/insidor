@@ -158,6 +158,20 @@
   font-size: 15px;
 }
 
+/* The coin's logo and ticker as one tap that opens its chart; it looks as it did. */
+.coinOpen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 .coinSub {
   flex: 1;
   min-width: 0;
