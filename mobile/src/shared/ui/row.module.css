@@ -50,9 +50,12 @@
   font-weight: 700;
 }
 
+/* One size and one baseline for the whole line (the owner, 2026-11-11: the mark and the age sat
+   off the handle): the age at the handle's size, and the platform's mark as tall as the capitals,
+   standing on the baseline, so its top and bottom meet the letters' rather than overhanging them. */
 .who {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
@@ -80,7 +83,7 @@
 .source::after {
   content: '';
   position: absolute;
-  inset: calc((13px - var(--tap)) / 2);
+  inset: calc((11px - var(--tap)) / 2);
 }
 
 .sep {
@@ -92,8 +95,14 @@
 .age {
   flex: none;
   color: var(--text-3);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+}
+
+/* An svg has no baseline of its own, so its bottom edge is used: the mark stands on the line. */
+.source svg,
+.sourceMark svg {
+  display: block;
 }
 
 .views {

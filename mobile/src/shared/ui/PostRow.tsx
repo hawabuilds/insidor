@@ -174,10 +174,10 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
           <b className={styles['handle']}>{post.authorLabel}</b>
           {platform !== null && sourceLink !== null ? (
             <a className={styles['source']} href={sourceLink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`} onClick={(e) => e.stopPropagation()}>
-              <PlatformMark platform={platform} size={13} />
+              <PlatformMark platform={platform} size={11} />
             </a>
           ) : platform !== null ? (
-            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={13} /></span>
+            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={11} /></span>
           ) : null}
           <span className={styles['sep']} aria-hidden="true">·</span>
           <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
