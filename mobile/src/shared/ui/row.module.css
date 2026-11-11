@@ -50,12 +50,17 @@
   font-weight: 700;
 }
 
-/* One size and one baseline for the whole line (the owner, 2026-11-11: the mark and the age sat
-   off the handle): the age at the handle's size, and the platform's mark as tall as the capitals,
-   standing on the baseline, so its top and bottom meet the letters' rather than overhanging them. */
+/* ★ THE HANDLE, THE MARK, THE DOT AND THE AGE ON ONE CENTRE LINE (the owner, 2026-11-11: "perfectly
+   aligned"). All the words are one size (15px Inter), and Inter centres its capitals and digits in
+   its line box, so plain centring puts every piece on the same middle. The drawn X is the
+   capitals' height (10.9px, PostRow `MARK_BOX`). Not the full height with descenders: those hang
+   below on one side only, so an X that tall can never sit centred.
+   ★ OPTICAL, NOT GEOMETRIC (the owner, 2026-11-11: "slightly high"): a handle is mostly lowercase
+   (8.3px tall), so its visual middle sits below the capitals' middle. The X is lowered to halfway
+   between the two middles: its bottom 0.5px under the baseline, its top 0.5px under the capitals. */
 .who {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
@@ -70,7 +75,7 @@
   color: var(--text-1);
 }
 
-/* The platform's mark: a link to the post on its source, with a 44px tap area around a 13px mark. */
+/* The platform's mark: a link to the post on its source, with a 44px tap area around the mark. */
 .source,
 .sourceMark {
   position: relative;
@@ -83,7 +88,7 @@
 .source::after {
   content: '';
   position: absolute;
-  inset: calc((11px - var(--tap)) / 2);
+  inset: calc((10.9px - var(--tap)) / 2);
 }
 
 .sep {
@@ -99,10 +104,15 @@
   font-weight: 600;
 }
 
-/* An svg has no baseline of its own, so its bottom edge is used: the mark stands on the line. */
+/* The mark's box is padded on every side (icons.tsx `Filled`), equally, so its drawn X is centred
+   in it: centring the box centres the X. Negative margins give the padding back, so the gaps
+   either side of the X match the gaps between the words. */
 .source svg,
 .sourceMark svg {
   display: block;
+  position: relative;
+  top: 0.55px;
+  margin: -2.1px;
 }
 
 .views {

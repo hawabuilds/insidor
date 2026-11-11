@@ -128,6 +128,13 @@ export interface PostHandlers {
   readonly openStory?: (storyId: string) => void;
 }
 
+/**
+ * The platform mark's box in the head line, in px. The X fills 72% of its padded box (icons.tsx
+ * `Filled`), so this box draws it 10.9px tall: the capitals of the handle's 15px Inter
+ * (row.module.css `.who`, which also lowers it to sit optically centred).
+ */
+const MARK_BOX = 15.1;
+
 /** The media box's height on every card, in px (row.module.css `.media`). */
 const MEDIA_HEIGHT = 168;
 
@@ -174,10 +181,10 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
           <b className={styles['handle']}>{post.authorLabel}</b>
           {platform !== null && sourceLink !== null ? (
             <a className={styles['source']} href={sourceLink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`} onClick={(e) => e.stopPropagation()}>
-              <PlatformMark platform={platform} size={11} />
+              <PlatformMark platform={platform} size={MARK_BOX} />
             </a>
           ) : platform !== null ? (
-            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={11} /></span>
+            <span className={styles['sourceMark']}><PlatformMark platform={platform} size={MARK_BOX} /></span>
           ) : null}
           <span className={styles['sep']} aria-hidden="true">·</span>
           <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
