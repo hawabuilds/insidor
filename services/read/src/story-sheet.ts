@@ -25,6 +25,7 @@
  */
 
 import type { Db, Row } from './queries.ts';
+import { withCardVideos } from './card-video.ts';
 import { withPictureFiles } from './post-pics.ts';
 import { quoteFaces, withQuoteFace } from './quote-faces.ts';
 import { translationsOf, withTranslations } from './translations.ts';
@@ -142,13 +143,17 @@ async function membersOut(db: Db, rows: readonly Row[]) {
      and our copy of its picture (post-pics.ts): the two reads sent at once, then put together. */
   const posts = rows.map((r) => r['post'] ?? null).filter((p) => p !== null);
   const ids = rows.flatMap((r) => str(r['item_id']) ?? []);
-  const [translated, pictured, faces, english] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts), quoteFaces(db, posts), translationsOf(db, ids)]);
+  /* And the video each card can play in place (card-video.ts), as For You's cards carry it: the
+     narrative screen draws these cards, and its videos play as For You's do. */
+  const [translated, pictured, faces, english, videos] = await Promise.all([withTranslations(db, posts), withPictureFiles(db, posts), quoteFaces(db, posts), translationsOf(db, ids), withCardVideos(db, posts)]);
   const cards = translated.map((p, i) => {
     const file = rec(pictured[i])['thumbFile'];
     const quote = rec(pictured[i])['quote'];
+    const video = videos[i] === posts[i] ? undefined : rec(videos[i])['video'];
     /* The quoted post with our copy of its picture (post-pics.ts) and its account's face (quote-faces.ts). */
     const withQuote = quote === undefined ? p : { ...rec(p), quote };
-    return withQuoteFace(typeof file === 'string' ? { ...rec(withQuote), thumbFile: file } : withQuote, faces);
+    const withVideo = video === undefined ? withQuote : { ...rec(withQuote), video };
+    return withQuoteFace(typeof file === 'string' ? { ...rec(withVideo), thumbFile: file } : withVideo, faces);
   });
   const byId = new Map(cards.map((p) => [str(rec(p)['id']) ?? '', p] as const));
   return rows.flatMap((r) => {
