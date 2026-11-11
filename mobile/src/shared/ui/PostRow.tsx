@@ -216,12 +216,19 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, sortL
             onClick={handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(shown.coinId); } : undefined}
           >
             <CoinLogo small address={shown.address} ticker={shown.ticker} imageUrl={shown.imageUrl} size={32} />
-            <b className={styles['ticker']}>{tickerText(shown.ticker)}</b>
-            {/* A cap not read is a dash with its reason (Value), never left blank or "$0". */}
-            <Value r={formatUsd(shown.marketCapUsd)} className={styles['cap']} num />
+            {/* The ticker over its cap (or the coin's grey words), so the whole ticker fits beside the buttons. */}
+            <span className={styles['coinText']}>
+              <b className={styles['ticker']}>{tickerText(shown.ticker)}</b>
+              {note !== null ? (
+                <span className={styles['coinNote']}>{note.replace(/^—\s*/, '')}</span>
+              ) : (
+                /* A cap not read is a dash with its reason (Value), never left blank or "$0". */
+                <Value r={formatUsd(shown.marketCapUsd)} className={styles['cap']} num />
+              )}
+            </span>
           </span>
         ) : null}
-        {note !== null ? <span className={styles['note']}>{note}</span> : null}
+        {note !== null && shown === null ? <span className={styles['note']}>{note}</span> : null}
         <span className={styles['actions']}>
           <ShareButton postId={post.id} title={`${post.authorLabel} on Insidor`} />
           {watch}

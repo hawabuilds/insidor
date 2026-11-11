@@ -294,11 +294,16 @@
 
 /* ★ THE CARD'S ONE ROW (PostRow, coin-status.ts `cardRow`): no divider; the coin or a few grey
    words at the left, the buttons, Share and the star at the right, every one 44px with one corner. */
+/* ★ NOTHING IN THE ROW IS EVER CUT OR OVERLAPPED (the owner, 2026-11-10): the coin (logo, the full
+   ticker, the cap) and the grey words keep their whole width, and when they and the buttons do not
+   fit on one line the buttons wrap to a second line, at the right. Never squeeze the coin instead:
+   that is what cut "$BOXCAT" to "$BOX…" and let Share sit on a PvP card's cap. */
 .row {
   min-height: 44px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
 }
 
 .coin {
@@ -306,28 +311,47 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  max-width: 100%;
 }
 
+/* The ticker over its cap (or the coin's grey words): the narrowest way to show both whole. */
+.coinText {
+  display: grid;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+/* The whole ticker, always; one longer than the card itself breaks onto a second line, never "…". */
 .ticker {
+  min-width: 0;
   font-size: 16px;
   font-weight: 800;
   color: var(--text-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .cap {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-2);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
+.coinNote {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+/* The grey words take the room left beside the coin and wrap inside it, so they never push Share
+   and the star onto a line of their own; they keep at least 96px, and below that the row wraps. */
 .note {
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 96px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.3;
   color: var(--text-3);
 }
 
@@ -339,8 +363,13 @@
   flex-shrink: 0;
 }
 
-/* Buy (or Create coin, See coins) a little apart from the two plain icons before it. */
+/* Buy (or Create coin, See coins) a little apart from the two plain icons before it, and two
+   buttons side by side ("See 2 coins", Buy) as far apart as any. */
 .actions > :nth-child(3) {
+  margin-left: 6px;
+}
+
+.actions > :nth-child(n + 4) {
   margin-left: 6px;
 }
 
