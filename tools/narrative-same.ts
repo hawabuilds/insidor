@@ -55,7 +55,7 @@ try {
     const oldest = (members: readonly string[]) => Math.min(now, ...members.map((m) => rawNames.get(m)?.atMs ?? now));
     const vectors = new Map<string, Float32Array>();
     for (let i = 0; i < ids.length; i += 2_000) for (const [k, v] of await repo.vectors(ids.slice(i, i + 2_000), SPACE, 'post')) vectors.set(k, v);
-    const subjects = all.map((x) => subjectOf(x.id, subjectPosts(x.members, names, vectors), oldest(x.members)));
+    const subjects = all.map((x) => subjectOf(x.id, subjectPosts(x.members, names, vectors), oldest(x.members), x.title));
     const untouchable = new Set(callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]));
     const merges = sameSubjectMerges(subjects, untouchable, P);
     const rows = await repo.standingRows(ids);
@@ -81,7 +81,7 @@ try {
   const lines = [
     `# Same-subject merges (${mode}): ${plan.merges.length} of ${plan.all.length} shown narratives`,
     '',
-    `Rule: the same most common judge name (at least ${P.narrative.same.nameShare} of each one's named posts) and posts' average vectors at least ${P.narrative.same.meaning} alike. Never a narrative the owner called on.`,
+    `Rule: the same most common judge name, or one holding the other (at least ${P.narrative.same.familyMinChars} letters), at least ${P.narrative.same.nameShare} of each one's named posts, and posts' average vectors at least ${P.narrative.same.meaning} alike; or one's name in the other's title, at least ${P.narrative.same.titledMeaning} alike (no vectors: the title confirms). Never a narrative the owner called on.`,
     '',
     ...plan.merges.map((m) => `- ${t(m.from)} → ${t(m.into)} — meaning ${m.meaning.toFixed(3)}, name "${plan.subjects.get(m.from)?.name ?? ''}"`),
     '',

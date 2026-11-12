@@ -69,3 +69,55 @@ test('a new group joins the narrative of its subject, the closest of several; an
   assert.equal(joins.get(0), 'n-b');
   assert.equal(joins.has(1), false);
 });
+
+test('★ one person under several spellings is one name: "jensen" reaches into "jensenhuang"; a short name reaches into nothing', () => {
+  const a = subjectOf('n-a', posts('jensen', NEO, 6), 1);
+  const b = subjectOf('n-b', posts('jensenhuang', NEO_NEAR), 2);
+  const c = subjectOf('n-c', posts('dishwasherjensen', NEO_NEAR), 3);
+  assert.ok(sameSubject(a, b, P) !== null);
+  assert.ok(sameSubject(a, c, P) !== null);
+  const kim = subjectOf('n-k', posts('kim', NEO, 6), 1);
+  const kimchi = subjectOf('n-kc', posts('kimchi', NEO_NEAR), 2);
+  assert.equal(sameSubject(kim, kimchi, P), null, 'under familyMinChars a name is only itself');
+});
+
+// Two averages 0.83 alike: under `meaning`, over `titledMeaning`.
+const MID = unit(1, 0.1, 0.6);
+
+test('★ when both titles say the shared name, the lower meaning bar holds; without the titles the usual one', () => {
+  const big = subjectOf('n-big', posts('jensen', NEO, 6), 1, 'Nvidia CEO Jensen Huang Affair Rumors');
+  const small = subjectOf('n-s', posts('dishwasherjensen', MID), 2, 'Jensen Meme Dishwasher Joke');
+  const untitled = subjectOf('n-u', posts('dishwasherjensen', MID), 2, 'Dishwasher Joke');
+  const c = sameSubject(big, small, P);
+  assert.ok(c !== null && c < P.narrative.same.meaning && c >= P.narrative.same.titledMeaning);
+  assert.equal(sameSubject(big, untitled, P), null);
+});
+
+test('★ a title never links on its own: another name, whatever the titles say, is another story', () => {
+  const big = subjectOf('n-big', posts('jensen', NEO, 6), 1, 'Nvidia CEO Jensen Huang Affair Rumors');
+  assert.equal(sameSubject(big, subjectOf('n-u', posts('ufo', NEO_NEAR), 2, 'Jensen Huang UFO Claims'), P), null);
+  const panda = subjectOf('n-p', posts('pitbull', NEO, 6), 1, 'Panda Panda Pitbull Joins Parade');
+  assert.equal(sameSubject(panda, subjectOf('n-f', posts('fuuta', NEO_NEAR), 2, 'Red Panda Fuuta Sets Record'), P), null);
+});
+
+test('with no stored vectors on one side the meaning cannot confirm, so no link stands', () => {
+  const big = subjectOf('n-big', posts('jensen', NEO, 6), 1, 'Nvidia CEO Jensen Huang Affair Rumors');
+  const none = [{ name: 'jensen', vector: undefined }, { name: 'jensen', vector: undefined }];
+  assert.equal(sameSubject(big, subjectOf('n-t', none, 2, 'Jensen Huang Meme Coins Flood'), P), null);
+});
+
+test('a run of generic title words names nothing, and kind words are no name', () => {
+  assert.equal(subjectName('Elon Musk', P), null);
+  assert.equal(subjectName('coin', P), null);
+  assert.equal(subjectName('Baby', P), null);
+  assert.equal(subjectName('panda', P), null);
+});
+
+test('★ a match never chains through a narrative merged away this pass', () => {
+  const xs = [
+    subjectOf('n-jensen', posts('jensen', NEO, 6), 1),
+    subjectOf('n-jh', posts('jensenhuang', NEO_NEAR, 4), 2),
+    subjectOf('n-jhh', posts('jensenhuanghat', NEO_NEAR), 3),
+  ];
+  assert.deepEqual(sameSubjectMerges(xs, new Set(), P).map((m) => [m.from, m.into]), [['n-jh', 'n-jensen'], ['n-jhh', 'n-jensen']]);
+});

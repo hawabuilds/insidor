@@ -21,13 +21,26 @@
  * the same name was one story. A loosely related story — another cat, another protest figure —
  * has another name, and never joins.
  *
- *   join     a new group (it holds no narrative's post) that is the same subject as a narrative
- *            already made adds its posts to that narrative instead of becoming another; the
- *            closest such narrative when there are several
- *   merge    of two narratives already made that are the same subject, the newer merges into the
- *            older: an automatic merge, recorded as one (`merged_by` 'same_subject', 0108), its
- *            link redirected like an owner's merge. Never a narrative the owner made any call on
- *            — his calls outrank this rule, in both directions
+ * ★ ONE NAME, SEVERAL SPELLINGS (the owner, 2026-11-12: "every story about Jensen Huang should be
+ * one"). The judge's name is the coin a post proposes, so one person's story arrives as JENSEN,
+ * JENSENHUANG, DISHWASHERJENSEN; requiring the exact same name left a dozen Jensen narratives beside
+ * the 270-post one. So:
+ *
+ *   one family   one name holding the other whole is the same name, when the shorter is at least
+ *                `same.familyMinChars` long ("jensen" in "jensenhuang"; "max" reaches into nothing)
+ *   the titles   when both titles also say the shared root, the shorter name (the titler read every post of each and named
+ *                the subject), the meaning bar is the lower `same.titledMeaning`. A big narrative's
+ *                average drifts toward the feed's, so the same story's small tellings read 0.785 to
+ *                0.890 from the Jensen one, under the 0.877 that two small tellings of Neo clear
+ *
+ * ★ THE TITLE NEVER LINKS ON ITS OWN, AND NOTHING LINKS WITHOUT VECTORS. Dry-run over all 3,584 shown
+ * narratives on 12 Nov: letting a name in the other's title link by itself merged 50, a third of them
+ * wrong — "Red Panda Fuuta" into "Panda Pitbull Joins Parade", an AI model's release into the
+ * same model's mishap — and letting it stand in for missing vectors merged 338, every common first name wrong
+ * (Jeff the dog into "Anti AI Shark Jeff"). Meaning did not separate those; the posts' own name does.
+ *
+ * ★ NEVER THROUGH A NARRATIVE MERGED AWAY THIS PASS: a narrative merges straight into the oldest one
+ * it matches that stays, so a match never chains from one spelling to the next.
  *
  * Pure: the runner reads the narratives, their posts' names and vectors; this decides.
  *
@@ -38,6 +51,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { compactName } from '../match/post-coin.ts';
+import { isCommonWord } from '../match/story-coin.ts';
 
 /** What a narrative (or a group) is about, for this rule: its average vector and its name. */
 export interface NarrativeSubject {
@@ -50,6 +64,8 @@ export interface NarrativeSubject {
   readonly nameShare: number;
   /** When its oldest post went up (or it was made): the older of two is the one kept. */
   readonly oldestMs: number;
+  /** Its title's words, compacted; empty for a group not yet titled. */
+  readonly titleWords: readonly string[];
 }
 
 /** A post as this rule reads it: its judge's name and, if known, its vector. */
@@ -68,7 +84,39 @@ export function subjectName(raw: string | null, p: Policy): string | null {
   return key;
 }
 
-export function subjectOf(id: string, posts: readonly SubjectPost[], oldestMs: number): NarrativeSubject {
+/** A title's words in the form names are compared in ("Jensen Huang's" → "jensen", "huangs"). */
+export function titleWordsOf(title: string | null | undefined): readonly string[] {
+  if (title == null) return [];
+  return title.split(/[^\p{L}\p{N}$]+/u).map(compactName).filter((w) => w.length > 0);
+}
+
+/**
+ * The name is one of the title's words, or several of them run together ("jensenhuang"), and
+ * at least one of those words is not itself a generic name ("Elon Musk" is two generic names).
+ */
+function namedIn(name: string, words: readonly string[], generic: ReadonlySet<string>): boolean {
+  for (let i = 0; i < words.length; i += 1) {
+    let run = '';
+    let own = false;
+    for (let j = i; j < words.length; j += 1) {
+      const w = words[j] ?? '';
+      run += w;
+      own ||= !generic.has(w) && !isCommonWord(w);
+      if (run === name) return own;
+      if (run.length >= name.length) break;
+    }
+  }
+  return false;
+}
+
+/** The same name, or one holding the other whole with the shorter at least `familyMinChars` long. */
+function oneFamily(a: string, b: string, minChars: number): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= minChars && long.includes(short);
+}
+
+export function subjectOf(id: string, posts: readonly SubjectPost[], oldestMs: number, title: string | null = null): NarrativeSubject {
   let sum: Float64Array | null = null;
   const names = new Map<string, number>();
   let named = 0;
@@ -83,7 +131,7 @@ export function subjectOf(id: string, posts: readonly SubjectPost[], oldestMs: n
     }
   }
   const top = [...names].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-  return { id, sum, name: top?.[0] ?? null, nameShare: top === undefined || named === 0 ? 0 : top[1] / named, oldestMs };
+  return { id, sum, name: top?.[0] ?? null, nameShare: top === undefined || named === 0 ? 0 : top[1] / named, oldestMs, titleWords: titleWordsOf(title) };
 }
 
 const cosine = (a: Float64Array, b: Float64Array): number => {
@@ -100,14 +148,23 @@ const cosine = (a: Float64Array, b: Float64Array): number => {
   return na === 0 || nb === 0 ? 0 : d / Math.sqrt(na * nb);
 };
 
-/** How alike two subjects are when they are the same subject by this rule; null when they are not. */
+/**
+ * How alike two subjects are when they are the same subject by this rule; null when they are not,
+ * and null when either has no stored vectors: the meaning cannot confirm, so it cannot tell.
+ */
 export function sameSubject(a: NarrativeSubject, b: NarrativeSubject, p: Policy): number | null {
   const s = p.narrative.same;
-  if (!s.on || a.name === null || a.name !== b.name) return null;
+  if (!s.on || a.name === null || b.name === null) return null;
   if (a.nameShare < s.nameShare || b.nameShare < s.nameShare) return null;
+  if (!oneFamily(a.name, b.name, s.familyMinChars)) return null;
   if (a.sum === null || b.sum === null) return null;
+  const generic = new Set([...p.group.genericSpans, ...s.genericNames].map(compactName));
+  /* The shared root (the shorter name) said in both titles: "jensen" in "Nvidia CEO Jensen Huang
+     Affair Rumors" and in "Jensen Meme Dishwasher Joke". */
+  const root = a.name.length <= b.name.length ? a.name : b.name;
+  const titled = root.length >= s.familyMinChars && namedIn(root, a.titleWords, generic) && namedIn(root, b.titleWords, generic);
   const c = cosine(a.sum, b.sum);
-  return c >= s.meaning ? c : null;
+  return c >= (titled ? s.titledMeaning : s.meaning) ? c : null;
 }
 
 /**
@@ -117,11 +174,10 @@ export function sameSubject(a: NarrativeSubject, b: NarrativeSubject, p: Policy)
  */
 export function joinExisting(groups: readonly NarrativeSubject[], existing: readonly NarrativeSubject[], p: Policy): ReadonlyMap<number, string> {
   const out = new Map<number, string>();
-  const byName = new Map<string, NarrativeSubject[]>();
-  for (const e of existing) if (e.name !== null) byName.set(e.name, [...(byName.get(e.name) ?? []), e]);
   groups.forEach((g, i) => {
+    if (g.name === null) return;
     let best: { id: string; c: number } | null = null;
-    for (const e of g.name === null ? [] : byName.get(g.name) ?? []) {
+    for (const e of existing) {
       const c = sameSubject(g, e, p);
       if (c !== null && (best === null || c > best.c || (c === best.c && e.id < best.id))) best = { id: e.id, c };
     }
@@ -131,37 +187,27 @@ export function joinExisting(groups: readonly NarrativeSubject[], existing: read
 }
 
 /**
- * The automatic merges: each narrative that is the same subject as an older one merges into it —
- * into the oldest it matches directly, followed to where that one goes, so a story told three
- * times ends as one. `untouchable` are the narratives the owner made a call on: never merged, and
- * never merged into. Each pair is `{ from, into, meaning }`, newest `from` last.
+ * The automatic merges: each narrative that is the same subject as an older one merges into the
+ * oldest it matches that is not itself merged away, so a story told three times ends as one and a
+ * link never chains through a narrative already folded (the header). `untouchable` are the
+ * narratives the owner made a call on: never merged, and never merged into. Each pair is
+ * `{ from, into, meaning }`, newest `from` last.
  */
 export function sameSubjectMerges(narratives: readonly NarrativeSubject[], untouchable: ReadonlySet<string>, p: Policy): readonly { readonly from: string; readonly into: string; readonly meaning: number }[] {
   if (!p.narrative.same.on) return [];
   const list = narratives.filter((x) => !untouchable.has(x.id)).sort((a, b) => a.oldestMs - b.oldestMs || a.id.localeCompare(b.id));
-  const into = new Map<string, string>();
-  const lead = (id: string): string => {
-    let at = id;
-    for (let next = into.get(at); next !== undefined; next = into.get(at)) at = next;
-    return at;
-  };
+  const gone = new Set<string>();
   const out: { from: string; into: string; meaning: number }[] = [];
-  /* Only narratives with the same name can be the same subject: compared within a name, never all pairs. */
-  const byName = new Map<string, NarrativeSubject[]>();
-  for (const x of list) if (x.name !== null) byName.set(x.name, [...(byName.get(x.name) ?? []), x]);
-  for (const b of list) {
-    const same = b.name === null ? [] : byName.get(b.name) ?? [];
-    for (const a of same) {
-      if (a === b) break;
+  list.forEach((b, at) => {
+    for (const a of list.slice(0, at)) {
+      if (gone.has(a.id)) continue;
       const c = sameSubject(a, b, p);
       if (c === null) continue;
-      const target = lead(a.id);
-      if (target === b.id) continue;
-      into.set(b.id, target);
-      out.push({ from: b.id, into: target, meaning: c });
-      break;
+      gone.add(b.id);
+      out.push({ from: b.id, into: a.id, meaning: c });
+      return;
     }
-  }
+  });
   return out;
 }
 

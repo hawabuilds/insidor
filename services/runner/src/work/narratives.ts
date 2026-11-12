@@ -478,7 +478,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const names = new Map(all.map((id) => [id, subjectName(postNames.get(id)?.name ?? null, p)] as const));
     /* The older of two is the one whose first post went up first (a rebuilt narrative's first shown time is the rebuild's). */
     const oldest = (x: { readonly members: readonly string[] }) => Math.min(input.nowMs, ...x.members.map((m) => postNames.get(m)?.atMs ?? input.nowMs));
-    const subjects = existing.map((x) => subjectOf(x.id, subjectPosts(x.members, names, postVectors), oldest(x)));
+    /* With its title: the titler's reading of what it is about links another spelling of its subject (core narrative-same.ts). */
+    const subjects = existing.map((x) => subjectOf(x.id, subjectPosts(x.members, names, postVectors), oldest(x), x.title));
 
     /* The owner's calls outrank the rule: a narrative he called on is never merged nor merged into. */
     const untouchable = new Set([...input.callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]), ...input.ownerInto]);

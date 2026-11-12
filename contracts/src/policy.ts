@@ -4767,6 +4767,10 @@ export interface NarrativePolicy {
     readonly lookbackMs: number;
     /** A name this short or longer counts (Neo, Gus: three letters), after `group.genericSpans` and `genericNames` are out. */
     readonly minNameChars: number;
+    /** One name holding another whole is one name ("jensen" in "jensenhuang") when the shorter is at least this long. */
+    readonly familyMinChars: number;
+    /** The meaning bar when one narrative's title names the other's subject (the title is a second witness). */
+    readonly titledMeaning: number;
     /** Names that say what kind of thing, not which one: two different cats are not one story. */
     readonly genericNames: readonly string[];
   };
@@ -6308,7 +6312,7 @@ const POLICY_V1: Policy = {
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent.
      v239 (2026-11-11, the owner: the boxing cat) adds `narrative.sameVideo.gifThumbMaxBits`: two uploads
      of one GIF, their thumbnails hashed alike, are one video for the narratives. */
-  version: 'policy.v239',
+  version: 'policy.v240',
 
   admit: {
     maxAgeMin: 240,
@@ -8581,7 +8585,15 @@ const POLICY_V1: Policy = {
       nameShare: 0.34,
       lookbackMs: 604_800_000,
       minNameChars: 3,
-      genericNames: ['cat', 'cats', 'dog', 'dogs', 'kitten', 'kitty', 'puppy', 'pepe', 'doge', 'frog', 'bear', 'monkey', 'penguin', 'raccoon', 'hippo', 'viralcat', 'viraldog', 'catcoin', 'dogcoin', 'elon', 'musk', 'trump', 'tesla', 'france', 'french'],
+      /* policy.v240 (the owner, 2026-11-12: every Jensen Huang story one; core narrative-same.ts).
+         Five: "huang", "jensen" reach into the longer spellings; "max", "kim" reach into nothing.
+         0.78: on 12 Nov the Jensen narratives titled "Jensen …" read 0.785 to 0.890 from the
+         270-post one ("Resigns From Nvidia" the lowest), under `meaning`, as a big narrative's
+         average drifts toward the feed's. baby, coin, elonmusk and seven animal kinds joined
+         `genericNames` with it: in the same dry run each linked unrelated narratives by name. */
+      familyMinChars: 5,
+      titledMeaning: 0.78,
+      genericNames: ['cat', 'cats', 'dog', 'dogs', 'kitten', 'kitty', 'puppy', 'pepe', 'doge', 'frog', 'bear', 'monkey', 'penguin', 'raccoon', 'hippo', 'viralcat', 'viraldog', 'catcoin', 'dogcoin', 'elon', 'musk', 'trump', 'tesla', 'france', 'french', 'elonmusk', 'baby', 'coin', 'coins', 'otter', 'horse', 'panda', 'hamster', 'shiba', 'marmot', 'rat'],
     },
     single: { on: false, minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
     /* Five minutes over the day, 288 numbers a page: the phone's finest chart interval is 5m, and it
