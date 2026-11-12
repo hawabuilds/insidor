@@ -175,6 +175,20 @@ body {
   overscroll-behavior: none;
 }
 
+/* Plus `--below` on the page alone (body is 100% of it, so adding it there too would count it
+   twice): where iOS gives an installed app a box short of the screen, the page is stretched by the
+   shortfall so the column reaches the glass (shared/viewport.ts, fillScreen). */
+html {
+  height: calc(100% + var(--below, 0px));
+}
+
+/* With the page stretched, the body is the box every fixed bar and sheet is placed in, rather than
+   the short one iOS reports: the tab bar's `bottom` is then measured from the true bottom of the
+   screen. Only while stretched; the body never moves, since the page never scrolls. */
+html[data-below] body {
+  transform: translateZ(0);
+}
+
 button {
   font: inherit;
   color: inherit;

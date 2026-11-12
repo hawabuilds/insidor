@@ -80,3 +80,62 @@ export function pinPage(): void {
   window.addEventListener('orientationchange', settle);
   back();
 }
+
+/**
+ * ★ THE PAGE REACHES THE BOTTOM OF THE GLASS (the owner, 2026-11-12: "at the bottom of the screen
+ * there's like a black block preventing you from seeing the post"). Opened from the home screen,
+ * iOS 26 can give the page a box that is short of the screen by exactly the status bar's height
+ * (`env(safe-area-inset-top)`, 47pt on a 390pt iPhone): the column, 100% of that box, stopped there
+ * and left a strip of bare background under it, and the tab bar, fixed to the same box, sat that
+ * much too high. A tab in Safari never has this, and nor does an iOS without the bug.
+ *
+ * ★ ONE NUMBER, READ ONCE PER SHAPE, NEVER A BAR MOVED BY HAND. The shortfall is the screen's height
+ * less the page's, and it counts only when it is the status bar's height give or take a point — a
+ * keyboard, a toolbar or a bad reading is never that, so it is ignored rather than followed (the
+ * four drift fixes before shared/scroller.ts followed every reading and left bars mid-screen). It
+ * becomes `--below`, which stretches `html` and `body` to the glass (tokens.css), and the body
+ * becomes the box every fixed bar and sheet is placed in, so each of them reaches the true bottom
+ * without one of them knowing.
+ *
+ * What breaks if changed carelessly: accepting any shortfall rather than only the status bar's
+ * (a keyboard's would stretch the page off the top), or dropping the body's box (tokens.css): the
+ * column would reach the glass while the tab bar stayed 47pt up.
+ */
+
+/** How far the page's box falls short of the screen, in px, when it is this bug's amount; else 0. */
+export function shortBy(screenTall: number, pageTall: number, statusBar: number): number {
+  const gap = screenTall - pageTall;
+  if (statusBar <= 0 || gap <= 0) return 0;
+  return Math.abs(gap - statusBar) <= 1 ? gap : 0;
+}
+
+/** Installed to the home screen and opened from there. */
+function installed(): boolean {
+  const ios = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return ios || (window.matchMedia?.('(display-mode: standalone)').matches ?? false);
+}
+
+/** Before the first frame and again on every turn of the phone: set `--below` on the page. */
+export function fillScreen(): void {
+  if (typeof window === 'undefined' || !installed()) return;
+  const root = document.documentElement;
+  const apply = () => {
+    /* iOS reports the screen in portrait whatever the phone's turn; the page's shape says which side is tall. */
+    const tall = window.innerWidth > window.innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;height:env(safe-area-inset-top,0px)';
+    document.body.appendChild(probe);
+    const statusBar = probe.getBoundingClientRect().height;
+    probe.remove();
+    /* Measured with no stretch on, so the page's own height is read rather than our own. */
+    root.style.removeProperty('--below');
+    delete root.dataset['below'];
+    const below = shortBy(tall, window.innerHeight, statusBar);
+    if (below > 0) {
+      root.style.setProperty('--below', `${below}px`);
+      root.dataset['below'] = '';
+    }
+  };
+  apply();
+  window.addEventListener('orientationchange', () => window.setTimeout(apply, 300));
+}

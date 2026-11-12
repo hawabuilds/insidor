@@ -35,7 +35,7 @@ import { listenForOpens, settleLaunch, tapInHand } from './features/alerts/push-
 import { trackHistory } from './shared/nav.ts';
 import { startTapLog } from './shared/tap-log.ts';
 import { noteBeforeMoves } from './shared/entry-scroll.ts';
-import { pinPage, holdZoom } from './shared/viewport.ts';
+import { pinPage, holdZoom, fillScreen } from './shared/viewport.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
@@ -61,6 +61,9 @@ listenForOpens();
 holdZoom();
 /* The page stays at its top: only the app's column scrolls, so the bottom bars never leave the glass (shared/viewport.ts, shared/scroller.ts). */
 pinPage();
+/* Opened from the home screen, the page reaches the bottom of the glass even where iOS gives it a
+   box short by the status bar's height, so no strip of background sits under the feed (shared/viewport.ts). */
+fillScreen();
 /* iPhone Safari draws a pressed (:active) state only on a page that listens for touches (tokens.css). */
 document.addEventListener('touchstart', () => undefined, { passive: true });
 
