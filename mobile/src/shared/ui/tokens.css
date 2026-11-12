@@ -175,18 +175,29 @@ body {
   overscroll-behavior: none;
 }
 
-/* Plus `--below` on the page alone (body is 100% of it, so adding it there too would count it
-   twice): where iOS gives an installed app a box short of the screen, the page is stretched by the
-   shortfall so the column reaches the glass (shared/viewport.ts, fillScreen). */
-html {
-  height: calc(100% + var(--below, 0px));
-}
+/* ★ THE PAGE REACHES THE BOTTOM OF THE GLASS (the owner, 2026-11-12: "at the bottom of the screen
+   there's like a black block preventing you from seeing the post"). Opened from the home screen, iOS
+   26 and 27 can give the page a box short of the screen by the status bar's height (WebKit bug
+   301994): the owner's iPhone read 844 screen, 797 page, 47 status bar, 100lvh 844. The column, 100%
+   of that box, stopped 47pt up over a strip of bare background, and the tab bar, fixed to the same
+   box, sat 47pt too high.
+   The page is stretched to the smaller of the whole screen (100lvh) and itself plus the status bar:
+   on a phone with the bug that is the screen; on one without, both are already the page, so nothing
+   moves. CSS, not a measurement: a size read in script at launch came before iOS had settled it and
+   the stretch never switched on (2026-11-12). The body is then the box every fixed bar and sheet is
+   placed in (the transform), so the tab bar's `bottom` counts from the true bottom of the screen;
+   the body never moves, since the page never scrolls.
+   What breaks if changed carelessly: 100lvh alone in a browser tab would hide the column under
+   Safari's toolbar (hence only the installed app), and without the body's transform the column
+   reaches the glass while the tab bar stays 47pt up. */
+@media (display-mode: standalone) {
+  html {
+    height: min(100lvh, calc(100% + env(safe-area-inset-top, 0px)));
+  }
 
-/* With the page stretched, the body is the box every fixed bar and sheet is placed in, rather than
-   the short one iOS reports: the tab bar's `bottom` is then measured from the true bottom of the
-   screen. Only while stretched; the body never moves, since the page never scrolls. */
-html[data-below] body {
-  transform: translateZ(0);
+  body {
+    transform: translateZ(0);
+  }
 }
 
 button {

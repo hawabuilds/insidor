@@ -82,72 +82,12 @@ export function pinPage(): void {
 }
 
 /**
- * ★ THE PAGE REACHES THE BOTTOM OF THE GLASS (the owner, 2026-11-12: "at the bottom of the screen
- * there's like a black block preventing you from seeing the post"). Opened from the home screen,
- * iOS 26 can give the page a box that is short of the screen by exactly the status bar's height
- * (`env(safe-area-inset-top)`, 47pt on a 390pt iPhone): the column, 100% of that box, stopped there
- * and left a strip of bare background under it, and the tab bar, fixed to the same box, sat that
- * much too high. A tab in Safari never has this, and nor does an iOS without the bug.
- *
- * ★ ONE NUMBER, READ ONCE PER SHAPE, NEVER A BAR MOVED BY HAND. The shortfall is the screen's height
- * less the page's, and it counts only when it is the status bar's height give or take a point — a
- * keyboard, a toolbar or a bad reading is never that, so it is ignored rather than followed (the
- * four drift fixes before shared/scroller.ts followed every reading and left bars mid-screen). It
- * becomes `--below`, which stretches `html` and `body` to the glass (tokens.css), and the body
- * becomes the box every fixed bar and sheet is placed in, so each of them reaches the true bottom
- * without one of them knowing.
- *
- * What breaks if changed carelessly: accepting any shortfall rather than only the status bar's
- * (a keyboard's would stretch the page off the top), or dropping the body's box (tokens.css): the
- * column would reach the glass while the tab bar stayed 47pt up.
- */
-
-/** How far the page's box falls short of the screen, in px, when it is this bug's amount; else 0. */
-export function shortBy(screenTall: number, pageTall: number, statusBar: number): number {
-  const gap = screenTall - pageTall;
-  if (statusBar <= 0 || gap <= 0) return 0;
-  return Math.abs(gap - statusBar) <= 1 ? gap : 0;
-}
-
-/** Installed to the home screen and opened from there. */
-function installed(): boolean {
-  const ios = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  return ios || (window.matchMedia?.('(display-mode: standalone)').matches ?? false);
-}
-
-/** Before the first frame and again on every turn of the phone: set `--below` on the page. */
-export function fillScreen(): void {
-  if (typeof window === 'undefined' || !installed()) return;
-  const root = document.documentElement;
-  const apply = () => {
-    /* iOS reports the screen in portrait whatever the phone's turn; the page's shape says which side is tall. */
-    const tall = window.innerWidth > window.innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:absolute;visibility:hidden;height:env(safe-area-inset-top,0px)';
-    document.body.appendChild(probe);
-    const statusBar = probe.getBoundingClientRect().height;
-    probe.remove();
-    /* Measured with no stretch on, so the page's own height is read rather than our own. */
-    root.style.removeProperty('--below');
-    delete root.dataset['below'];
-    const below = shortBy(tall, window.innerHeight, statusBar);
-    if (below > 0) {
-      root.style.setProperty('--below', `${below}px`);
-      root.dataset['below'] = '';
-    }
-  };
-  apply();
-  window.addEventListener('orientationchange', () => window.setTimeout(apply, 300));
-}
-
-/**
  * ★ WHAT THE PHONE ACTUALLY REPORTS, SENT ONCE A LAUNCH (the owner, 2026-11-12: "still the same").
- * `fillScreen` waited for a shortfall equal to the status bar and the strip stayed, so the guess about
- * which of iOS's two short-page bugs this phone has was wrong, and the two cannot be told apart in a
- * screenshot: in one the page starts at the top and ends short, in the other it starts below the
- * status bar and the strip at the bottom is iOS's own. Stretching the page is right for the first and
- * pushes the tab bar off the glass in the second. These numbers say which. Plain sizes only, nothing
- * personal; sent through notify's tap diagnostics line (App.tsx). Remove with its call once read.
+ * The short-page fix (tokens.css, the standalone block) cannot be watched from here, and iOS has two
+ * short-page bugs that look the same in a screenshot. The owner's phone said 844 screen, 797 page,
+ * 47 status bar, 100lvh 844: the page starts at the top and ends short. These numbers confirm the
+ * stretch landed (rootBottom 844). Plain sizes only, nothing personal; sent through notify's tap
+ * diagnostics line (App.tsx). Remove with its call once read.
  */
 export function viewportReading(): Readonly<Record<string, number | string | boolean>> {
   const px = (css: string): number => {
@@ -175,6 +115,6 @@ export function viewportReading(): Readonly<Record<string, number | string | boo
     safeBottom: px('env(safe-area-inset-bottom, 0px)'),
     rootBottom: root === undefined ? -1 : Math.round(root.bottom),
     navBottom: nav === undefined ? -1 : Math.round(nav.bottom),
-    below: document.documentElement.style.getPropertyValue('--below') || 'none',
+    htmlH: Math.round(document.documentElement.getBoundingClientRect().height),
   };
 }
