@@ -39,7 +39,6 @@ import { resavePush, standalone } from './features/alerts/push.ts';
 import { PushAsk } from './features/alerts/PushAsk.tsx';
 import { UnreadContext } from './shared/unread.ts';
 import { fetchAlertSettings, notifyCall, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
-import { viewportReading } from './shared/viewport.ts';
 import { autoBuys } from './shared/auto-buys.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
@@ -313,13 +312,6 @@ export function App() {
   }, [signedIn]);
   /* A tapped notification's trail, sent to notify once signed in (shared/tap-log.ts). */
   useEffect(() => (signedIn ? startTapSending((body) => notifyCall('POST', '/diag/taps', body), deviceOf(navigator.userAgent, standalone())) : undefined), [signedIn]);
-  /* This phone's screen sizes, once a launch of the home-screen app, to tell which of iOS's short-page
-     bugs leaves the strip under the feed (shared/viewport.ts, viewportReading). Remove once read. */
-  useEffect(() => {
-    if (!signedIn || !standalone()) return;
-    const t = setTimeout(() => void notifyCall('POST', '/diag/taps', { device: deviceOf(navigator.userAgent, true), rows: [{ ...viewportReading(), at: Date.now(), by: 'page' }] }).catch(() => undefined), 3000);
-    return () => clearTimeout(t);
-  }, [signedIn]);
   /* The posts watched here, read from the alert service once signed in (shared/watched-posts.ts). */
   useEffect(() => {
     if (signedIn) watchedPosts.load();
