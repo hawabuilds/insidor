@@ -321,8 +321,8 @@
 
 /* ── tab bar ───────────────────────────────────────────────────────── */
 
-/* The floating bar sits low, into part of the home indicator's space as iOS's own floating bars
-   do (the owner, 2026-11-10: "sits too high"): 22px up on a Face ID iPhone, 8px in a browser. */
+/* The floating bar sits just clear of the home indicator: 48px up on a Face ID iPhone, 14px in a
+   browser (tokens.css `--tabbar-bottom` says why it is not lower). */
 .tabbar {
   position: fixed;
   left: 0;

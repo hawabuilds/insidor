@@ -71,8 +71,11 @@
   /* Flat rows, 22px gutters. A row is a line on the page, not a card on it. */
   --gutter: 22px;
 
-  /* Where the floating tab bar sits above the screen's bottom edge (ui.module.css `.tabbar`). */
-  --tabbar-bottom: max(8px, calc(env(safe-area-inset-bottom) - 12px));
+  /* Where the floating tab bar sits above the screen's bottom edge (ui.module.css `.tabbar`):
+     clear of the home indicator, 48px up on a Face ID iPhone and 14px in a browser. 22px (2026-11-10)
+     only looked right while iOS left the page 47pt short; once the page reached the bottom of the
+     screen it sat too low (the owner, 2026-11-12: "now it's too low, go back a step"). */
+  --tabbar-bottom: calc(14px + env(safe-area-inset-bottom));
   /* Room the floating tab bar takes at the bottom, so the last row can scroll clear of it:
      its height (58px) and 24px of air above where it sits. */
   --tabbar-space: calc(var(--tabbar-bottom) + 82px);
