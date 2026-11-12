@@ -139,3 +139,42 @@ export function fillScreen(): void {
   apply();
   window.addEventListener('orientationchange', () => window.setTimeout(apply, 300));
 }
+
+/**
+ * ★ WHAT THE PHONE ACTUALLY REPORTS, SENT ONCE A LAUNCH (the owner, 2026-11-12: "still the same").
+ * `fillScreen` waited for a shortfall equal to the status bar and the strip stayed, so the guess about
+ * which of iOS's two short-page bugs this phone has was wrong, and the two cannot be told apart in a
+ * screenshot: in one the page starts at the top and ends short, in the other it starts below the
+ * status bar and the strip at the bottom is iOS's own. Stretching the page is right for the first and
+ * pushes the tab bar off the glass in the second. These numbers say which. Plain sizes only, nothing
+ * personal; sent through notify's tap diagnostics line (App.tsx). Remove with its call once read.
+ */
+export function viewportReading(): Readonly<Record<string, number | string | boolean>> {
+  const px = (css: string): number => {
+    const probe = document.createElement('div');
+    probe.style.cssText = `position:absolute;visibility:hidden;width:1px;height:${css}`;
+    document.body.appendChild(probe);
+    const h = Math.round(probe.getBoundingClientRect().height * 10) / 10;
+    probe.remove();
+    return h;
+  };
+  const root = document.getElementById('root')?.getBoundingClientRect();
+  const nav = document.querySelector('nav[aria-label="Primary"]')?.firstElementChild?.getBoundingClientRect();
+  return {
+    step: 'viewport',
+    screenW: screen.width,
+    screenH: screen.height,
+    innerH: window.innerHeight,
+    clientH: document.documentElement.clientHeight,
+    vvH: Math.round((window.visualViewport?.height ?? -1) * 10) / 10,
+    vvTop: Math.round((window.visualViewport?.offsetTop ?? -1) * 10) / 10,
+    lvh: px('100lvh'),
+    svh: px('100svh'),
+    vh: px('100vh'),
+    safeTop: px('env(safe-area-inset-top, 0px)'),
+    safeBottom: px('env(safe-area-inset-bottom, 0px)'),
+    rootBottom: root === undefined ? -1 : Math.round(root.bottom),
+    navBottom: nav === undefined ? -1 : Math.round(nav.bottom),
+    below: document.documentElement.style.getPropertyValue('--below') || 'none',
+  };
+}
