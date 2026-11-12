@@ -8,8 +8,11 @@
  * Data comes from fomoapi.io, an independent FOMO data API (not affiliated with fomo.family).
  * One `FOMOAPI_KEY` on Railway is all the auth needed: a plain Bearer key, no session management.
  *
- * ★ ONLY THESES BACKED BY $1,000+. `threshold=1000` is passed on every call; the API skips theses
- * on positions under that size, so low-conviction dust trades never reach the chart.
+ * ★ ONLY THESES BACKED BY $1,000+, FOR EVERY COIN WHATEVER ITS AGE (the owner, 2026-11-12). It is a
+ * floor, not a default: a `min_usd` under it is raised to it, because phones still running an older
+ * build ask for $250 on coins under two days old. It is passed to fomoapi as `threshold`, and every
+ * row is checked again here against the same position the chart shows, since fomoapi let smaller
+ * ones through. A row with no position at all is dropped: it cannot be shown to clear the bar.
  *
  * ★ THE POSITION COMES FROM THE THESIS ROW ITSELF. Each row carries the trade's size
  * (`tradeUsd`) and its realized and unrealized profit, so no per-trade lookup is needed.
@@ -36,8 +39,8 @@
 import type { Logger } from './log.ts';
 
 const BASE_URL = 'https://api.fomoapi.io/v2/thesis/token';
-/** Default minimum position when the caller does not specify a threshold. */
-const DEFAULT_THRESHOLD_USD = 1_000;
+/** The smallest position a shown thesis may have; no request goes below it. */
+const MIN_POSITION_USD = 1_000;
 const TIMEOUT_MS = 8_000;
 /** The deeper read walks several upstream pages, so it is given longer. */
 const HISTORY_TIMEOUT_MS = 20_000;
@@ -86,8 +89,9 @@ function positionOf(it: Record<string, unknown>): Thesis['position'] {
 /**
  * Decodes the fomoapi.io /v2/thesis/token response into our Thesis list, oldest first.
  * A thesis missing an id, a parseable timestamp, a handle, or any text is dropped.
+ * So is one whose position is under minUsd, or that has no position at all.
  */
-export function decodeThesesResponse(body: unknown, address: string): readonly Thesis[] {
+export function decodeThesesResponse(body: unknown, address: string, minUsd: number = 0): readonly Thesis[] {
   const items = rec(body)['theses'];
   if (!Array.isArray(items)) return [];
   const out: Thesis[] = [];
@@ -99,6 +103,8 @@ export function decodeThesesResponse(body: unknown, address: string): readonly T
     const handle = str(it['handle']);
     const text = str(it['text']);
     if (id === null || !Number.isFinite(at) || handle === null || text === null || seen.has(id)) continue;
+    const position = positionOf(it);
+    if (position === null || (position.valueUsd ?? 0) < minUsd) continue;
     seen.add(id);
     out.push({
       id,
@@ -108,7 +114,7 @@ export function decodeThesesResponse(body: unknown, address: string): readonly T
       pictureUrl: https(it['avatar']),
       text: Array.from(text).length > TEXT_MAX_CHARS ? `${Array.from(text).slice(0, TEXT_MAX_CHARS - 1).join('').trimEnd()}…` : text,
       likes: num(it['likes']),
-      position: positionOf(it),
+      position,
       url: fomoCoinUrl(address),
     });
   }
@@ -140,7 +146,7 @@ export function mergeTheses(history: readonly Thesis[], recent: readonly Thesis[
   return [...byId.values()].sort((a, b) => a.at - b.at);
 }
 
-export function createTheses(deps: ThesesDeps): (address: string, threshold?: number) => Promise<ThesesReply> {
+export function createTheses(deps: ThesesDeps): (address: string, minUsd?: number) => Promise<ThesesReply> {
   if (deps.apiKey === null) return async () => ({ theses: null, why: 'not_configured' });
 
   const recent = new Map<string, Read>();
@@ -170,7 +176,7 @@ export function createTheses(deps: ThesesDeps): (address: string, threshold?: nu
         deps.log.info('fomoapi theses unavailable', { status: res.status, pages });
         return { theses: null, why: 'upstream_error' };
       }
-      return { theses: decodeThesesResponse(await res.json(), address) };
+      return { theses: decodeThesesResponse(await res.json(), address, threshold) };
     } catch (e) {
       deps.log.info('fomoapi theses unavailable', { err: e instanceof Error ? e.message : String(e), pages });
       return { theses: null, why: 'upstream_error' };
@@ -184,7 +190,8 @@ export function createTheses(deps: ThesesDeps): (address: string, threshold?: nu
     return true;
   };
 
-  return async (address, threshold = DEFAULT_THRESHOLD_USD) => {
+  return async (address, minUsd) => {
+    const threshold = Math.max(minUsd ?? MIN_POSITION_USD, MIN_POSITION_USD);
     const k = `${address}:${threshold}`;
     const now = deps.now();
     const h = history.get(k);

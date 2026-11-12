@@ -14,20 +14,23 @@ const MINT = 'BQn2Wz514RzRoMSg32wAa8YZa4xDvNSzh127SmYYpump';
 const MIN = 60_000;
 
 const row = (id: string, minsAgo: number, extra: Record<string, unknown> = {}) => ({
-  id, ts: new Date(1_800_000_000_000 - minsAgo * MIN).toISOString(), handle: `h${id}`, text: 'up only', equity: 0, tradeUsd: 500, realizedPnlUsd: 0, unrealizedPnlUsd: 100, ...extra,
+  id, ts: new Date(1_800_000_000_000 - minsAgo * MIN).toISOString(), handle: `h${id}`, text: 'up only', equity: 0, tradeUsd: 1_500, realizedPnlUsd: 0, unrealizedPnlUsd: 100, ...extra,
 });
 
 function harness(answer: (pages: number) => { status: number; body: unknown }) {
   let now = 1_800_000_000_000;
   const pagesAsked: number[] = [];
+  const thresholdsAsked: number[] = [];
   const fetch = (async (input: string | URL | Request) => {
-    const pages = Number(new URL(String(input)).searchParams.get('pages'));
+    const params = new URL(String(input)).searchParams;
+    const pages = Number(params.get('pages'));
     pagesAsked.push(pages);
+    thresholdsAsked.push(Number(params.get('threshold')));
     const a = answer(pages);
     return new Response(JSON.stringify(a.body), { status: a.status });
   }) as typeof globalThis.fetch;
   const theses = createTheses({ apiKey: 'k', fetch, now: () => now, log: SILENT, recentKeepMs: 15 * MIN, historyKeepMs: 120 * MIN, perMinute: 20 });
-  return { theses, pagesAsked, advance: (ms: number) => { now += ms; } };
+  return { theses, pagesAsked, thresholdsAsked, advance: (ms: number) => { now += ms; } };
 }
 
 test('first view reads four pages; the newest page alone every 15 minutes; history again after 2 hours', async () => {
@@ -68,6 +71,15 @@ test('a failed refresh keeps what was already read; with nothing read, the reaso
   assert.equal((await h.theses(MINT, 250)).theses?.length, 1);
   const other = await h.theses('So11111111111111111111111111111111111111112', 250);
   assert.deepEqual(other, { theses: null, why: 'upstream_error' });
+});
+
+test('$1,000 is a floor: a phone asking for $250 still gets only theses on positions of $1,000 or more', async () => {
+  const h = harness(() => ({ status: 200, body: { theses: [row('big', 5), row('small', 4, { tradeUsd: 400 }), row('none', 3, { tradeUsd: null })] } }));
+  assert.deepEqual((await h.theses(MINT, 250)).theses?.map((t) => t.id), ['big']);
+  assert.deepEqual(h.thresholdsAsked, [1000]);
+  const unasked = harness(() => ({ status: 200, body: { theses: [row('small', 4, { tradeUsd: 999 })] } }));
+  assert.deepEqual((await unasked.theses(MINT)).theses, []);
+  assert.deepEqual(unasked.thresholdsAsked, [1000]);
 });
 
 test('a refusing coin is not asked again on every view', async () => {

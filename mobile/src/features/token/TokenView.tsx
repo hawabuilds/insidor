@@ -153,8 +153,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
-  const minUsd = ageMs !== null && ageMs < 48 * 60 * 60 * 1000 ? 250 : 1000;
-  const [thesesLoad] = useLoad(`theses:${facts.coinId}:${minUsd}`, (signal) => fetchCoinTheses(facts.coinId, signal, minUsd), 'memory');
+  /* The $1,000 holding floor is the read service's, the same for every coin whatever its age (theses.ts). */
+  const [thesesLoad] = useLoad(`theses:${facts.coinId}`, (signal) => fetchCoinTheses(facts.coinId, signal), 'memory');
   const theses: CoinTheses | null = thesesLoad.state === 'ready' ? thesesLoad.value : null;
   /* What happened to launches that opened like this one (LaunchOdds.tsx): read once when the page opens, like the about read.
      ★ Owner only (the owner 2026-10-31): the odds line and the Info card are still being proven, so
