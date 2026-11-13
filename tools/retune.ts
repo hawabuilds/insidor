@@ -184,7 +184,6 @@ import { answerCutoff } from '../core/src/qualify/post-score.ts';
 import { answerSide } from '../adapters/judge/openai-compatible/src/setup.ts';
 import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
 import { refitJunkForRetune } from './lib/junk-filter.ts';
-import { refitCoinModelForRetune } from './lib/coin-model.ts';
 import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
 import { refreshSet } from './lib/coined-videos.ts';
 import { recordShortVideoPart, shortVideoPart, type ShortVideoPart } from './lib/short-video-tune.ts';
@@ -410,14 +409,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* The junk filter before the post judge (tools/lib/junk-filter.ts): free, refitted at every slot, never fails the run. */
       const junk = await refitJunkForRetune(url, { record: opts.record && !opts.dry });
       log('info', 'junk filter refitted', { slot: slot.toISOString(), ...junk.log });
-      /* Our own coin model, the safety net (tools/lib/coin-model.ts): every target in Policy.judge.coinModel.targets, free, refitted at the slots
-         Policy.judge.coinModel.refitAt names (the owner: the 20:00 one), replaced only when it catches
-         more held-out missed posts with no more junk; never fails the run. */
-      const slotClock = new Intl.DateTimeFormat('en-GB', { timeZone: L.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(slot);
-      if (P.judge.coinModel.refitAt.includes(slotClock)) {
-        const net = await refitCoinModelForRetune(url, { record: opts.record && !opts.dry });
-        log('info', 'coin model refitted', { slot: slot.toISOString(), ...net.log });
-      }
+      /* Our own model (tools/lib/coin-model.ts) is no longer refitted here: from 13 Nov it has its own
+         nightly job (tools/coin-model.ts due), so pausing the paid re-tune no longer stops it learning. */
 
       const { calls, names, labelsSha, notes, missedDiagnoses } = await ownerCalls(repo);
       const last = await soft(repo.lastBuilt(), null);

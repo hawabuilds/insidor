@@ -120,6 +120,11 @@ if (service in MAIN) {
        (tools/onecoin-refit.ts, Policy.oneCoin.refit), asked every ten minutes whether a week has passed;
        a proposal is applied only when it beats the bars in force on the same replay. Free; database only. */
     { name: 'onecoin-refit', everyMs: 600_000, args: ['tools/onecoin-refit.ts', 'due'] },
+    /* Our own model's nightly refit (tools/coin-model.ts due, Policy.judge.coinModel.refitAt): every
+       target, including `memeable`, the judge in training. Its own job from 13 Nov, because inside the
+       re-tune it stopped learning when the re-tune was paused on 5 Nov. Asked every ten minutes; the
+       fit itself runs detached under a lock file. Free; database only. */
+    { name: 'coin-model', everyMs: 600_000, args: ['tools/coin-model.ts', 'due'] },
     /* The smart wallet list (tools/smart-wallets.ts, Policy.launchSignals.smart, 0154): asked every ten
        minutes whether tonight (UTC) has been judged; one run a day of two statements over our own tables.
        Recorded only — nothing decides on it yet. Free; database only.

@@ -781,8 +781,8 @@ export interface QualifyPolicy {
 /** Which model asks one of the judge's other questions (JudgePolicy.askWith); `off` asks none. */
 export type AskWith = 'open' | 'main' | 'off';
 
-/** What our own model is taught to predict (JudgePolicy.coinModel; 0099's CHECK spells the same list). */
-export const COIN_MODEL_TARGETS = ['coined', 'viral'] as const;
+/** What our own model is taught to predict (JudgePolicy.coinModel; 0169's CHECK spells the same list). */
+export const COIN_MODEL_TARGETS = ['coined', 'viral', 'memeable'] as const;
 export type CoinModelTarget = (typeof COIN_MODEL_TARGETS)[number];
 
 export interface JudgePolicy {
@@ -1018,6 +1018,22 @@ export interface JudgePolicy {
    * failed the gate (the gate decides whether a fit may act, not whether it is watched); the live
    * target scores with its applied fit only. `viral.settleMs`: a post decided less than
    * this long ago has not had its day to go viral, so it is neither fitted nor tested on.
+   *
+   * ★ MEMEABLE, THE JUDGE IN TRAINING (the owner, 2026-11-13: "it needs to be able to replace
+   * Nemotron as a judge"; reports/model-judge-plan.md). Taught what the app is for — is this post
+   * memeable — and never whether it got coined: "not all memeable posts get coined". Its yes is the
+   * owner's: gold, his meme taps, his taught missed posts, and every post he saw and kept
+   * (`learning.seenKept`, at its `fitWeight`); its no is his Not a meme. Every other answered post is
+   * taught as a weak no at `memeable.unlabelledWeight`, sampled by hash at `negativeShare`: most
+   * posts we find are not memes, and without them it would never see the posts the judge turns
+   * away. Nemotron's answers are never its label — a model taught the judge's answers can at best
+   * copy it. Coins and runners are its scoreboard, not its teacher.
+   *
+   * It scores EVERY post the judge answers, at its first answer (`everyPost`), not only the judge's
+   * no's, so the two judges are read side by side on the same posts. Its threshold is the score at
+   * which it passes as many posts as the judge did on the validation slice (matched volume), and a
+   * refit replaces the applied one only when it ranks the owner's labels better on the same test
+   * posts. It is shadow whatever `on` says while `liveTarget` is not `memeable`.
    */
   readonly coinModel: {
     readonly on: boolean;
@@ -1036,8 +1052,12 @@ export interface JudgePolicy {
     readonly maxExtrasPerHour: number;
     readonly maxPerPass: number;
     readonly lookbackMs: number;
-    /** The re-tune slots (London clock, as `learning.retuneAt`) at which it is refitted. */
+    /** The slots (London clock) at which it is refitted, by its own job (tools/coin-model.ts due), not the re-tune. */
     readonly refitAt: readonly string[];
+    /** Targets scored on every post the judge answers, at its first answer, not only on its no's. */
+    readonly everyPost: readonly CoinModelTarget[];
+    /** The memeable target: an answered post with no label of the owner's is a no at this weight. */
+    readonly memeable: { readonly unlabelledWeight: number };
     readonly text: {
       readonly maxQuotedWords: number;
       readonly minCapsLetters: number;
@@ -6325,8 +6345,11 @@ const POLICY_V1: Policy = {
      pass asked X for the same 54 posts ~2,000 times in 80 minutes and the re-read day ran dry.
      v227 (2026-11-05, the owner: auto buy) adds `notify.autoBuy`: owner-only and dry, nothing sent.
      v239 (2026-11-11, the owner: the boxing cat) adds `narrative.sameVideo.gifThumbMaxBits`: two uploads
-     of one GIF, their thumbnails hashed alike, are one video for the narratives. */
-  version: 'policy.v240',
+     of one GIF, their thumbnails hashed alike, are one video for the narratives.
+     v241 (2026-11-13, the owner: our model replaces Nemotron as the judge) adds the `memeable` target
+     to `judge.coinModel` in shadow, scored on every answered post, refitted by its own nightly job;
+     drops `viral` from its targets; adds `learning.seenKept.notReviewing` and `.guard`. */
+  version: 'policy.v241',
 
   admit: {
     maxAgeMin: 240,
@@ -6693,7 +6716,8 @@ const POLICY_V1: Policy = {
     coinModel: {
       on: false,
       shadow: true,
-      targets: ['coined', 'viral'],
+      /* v241: viral out (failed its gate at all 12 fits), memeable in, in shadow beside the judge. */
+      targets: ['coined', 'memeable'],
       liveTarget: 'coined',
       viral: { settleMs: 86_400_000 }, // a day: the scorecard's 24-hour views
       threshold: null,
@@ -6708,6 +6732,9 @@ const POLICY_V1: Policy = {
       maxPerPass: 400,
       lookbackMs: 21_600_000, // six hours, For You's own age bar
       refitAt: ['00:00'],
+      everyPost: ['memeable'],
+      /* A fifth of a label: about 13,500 answered posts a day against a few hundred owner labels. */
+      memeable: { unlabelledWeight: 0.2 },
       text: { maxQuotedWords: 6, minCapsLetters: 3, shortWords: 8 },
     },
     /* answerTokensPerPost 120 from 150 (v129): sized from 20 measured ten-post calls (see JudgePolicy.open). */

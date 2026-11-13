@@ -400,11 +400,12 @@ test('the schema and the vocabulary agree on every closed list', () => {
     const add = pictureSql.find((statement) => statement.includes(`alter table ${table}\n  add constraint`)) ?? '';
     assert.deepEqual([...checkedValues(add, 'looked_at')].sort(), [...JUDGE_EVIDENCE].sort(), table);
   }
-  /* What our own model predicts (0099): the fit's and the score's CHECKs, each of the two. A target
-     the policy names and the CHECK refuses would fail the re-tune's write after a whole fit. */
-  const targetSql = stripComments(read('0099_coin_model_target.sql')).split(';');
+  /* What our own model predicts (0099, replaced by 0169 when `memeable` came): the fit's and the
+     score's CHECKs, each of the two. A target the policy names and the CHECK refuses would fail the
+     nightly refit's write after a whole fit. */
+  const targetSql = stripComments(read('0169_coin_model_memeable.sql')).split(';');
   for (const table of ['internal.coin_model\n', 'internal.coin_model_score\n']) {
-    const add = targetSql.find((statement) => statement.includes(`alter table ${table}  add column target`)) ?? '';
+    const add = targetSql.find((statement) => statement.includes(`alter table ${table}  add constraint`)) ?? '';
     assert.deepEqual([...checkedValues(add, 'target')].sort(), [...COIN_MODEL_TARGETS].sort(), table.trim());
   }
   /* All four reason columns, not just the first: they are four separate CHECKs and

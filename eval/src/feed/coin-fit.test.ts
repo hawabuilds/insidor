@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { added, averagePrecision, chooseThreshold, fitLogistic, scoreRow, standardisation, tableRow, type FitRow, type TablePost } from './coin-fit.ts';
+import { added, averagePrecision, chooseThreshold, fitLogistic, matchedThreshold, scoreRow, standardisation, tableRow, type FitRow, type TablePost } from './coin-fit.ts';
 
 test('the fit is deterministic and ranks a separating feature', () => {
   const rows: FitRow[] = [];
@@ -91,4 +91,24 @@ test('★ a row\'s weight: all ones is the unweighted fit, a zero-weight row is 
   const full = fitLogistic([...base, row(-0.8, 1, 1)], 1);
   const at = (f: typeof plain) => scoreRow([-0.8], f);
   assert.ok(at(plain) < at(half) && at(half) < at(full), `${at(plain)} < ${at(half)} < ${at(full)}`);
+});
+
+test('★ the matched threshold passes exactly as many posts as the judge did', () => {
+  const scores = [0.9, 0.1, 0.7, 0.4, 0.8, 0.2];
+  const t = matchedThreshold(scores, 3);
+  assert.equal(t, 0.7);
+  assert.equal(scores.filter((s) => s >= (t as number)).length, 3);
+});
+
+test('no matched threshold when the judge passed none or every post', () => {
+  assert.equal(matchedThreshold([0.5, 0.6], 0), null);
+  assert.equal(matchedThreshold([0.5, 0.6], 2), null);
+  assert.equal(matchedThreshold([], 1), null);
+});
+
+test('a matched threshold stays strictly inside (0, 1)', () => {
+  const t = matchedThreshold([1, 1, 0], 1) as number;
+  assert.ok(t > 0 && t < 1);
+  const z = matchedThreshold([0, 0, 0], 1) as number;
+  assert.ok(z > 0 && z < 1);
 });

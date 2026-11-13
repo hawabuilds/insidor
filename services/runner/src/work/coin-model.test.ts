@@ -47,7 +47,7 @@ test('off, a dry run or no applied fit scores nothing', async () => {
   const w: CoinModelScore[] = [];
   assert.equal((await scoreCoinModel(deps(off, FIT, w, {}))).skipped, 'off');
   assert.equal((await scoreCoinModel({ ...deps(DEFAULT_POLICY, FIT, w, {}), mode: 'dry' })).skipped, 'dry run');
-  assert.equal((await scoreCoinModel(deps(DEFAULT_POLICY, null, w, {}))).skipped, 'no applied coined fit; no viral fit');
+  assert.equal((await scoreCoinModel(deps(DEFAULT_POLICY, null, w, {}))).skipped, 'no applied coined fit; no memeable fit');
   assert.equal(w.length, 0);
 });
 
@@ -71,28 +71,36 @@ test('switched on, the rows say live', async () => {
 
 test('★ each target scores with its own fit; with on, only the live target\'s rows say live', async () => {
   const on: Policy = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, coinModel: { ...DEFAULT_POLICY.judge.coinModel, on: true, liveTarget: 'coined', threshold: 0.01 } } };
-  const viral: AppliedCoinModel = { ...FIT, id: 12, target: 'viral', threshold: 0.95 };
+  const memeable: AppliedCoinModel = { ...FIT, id: 12, target: 'memeable', threshold: 0.95 };
   const w: CoinModelScore[] = [];
-  const r = await scoreCoinModel(deps(on, [FIT, viral], w, {}));
+  const r = await scoreCoinModel(deps(on, [FIT, memeable], w, {}));
   assert.equal(r.scored, 4);
   assert.deepEqual(w.map((x) => [x.target, x.fitId, x.mode, x.threshold]), [
     ['coined', 9, 'live', 0.01], ['coined', 9, 'live', 0.01],
-    ['viral', 12, 'shadow', 0.95], ['viral', 12, 'shadow', 0.95],
+    ['memeable', 12, 'shadow', 0.95], ['memeable', 12, 'shadow', 0.95],
   ], 'the policy threshold overrides the live target\'s fit only');
 });
 
 test('a target with no fit is skipped and the other still scores', async () => {
   const w: CoinModelScore[] = [];
-  const r = await scoreCoinModel(deps(DEFAULT_POLICY, { ...FIT, target: 'viral' }, w, {}));
+  const r = await scoreCoinModel(deps(DEFAULT_POLICY, { ...FIT, target: 'memeable' }, w, {}));
   assert.equal(r.skipped, null);
-  assert.ok(w.length === 2 && w.every((x) => x.target === 'viral'));
+  assert.ok(w.length === 2 && w.every((x) => x.target === 'memeable'));
 });
 
 test('★ a fit that failed its gate is watched for a shadowed target and never scores the live one', async () => {
   const w: CoinModelScore[] = [];
-  const unapplied = (t: 'coined' | 'viral'): AppliedCoinModel => ({ ...FIT, id: 13, target: t });
+  const unapplied = (t: AppliedCoinModel['target']): AppliedCoinModel => ({ ...FIT, id: 13, target: t });
   const d = deps(DEFAULT_POLICY, null, w, {});
   const r = await scoreCoinModel({ ...d, repo: { ...d.repo, latestApplied: async () => null, latestForShadow: async (t) => unapplied(t) } });
   assert.equal(r.scored, 2);
-  assert.ok(w.every((x) => x.target === 'viral' && x.mode === 'shadow' && x.fitId === 13), 'the live target (coined) waits for an applied fit');
+  assert.ok(w.every((x) => x.target === 'memeable' && x.mode === 'shadow' && x.fitId === 13), 'the live target (coined) waits for an applied fit');
+});
+
+test('★ the memeable target asks for every answered post; the coined target only for the judge\'s no\'s', async () => {
+  const w: CoinModelScore[] = [];
+  const asked: [string, boolean][] = [];
+  const d = deps(DEFAULT_POLICY, [FIT, { ...FIT, id: 14, target: 'memeable' }], w, {});
+  await scoreCoinModel({ ...d, repo: { ...d.repo, toScore: async (_since, _limit, target, everyPost) => (asked.push([target, everyPost === true]), d.repo.toScore(_since, _limit, target, everyPost)) } });
+  assert.deepEqual(asked, [['coined', false], ['memeable', true]]);
 });

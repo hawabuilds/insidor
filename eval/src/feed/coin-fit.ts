@@ -316,3 +316,17 @@ export function chooseThreshold(posts: readonly TablePost[], grid: readonly numb
 
 /** Thresholds from 0.05 to 0.995: the table's rows and the choice's grid. */
 export const THRESHOLDS: readonly number[] = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99, 0.995];
+
+/**
+ * The score at which `scores` passes as many posts as `passes` (the judge's count on the same posts):
+ * the judge in training read at the judge's own volume, so the two are compared post for post and
+ * neither looks better by passing more. Null when there is nothing to match (no posts, or the judge
+ * passed none or all). Kept strictly inside (0, 1), as a stored threshold must be.
+ */
+export function matchedThreshold(scores: readonly number[], passes: number): number | null {
+  if (passes <= 0 || passes >= scores.length) return null;
+  const sorted = [...scores].sort((a, b) => b - a);
+  const t = sorted[passes - 1] as number;
+  return Math.min(Math.max(t, Number.MIN_VALUE), 1 - Number.EPSILON);
+}
+

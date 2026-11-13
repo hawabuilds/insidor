@@ -33,6 +33,13 @@
  *           not "about to" and not a no either: it is left out of the fit (`already`). A post
  *           decided less than `viral.settleMs` ago has not had its day, so the whole split ends
  *           there. Coins known by the decision are features, never the label.
+ *   memeable  the owner, 2026-11-13: the judge in training (reports/model-judge-plan.md). y = 1:
+ *           hand gold, an owner's "meme" tap or Right coin call, a taught missed post, and a post he
+ *           saw and kept (soft, at `seenKept.fitWeight`; none from a day he was not reviewing).
+ *           y = 0: his Not a meme, and every other answered post as a weak no at
+ *           `memeable.unlabelledWeight`. Never a coin, never the judge's answer. Its split ends
+ *           `seenKept.keepWindowMs` before now: a post seen in the last day may still be tapped.
+ *           Fitted and measured by `refitMemeable`, at the judge's own volume.
  * Never-yes posts are kept for the fit by a hash of the id (`negativeShare`); every labelled post
  * is kept. The viral fit also leaves out the posts labelled from views alone that have no vector:
  * 1 in 10 viral posts, older than the embedding backfill reached, against almost none of the
@@ -74,7 +81,7 @@ import { DEFAULT_POLICY, type CoinModelTarget, type Policy } from '../../contrac
 import { clearsReachBar, COIN_FEATURES, coinModelFeatures, coinModelProbability, oneHotsOf, standardised, type CoinModelFacts, type CoinModelFit } from '../../core/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgCoinModelRepo, PgLearningRepo, PgOwnerSeenRepo, type AppliedCoinModel, type CoinFactRow, type Db, type FirstAnswer } from '../../store/src/index.ts';
 import { PgJunkFilterRepo } from '../../store/src/repo/junk-filter.ts';
-import { averagePrecision, chooseThreshold, fitLogistic, scoreRow, standardisation, tableRow, THRESHOLDS, type FitRow, type LogisticFit, type TablePost, type TableRow } from '../../eval/src/feed/coin-fit.ts';
+import { averagePrecision, chooseThreshold, fitLogistic, matchedThreshold, scoreRow, standardisation, tableRow, THRESHOLDS, type FitRow, type LogisticFit, type TablePost, type TableRow } from '../../eval/src/feed/coin-fit.ts';
 import { loadJunkLabels } from './junk-filter.ts';
 import { GEMMA_JUDGE, HAIKU_JUDGE, oldLabel } from './junk-sample.ts';
 import { EARLY_SHARE, NEAR_24H_MS, VIRAL_LINE } from './scorecard.ts';
@@ -182,7 +189,7 @@ export async function loadExamples(db: Db, p: Policy, opts: { readonly since: Da
   const heldOut = new Set(split.test.map((t) => t.id));
   const taught = new Set(split.teach.map((t) => t.id));
   /* A viral label needs its day: the split ends `settleMs` before now. */
-  const untilMs = target === 'viral' ? opts.now.getTime() - C.viral.settleMs : opts.now.getTime();
+  const untilMs = target === 'viral' ? opts.now.getTime() - C.viral.settleMs : target === 'memeable' ? opts.now.getTime() - p.learning.seenKept.keepWindowMs : opts.now.getTime();
 
   const answers = (await repo.firstAnswers(opts.since)).filter((a) => a.judgedAt.getTime() < untilMs);
   log(`${answers.length} posts answered from ${opts.since.toISOString()} to ${new Date(untilMs).toISOString()} (target ${target})`);
@@ -191,7 +198,7 @@ export async function loadExamples(db: Db, p: Policy, opts: { readonly since: Da
   const taps = new Map((await new PgLearningRepo(db).postCalls()).map((t) => [t.itemId, t.verdict] as const));
   const backtest = new Set((JSON.parse(readFileSync(BACKTEST, 'utf8')) as { posts: { id: string }[] }).posts.map((x) => x.id));
   const K = p.learning.seenKept;
-  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: opts.since, until: opts.now, keepWindowMs: K.keepWindowMs, now: opts.now });
+  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: opts.since, until: opts.now, keepWindowMs: K.keepWindowMs, now: opts.now, review: { notReviewing: K.notReviewing, guard: K.guard } });
   /* The viral line's crossing, for the viral target's labels: read after the decision on purpose (the label, never a feature). */
   const crossedAt = new Map<string, number>();
   if (target === 'viral') {
@@ -257,7 +264,7 @@ export async function loadExamples(db: Db, p: Policy, opts: { readonly since: Da
     const label = heldOut.has(id) ? { y: 1 as const, why: 'missed' as const } : labelOf(id, liveIds.has(id) ? fx.decidedAtMs : null);
     examples.push({ itemId: id, decidedAtMs: fx.decidedAtMs, facts: fx, vector: v !== undefined && v.values.length > 0 ? v.values : null, y: label.y, why: label.why, live: liveIds.has(id), answer: answerOf.get(id) ?? null });
   }
-  const counts: Record<string, number> = { answered: answers.length, kept: examples.length, withVector: examples.filter((e) => e.vector !== null).length };
+  const counts: Record<string, number> = { answered: answers.length, examples: examples.length, withVector: examples.filter((e) => e.vector !== null).length };
   for (const e of examples) counts[e.why] = (counts[e.why] ?? 0) + 1;
   if (target === 'coined') counts['coinedAnswered'] = answers.filter((a) => coined.has(a.itemId) && taps.get(a.itemId) !== 'not').length;
   else {
@@ -291,11 +298,15 @@ function designOf(train: readonly Example[], p: Policy, target: CoinModelTarget)
   return { names, means, spreads, dim, sources, langs };
 }
 
-function rowOf(e: Example, d: Design, p: Policy): FitRow {
+/** A row's weight in the fit: a soft yes at `fitWeight`, a memeable target's unlabelled post at `unlabelledWeight`, the rest 1. */
+const weightOf = (e: Example, p: Policy, target: CoinModelTarget): number =>
+  e.why === 'kept' ? p.learning.seenKept.fitWeight : target === 'memeable' && e.why === 'none' ? p.judge.coinModel.memeable.unlabelledWeight : 1;
+
+function rowOf(e: Example, d: Design, p: Policy, target: CoinModelTarget = 'coined'): FitRow {
   const x = new Float64Array(d.names.length + d.dim);
   x.set(standardised({ ...coinModelFeatures(e.facts, d.sources, d.langs, p), no_vector: e.vector === null || e.vector.length !== d.dim ? 1 : 0 }, d.names, d.means, d.spreads), 0);
   if (e.vector !== null && e.vector.length === d.dim) for (let j = 0; j < d.dim; j++) x[d.names.length + j] = e.vector[j] as number;
-  return { x, y: e.y, w: e.why === 'kept' ? p.learning.seenKept.fitWeight : 1 };
+  return { x, y: e.y, w: weightOf(e, p, target) };
 }
 
 /** The label every measurement reads: the target's yes; a soft yes is taught, never counted as caught. */
@@ -312,8 +323,8 @@ function taughtTo(e: Example, p: Policy, target: CoinModelTarget): boolean {
 function fitOn(xs: readonly Example[], l2: number, p: Policy, target: CoinModelTarget): { readonly d: Design; readonly f: LogisticFit; readonly score: (e: Example) => number } {
   const train = xs.filter((e) => taughtTo(e, p, target));
   const d = designOf(train, p, target);
-  const f = fitLogistic(train.map((e) => rowOf(e, d, p)), l2);
-  return { d, f, score: (e) => scoreRow(rowOf(e, d, p).x, f) };
+  const f = fitLogistic(train.map((e) => rowOf(e, d, p, target)), l2);
+  return { d, f, score: (e) => scoreRow(rowOf(e, d, p, target).x, f) };
 }
 
 const asStored = (d: Design, f: LogisticFit): Omit<CoinModelFit, 'id' | 'threshold'> => ({
@@ -594,13 +605,174 @@ export async function shadowReport(db: Db, p: Policy, since: Date, now: Date, ta
 
 const pts = (x: number | null): string => (x === null ? '-' : `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)} pts`);
 
+/* ── the memeable target: the judge in training ───────────────────────────────────────────────── */
+
+/** The owner's word on a post, for measuring: 1 his yes (kept included), 0 his Not a meme, null none. */
+export const memeY = (e: Example): 0 | 1 | null => (e.why === 'not' ? 0 : e.why === 'meme' || e.why === 'gold' || e.why === 'missed' || e.why === 'kept' ? 1 : null);
+
+/** How well `score` ranks the owner's yes over his no, on the posts he has a word on. */
+const labelledAp = (xs: readonly Example[], score: (e: Example) => number): number | null =>
+  averagePrecision(xs.flatMap((e) => {
+    const y = memeY(e);
+    return y === null ? [] : [{ score: score(e), y }];
+  }));
+
+/** What one judge passed of a window's posts, by the owner's word on each. */
+export interface Passes {
+  readonly passes: number;
+  readonly meme: number;
+  readonly not: number;
+  readonly unlabelled: number;
+}
+
 /**
- * The re-tune's one call: refit every target in Policy.judge.coinModel.targets, record, and say what
- * to put in the log and the owner's alert. Never throws — the coin model failing must not fail the
- * judge's re-tune, and one target failing does not stop the other. The coined target's facts keep
- * their names; another target's are prefixed with it.
+ * The judge and the model on the SAME posts, the model at `threshold`. The owner's words exist only
+ * for posts he was shown — the judge's passes — so a post only the model passes is almost always
+ * unlabelled: that is the honest "we cannot tell yet", never a no.
  */
-export async function refitCoinModelForRetune(url: string | undefined, opts: { readonly record: boolean; readonly policy?: Policy }): Promise<{ readonly log: Record<string, unknown>; readonly facts: Record<string, unknown> }> {
+export interface SideBySide {
+  readonly posts: number;
+  readonly judge: Passes;
+  readonly model: Passes;
+  readonly both: number;
+  readonly onlyJudge: number;
+  readonly onlyModel: number;
+}
+
+export function sideBySide(xs: readonly Example[], score: (e: Example) => number, threshold: number): SideBySide {
+  const judge = (e: Example): boolean => e.answer?.coinable === true;
+  const model = (e: Example): boolean => score(e) >= threshold;
+  const tally = (pass: (e: Example) => boolean): Passes => {
+    const ps = xs.filter(pass);
+    return { passes: ps.length, meme: ps.filter((e) => memeY(e) === 1).length, not: ps.filter((e) => memeY(e) === 0).length, unlabelled: ps.filter((e) => memeY(e) === null).length };
+  };
+  return {
+    posts: xs.length,
+    judge: tally(judge),
+    model: tally(model),
+    both: xs.filter((e) => judge(e) && model(e)).length,
+    onlyJudge: xs.filter((e) => judge(e) && !model(e)).length,
+    onlyModel: xs.filter((e) => !judge(e) && model(e)).length,
+  };
+}
+
+export interface MemeableRefit {
+  readonly target: 'memeable';
+  readonly counts: Readonly<Record<string, number>>;
+  readonly l2: number;
+  readonly validation: { readonly ap: Readonly<Record<string, number | null>>; readonly judgePasses: number; readonly posts: number; readonly from: string; readonly to: string };
+  /** `yesShare`: the owner's yes among the labelled test posts, what a random ranking scores (its average precision's floor). */
+  readonly test: { readonly from: string; readonly to: string; readonly hours: number; readonly posts: number; readonly labelled: number; readonly yesShare: number | null; readonly ap: number | null };
+  readonly threshold: number | null;
+  readonly sideBySide: SideBySide | null;
+  readonly missed: readonly MissedScore[];
+  readonly current: { readonly id: number; readonly threshold: number; readonly ap: number | null; readonly sideBySide: SideBySide; readonly missedCaught: number } | null;
+  readonly applied: boolean;
+  readonly why: string | null;
+  readonly id: number | null;
+  readonly weightsByName: readonly { readonly name: string; readonly weight: number }[];
+}
+
+/**
+ * The memeable fit: the same split as `refitCoinModel` (time, then the owner's held-out missed
+ * posts never taught), the ridge chosen by how well it ranks the owner's words on validation, the
+ * threshold the score at which it passes as many validation posts as the judge did, and the stored
+ * fit applied when none is or when it ranks the owner's words on the test at least as well as the
+ * applied one on the same posts (a fresher fit wins a tie).
+ */
+export async function refitMemeable(db: Db, opts: { readonly record: boolean; readonly now?: Date; readonly policy?: Policy; readonly since?: Date; readonly log?: (s: string) => void }): Promise<MemeableRefit> {
+  const p = opts.policy ?? DEFAULT_POLICY;
+  const C = p.judge.coinModel;
+  const target = 'memeable' as const;
+  const now = opts.now ?? new Date();
+  const log = opts.log ?? (() => {});
+  const since = opts.since ?? new Date(now.getTime() - 14 * DAY_MS);
+  const { examples, counts, valFromMs, testFromMs, untilMs } = await loadExamples(db, p, { since, now, target, log });
+  const split = loadSplit();
+  const heldOut = new Set(split.test.map((t) => t.id));
+
+  const live = examples.filter((e) => e.live && !heldOut.has(e.itemId)).sort((a, b) => a.decidedAtMs - b.decidedAtMs);
+  /* ★ NO POST TAUGHT WITH NOTHING READ. A post the owner found that we never held has its words
+     alone: no reach, no speed, no account. Taught as a yes, it teaches "nothing read means meme" —
+     the trial of 13 Nov scored such posts 1.000 — and every post the judge sees has readings. So
+     the memeable fit is taught only posts with at least one reading at their decision. */
+  const taughtOnly = examples.filter((e) => !e.live && !heldOut.has(e.itemId) && e.facts.reach !== null);
+  const trainAll = [...live.filter((e) => e.decidedAtMs < testFromMs), ...taughtOnly];
+  const trainA = trainAll.filter((e) => !e.live || e.decidedAtMs < valFromMs);
+  const val = live.filter((e) => e.decidedAtMs >= valFromMs && e.decidedAtMs < testFromMs);
+  const test = live.filter((e) => e.decidedAtMs >= testFromMs);
+  log(`train A ${trainA.length}, validation ${val.length}, test ${test.length}, owner posts taught ${taughtOnly.length} of ${examples.filter((e) => !e.live && !heldOut.has(e.itemId)).length}`);
+
+  const ap: Record<string, number | null> = {};
+  let best: { l2: number; ap: number; fit: ReturnType<typeof fitOn> } | null = null;
+  for (const l2 of C.l2s) {
+    const fit = fitOn(trainA, l2, p, target);
+    const a = labelledAp(val, fit.score);
+    ap[String(l2)] = a;
+    log(`l2 ${l2}: validation average precision on the owner's words ${a?.toFixed(4)}`);
+    if (a !== null && (best === null || a > best.ap)) best = { l2, ap: a, fit };
+  }
+  const l2 = best?.l2 ?? (C.l2s[0] as number);
+  const judgePasses = val.filter((e) => e.answer?.coinable === true).length;
+  const threshold = best === null ? null : matchedThreshold(val.map((e) => best.fit.score(e)), judgePasses);
+
+  const fitB = fitOn(trainAll, l2, p, target);
+  const testAp = labelledAp(test, fitB.score);
+  const side = threshold === null ? null : sideBySide(test, fitB.score, threshold);
+
+  const firstCoin = new Map((await db.query<{ item_id: string; first_coin_at: Date | null }>(`select item_id, first_coin_at from internal.missed_post where status = 'done' and item_id is not null`)).map((r) => [r.item_id, r.first_coin_at] as const));
+  const byId = new Map(examples.map((e) => [e.itemId, e] as const));
+  const missedOf = (score: (e: Example) => number): MissedScore[] =>
+    split.test.map((m) => {
+      const e = byId.get(m.id);
+      return { itemId: m.id, post: m.post, group: m.group, score: e === undefined ? 0 : score(e), blockers: blockersOf(e, firstCoin.get(m.id) ?? null) };
+    });
+  const missed = missedOf(fitB.score);
+
+  const fitC = fitOn([...live, ...taughtOnly], l2, p, target);
+  const stored = asStored(fitC.d, fitC.f);
+
+  const repo = new PgCoinModelRepo(db);
+  const applied = await repo.latestApplied(target);
+  let current: MemeableRefit['current'] = null;
+  if (applied !== null) {
+    const scoreCur = (e: Example): number => scoreApplied(applied, e, p);
+    current = { id: applied.id, threshold: applied.threshold, ap: labelledAp(test, scoreCur), sideBySide: sideBySide(test, scoreCur, applied.threshold), missedCaught: missedOf(scoreCur).filter((m) => m.score >= applied.threshold).length };
+  }
+  let why: string | null = null;
+  if (threshold === null) why = `no threshold: the judge passed ${judgePasses} of ${val.length} validation posts, nothing to match`;
+  else if (current !== null && (testAp ?? -1) < (current.ap ?? -1)) why = `ranks the owner's words at ${testAp?.toFixed(4) ?? '-'} on the test; the applied fit ${current.id} at ${current.ap?.toFixed(4) ?? '-'}: kept the applied one`;
+  let id: number | null = null;
+  const testHours = (untilMs - testFromMs) / MS_PER_HOUR;
+  const labelled = test.filter((e) => memeY(e) !== null).length;
+  const yesShare = labelled === 0 ? null : test.filter((e) => memeY(e) === 1).length / labelled;
+  if (opts.record) {
+    id = await repo.record({
+      target, fittedAt: now, ...stored, threshold, fitN: trainAll.length + test.length,
+      heldOut: { target, l2, ap, testAp, counts, validation: { from: new Date(valFromMs).toISOString(), to: new Date(testFromMs).toISOString(), judgePasses, posts: val.length, threshold }, test: { from: new Date(testFromMs).toISOString(), to: new Date(untilMs).toISOString(), hours: testHours, posts: test.length, labelled, yesShare }, sideBySide: side, missed, current },
+      applied: why === null,
+      why,
+    });
+    if (id === null) why = `not recorded: internal.coin_model's memeable target (0169) is not migrated yet${why === null ? '' : `; ${why}`}`;
+  }
+  return {
+    target, counts, l2,
+    validation: { ap, judgePasses, posts: val.length, from: new Date(valFromMs).toISOString(), to: new Date(testFromMs).toISOString() },
+    test: { from: new Date(testFromMs).toISOString(), to: new Date(untilMs).toISOString(), hours: testHours, posts: test.length, labelled, yesShare, ap: testAp },
+    threshold, sideBySide: side, missed, current,
+    applied: why === null && opts.record && id !== null, why, id,
+    weightsByName: stored.names.map((name, i) => ({ name, weight: stored.weights[i] as number })).sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)),
+  };
+}
+
+/**
+ * The nightly job's one call (tools/coin-model.ts due): refit every target in
+ * Policy.judge.coinModel.targets, record, and say what to put in the log. Never throws — one target
+ * failing does not stop the other. The coined target's facts keep their names; another target's are
+ * prefixed with it. It was the re-tune's until 13 Nov; the re-tune was paused on 5 Nov and took the
+ * model's learning with it, so it is its own job now, free, whatever the re-tune is doing.
+ */
+export async function refitCoinModelTargets(url: string | undefined, opts: { readonly record: boolean; readonly policy?: Policy }): Promise<{ readonly log: Record<string, unknown>; readonly facts: Record<string, unknown> }> {
   const p = opts.policy ?? DEFAULT_POLICY;
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-coin-model' });
   const log: Record<string, unknown> = {};
@@ -609,6 +781,12 @@ export async function refitCoinModelForRetune(url: string | undefined, opts: { r
     for (const target of p.judge.coinModel.targets) {
       const key = (k: string): string => (target === 'coined' ? `coinModel${k}` : `${target}Model${k}`);
       try {
+        if (target === 'memeable') {
+          const m = await refitMemeable(asDb(pool), { record: opts.record, policy: p });
+          log[target] = { applied: m.applied, why: m.why, id: m.id, l2: m.l2, threshold: m.threshold, testAp: m.test.ap, labelled: m.test.labelled, sideBySide: m.sideBySide, heldOutMissedCaught: m.threshold === null ? null : m.missed.filter((x) => x.score >= (m.threshold as number)).length, heldOutMissedN: m.missed.length };
+          Object.assign(facts, { [key('Applied')]: m.applied, [key('Why')]: m.why, [key('Threshold')]: m.threshold });
+          continue;
+        }
         const r = await refitCoinModel(asDb(pool), { record: opts.record, target, policy: p });
         const at = r.threshold === null ? null : r.table.find((t) => t.threshold === r.threshold) ?? null;
         const caught = r.threshold === null ? null : r.missed.filter((m) => m.score >= (r.threshold as number)).length;

@@ -378,7 +378,7 @@ export class PgCoinModelRepo {
     if (r === undefined) return null;
     const nums = (k: string): number[] => ((r[k] as unknown[]) ?? []).map(Number);
     return {
-      id: Number(r['id']), target: r['target'] === 'viral' ? 'viral' : 'coined', fittedAt: r['fitted_at'] as Date, space: String(r['space']), intercept: Number(r['intercept']),
+      id: Number(r['id']), target: r['target'] === 'viral' || r['target'] === 'memeable' ? r['target'] : 'coined', fittedAt: r['fitted_at'] as Date, space: String(r['space']), intercept: Number(r['intercept']),
       names: (r['names'] as string[]) ?? [], means: nums('means'), spreads: nums('spreads'), weights: nums('weights'), vectorWeights: nums('vector_weights'),
       threshold: Number(r['threshold']), heldOut: (r['held_out'] as Record<string, unknown>) ?? {},
     };
@@ -406,7 +406,8 @@ export class PgCoinModelRepo {
    * Posts whose newest live answer is "no", answered since `since`, never scored for `target`:
    * newest answer first, at most `limit`. A post re-answered "yes" later drops out by itself.
    */
-  async toScore(since: Date, limit: number, target: CoinModelTarget): Promise<readonly ToScore[]> {
+  async toScore(since: Date, limit: number, target: CoinModelTarget, everyPost = false): Promise<readonly ToScore[]> {
+    if (everyPost) return this.#toScoreEvery(since, limit, target);
     const read = (withTarget: boolean) => () => this.#db.query<{ item_id: string; judged_at: Date }>(
       `select n.item_id, n.judged_at from (
          select distinct on (item_id) item_id, judged_at, coinable from internal.post_judgement
@@ -419,6 +420,27 @@ export class PgCoinModelRepo {
       withTarget ? [since, limit, target] : [since, limit],
     );
     const rows = await orNone(() => this.#byTarget(target, read(true), read(false)));
+    return rows.map((r) => ({ itemId: r.item_id, answerJudgedAt: r.judged_at }));
+  }
+
+  /**
+   * Every post with a live answer since `since`, whatever it said, never scored for `target`: as of
+   * its FIRST live answer, the moment the judge decided it and the moment the side-by-side compares.
+   * Newest first, at most `limit`. A target scored this way is one the judge is read beside
+   * (Policy.judge.coinModel.everyPost); it needs 0099, so before it there is nothing to score.
+   */
+  async #toScoreEvery(since: Date, limit: number, target: CoinModelTarget): Promise<readonly ToScore[]> {
+    const rows = await orNone(() => this.#db.query<{ item_id: string; judged_at: Date }>(
+      `select f.item_id, f.judged_at from (
+         select distinct on (item_id) item_id, judged_at from internal.post_judgement
+          where judged_at >= $1 and prompt_id not like 'post-kind%' and judge_id not like 'rule:%' and copied_from is null
+          order by item_id, judged_at asc, id asc
+       ) f
+       join public.item i on i.item_id = f.item_id
+       where not exists (select 1 from internal.coin_model_score s where s.item_id = f.item_id and s.target = $3)
+       order by f.judged_at desc limit $2`,
+      [since, limit, target],
+    ));
     return rows.map((r) => ({ itemId: r.item_id, answerJudgedAt: r.judged_at }));
   }
 

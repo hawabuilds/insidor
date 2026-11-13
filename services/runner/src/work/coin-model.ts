@@ -1,6 +1,9 @@
 /**
  * THE COIN MODEL PASS: each post the judge said no to, scored once by our own coin model (the
  * safety net, Policy.judge.coinModel), and the score stored in internal.coin_model_score (0096).
+ * A target in `everyPost` (0169's `memeable`, the judge in training) scores EVERY post the judge
+ * answered, yes or no, as of its first answer, so the two judges are read side by side on the same
+ * posts (tools/coin-model.ts --target memeable).
  *
  * One pass, for each target in Policy.judge.coinModel.targets (0099: `coined`, `viral`), in order:
  *   1. the target's fit (internal.coin_model, refitted by the re-tune): for the live target
@@ -86,7 +89,7 @@ async function scoreTarget(deps: CoinModelDeps, target: CoinModelTarget): Promis
   if (fit === null) return { skipped: `no ${isLive ? 'applied ' : ''}${target} fit`, ...NONE };
   const live = C.on && isLive;
   const now = deps.now();
-  const todo = await deps.repo.toScore(new Date(now - C.lookbackMs), C.maxPerPass, target);
+  const todo = await deps.repo.toScore(new Date(now - C.lookbackMs), C.maxPerPass, target, C.everyPost.includes(target));
   if (todo.length === 0) return { skipped: null, ...NONE };
   const facts = await deps.repo.facts(todo.map((t) => ({ itemId: t.itemId, decidedAt: t.answerJudgedAt })));
   const vectors = await deps.vectors.vectors(todo.map((t) => t.itemId), fit.space);
@@ -116,6 +119,6 @@ async function scoreTarget(deps: CoinModelDeps, target: CoinModelTarget): Promis
     return { skipped: 'write failed', ...NONE, cpuMs };
   }
   const wouldAdd = rows.filter((r) => r.wouldAdd).length;
-  deps.log.info('coin model scored posts the judge said no to', { target, fit: fit.id, scored: rows.length, wouldAdd, unscored, cpuMs: Math.round(cpuMs), rssMb: Math.round(process.memoryUsage().rss / 1_048_576), mode: live ? 'live' : 'shadow' });
+  deps.log.info(C.everyPost.includes(target) ? 'coin model scored posts the judge answered' : 'coin model scored posts the judge said no to', { target, fit: fit.id, scored: rows.length, wouldAdd, unscored, cpuMs: Math.round(cpuMs), rssMb: Math.round(process.memoryUsage().rss / 1_048_576), mode: live ? 'live' : 'shadow' });
   return { skipped: null, scored: rows.length, wouldAdd, unscored, cpuMs };
 }
