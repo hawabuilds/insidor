@@ -20,6 +20,12 @@
  * ★ BEFORE 0098 THERE ARE NO ROWS, NOT AN ERROR: a missing table reads as nothing seen, so a tool or
  * the re-tune deployed first runs exactly as before.
  *
+ * ★ NOT A KEEP WHEN HE WAS NOT LOOKING (the owner, 2026-11-13). Silence is a yes only on a day he
+ * was reviewing. `keptIds` drops a post first seen inside a window he named (`notReviewing`) or on a
+ * day the guard finds he was not reviewing (`reviewingDays`: far fewer posts seen, or far fewer Not a
+ * meme taps, than the days before it). `seen` itself is unchanged: the scorecard counts what was on
+ * his screen whatever he did with it.
+ *
  * What breaks if changed carelessly: the order. Testing the window before the owner's calls would
  * report a post he tapped "Not a meme" an hour ago as "waiting", and one he called a meme as soft.
  */
@@ -52,6 +58,51 @@ export function seenOutcome(f: SeenFacts, keepWindowMs: number, nowMs: number): 
   if (nowMs < f.firstSeenAtMs + keepWindowMs) return 'waiting';
   return 'kept';
 }
+
+/** How the guard decides a day was not reviewed (Policy.learning.seenKept.guard). */
+export interface ReviewGuard {
+  readonly baselineDays: number;
+  readonly minBaselineDays: number;
+  readonly minSeenShare: number;
+  readonly minNotShare: number;
+}
+
+/** One UTC day of what the owner saw: posts first seen that day, and how many of them he tapped Not a meme. */
+export interface SeenDay {
+  readonly day: string;
+  readonly seen: number;
+  readonly not: number;
+}
+
+const median = (xs: readonly number[]): number => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
+};
+
+/**
+ * The UTC days the guard takes as NOT reviewed: a day whose posts seen are under `minSeenShare` of
+ * the median of the `baselineDays` days with anything seen before it, or whose Not a meme share is
+ * under `minNotShare` of theirs. A day with fewer than `minBaselineDays` such days before it is never
+ * left out: with no usual to compare with, nothing is unusual. `days` sorted oldest first.
+ */
+export function notReviewedDays(days: readonly SeenDay[], g: ReviewGuard): ReadonlySet<string> {
+  const out = new Set<string>();
+  const active = days.filter((d) => d.seen > 0);
+  for (let i = 0; i < active.length; i++) {
+    const d = active[i] as SeenDay;
+    const before = active.slice(Math.max(0, i - g.baselineDays), i);
+    if (before.length < g.minBaselineDays) continue;
+    const usualSeen = median(before.map((b) => b.seen));
+    const usualNot = median(before.map((b) => b.not / b.seen));
+    if (d.seen < g.minSeenShare * usualSeen || d.not / d.seen < g.minNotShare * usualNot) out.add(d.day);
+  }
+  /* A day with nothing seen is no day of keeps either way. */
+  return out;
+}
+
+const DAY_MS = 86_400_000;
+const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 const missing = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01';
 
@@ -95,8 +146,36 @@ export class PgOwnerSeenRepo {
     });
   }
 
-  /** The ids of every kept post first seen in [since, until): the soft yes labels. */
-  async keptIds(q: { readonly since: Date; readonly until: Date; readonly keepWindowMs: number; readonly now: Date }): Promise<ReadonlyMap<string, number>> {
-    return new Map((await this.seen(q)).filter((r) => r.outcome === 'kept').map((r) => [r.itemId, r.firstSeenAtMs] as const));
+  /**
+   * The ids of every kept post first seen in [since, until): the soft yes labels. Without `review`,
+   * every kept post; with it, none first seen inside a `notReviewing` window or on a day the guard
+   * finds was not reviewed (read over `guard.baselineDays` before `since` too, for the usual).
+   */
+  async keptIds(q: {
+    readonly since: Date;
+    readonly until: Date;
+    readonly keepWindowMs: number;
+    readonly now: Date;
+    readonly review?: { readonly notReviewing: readonly { readonly from: string; readonly until: string }[]; readonly guard: ReviewGuard };
+  }): Promise<ReadonlyMap<string, number>> {
+    if (q.review === undefined) return new Map((await this.seen(q)).filter((r) => r.outcome === 'kept').map((r) => [r.itemId, r.firstSeenAtMs] as const));
+    const R = q.review;
+    const rows = await this.seen({ ...q, since: new Date(q.since.getTime() - R.guard.baselineDays * DAY_MS) });
+    const byDay = new Map<string, { seen: number; not: number }>();
+    for (const r of rows) {
+      const k = utcDay(r.firstSeenAtMs);
+      const d = byDay.get(k) ?? { seen: 0, not: 0 };
+      d.seen += 1;
+      if (r.call === 'not') d.not += 1;
+      byDay.set(k, d);
+    }
+    const skipDays = notReviewedDays([...byDay.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([day, d]) => ({ day, ...d })), R.guard);
+    const windows = R.notReviewing.map((w) => [Date.parse(w.from), Date.parse(w.until)] as const);
+    const named = (ms: number): boolean => windows.some(([a, b]) => ms >= a && ms < b);
+    return new Map(
+      rows
+        .filter((r) => r.outcome === 'kept' && r.firstSeenAtMs >= q.since.getTime() && !named(r.firstSeenAtMs) && !skipDays.has(utcDay(r.firstSeenAtMs)))
+        .map((r) => [r.itemId, r.firstSeenAtMs] as const),
+    );
   }
 }

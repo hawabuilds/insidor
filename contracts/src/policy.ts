@@ -4424,6 +4424,20 @@ export interface LearningPolicy {
     readonly maxPerBlock: number;
     readonly afterCoined: boolean;
     readonly fitWeight: number;
+    /**
+     * Days the owner was not reviewing For You (the owner, 2026-11-13: "I haven't tapped it properly
+     * the last day and a half"). A post he first saw inside one of these is no soft yes: he scrolled
+     * past it without looking, so his silence says nothing. ISO times, `until` exclusive. His explicit
+     * calls inside them still count.
+     */
+    readonly notReviewing: readonly { readonly from: string; readonly until: string; readonly why: string }[];
+    /**
+     * The same, found without being told: a UTC day whose posts seen fall under `minSeenShare` of the
+     * median of the `baselineDays` before it, or whose share tapped Not a meme falls under
+     * `minNotShare` of theirs, is taken as a day he was not reviewing. Needs `minBaselineDays` days
+     * before it with anything seen; with fewer, no day is left out by the guard.
+     */
+    readonly guard: { readonly baselineDays: number; readonly minBaselineDays: number; readonly minSeenShare: number; readonly minNotShare: number };
   };
   /**
    * ★ PERIODS THE RE-TUNE DOES NOT TAKE AS NORMAL (the owner, 2026-10-18). A post first stored inside
@@ -7833,6 +7847,10 @@ const POLICY_V1: Policy = {
       maxPerBlock: 20,
       afterCoined: true,
       fitWeight: 0.5,
+      /* 11-13 Nov: 25, 78 and 4 posts seen and 14 taps, against 138-215 seen and 49-73 taps on 5-10 Nov. */
+      notReviewing: [{ from: '2026-11-11T00:00:00Z', until: '2026-11-14T00:00:00Z', why: 'the owner was not reviewing For You' }],
+      /* 12 Nov's 78 seen is under 0.6 of 5-10 Nov's median (about 160); the lowest normal day, 138, is over it. */
+      guard: { baselineDays: 7, minBaselineDays: 3, minSeenShare: 0.6, minNotShare: 0.4 },
     },
     /* The X language bug: from 16 Oct 23:20 UTC the posts supplier honoured only the last language
        asked, so the X search found almost only Japanese until the per-language fix at 09:22 on 18 Oct. */

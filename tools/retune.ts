@@ -265,7 +265,7 @@ async function readLead(): Promise<{ facts: ReturnType<typeof leadFacts>; lines:
 async function keptPosts(db: Db, nowMs: number): Promise<readonly KeptPost[]> {
   const K = P.learning.seenKept;
   const now = new Date(nowMs);
-  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: new Date(nowMs - K.lookbackMs), until: now, keepWindowMs: K.keepWindowMs, now });
+  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: new Date(nowMs - K.lookbackMs), until: now, keepWindowMs: K.keepWindowMs, now, review: { notReviewing: K.notReviewing, guard: K.guard } });
   if (kept.size === 0) return [];
   const rows = await db.query<{ item_id: string; body: string | null; media: unknown }>(`select item_id, body, media from public.item where item_id = any($1::text[])`, [[...kept.keys()]]);
   return rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', imageUri: pictureOf(r.media)?.uri ?? null, firstSeenAt: kept.get(r.item_id) ?? 0 }));
