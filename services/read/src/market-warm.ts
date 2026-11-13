@@ -13,6 +13,12 @@
  * Read without the flag (as it was until 2026-11-13), a round spent the free plan's whole minute and
  * a coin somebody opened then — Ground, at 21:35 — answered "could not be read".
  *
+ * ★ SPREAD ACROSS THE ROUND, NEVER A BURST (the owner, 2026-11-13). Even inside its half of the minute,
+ * a round sent its requests within seconds of each other, and right after one the vendor's own free
+ * limit refused a token page's candles and trades for most of a minute (364, 22:20). So the coins are
+ * read `SPACING_MS` apart, the round's length spread over the interval between rounds: about one coin
+ * every seven and a half seconds, two or three requests at most, never a burst.
+ *
  * What breaks if changed carelessly: the timeframe. It must be the one the phone opens on (mobile
  * features/token/chart-view.ts `defaultView` and `allTimeframe`), or the kept answer is for a view
  * nobody opens first.
@@ -27,6 +33,8 @@ import type { Logger } from './log.ts';
    disk-bound morning, 6% of all of it, while a kept answer is served at once and refreshed behind anyway. */
 const EVERY_MS = 300_000;
 const MAX_COINS = 40;
+/** The gap between two coins in a round: the whole interval shared out, so a round ends as the next begins. */
+const SPACING_MS = EVERY_MS / MAX_COINS;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -59,17 +67,31 @@ export function openingTimeframe(mintedMs: number | null, now: number): Timefram
   return '15m';
 }
 
-export function createMarketWarm(deps: { readonly db: Db; readonly log: Logger; readonly market: Pick<MarketData, 'coin'>; readonly now?: () => number }) {
+export function createMarketWarm(deps: {
+  readonly db: Db;
+  readonly log: Logger;
+  readonly market: Pick<MarketData, 'coin'>;
+  readonly now?: () => number;
+  /** Waits between two coins; a test passes one that does not. */
+  readonly wait?: (ms: number) => Promise<void>;
+}) {
   const now = deps.now ?? Date.now;
+  const wait = deps.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref()));
   let timer: ReturnType<typeof setInterval> | null = null;
   let running = false;
+  let stopped = false;
   const round = async (): Promise<void> => {
     if (running) return;
     running = true;
     let read = 0;
     try {
       const rows = await deps.db.query(WARM_SQL, []);
+      let first = true;
       for (const r of rows) {
+        if (stopped) break;
+        if (!first) await wait(SPACING_MS);
+        first = false;
+        if (stopped) break;
         const address = typeof r['address'] === 'string' ? r['address'] : null;
         if (address === null) continue;
         const minted = typeof r['minted_ms'] === 'number' && Number.isFinite(r['minted_ms']) ? r['minted_ms'] : null;
@@ -85,11 +107,13 @@ export function createMarketWarm(deps: { readonly db: Db; readonly log: Logger; 
   return {
     start(): void {
       if (timer !== null) return;
+      stopped = false;
       void round();
       timer = setInterval(() => void round(), EVERY_MS);
       timer.unref();
     },
     stop(): void {
+      stopped = true;
       if (timer !== null) clearInterval(timer);
       timer = null;
     },
