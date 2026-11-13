@@ -20,6 +20,7 @@
 import { Client, Pool } from 'pg';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
+import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
 import { portfolioReader } from '@insidor/chain-portfolio';
 import { dexscreenerProfiles, dexscreenerQuotes, dexscreenerSearch, httpClient as dexscreenerPairs, type CoinProfile } from '@insidor/market-dexscreener';
 import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
@@ -38,6 +39,7 @@ import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
+import { createCalls } from './calls.ts';
 import { createLaunchOdds } from './launch-odds.ts';
 import { createMarketWarm } from './market-warm.ts';
 import { heldTradesFrom } from './own-market.ts';
@@ -368,7 +370,9 @@ async function main(): Promise<void> {
   const theses = createTheses({ apiKey: cfg.fomoApiKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, recentKeepMs: 900_000, historyKeepMs: 7_200_000, perMinute: 20 });
   /* Deposits from other chains that land as SOL, through Aurora Intents (deposits.ts). Null key: Solana only. */
   const deposits = createDeposits({ apiKey: cfg.auroraIntentsKey, fetch: globalThis.fetch, now: Date.now, log: deps.log, perMinute: 120 });
-  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses, deposits };
+  /* Insidor's own calls (calls.ts): worked out in the background from the first request, one coin at a time. */
+  const calls = createCalls({ db: deps.db, log: deps.log, origins: OBSERVED_ASSET_ORIGINS });
+  const routeDeps = { ...deps, market, search, wallet, tradeCard, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), runningCoins: createRunningCoins(), launchOdds: createLaunchOdds(), theses, deposits, calls };
   /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
      request runs, so a kept reply and a live one say the same thing. The notifier above tells it
      when a board frame lands. */

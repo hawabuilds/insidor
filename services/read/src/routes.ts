@@ -29,6 +29,7 @@ import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_Y
 import { createNarrativeLists, parseNarrativeList } from './narrative-sorts.ts';
 import { createSorts, parseSort } from './post-sorts.ts';
 import { createRunningCoins } from './running-coins.ts';
+import { isCallsWindow, type createCalls } from './calls.ts';
 import { createLaunchOdds } from './launch-odds.ts';
 import { pictureFiles, pictureLinks, withFile, withPictureFiles } from './post-pics.ts';
 import { quoteFaces, withQuoteFace } from './quote-faces.ts';
@@ -96,6 +97,8 @@ export interface Deps {
   readonly theses?: (address: string, minUsd?: number) => Promise<ThesesReply>;
   /** Deposits from other chains into a wallet as SOL (deposits.ts). Absent: both routes answer "not_configured". */
   readonly deposits?: Deposits;
+  /** Insidor's own calls, the Feed tab's Calls list (calls.ts), kept in memory. Absent: /calls/:window is a 404. */
+  readonly calls?: ReturnType<typeof createCalls>;
 }
 
 /*
@@ -667,6 +670,12 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
 
     /* The running coins strip on For You and the Narratives tab (running-coins.ts). */
     if (segments.length === 2 && head === 'running' && param === 'coins') return json(200, await (deps.runningCoins ?? createRunningCoins())(deps.db));
+
+    /* Insidor's own calls for a window, the Feed tab's Calls list (calls.ts). */
+    if (deps.calls !== undefined && segments.length === 2 && head === 'calls') {
+      const window = param ?? null;
+      return isCallsWindow(window) ? json(200, deps.calls.read(window)) : NOT_FOUND;
+    }
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);

@@ -86,6 +86,8 @@ export function edgeLifeFor(rawUrl: string): EdgeLife | null {
     if (head === 'coin') return FACTS;
     /* The running coins strip: the same list for everyone, rebuilt every half minute (prepared.ts). */
     if (head === 'running' && id === 'coins') return FACTS;
+    /* Insidor's calls: the same list for everyone, its numbers read again every ten minutes (calls.ts). */
+    if (head === 'calls') return FACTS;
     /* `/rising/:feed` is left out: see the header. `/wallet/:address`, `/ticker/:t` and anything else too. */
     return null;
   }
