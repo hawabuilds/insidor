@@ -207,6 +207,7 @@ async function main(): Promise<void> {
      RPC; without one, curve progress is a dash. Each curve read is kept fifteen seconds. */
   const chain = cfg.rpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.rpcUrl, fetch: globalThis.fetch });
   const curves = new Map<string, { at: number; progress: number | null }>();
+  const pictures = new Map<string, string | null>();
   /* ★ A token page's pool from the keyless pair source (dex-pool.ts), so the market source's minute
      buys candles and trades only; the market source finds the pool itself only when that fails. */
   const poolOf = dexPool(dexscreenerPairs({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }).pairsForToken);
@@ -238,6 +239,18 @@ async function main(): Promise<void> {
             const progress = account === null ? null : curveProgressOf(account);
             curves.set(address, { at: Date.now(), progress });
             return progress;
+          },
+    /* The pool's other token's own picture (market.ts `picture`): read from the chain once per token and
+       kept, a few hundred tokens at most (SOL, the stablecoins, the stock tokens), so it costs nothing per page. */
+    picture:
+      chain === null
+        ? null
+        : async (mint: string) => {
+            if (pictures.has(mint)) return pictures.get(mint) ?? null;
+            const found = (await chain.imageUris([mint])).get(mint) ?? null;
+            if (pictures.size > 2_000) pictures.clear();
+            pictures.set(mint, found);
+            return found;
           },
     /* A coin no source names a pool for yet: its own curve, by its mint (market.ts `curveOfMint`).
        Not kept: it is asked only for a coin with no pool, usually in its first minute. */

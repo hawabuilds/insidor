@@ -196,3 +196,26 @@ test('★ a coin seconds old that the market source fails on outright is still r
   const none = JSON.parse(((await coinMarket(`solana:${LAURA}`, '1m', deps(null))) as { body: string }).body);
   assert.equal(none.kind, 'unavailable');
 });
+
+test('★ the pool\'s other token with no picture gets its own from the chain; one slow to answer is left for the next read (MSFTx, 2026-11-13)', async () => {
+  const { coinMarket, ASSET_SQL } = await import('./market.ts');
+  const { CHART_SQL } = await import('./own-market.ts');
+  const db = { query: async (sql: string) => (sql === ASSET_SQL ? [{ chain: 'solana', address: LAURA }] : sql === CHART_SQL ? [] : []) };
+  const pool = { address: 'Pool1', dex: 'pumpswap', dexName: 'PumpSwap', reserveUsd: 10_000, base: { address: LAURA, symbol: '364', name: 'Microsoft 364', imageUrl: null }, quote: { address: 'Msftx1', symbol: 'MSFTx', name: 'Microsoft xStock', imageUrl: null } };
+  const deps = (picture: (mint: string) => Promise<string | null>) => ({
+    db: db as never,
+    log: { info: () => undefined, error: () => undefined } as never,
+    market: { coin: async () => ({ pool, candles: [], trades: [] }), pool: async () => pool },
+    curveProgress: null,
+    picture,
+  });
+  const read = async (picture: (mint: string) => Promise<string | null>) => JSON.parse(((await coinMarket(`solana:${LAURA}`, '1h', deps(picture))) as { body: string }).body);
+  const asked: string[] = [];
+  const found = await read(async (mint) => { asked.push(mint); return 'https://logos.example/MSFTx.png'; });
+  assert.deepEqual(asked, ['Msftx1'], 'only the other token is asked about');
+  assert.equal(found.pair.token.imageUrl, 'https://logos.example/MSFTx.png');
+  const slow = await read(() => new Promise((r) => setTimeout(() => r('https://late.example/x.png'), 2_000).unref()));
+  assert.equal(slow.pair.token.imageUrl, null, 'the page is not held for a picture');
+  const none = await read(async () => { throw new Error('rpc down'); });
+  assert.equal(none.pair.token.imageUrl, null);
+});

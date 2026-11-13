@@ -78,7 +78,17 @@ export interface MarketDeps {
   readonly curveOfMint?: ((mint: string) => Promise<{ readonly address: string; readonly progress: number; readonly complete: boolean; readonly untouched: boolean } | null>) | null;
   /** True for an address a recent search returned (search.ts): openable without being in the universe. */
   readonly recent?: (address: string) => boolean;
+  /**
+   * A token's own picture, from its metadata on the chain; null when it has none. Asked only for the
+   * pool's other token when the pool's answer carried no picture of it (the owner, 2026-11-13: MSFTx
+   * showed a letter where its logo goes once the pool came from the pair source, which names no picture
+   * for the token on the other side).
+   */
+  readonly picture?: ((mint: string) => Promise<string | null>) | null;
 }
+
+/** How long a read waits for the other token's picture before answering without it; the next poll has it. */
+const PICTURE_WAIT_MS = 400;
 
 export interface MarketReply {
   readonly status: number;
@@ -188,6 +198,15 @@ function noteRead(deps: MarketDeps, assetKey: string, timeframe: Timeframe, ms: 
   deps.log.info('market read slow or partial', { asset: assetKey, tf: timeframe, ms, candles: parts.candles ? 'read' : 'unread', trades: parts.trades ? 'read' : 'unread' });
 }
 
+/** The pair with its other token's own picture filled in from the chain, when the pool's answer had none. */
+async function withPicture(pair: ReturnType<typeof pairOf>, deps: MarketDeps): Promise<ReturnType<typeof pairOf>> {
+  const token = pair.token;
+  if (token === null || token.imageUrl !== null || !deps.picture) return pair;
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), PICTURE_WAIT_MS).unref());
+  const imageUrl = await Promise.race([deps.picture(token.address).catch(() => null), timeout]);
+  return imageUrl === null ? pair : { ...pair, token: { ...token, imageUrl } };
+}
+
 export async function coinMarket(assetKey: string, rawTf: string | null, deps: MarketDeps): Promise<MarketReply | null> {
   const started = Date.now();
   const timeframe = (TIMEFRAMES as readonly string[]).includes(rawTf ?? '') ? (rawTf as Timeframe) : rawTf === null ? '1m' : null;
@@ -254,7 +273,7 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
         maker: t.maker,
       })),
       curveProgress: onCurve ? measured(progress, progressWhy) : null,
-      pair: market.pool === null ? null : pairOf(market.pool, mint),
+      pair: market.pool === null ? null : await withPicture(pairOf(market.pool, mint), deps),
       coin: coinOf(market.pool, mint),
     });
   } catch (e) {
