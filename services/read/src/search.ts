@@ -14,15 +14,17 @@
  * ★ ONLY OBSERVED ROWS. A seeded narrative is a fiction and a fixture coin is a fiction; a
  * surface that says "this exists" filters to what was observed, as the product rule says.
  *
- * ★ AN OUTAGE IS NOT AN EMPTY LIST. Both sources down is `{ kind: 'unavailable' }`, shown as a
- * dash with a reason. One source down is still a list, with that source named as missing.
+ * ★ AN OUTAGE IS NOT AN EMPTY LIST. Every source down is `{ kind: 'unavailable' }`, shown as a
+ * dash with a reason. One source down is still a list, with that source named as missing. Since
+ * 2026-11-13 main.ts gives one source, the keyless pair source: the market source's free minute is
+ * kept for token pages' charts, so with the pair source down a search says unavailable.
  *
  * ★ A PICTURE IS THE COIN'S OWN, NEVER A SOURCE'S COPY. A market source hosts its copy under its
  * own name, and a vendor's name reaching the screen is a leak the app's decoder refuses. The
  * picture is the one in the coin's metadata: ours when chainwatch read it, else the chain's.
  *
  * What breaks if changed carelessly: the per-client limit and the one-minute cache are what keep
- * two free sources answering. A term reaches a source at most once a minute however many people
+ * the free sources answering. A term reaches a source at most once a minute however many people
  * type it, and one client cannot type faster than `perClient` a minute. A coin a search returned
  * may then be opened as a token page for `openableMs`; so may a coin a token page asked for by its
  * address that a market source lists (`open`, a held coin we never indexed), under its own limit;

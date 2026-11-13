@@ -258,7 +258,9 @@ async function main(): Promise<void> {
   };
 
   const lookupQuotes = dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS });
-  /* The Search tab: our own rows plus two market data sources, searched live (search.ts). */
+  /* The Search tab: our own rows plus the keyless pair source, searched live (search.ts).
+     ★ Not the market source since 2026-11-13: on its free minute every keystroke's search spent what a
+     token page's chart needs, and its 429s left charts unread; the pair source allows 300 a minute. */
   const search = createSearch({
     ...deps,
     policy: DEFAULT_POLICY.search,
@@ -266,7 +268,6 @@ async function main(): Promise<void> {
       /* `launchpadToo`: a second question so a common word's other-chain pairs do not crowd the
          launchpad's coins out of the vendor's 30 (adapters/market/dexscreener search.ts). */
       { name: 'dexscreener', source: dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, launchpadToo: true }) },
-      { name: 'geckoterminal', source: marketData },
     ],
     curveProgress: market.curveProgress,
     images: chain === null ? null : (mints) => chain.imageUris(mints),
