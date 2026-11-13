@@ -21,6 +21,14 @@
  * (the pool of its latest trade and the token it is priced in) with liquidity not reported, and the
  * source's answer lands in its keep for the next read.
  *
+ * ★ NOT A COIN WHOSE POOL TRADES IN A TOKEN CHAINWATCH DOES NOT PRICE (the owner, 2026-11-13: 364,
+ * "Microsoft 364", drew its candles flat at the floor under a $68K line while it traded at $17K).
+ * chainwatch prices a trade only in SOL or a dollar stablecoin and leaves the rest out (chainwatch
+ * chart.ts). A coin paired with a stock token (MSFTx) is then charted from its few SOL side-pool trades
+ * alone: sparse, hours stale, at that pool's price, never its own. Its recording still says "from
+ * launch", so it read as covered. When the coin's latest pool is quoted in such a token, ours is not
+ * its chart and the market source answers, which prices the coin's own pool.
+ *
  * What breaks if changed carelessly: the timeframes. 5m and 15m are built from minute rows and the
  * minute rows are kept a week; anything from an hour up is built from the hourly rows, kept for good.
  */
@@ -61,6 +69,9 @@ const DEXES: Readonly<Record<string, { readonly dex: string; readonly name: stri
   'meteora-damm-v2': { dex: 'meteora-damm-v2', name: 'Meteora DAMM v2' },
   'meteora-dbc': { dex: 'meteora-dbc', name: 'Meteora DBC' },
 };
+/** The quote tokens chainwatch prices a trade in (chainwatch chart.ts): SOL, USDC, USDT. Any other and our candles are not the coin's. */
+const PRICED_QUOTES: ReadonlySet<string> = new Set(['So11111111111111111111111111111111111111112', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB']);
+
 const QUOTES: Readonly<Record<string, PoolToken>> = {
   So11111111111111111111111111111111111111112: { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Wrapped SOL', imageUrl: null },
   EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', name: 'USD Coin', imageUrl: null },
@@ -140,6 +151,8 @@ export async function ownMarket(mint: string, tf: Timeframe, deps: OwnMarketDeps
   const row = rows[0];
   const recordedFromMs = finite(row?.['recorded_from']);
   if (row === undefined || recordedFromMs === null) return null;
+  const quoteMint = row['quote_mint'];
+  if (typeof quoteMint === 'string' && quoteMint !== '' && !PRICED_QUOTES.has(quoteMint)) return null;
   const covered = covers({ recordedFromMs, fromLaunch: row['from_launch'] === true }, tf, now);
   const minute: Candle[] = [];
   for (const r of raw) {

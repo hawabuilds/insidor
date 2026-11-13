@@ -70,6 +70,15 @@ test('★ not ours: a coin we never charted, no candles, or chainwatch silent', 
   assert.equal(await ownMarket(MINT, '1m', { ...deps, heldTrades: async () => { throw new Error('down'); }, db: fakeDb(launchRow, minutes) }), null);
 });
 
+test('★ a coin paired with a token chainwatch does not price (a stock token) is not ours: the market source charts it (364, 2026-11-13)', async () => {
+  const msftx = { ...launchRow, pool: 'pump-amm', pool_address: 'pool1', quote_mint: 'XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX' };
+  const own = await ownMarket('Mint1', '1h', { db: fakeDb(msftx, [{ t: NOW - 6 * 3_600_000, o: 1, h: 1, l: 1, c: 1 }]), heldTrades: async () => ({ held: true, whole: true, trades: [] }), pool: async () => null, now: () => NOW });
+  assert.equal(own, null);
+  const usdt = { ...launchRow, quote_mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' };
+  const ours = await ownMarket('Mint1', '1h', { db: fakeDb(usdt, [{ t: NOW - 6 * 3_600_000, o: 1, h: 1, l: 1, c: 1 }]), heldTrades: async () => ({ held: true, whole: true, trades: [] }), pool: async () => null, now: () => NOW });
+  assert.notEqual(ours, null, 'a dollar stablecoin is priced, so ours still answers');
+});
+
 test('★ recorded from mid-life for a long view: ours, saying where it starts (2026-10-29)', async () => {
   const r = await ownMarket(MINT, '1h', { db: fakeDb({ ...launchRow, from_launch: false }, minutes), heldTrades: held({ held: true, whole: false, trades: [TRADE] }), pool: noPool, now: () => NOW });
   assert.ok(r !== null);
