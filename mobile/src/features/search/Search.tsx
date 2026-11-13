@@ -1,6 +1,7 @@
 /**
- * THE SEARCH TAB. Type a ticker or a name; see our narratives and posts that mention it, and
- * the coins on pump.fun that carry it, read live from the market when you type. Paste a coin's
+ * THE SEARCH TAB. Type a ticker or a name; see the people whose handle or name holds it, as a
+ * strip you swipe with Follow on each (PeopleStrip.tsx), then our narratives and posts that mention
+ * it, and the coins on pump.fun that carry it, read live from the market when you type. Paste a coin's
  * address, or its pump.fun or dexscreener link, and that coin is the hit — even one Insidor never
  * saw — and its row opens the token page, with Buy where trading is on. The term goes to the
  * server exactly as typed (less a ticker's dollar sign): the server is what reads an address out
@@ -31,6 +32,8 @@ import { GAP_LINE, isAddress, marketLine, orderCoins, showingTop, type CoinOrder
 import { useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
+import { searchPeople, type FoundPerson } from '../../shared/api/people.ts';
+import { PeopleStrip } from './PeopleStrip.tsx';
 import styles from './search.module.css';
 
 /** Typing settles for this long before a search goes out. */
@@ -59,27 +62,34 @@ export function Search() {
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
-        placeholder="Ticker, name or address"
-        aria-label="Search for a ticker, a name or a coin address"
+        placeholder="Ticker, name, @user or address"
+        aria-label="Search for a ticker, a name, a person or a coin address"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
       />
-      {term.length < MIN_TERM ? <p className={styles['hint']}>Search for a narrative, a post or a coin.</p> : <Results key={term} term={term} />}
+      {term.length < MIN_TERM ? <p className={styles['hint']}>Search for a person, a narrative, a post or a coin.</p> : <Results key={term} term={term} />}
     </section>
   );
 }
 
+/* People come from the social service and everything else from the read service: two reads, each
+   failing on its own, so an outage of one never blanks the other. */
 function Results({ term }: { term: string }) {
   const [loaded] = useLoad(`search:${term}`, (signal) => fetchSearch(term, signal), 'memory');
-  if (loaded.state === 'loading') return <p className={styles['hint']}>Searching.</p>;
-  if (loaded.state === 'failed') {
-    const slow = loaded.error instanceof ReadError && loaded.error.said === 'slow down';
-    return <p className={styles['hint']}>{slow ? 'Too many searches at once. Wait a minute and try again.' : 'Search could not be read just now.'}</p>;
-  }
-  return <Sections results={loaded.value} />;
+  const [people] = useLoad(`people:${term}`, () => searchPeople(term), 'memory');
+  const found: readonly FoundPerson[] = people.state === 'ready' ? people.value : [];
+  return (
+    <>
+      {found.length > 0 ? <PeopleStrip people={found} /> : null}
+      {people.state === 'failed' ? <p className={styles['hint']}>— people could not be searched just now.</p> : null}
+      {loaded.state === 'loading' ? <p className={styles['hint']}>Searching.</p> : null}
+      {loaded.state === 'failed' ? <p className={styles['hint']}>{loaded.error instanceof ReadError && loaded.error.said === 'slow down' ? 'Too many searches at once. Wait a minute and try again.' : 'Search could not be read just now.'}</p> : null}
+      {loaded.state === 'ready' ? <Sections results={loaded.value} hasPeople={found.length > 0 || people.state === 'loading'} /> : null}
+    </>
+  );
 }
 
-function Sections({ results }: { results: SearchResults }) {
+function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: boolean }) {
   const now = useNow();
   const [order, setOrder] = useState<CoinOrder>('cap');
   const { narratives, coins } = results;
@@ -87,7 +97,8 @@ function Sections({ results }: { results: SearchResults }) {
   const { hidden } = useOwnerState();
   const posts = { ...results.posts, items: withoutHidden(results.posts.items, hidden, (p) => p.id) };
   const nothing = narratives.items.length === 0 && posts.items.length === 0 && coins.kind === 'read' && coins.items.length === 0;
-  if (nothing) return <p className={styles['hint']}>Nothing found for “{results.term}”.</p>;
+  /* With people found, the rest being empty is said by the coin line alone, not as "nothing found". */
+  if (nothing && !hasPeople) return <p className={styles['hint']}>Nothing found for “{results.term}”.</p>;
 
   return (
     <>

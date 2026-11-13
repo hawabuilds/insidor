@@ -19,8 +19,8 @@
 import { peopleRequest } from './client.ts';
 import { FORBIDDEN_KEYS } from './wire/fields.ts';
 
-export type { Alert, AlertPrefs, AlertSettings, AlertSwitch, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard, RankId } from './wire/people.ts';
-import type { Alert, AlertPrefs, AlertSettings, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard } from './wire/people.ts';
+export type { Alert, AlertPrefs, AlertSettings, AlertSwitch, Comment, CommentThread, FoundPerson, LeaderRow, PersonRef, ProfileCard, RankId } from './wire/people.ts';
+import type { Alert, AlertPrefs, AlertSettings, Comment, CommentThread, FoundPerson, LeaderRow, PersonRef, ProfileCard } from './wire/people.ts';
 
 const SOCIAL = (import.meta.env?.['VITE_SOCIAL_URL'] as string | undefined) || '/api/social';
 const NOTIFY = (import.meta.env?.['VITE_NOTIFY_URL'] as string | undefined) || '/api/notify';
@@ -136,6 +136,9 @@ export function decodeProfileWallet(raw: unknown): ProfileCard {
 export const fetchFollows = async (key: string, which: 'followers' | 'following'): Promise<readonly PersonRef[]> =>
   ((await social('GET', `/profile/${encodeURIComponent(key)}/${which}`)) as { people: readonly PersonRef[] }).people;
 export const follow = async (userId: string, on: boolean): Promise<void> => void (await social(on ? 'POST' : 'DELETE', `/follow/${encodeURIComponent(userId)}`));
+/** People by handle or name, for Search's people strip; open signed out, which then shows no one as followed. */
+export const searchPeople = async (term: string): Promise<readonly FoundPerson[]> =>
+  ((await social('GET', `/people/search?q=${encodeURIComponent(term)}`)) as { people: readonly FoundPerson[] }).people;
 export const fetchComments = async (subject: string): Promise<CommentThread> => (await social('GET', `/comments?subject=${encodeURIComponent(subject)}`)) as CommentThread;
 export const postComment = async (c: { subject: string; parentId: number | null; body: string; proofUrl: string | null }): Promise<Comment> =>
   ((await social('POST', '/comments', c)) as { comment: Comment }).comment;

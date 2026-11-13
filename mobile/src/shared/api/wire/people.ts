@@ -15,6 +15,12 @@ export interface PersonRef {
   readonly rank: RankId;
 }
 
+/** A person Search found (services/social GET /people/search): who, how many follow them, whether you do. */
+export interface FoundPerson extends PersonRef {
+  readonly followers: number;
+  readonly iFollow: boolean;
+}
+
 export interface ProfileCard extends Omit<PersonRef, 'rank'> {
   readonly bio: string;
   /** Withheld (null) when their portfolio is private, as Trador withholds it; always theirs to see. */
