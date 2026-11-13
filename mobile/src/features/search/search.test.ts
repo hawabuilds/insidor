@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { decodeSearch } from '../../shared/api/decode.ts';
 import { fixtureSearch } from '../../test-fixtures/fixtures.ts';
-import { isAddress, marketLine, orderCoins, showingTop } from './search-view.ts';
+import { isAddress, marketLine, orderCoins, showingTop, tradedCoins } from './search-view.ts';
 
 const reply = (coins: readonly Record<string, unknown>[], capped = false) =>
   decodeSearch({ term: 'jim', narratives: { capped: false, items: [] }, posts: { capped: false, items: [] }, coins: { kind: 'read', capped, sourcesMissing: 0, items: coins } });
@@ -84,4 +84,18 @@ test('★ a pasted coin address decodes as a coin hit that opens its token page,
   assert.equal(isAddress(r.term), true);
   assert.equal(isAddress('jim'), false);
   assert.equal(isAddress('cat meme'), false);
+});
+
+test('★ a coin nobody traded, or with no market cap, is left out, unless its address was pasted', () => {
+  const r = reply([
+    coin('A', 5000, 1),
+    coin('B', null, 1),
+    coin('C', 4000, 1, { curveProgress: { v: 0 } }),
+    coin('D', 9000, 1, { venue: null }),
+    coin('E', 80000, 1, { venue: 'pool', curveProgress: null }),
+  ]);
+  if (r.coins.kind !== 'read') return assert.fail();
+  assert.deepEqual(tradedCoins(r.coins.items, 'jim').map((c) => c.address), ['A', 'E']);
+  const pasted = 'So11111111111111111111111111111111111111112';
+  assert.equal(tradedCoins(r.coins.items, pasted).length, 5, 'a pasted address keeps its coin whatever it is');
 });

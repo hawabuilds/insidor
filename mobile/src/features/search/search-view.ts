@@ -52,3 +52,17 @@ export const GAP_LINE: Record<OriginGap, string> = {
   possibly_deleted: '— origin possibly deleted',
   tiktok_not_searchable: '— origin on TikTok, not searchable yet',
 };
+
+/**
+ * The coins Search lists: those with a market cap and a trade. A coin with no market cap, one no
+ * market lists, or one still at the very start of its curve (0%, so not one buy after its launch)
+ * is left out. A pasted address keeps its coin whatever it is, since that coin is what was asked.
+ */
+export function tradedCoins(items: readonly SearchCoin[], term: string): readonly SearchCoin[] {
+  if (isAddress(term)) return items;
+  return items.filter((c) => {
+    if (!c.marketCapUsd.known || c.marketCapUsd.amount <= 0 || c.venue === null) return false;
+    const p = c.curveProgress;
+    return !(c.venue === 'curve' && p !== null && p.known && p.amount <= 0);
+  });
+}

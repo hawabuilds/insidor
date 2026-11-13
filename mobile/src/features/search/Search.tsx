@@ -8,6 +8,10 @@
  * server exactly as typed (less a ticker's dollar sign): the server is what reads an address out
  * of a link, so the screen refuses nothing longer than a word.
  *
+ * A token nobody has traded, or with no market cap at all, is left out (the owner, 13 Nov): a list of
+ * dead launches buries the coin people are looking for. A pasted address is always shown, since it
+ * names the one coin asked for. A narrative or post without a picture shows no empty box.
+ *
  * ★ SEARCH IS A LIST, NEVER A LINK. A narrative row opens its own page. A post row opens the
  * post where it was posted, and carries no narrative and no coin, so there is no Buy here. A
  * coin row opens its token page, and says "Matched to this narrative" only when that
@@ -29,7 +33,7 @@ import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { GAP_LINE, isAddress, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
+import { GAP_LINE, isAddress, marketLine, orderCoins, showingTop, tradedCoins, type CoinOrder } from './search-view.ts';
 import { useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
@@ -98,7 +102,9 @@ function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: b
   const [all, setAll] = useState({ tokens: false, narratives: false, posts: false });
   const open = (k: keyof typeof all) => setAll((a) => ({ ...a, [k]: true }));
   const few = <T,>(items: readonly T[], k: keyof typeof all): readonly T[] => (all[k] ? items : items.slice(0, SHOWN));
-  const { narratives, coins } = results;
+  const { narratives } = results;
+  /* A coin nobody has traded, or with no market cap at all, is left out, unless it is the address pasted. */
+  const coins = results.coins.kind === 'read' ? { ...results.coins, items: tradedCoins(results.coins.items, results.term) } : results.coins;
   /* A post the owner just hid is left out now; the next projection leaves it out of search too. */
   const { hidden } = useOwnerState();
   const posts = { ...results.posts, items: withoutHidden(results.posts.items, hidden, (p) => p.id) };
@@ -120,7 +126,7 @@ function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: b
         ) : null}
       </div>
       {coins.kind === 'unavailable' ? <p className={styles['hint']}>— coins could not be searched just now.</p> : null}
-      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : 'No coin on pump.fun carries this name.'}</p> : null}
+      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : results.coins.kind === 'read' && results.coins.items.length > 0 ? 'No coin with this name has been traded.' : 'No coin on pump.fun carries this name.'}</p> : null}
       {coins.kind === 'read' && coins.sourcesMissing > 0 ? <p className={styles['hint']}>One market could not be read, so this list may be short.</p> : null}
       {coins.kind === 'read' ? few(orderCoins(coins.items, order), 'tokens').map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
       {coins.kind === 'read' ? <ShowAll n={coins.items.length} shown={!all.tokens} what="tokens" onOpen={() => open('tokens')} /> : null}
@@ -153,7 +159,7 @@ function ShowAll({ n, shown, what, onOpen }: { n: number; shown: boolean; what: 
 function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
   const body = (
     <>
-      <Thumb url={n.thumbUrl} size={48} />
+      <Thumb url={n.thumbUrl} size={48} hideEmpty />
       <span className={styles['text']}>
         <b>{n.title}</b>
         <span className={styles['meta']}>
@@ -193,7 +199,7 @@ function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
 function PostRow({ p, now }: { p: SearchPost; now: number }) {
   const body = (
     <>
-      <Thumb url={p.thumbUrl} size={48} platform={platformOf(p.sourceLabel)} platformLabel={p.sourceLabel} />
+      <Thumb url={p.thumbUrl} size={48} platform={platformOf(p.sourceLabel)} platformLabel={p.sourceLabel} hideEmpty />
       <span className={styles['text']}>
         <span className={styles['excerpt']}>{p.excerpt}</span>
         <span className={styles['meta']}>
