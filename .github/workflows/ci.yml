@@ -15,8 +15,11 @@ on:
   push:
   pull_request:
 
+# On master every commit gets its own group, so a quick second push never cancels the first's
+# run and every commit on the branch ends with its own result rather than a "cancelled" mark.
+# Elsewhere (a pull request, a side branch) a newer push still replaces the older run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
