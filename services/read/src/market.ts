@@ -168,7 +168,28 @@ async function marketOf(mint: string, timeframe: Timeframe, deps: MarketDeps): P
   return { pool: source?.pool ?? own.pool, candles: own.candles, trades: source?.trades ?? null };
 }
 
+/** A read slower than this is logged: the page's first draw waits on it. */
+const SLOW_READ_MS = 2_000;
+/** One line per coin per this long: a page polls every few seconds, and the first line says enough. */
+const NOTE_EVERY_MS = 60_000;
+const noted = new Map<string, number>();
+
+/**
+ * ★ A READ THAT LEFT THE PAGE WAITING OR EMPTY LEAVES A LINE (the owner, 2026-11-13: Ground "took a
+ * long while to load", and nothing in the log could say why). Which parts came back unread and how
+ * long the read took, so the next slow open is measured rather than guessed at.
+ */
+function noteRead(deps: MarketDeps, assetKey: string, timeframe: Timeframe, ms: number, parts: { readonly candles: boolean; readonly trades: boolean }): void {
+  if (ms < SLOW_READ_MS && parts.candles && parts.trades) return;
+  const now = Date.now();
+  if (now - (noted.get(assetKey) ?? 0) < NOTE_EVERY_MS) return;
+  noted.set(assetKey, now);
+  if (noted.size > 500) noted.delete(noted.keys().next().value ?? '');
+  deps.log.info('market read slow or partial', { asset: assetKey, tf: timeframe, ms, candles: parts.candles ? 'read' : 'unread', trades: parts.trades ? 'read' : 'unread' });
+}
+
 export async function coinMarket(assetKey: string, rawTf: string | null, deps: MarketDeps): Promise<MarketReply | null> {
+  const started = Date.now();
   const timeframe = (TIMEFRAMES as readonly string[]).includes(rawTf ?? '') ? (rawTf as Timeframe) : rawTf === null ? '1m' : null;
   if (timeframe === null) return json(400, { error: 'bad request' });
   const rows = await deps.db.query(ASSET_SQL, [assetKey]);
@@ -213,6 +234,7 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
         progressWhy = 'not_read_yet';
       }
     }
+    noteRead(deps, assetKey, timeframe, Date.now() - started, { candles: market.candles !== null, trades: market.trades !== null });
     return json(200, {
       kind: 'read',
       timeframe,
@@ -236,7 +258,7 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
       coin: coinOf(market.pool, mint),
     });
   } catch (e) {
-    deps.log.error('market data unavailable', { asset: assetKey, err: e instanceof Error ? e.message : String(e) });
+    deps.log.error('market data unavailable', { asset: assetKey, ms: Date.now() - started, err: e instanceof Error ? e.message : String(e) });
     return json(200, { kind: 'unavailable', timeframe });
   }
 }

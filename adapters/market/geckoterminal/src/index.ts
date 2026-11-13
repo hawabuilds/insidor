@@ -64,6 +64,15 @@ const CANDLE_LIMIT = 1_000;
  * paid key's.
  */
 const CALLS_PER_MINUTE: Record<GeckoPlan, number> = { free: 25, demo: 25, pro: 250 };
+/**
+ * ★ A PERSON BEFORE A ROUND OF READING AHEAD (the owner, 2026-11-13: Ground took a long while to open
+ * and said its trades could not be read). A background read — services/read market-warm.ts reading
+ * For You's coins ahead — is sent only while at least this share of the minute is still unspent, so
+ * a token page somebody opens always finds the rest. On the free plan (25 a minute) one warm round of
+ * 40 coins used to spend the whole minute, and every coin it did not cover answered "could not be
+ * read" until the next one.
+ */
+const PERSON_SHARE = 0.5;
 const MINUTE_MS = 60_000;
 
 /**
@@ -97,9 +106,14 @@ export interface CoinMarket {
   readonly trades: readonly Trade[] | null;
 }
 
+/** How a read is asked: `background` for one nobody is waiting on, which yields the minute to people. */
+export interface ReadOptions {
+  readonly background?: boolean;
+}
+
 export interface MarketData extends CoinSearch {
   /** The coin's primary pool, its candles for one view, and its latest trades. */
-  coin(mint: string, timeframe: Timeframe): Promise<CoinMarket>;
+  coin(mint: string, timeframe: Timeframe, options?: ReadOptions): Promise<CoinMarket>;
   /**
    * The coin's primary pool alone, kept as `coin` keeps it (the same key, so either warms the other):
    * for a token page whose candles and trades come from elsewhere but which still names its pool.
@@ -141,11 +155,12 @@ export function geckoterminal(config: GeckoConfig): MarketData {
   const kept = new Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>();
   const sent: number[] = [];
 
-  /** Whether one more request fits in this minute; if it does, it is counted. */
-  function admit(): boolean {
+  /** Whether one more request fits in this minute; if it does, it is counted. A background one fits only in the share not kept for people. */
+  function admit(background: boolean): boolean {
     const now = config.now();
     while (sent.length > 0 && now - (sent[0] ?? 0) >= MINUTE_MS) sent.shift();
-    if (sent.length >= CALLS_PER_MINUTE[plan]) return false;
+    const limit = CALLS_PER_MINUTE[plan];
+    if (sent.length >= (background ? Math.floor(limit * (1 - PERSON_SHARE)) : limit)) return false;
     sent.push(now);
     return true;
   }
@@ -186,8 +201,8 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     }
   }
 
-  async function get(path: string): Promise<unknown> {
-    if (!admit()) throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, 'held back: this minute\'s requests are spent');
+  async function get(path: string, background = false): Promise<unknown> {
+    if (!admit(background)) throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, 'held back: this minute\'s requests are spent');
     let response: Response;
     try {
       response = await config.fetch(`${config.baseUrl.replace(/\/+$/, '')}${path}`, { headers, signal: AbortSignal.timeout(config.timeoutMs) });
@@ -235,19 +250,20 @@ export function geckoterminal(config: GeckoConfig): MarketData {
       return cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
     },
 
-    async coin(mint, timeframe) {
-      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
+    async coin(mint, timeframe, options) {
+      const background = options?.background === true;
+      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`, background))));
       if (pool === null) return { pool: null, candles: [], trades: [] };
       const spec = CANDLES[timeframe];
       const part = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
       const [candles, trades] = await Promise.all([
         part(
         cached(`candles:${pool.address}:${timeframe}`, spec.keepMs, async () => {
-          const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/${spec.unit}?aggregate=${spec.aggregate}&limit=${CANDLE_LIMIT}&token=${mint}&currency=usd`);
+          const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/${spec.unit}?aggregate=${spec.aggregate}&limit=${CANDLE_LIMIT}&token=${mint}&currency=usd`, background);
           const rows = readCandles(raw);
           return spec.mergeMs === null ? rows : aggregate(rows, spec.mergeMs);
         })),
-        part(cached(`trades:${pool.address}`, TRADES_KEEP_MS, async () => readTrades(await get(`/networks/solana/pools/${pool.address}/trades`), mint))),
+        part(cached(`trades:${pool.address}`, TRADES_KEEP_MS, async () => readTrades(await get(`/networks/solana/pools/${pool.address}/trades`, background), mint))),
       ]);
       return { pool, candles, trades };
     },

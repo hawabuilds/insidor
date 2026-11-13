@@ -7,9 +7,11 @@
  * on, so the first tap finds them kept (the adapter serves a kept answer at once and refreshes it
  * behind; adapters/market/geckoterminal index.ts `cached`).
  *
- * ★ UNDER THE SOURCE'S LIMIT, BY CONSTRUCTION. At most `MAX_COINS` coins a round, one after another,
- * and the adapter's own per-minute gate holds back anything past it — a held-back read here costs a
- * phone nothing, it only means that coin waits for the next round.
+ * ★ UNDER THE SOURCE'S LIMIT, BY CONSTRUCTION, AND NEVER IN A PERSON'S WAY. At most `MAX_COINS` coins
+ * a round, one after another, each read as `background`: the adapter sends it only while half the
+ * minute is still unspent, so a held-back read here only means that coin waits for the next round.
+ * Read without the flag (as it was until 2026-11-13), a round spent the free plan's whole minute and
+ * a coin somebody opened then — Ground, at 21:35 — answered "could not be read".
  *
  * What breaks if changed carelessly: the timeframe. It must be the one the phone opens on (mobile
  * features/token/chart-view.ts `defaultView` and `allTimeframe`), or the kept answer is for a view
@@ -71,7 +73,7 @@ export function createMarketWarm(deps: { readonly db: Db; readonly log: Logger; 
         const address = typeof r['address'] === 'string' ? r['address'] : null;
         if (address === null) continue;
         const minted = typeof r['minted_ms'] === 'number' && Number.isFinite(r['minted_ms']) ? r['minted_ms'] : null;
-        await deps.market.coin(address, openingTimeframe(minted, now())).then(() => (read += 1), () => undefined);
+        await deps.market.coin(address, openingTimeframe(minted, now()), { background: true }).then(() => (read += 1), () => undefined);
       }
     } catch (e) {
       deps.log.info('market warm: coins could not be listed; tried next round', { err: e instanceof Error ? e.message : String(e) });

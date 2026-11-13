@@ -58,6 +58,21 @@ test('★ it stays under the free limit: past 25 requests a minute, nothing more
   assert.ok(heldBack > 0, 'a coin with nothing kept, past the cap, is unavailable rather than sent');
 });
 
+test('★ a person before a round of reading ahead: background reads stop at half the minute, a person still gets the rest', async () => {
+  let sent = 0;
+  const fetch = (async (url: string) => {
+    sent += 1;
+    return new Response(JSON.stringify(url.includes('/tokens/') ? POOLS : url.includes('/ohlcv/') ? OHLCV_5M : TRADES), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+  const market = geckoterminal({ baseUrl: 'https://gecko.invalid', fetch, timeoutMs: 1_000, now: () => 1 });
+  for (let i = 0; i < 30; i++) await market.coin(`Ahead${i}`, '5m', { background: true }).catch(() => undefined);
+  assert.equal(sent, 12, 'the read-ahead spends at most half of the free 25');
+  const opened = await market.coin(GRADUATED_MINT, '5m');
+  assert.equal(sent, 13, 'the coin somebody opens is still sent (its pool; the fixture pool\'s candles and trades are kept)');
+  assert.notEqual(opened.candles, null);
+  assert.notEqual(opened.trades, null);
+});
+
 test('★ with a key, the same paths go to CoinGecko\'s on-chain API with the key in a header; without one, none is sent', async () => {
   const seen: { url: string; headers: Record<string, string> }[] = [];
   const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
