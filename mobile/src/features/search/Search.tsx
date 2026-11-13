@@ -1,7 +1,8 @@
 /**
  * THE SEARCH TAB. Type a ticker or a name; see the people whose handle or name holds it, as a
  * strip you swipe with Follow on each (PeopleStrip.tsx), then our narratives and posts that mention
- * it, and the coins on pump.fun that carry it, read live from the market when you type. Paste a coin's
+ * it, and the coins on pump.fun that carry it, read live from the market when you type. The order
+ * is the owner's pick (option B, 13 Nov): people, then tokens, then narratives, then posts. Paste a coin's
  * address, or its pump.fun or dexscreener link, and that coin is the hit — even one Insidor never
  * saw — and its row opens the token page, with Buy where trading is on. The term goes to the
  * server exactly as typed (less a ticker's dollar sign): the server is what reads an address out
@@ -40,6 +41,8 @@ import styles from './search.module.css';
 const SETTLE_MS = 350;
 /** The server refuses shorter terms; the screen does not send them. */
 const MIN_TERM = 2;
+/** Tokens shown before "Show all", so narratives and posts stay in reach (option B's short list). */
+const TOKENS_SHOWN = 5;
 
 export function Search() {
   const [typed, setTyped] = useState('');
@@ -92,6 +95,7 @@ function Results({ term }: { term: string }) {
 function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: boolean }) {
   const now = useNow();
   const [order, setOrder] = useState<CoinOrder>('cap');
+  const [allTokens, setAllTokens] = useState(false);
   const { narratives, coins } = results;
   /* A post the owner just hid is left out now; the next projection leaves it out of search too. */
   const { hidden } = useOwnerState();
@@ -103,6 +107,23 @@ function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: b
   return (
     <>
       {showingTop(results) ? <p className={styles['top']}>Showing top results</p> : null}
+
+      <div className={styles['sectionRow']}>
+        <h2 className={styles['section']}>Tokens</h2>
+        {coins.kind === 'read' && coins.items.length > 1 ? (
+          <div className={styles['order']} role="group" aria-label="Order coins by">
+            <button type="button" aria-pressed={order === 'cap'} className={order === 'cap' ? styles['on'] : ''} onClick={() => setOrder('cap')}>Market cap</button>
+            <button type="button" aria-pressed={order === 'new'} className={order === 'new' ? styles['on'] : ''} onClick={() => setOrder('new')}>Newest</button>
+          </div>
+        ) : null}
+      </div>
+      {coins.kind === 'unavailable' ? <p className={styles['hint']}>— coins could not be searched just now.</p> : null}
+      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : 'No coin on pump.fun carries this name.'}</p> : null}
+      {coins.kind === 'read' && coins.sourcesMissing > 0 ? <p className={styles['hint']}>One market could not be read, so this list may be short.</p> : null}
+      {coins.kind === 'read' ? orderCoins(coins.items, order).slice(0, allTokens ? undefined : TOKENS_SHOWN).map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
+      {coins.kind === 'read' && !allTokens && coins.items.length > TOKENS_SHOWN ? (
+        <button type="button" className={styles['more']} onClick={() => setAllTokens(true)}>Show all {coins.items.length} tokens</button>
+      ) : null}
 
       {narratives.items.length > 0 ? (
         <>
@@ -118,19 +139,6 @@ function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: b
         </>
       ) : null}
 
-      <div className={styles['sectionRow']}>
-        <h2 className={styles['section']}>Coins on pump.fun</h2>
-        {coins.kind === 'read' && coins.items.length > 1 ? (
-          <div className={styles['order']} role="group" aria-label="Order coins by">
-            <button type="button" aria-pressed={order === 'cap'} className={order === 'cap' ? styles['on'] : ''} onClick={() => setOrder('cap')}>Market cap</button>
-            <button type="button" aria-pressed={order === 'new'} className={order === 'new' ? styles['on'] : ''} onClick={() => setOrder('new')}>Newest</button>
-          </div>
-        ) : null}
-      </div>
-      {coins.kind === 'unavailable' ? <p className={styles['hint']}>— coins could not be searched just now.</p> : null}
-      {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : 'No coin on pump.fun carries this name.'}</p> : null}
-      {coins.kind === 'read' && coins.sourcesMissing > 0 ? <p className={styles['hint']}>One market could not be read, so this list may be short.</p> : null}
-      {coins.kind === 'read' ? orderCoins(coins.items, order).map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
     </>
   );
 }

@@ -183,16 +183,17 @@
   text-underline-offset: 2px;
 }
 
-/* Search's people strip (PeopleStrip.tsx): fixed-width cards in a row that swipes sideways. */
+/* Search's people strip (PeopleStrip.tsx), as mockup B: bare round faces in a row that swipes
+   sideways, an @handle and a small Follow under each, no card around them. */
 .people {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   margin: 0;
   padding: 0 var(--gutter) 4px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
-  /* Without this the snap lines the first card up with the screen's edge, past the gutter. */
+  /* Without this the snap lines the first face up with the screen's edge, past the gutter. */
   scroll-padding-inline: var(--gutter);
   scrollbar-width: none;
   list-style: none;
@@ -211,54 +212,39 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-sizing: border-box;
-  width: 132px;
-  padding: 14px 10px 12px;
-  border: 1px solid var(--card-line);
-  border-radius: var(--r-card);
-  background: var(--card);
+  width: 72px;
 }
 
 .personLink {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   width: 100%;
   color: inherit;
-  text-align: center;
   text-decoration: none;
-}
-
-.personLink b {
-  overflow: hidden;
-  max-width: 100%;
-  margin-top: 8px;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .personLink span {
   overflow: hidden;
   max-width: 100%;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The Follow pill as the Feed draws it: solid purple, Following an outline on the card. */
+/* A small Follow pill: solid purple, Following an outline, as the Feed draws them. */
 .followPill {
-  width: 100%;
-  height: 32px;
-  margin-top: 10px;
+  height: 26px;
+  margin-top: 6px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
   background: var(--brand);
   color: #fff;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -266,4 +252,17 @@
   background: var(--card);
   box-shadow: inset 0 0 0 1px var(--follow-line);
   color: var(--text-1);
+}
+
+/* "Show all N tokens": a quiet line under the first few, not a button that competes with Buy. */
+.more {
+  display: block;
+  margin: 0 var(--gutter) 4px;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
 }

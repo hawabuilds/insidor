@@ -1,6 +1,7 @@
 /**
- * SEARCH'S PEOPLE STRIP: the people whose handle or name matches the term, as a row of faces you
- * swipe sideways, each with Follow. It sits above the narratives, posts and coins (option B, chosen
+ * SEARCH'S PEOPLE STRIP: the people whose handle or name matches the term, as a row of bare round
+ * faces you swipe sideways, each with its @handle and a small Follow under it, as mockup B draws
+ * it: no card around a face, so the row reads as people and not as more results. It sits above the narratives, posts and coins (option B, chosen
  * by the owner 13 Nov), so a search for a person shows them first without pushing the coins away.
  *
  * Separate from Search.tsx because it reads a different service (services/social, not the read
@@ -56,11 +57,9 @@ function PersonCard({ p }: { p: FoundPerson }) {
   };
   return (
     <div className={styles['person']}>
-      <a className={styles['personLink']} href={profileHref(p)}>
+      <a className={styles['personLink']} href={profileHref(p)} aria-label={`${nameOf(p)}, ${followers === 1 ? '1 follower' : `${followers} followers`}`}>
         <Avatar name={nameOf(p)} seed={p.userId} src={p.pictureUrl} file={p.pictureFile ?? null} size={56} />
-        <b>{nameOf(p)}</b>
-        <span>{p.handle !== null ? `@${p.handle}` : '—'}</span>
-        <span>{followers === 1 ? '1 follower' : `${followers} followers`}</span>
+        <span>{p.handle !== null ? `@${p.handle}` : nameOf(p)}</span>
       </a>
       <button type="button" className={`${styles['followPill']} ${on ? styles['on'] : ''}`} aria-pressed={on} onClick={() => void toggle()}>
         {on ? 'Following' : 'Follow'}
