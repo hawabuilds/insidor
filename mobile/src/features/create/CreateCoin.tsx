@@ -36,6 +36,8 @@
 import { noteLaunchedPicture } from '../../shared/launched-picture.ts';
 import { useEffect, useState } from 'react';
 
+import { posthog } from '../../posthog.ts';
+
 import {
   buildLaunchTx, confirmLaunch, fetchTickerCoins, imageAsDataUrl, previewLaunch,
   type LaunchPreview, type LaunchRules, type NameIdea, type SameNameCoins,
@@ -349,9 +351,19 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       setOutcome(done);
       return;
     }
+    let confirmed = false;
     for (let i = 0; i < CONFIRM_TRIES; i += 1) {
-      if (await confirmLaunch({ wallet: account, signature: done.ref, mint, storyId: from.storyId ?? null, ...pickOf(f, from.postId ?? null) })) break;
+      if (await confirmLaunch({ wallet: account, signature: done.ref, mint, storyId: from.storyId ?? null, ...pickOf(f, from.postId ?? null) })) {
+        confirmed = true;
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, CONFIRM_GAP_MS));
+    }
+    if (confirmed) {
+      posthog.capture('coin_created', {
+        has_dev_buy: dev > 0n,
+        has_story: from.storyId !== null && from.storyId !== undefined,
+      });
     }
     setOutcome({ kind: 'created', mint });
   };

@@ -20,6 +20,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { fetchPortfolio } from '../../shared/api/index.ts';
 import type { RisingPost } from '../../shared/api/index.ts';
 import { autoBuys, useAutoBuys, type Speed } from '../../shared/auto-buys.ts';
@@ -99,6 +100,7 @@ export function AutoBuySheet({ post, onClose }: { post: RisingPost; onClose: () 
     setPhase('saving');
     try {
       await autoBuys.save(post.id, { lamports, maxCapUsd: cap, pvpCoins: coins, speed, slippageBps: slippage, activeMs });
+      posthog.capture('auto_buy_saved', { is_update: existing !== null, pvp_enabled: coins > 1 });
       /* The server watched the post with it (services/notify auto-buy.ts): the star fills here too. */
       if (!watchedPosts.ids().includes(post.id)) void watchedPosts.set(post.id, true).catch(() => undefined);
       setPhase('saved');
@@ -114,6 +116,7 @@ export function AutoBuySheet({ post, onClose }: { post: RisingPost; onClose: () 
   const turnOff = async () => {
     try {
       await autoBuys.off(post.id);
+      posthog.capture('auto_buy_disabled');
       onClose();
       toast('Auto buy off');
     } catch (e) {

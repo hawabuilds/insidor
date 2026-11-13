@@ -34,6 +34,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { buildTrade, fetchHolding, fetchPortfolio, fetchSellCard, fetchTradeQuote, type TradeLimits, type TradeQuote } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { formatPrice } from '../../shared/format/number.ts';
@@ -240,7 +241,10 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, subline = nul
         decode: fromBase64,
       });
       setStatus({ kind: 'done', outcome });
-      if (outcome.kind === 'sent' && q.side === 'sell') openWhenLanded(outcome.ref);
+      if (outcome.kind === 'sent') {
+        posthog.capture('trade_submitted', { side: q.side });
+        if (q.side === 'sell') openWhenLanded(outcome.ref);
+      }
     } catch {
       setStatus({ kind: 'done', outcome: { kind: 'failed' } });
     }

@@ -21,6 +21,7 @@
 
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { fetchComments, hideComment, likeComment, postComment, reportComment, type Comment } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -155,6 +156,7 @@ function Card({ c, compact = false, replyCount, likesOpen, onReply, onChanged }:
   const like = async () => {
     try {
       const r = await likeComment(c.id, !liked);
+      posthog.capture('comment_liked', { action: liked ? 'removed' : 'added' });
       setLiked(!liked);
       setLikes(r.likes);
     } catch (e) {
@@ -260,6 +262,7 @@ function Composer({ subject, about, replyTo, box, onCancelReply, onPosted }: {
     setBusy(true);
     try {
       await postComment({ subject, parentId: replyTo?.id ?? null, body: trimmed, proofUrl: proof.trim() === '' ? null : proof.trim() });
+      posthog.capture('comment_posted', { is_reply: replyTo !== null, has_proof_link: proof.trim() !== '' });
       setBody('');
       setProof('');
       setWithProof(false);

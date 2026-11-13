@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type AlertSettings as Settings, type AlertSwitch } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -136,6 +137,7 @@ function Body({ initial }: { initial: Settings }) {
     setTesting(true);
     const r = await sendTestPush().catch(() => ({ sent: 0, why: 'Notifications could not be reached just now.' }));
     setTesting(false);
+    if (r.sent > 0) posthog.capture('push_test_sent', { recipient_count: r.sent });
     toast(r.sent > 0 ? 'Test sent' : 'Nothing sent', r.why ?? 'Check your phone now.');
     setS(await fetchAlertSettings().catch(() => s));
   };

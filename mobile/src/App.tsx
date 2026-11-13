@@ -67,6 +67,7 @@ import { noteShown, pageWrapper, tabWrapper } from './shared/under-page.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 import { deviceOf, noteTap, startTapSending } from './shared/tap-log.ts';
 import { LateFlex } from './features/trade/late-flex.tsx';
+import { posthog } from './posthog.ts';
 import { scroller, scrollTopNow, scrollToY } from './shared/scroller.ts';
 
 /*
@@ -278,6 +279,24 @@ export function App() {
   const { wallet, state } = useWallet();
   const [entered, setEntered] = useState(hasEntered);
   const signedIn = state.kind === 'connected';
+  /* Analytics know a signed-in person by their sign-in handle, never their wallet address: the
+     address would tie every on-chain move they make to how they use the app. Reset on sign-out,
+     and before another person signs in on this browser. */
+  const account = signedIn ? (wallet?.identity()?.handle?.toLowerCase() ?? null) : null;
+  const identifiedAccount = useRef<string | null>(null);
+  useEffect(() => {
+    if (account === null) {
+      if (identifiedAccount.current !== null) {
+        posthog.reset();
+        identifiedAccount.current = null;
+      }
+      return;
+    }
+    if (identifiedAccount.current === account) return;
+    if (identifiedAccount.current !== null) posthog.reset();
+    posthog.identify(account);
+    identifiedAccount.current = account;
+  }, [account]);
   /* Signed in on a browser never let in before: does this person have access (invite only)? */
   const access = useAccess(signedIn, entered);
   /* Let in on this browser for the first time: where is this member in sign-up (features/onboarding)? */

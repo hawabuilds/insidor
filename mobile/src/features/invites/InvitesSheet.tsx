@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { fetchMyInvites, type MyInvites } from '../../shared/api/invites.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -44,6 +45,7 @@ export function InvitesSheet({ onClose, onRead }: { readonly onClose: () => void
   const copy = async (text: string, what: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      if (what === 'Invite link') posthog.capture('invite_shared', { method: 'copied_link' });
       toast(`${what} copied`);
     } catch {
       toast("Couldn't copy", text);
@@ -54,6 +56,7 @@ export function InvitesSheet({ onClose, onRead }: { readonly onClose: () => void
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title: 'Join me on Insidor', text: `Catch the meme before the coin. My invite code: ${code}`, url });
+        posthog.capture('invite_shared', { method: 'native_share' });
         return;
       } catch {
         /* Closed without sharing: nothing to do. */

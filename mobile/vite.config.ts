@@ -32,6 +32,7 @@ import { sampleSwitchProblem } from './src/shared/api/sample-switch.ts';
 
 /* The repository root: where `.env.local` lives for every package. */
 const ENV_DIR = fileURLToPath(new URL('..', import.meta.url));
+const PROJECT_ENV_DIR = fileURLToPath(new URL('.', import.meta.url));
 
 /** `/api/<name>/…` on this server → the service on localhost, prefix removed. */
 const LOCAL_SERVICES = Object.fromEntries(
@@ -72,5 +73,12 @@ export default defineConfig(({ mode }) => {
      fails in its build log rather than going live. */
   const problem = sampleSwitchProblem(loadEnv(mode, ENV_DIR, 'VITE_'));
   if (problem !== null) throw new Error(`build refused: ${problem}`);
-  return config;
+
+  const posthogEnv = loadEnv(mode, PROJECT_ENV_DIR, 'VITE_POSTHOG_');
+  const define = Object.fromEntries(
+    Object.entries(posthogEnv)
+      .filter(([, value]) => value.trim() !== '')
+      .map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
+  );
+  return { ...config, define };
 });

@@ -71,6 +71,10 @@ const ALLOWED_SPECIFIERS = [
      the token page pans, zooms and scrubs like Trador's does. Nothing in it builds, signs or
      sends, and the fragment ban in test 4 still applies to it. */
   'lightweight-charts',
+  /* Product analytics in the phone app (mobile/src/posthog.ts): screens, taps and named actions,
+     sent to PostHog. It builds, signs and sends nothing, and the fragment ban in test 4 still
+     applies to it. */
+  'posthog-js',
 ];
 
 const isAllowed = (specifier: string): boolean =>
@@ -220,7 +224,8 @@ test('★ 2 — gaining a wallet added no third-party package to the app', () =>
  * package in a browser bundle that the test above was written to make visible.
  */
 test('★ 2b — the phone app adds no third-party package beyond the embedded wallet', () => {
-  const allowed = ['@insidor/contracts', '@insidor/wallet', '@insidor/wallet-embedded', 'lightweight-charts', 'react', 'react-dom'];
+  /* posthog-js: product analytics, allowed in test 3 above for the reason given there. */
+  const allowed = ['@insidor/contracts', '@insidor/wallet', '@insidor/wallet-embedded', 'lightweight-charts', 'posthog-js', 'react', 'react-dom'];
   for (const name of Object.keys(manifest('mobile').dependencies ?? {})) {
     assert.ok(allowed.includes(name), `mobile depends on "${name}", which the desktop app does not`);
   }

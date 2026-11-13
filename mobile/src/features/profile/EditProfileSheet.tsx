@@ -16,6 +16,7 @@
 
 import { useRef, useState } from 'react';
 
+import { posthog } from '../../posthog.ts';
 import { clearProfileImage, saveProfile, uploadProfileImage, type ProfileCard } from '../../shared/api/people.ts';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { facesFileUrl } from '../../shared/ui/usePosterPic.ts';
@@ -54,6 +55,7 @@ export function EditProfileSheet({ card, signInName, onClose, onSaved }: {
         return;
       }
       const stored = await uploadProfileImage(kind, prepared.dataUrl);
+      posthog.capture('profile_image_updated', { image_kind: kind, action: 'uploaded' });
       if (kind === 'picture') setPictureFile(stored);
       else setBannerFile(stored);
       onSaved();
@@ -69,6 +71,7 @@ export function EditProfileSheet({ card, signInName, onClose, onSaved }: {
     setBusy(kind);
     try {
       await clearProfileImage(kind);
+      posthog.capture('profile_image_updated', { image_kind: kind, action: 'cleared' });
       if (kind === 'picture') setPictureFile(null);
       else setBannerFile(null);
       onSaved();
@@ -84,6 +87,7 @@ export function EditProfileSheet({ card, signInName, onClose, onSaved }: {
     setBusy('save');
     try {
       await saveProfile({ name: name.trim(), bio: bio.trim() });
+      posthog.capture('profile_updated', { has_name: name.trim() !== '', has_bio: bio.trim() !== '' });
       onSaved();
       onClose();
     } catch (e) {

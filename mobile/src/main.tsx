@@ -25,6 +25,8 @@ import { createRoot } from 'react-dom/client';
 
 /* The port alone (no SDK): the vendor's code arrives later, in wallet-vendor.tsx. */
 import { embeddedWallet } from '@insidor/wallet-embedded/store.ts';
+import { posthog } from './posthog.ts';
+import { posthogLog } from './posthog-log.ts';
 import { hasEntered } from './features/landing/entered.ts';
 import { takeInviteLink } from './features/invites/invite-code.ts';
 import { afterFirstScreen } from './shared/preload.ts';
@@ -68,9 +70,13 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   /* A newer build seen while the kept one stood in: taken at the next return to the app, unless that return is a tapped notification opening its screen. */
   listenForNewVersion(tapInHand);
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
-      console.warn('service worker registration failed', error);
-    });
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(
+      () => posthogLog.info('service_worker_registered', { scope: 'root' }),
+      (error: unknown) => {
+        posthogLog.warn('service_worker_registration_failed', { stage: 'registration' });
+        console.warn('service worker registration failed', error);
+      },
+    );
   });
 }
 
@@ -123,6 +129,8 @@ class Crashed extends Component<{ children: ReactNode }, { error: string | null 
     return { error: e instanceof Error ? e.message : String(e) };
   }
   override componentDidCatch(e: unknown) {
+    posthog.captureException(e);
+    posthogLog.error('application_render_failed', { boundary: 'root' });
     console.error('app crashed', e);
   }
   override render() {
