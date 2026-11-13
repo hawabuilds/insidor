@@ -97,6 +97,14 @@ export interface GeckoConfig {
   readonly fetch: typeof globalThis.fetch;
   readonly timeoutMs: number;
   readonly now: () => number;
+  /**
+   * ★ WHERE A COIN'S POOL IS FOUND, WHEN NOT HERE (the owner, 2026-11-13: 364's chart failed on this
+   * vendor's 429 for its pool lookup). Set, `coin` and `pool` ask it first and this vendor only when it
+   * fails or names no pool, so a token page spends this vendor's minute on candles and trades alone. It
+   * must name the pool by the same on-chain address and in this vendor's dex ids (`pump-fun` for a
+   * curve). `history` never uses it: it keeps this vendor's own choice of pool.
+   */
+  readonly poolOf?: (mint: string) => Promise<Pool | null>;
 }
 
 export interface CoinMarket {
@@ -219,6 +227,17 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     return body;
   }
 
+  /* A token page's pool: `poolOf` first when set, this vendor when it fails or names none; kept either way. */
+  function coinPool(mint: string, background: boolean): Promise<Pool | null> {
+    return cached(`pool:${mint}`, POOL_KEEP_MS, async () => {
+      if (config.poolOf !== undefined) {
+        const found = await config.poolOf(mint).catch(() => null);
+        if (found !== null) return found;
+      }
+      return primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`, background)));
+    });
+  }
+
   return {
     async search(term) {
       const key = term.trim().toLowerCase();
@@ -247,12 +266,12 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     },
 
     pool(mint) {
-      return cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`))));
+      return coinPool(mint, false);
     },
 
     async coin(mint, timeframe, options) {
       const background = options?.background === true;
-      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1&include=${POOL_INCLUDE}`, background))));
+      const pool = await coinPool(mint, background);
       if (pool === null) return { pool: null, candles: [], trades: [] };
       const spec = CANDLES[timeframe];
       const part = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);

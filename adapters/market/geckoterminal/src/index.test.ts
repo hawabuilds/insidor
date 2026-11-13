@@ -73,6 +73,46 @@ test('★ a person before a round of reading ahead: background reads stop at hal
   assert.notEqual(opened.trades, null);
 });
 
+test('★ a pool finder, when set, names the coin\'s pool: this vendor is asked for candles and trades only', async () => {
+  const asked: string[] = [];
+  const fetch = (async (url: string) => {
+    asked.push(url);
+    return new Response(JSON.stringify(url.includes('/tokens/') ? POOLS : url.includes('/ohlcv/') ? OHLCV_5M : TRADES), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+  const found = { address: 'PoolFromElsewhere', dex: 'pumpswap', reserveUsd: 1_000 };
+  const market = geckoterminal({ baseUrl: 'https://gecko.invalid', fetch, timeoutMs: 1_000, now: () => 1, poolOf: async () => found });
+  const coin = await market.coin(GRADUATED_MINT, '5m');
+  assert.equal(coin.pool?.address, 'PoolFromElsewhere');
+  assert.equal(asked.some((u) => u.includes('/tokens/')), false, 'no pool lookup here');
+  assert.ok(asked.some((u) => u.includes('/pools/PoolFromElsewhere/ohlcv/')));
+  assert.ok(asked.some((u) => u.includes('/pools/PoolFromElsewhere/trades')));
+  assert.equal((await market.pool('OtherMint'))?.address, 'PoolFromElsewhere', '`pool` asks it too');
+});
+
+test('★ the pool finder failing or naming no pool: this vendor finds the pool, as before', async () => {
+  for (const poolOf of [async () => { throw new Error('down'); }, async () => null]) {
+    const asked: string[] = [];
+    const fetch = (async (url: string) => {
+      asked.push(url);
+      return new Response(JSON.stringify(url.includes('/tokens/') ? POOLS : url.includes('/ohlcv/') ? OHLCV_5M : TRADES), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const coin = await geckoterminal({ baseUrl: 'https://gecko.invalid', fetch, timeoutMs: 1_000, now: () => 1, poolOf }).coin(GRADUATED_MINT, '5m');
+    assert.equal(coin.pool?.dex, 'pumpswap');
+    assert.ok(asked.some((u) => u.includes('/tokens/')));
+  }
+});
+
+test('history keeps this vendor\'s own pool, whatever finder is set', async () => {
+  const asked: string[] = [];
+  const fetch = (async (url: string) => {
+    asked.push(url);
+    return new Response(JSON.stringify(url.includes('/tokens/') ? POOLS : OHLCV_5M), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+  await geckoterminal({ baseUrl: 'https://gecko.invalid', fetch, timeoutMs: 1_000, now: () => 1, poolOf: async () => ({ address: 'Elsewhere', dex: 'x', reserveUsd: 1 }) }).history(GRADUATED_MINT, 1_000_000, 1, 10);
+  assert.ok(asked.some((u) => u.includes('/tokens/')));
+  assert.equal(asked.some((u) => u.includes('Elsewhere')), false);
+});
+
 test('★ with a key, the same paths go to CoinGecko\'s on-chain API with the key in a header; without one, none is sent', async () => {
   const seen: { url: string; headers: Record<string, string> }[] = [];
   const fetch = (async (url: string, init: { headers: Record<string, string> }) => {

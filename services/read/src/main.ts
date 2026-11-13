@@ -21,7 +21,7 @@ import { Client, Pool } from 'pg';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import { portfolioReader } from '@insidor/chain-portfolio';
-import { dexscreenerProfiles, dexscreenerQuotes, dexscreenerSearch, type CoinProfile } from '@insidor/market-dexscreener';
+import { dexscreenerProfiles, dexscreenerQuotes, dexscreenerSearch, httpClient as dexscreenerPairs, type CoinProfile } from '@insidor/market-dexscreener';
 import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { geckoterminalHolders, keyHeaders } from '@insidor/market-geckoterminal/holders.ts';
@@ -41,6 +41,7 @@ import { createRunningCoins } from './running-coins.ts';
 import { createLaunchOdds } from './launch-odds.ts';
 import { createMarketWarm } from './market-warm.ts';
 import { heldTradesFrom } from './own-market.ts';
+import { dexPool } from './dex-pool.ts';
 import { coinHitFromQuote, createSearch } from './search.ts';
 import { createTradeCard } from './trade-card.ts';
 import { createWallet } from './wallet.ts';
@@ -206,6 +207,9 @@ async function main(): Promise<void> {
      RPC; without one, curve progress is a dash. Each curve read is kept fifteen seconds. */
   const chain = cfg.rpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.rpcUrl, fetch: globalThis.fetch });
   const curves = new Map<string, { at: number; progress: number | null }>();
+  /* ★ A token page's pool from the keyless pair source (dex-pool.ts), so the market source's minute
+     buys candles and trades only; the market source finds the pool itself only when that fails. */
+  const poolOf = dexPool(dexscreenerPairs({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }).pairsForToken);
   const marketData = geckoterminal({
     plan: cfg.marketData.plan,
     ...(cfg.marketData.apiKey === null ? {} : { apiKey: cfg.marketData.apiKey }),
@@ -213,10 +217,11 @@ async function main(): Promise<void> {
     fetch: globalThis.fetch,
     timeoutMs: MARKET_TIMEOUT_MS,
     now: Date.now,
+    poolOf,
   });
   /* ★ An older coin's chart from the keyless public API when `MARKET_OLDER_CANDLES=free` (config.ts). */
   const olderCoins = cfg.olderCandlesFree
-    ? geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, now: Date.now })
+    ? geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, now: Date.now, poolOf })
     : undefined;
   const market = {
     market: marketData,
