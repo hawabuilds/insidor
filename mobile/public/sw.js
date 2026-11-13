@@ -19,9 +19,10 @@
  *
  * ★ A NEW DEPLOY ARRIVES WITHIN ONE OPEN. With the network answering in time, the open IS the new
  * deploy. When the kept shell had to stand in and the network's copy turns out to be a different
- * build, the page is told ({ type: 'insidor-new-version' }) and reloads itself the next time it
- * comes back to the foreground (mobile/src/shared/new-version.ts); a cold open after that gets the
- * new shell from the cache either way.
+ * build, the page is told ({ type: 'insidor-new-version' }). A browser tab reloads itself the next
+ * time it comes back to the foreground; the home-screen app never reloads in place, since that
+ * brings back the strip under the feed on an iPhone (mobile/src/shared/new-version.ts). A cold open
+ * after that gets the new shell from the cache either way.
  *
  * ★ PUSH: SHOWN AND OPENED, NOTHING ELSE. services/notify sends { title, body, url, image?, icon?,
  * tag? }; this shows it — the post's picture or video frame as the big image and the poster's face
