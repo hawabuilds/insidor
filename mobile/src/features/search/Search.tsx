@@ -41,8 +41,8 @@ import styles from './search.module.css';
 const SETTLE_MS = 350;
 /** The server refuses shorter terms; the screen does not send them. */
 const MIN_TERM = 2;
-/** Tokens shown before "Show all", so narratives and posts stay in reach (option B's short list). */
-const TOKENS_SHOWN = 5;
+/** Each kind shows this many before its own "Show all": a few of each, as option B draws it. */
+const SHOWN = 3;
 
 export function Search() {
   const [typed, setTyped] = useState('');
@@ -95,7 +95,9 @@ function Results({ term }: { term: string }) {
 function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: boolean }) {
   const now = useNow();
   const [order, setOrder] = useState<CoinOrder>('cap');
-  const [allTokens, setAllTokens] = useState(false);
+  const [all, setAll] = useState({ tokens: false, narratives: false, posts: false });
+  const open = (k: keyof typeof all) => setAll((a) => ({ ...a, [k]: true }));
+  const few = <T,>(items: readonly T[], k: keyof typeof all): readonly T[] => (all[k] ? items : items.slice(0, SHOWN));
   const { narratives, coins } = results;
   /* A post the owner just hid is left out now; the next projection leaves it out of search too. */
   const { hidden } = useOwnerState();
@@ -120,27 +122,32 @@ function Sections({ results, hasPeople }: { results: SearchResults; hasPeople: b
       {coins.kind === 'unavailable' ? <p className={styles['hint']}>— coins could not be searched just now.</p> : null}
       {coins.kind === 'read' && coins.items.length === 0 ? <p className={styles['hint']}>{isAddress(results.term) ? 'No market lists a coin at this address.' : 'No coin on pump.fun carries this name.'}</p> : null}
       {coins.kind === 'read' && coins.sourcesMissing > 0 ? <p className={styles['hint']}>One market could not be read, so this list may be short.</p> : null}
-      {coins.kind === 'read' ? orderCoins(coins.items, order).slice(0, allTokens ? undefined : TOKENS_SHOWN).map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
-      {coins.kind === 'read' && !allTokens && coins.items.length > TOKENS_SHOWN ? (
-        <button type="button" className={styles['more']} onClick={() => setAllTokens(true)}>Show all {coins.items.length} tokens</button>
-      ) : null}
+      {coins.kind === 'read' ? few(orderCoins(coins.items, order), 'tokens').map((c) => <CoinRow key={c.coinId} c={c} now={now} />) : null}
+      {coins.kind === 'read' ? <ShowAll n={coins.items.length} shown={!all.tokens} what="tokens" onOpen={() => open('tokens')} /> : null}
 
       {narratives.items.length > 0 ? (
         <>
           <h2 className={styles['section']}>Narratives</h2>
-          {narratives.items.map((n, i) => <NarrativeRow key={n.storyId ?? `past:${i}:${n.title}`} n={n} now={now} />)}
+          {few(narratives.items, 'narratives').map((n, i) => <NarrativeRow key={n.storyId ?? `past:${i}:${n.title}`} n={n} now={now} />)}
+          <ShowAll n={narratives.items.length} shown={!all.narratives} what="narratives" onOpen={() => open('narratives')} />
         </>
       ) : null}
 
       {posts.items.length > 0 ? (
         <>
           <h2 className={styles['section']}>Posts</h2>
-          {posts.items.map((p) => <PostRow key={p.id} p={p} now={now} />)}
+          {few(posts.items, 'posts').map((p) => <PostRow key={p.id} p={p} now={now} />)}
+          <ShowAll n={posts.items.length} shown={!all.posts} what="posts" onOpen={() => open('posts')} />
         </>
       ) : null}
 
     </>
   );
+}
+
+/** "Show all N …" under a kind cut to a few; nothing when it already fits. */
+function ShowAll({ n, shown, what, onOpen }: { n: number; shown: boolean; what: string; onOpen: () => void }) {
+  return shown && n > SHOWN ? <button type="button" className={styles['more']} onClick={onOpen}>Show all {n} {what}</button> : null;
 }
 
 function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
