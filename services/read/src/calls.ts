@@ -23,6 +23,9 @@
  * hour's open, which could be a cheaper price from before. Anything else is `not_recorded`: the row
  * shows a dash with its reason, never a guessed number.
  *
+ * The readings are read through public.coin_market_history (0170): the read role is not granted
+ * market_reading itself, and the first deploy answered every call "permission denied".
+ *
  * ★ WORKED OUT IN THE BACKGROUND, KEPT IN MEMORY. One coin's numbers cost one query of about 50 ms on
  * the candle and reading indexes; the same for all calls in one statement ran 27 s and more, because
  * the planner cannot push a joined address into the candle view's two branches. So each coin is read
@@ -112,8 +115,8 @@ with ch as (
     from public.coin_chart c where c.address = $1
 ), s as (select to_timestamp($2::double precision / 1000) as at)
 select
-  (select m.market_cap_usd / m.price_usd from public.market_reading m
-    where m.chain = 'solana' and m.address = $1 and m.market_cap_usd > 0 and m.price_usd > 0
+  (select m.market_cap_usd / m.price_usd from public.coin_market_history m
+    where m.address = $1 and m.market_cap_usd > 0 and m.price_usd > 0
     order by m.taken_at desc limit 1) as supply,
   (select priced from ch) as charted,
   case when (select priced and from_launch from ch) and $3::boolean then
@@ -132,18 +135,18 @@ select
          (select sum(k.volume_usd) from public.coin_candle k where k.address = $1 and k.minutes = 60 and k.bucket >= date_trunc('hour', s.at))
   end as traded_usd,
   case when coalesce((select priced from ch), false) then null else
-         (select m.market_cap_usd from public.market_reading m
-           where m.chain = 'solana' and m.address = $1 and m.market_cap_usd > 0
+         (select m.market_cap_usd from public.coin_market_history m
+           where m.address = $1 and m.market_cap_usd > 0
              and m.taken_at >= s.at and m.taken_at < s.at + interval '${START_WINDOW_MIN} minutes'
            order by m.taken_at asc limit 1)
   end as start_reading,
   case when coalesce((select priced from ch), false) then null else
-         (select max(m.market_cap_usd) from public.market_reading m
-           where m.chain = 'solana' and m.address = $1 and m.market_cap_usd > 0 and m.taken_at >= s.at)
+         (select max(m.market_cap_usd) from public.coin_market_history m
+           where m.address = $1 and m.market_cap_usd > 0 and m.taken_at >= s.at)
   end as peak_reading,
   case when coalesce((select priced from ch), false) then null else
-         (select sum(h.v) from (select max(m.volume_1h_usd) as v from public.market_reading m
-             where m.chain = 'solana' and m.address = $1 and m.taken_at >= s.at and m.volume_1h_usd >= 0
+         (select sum(h.v) from (select max(m.volume_1h_usd) as v from public.coin_market_history m
+             where m.address = $1 and m.taken_at >= s.at and m.volume_1h_usd >= 0
              group by date_trunc('hour', m.taken_at)) h)
   end as reading_traded_usd
 from s`;
