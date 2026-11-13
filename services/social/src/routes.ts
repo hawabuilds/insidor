@@ -10,6 +10,7 @@
  *   GET    /profile/:key               by handle or id: profile, rank card, counts, mutual followers, recent comments
  *   GET    /profile/:key/followers     and /following
  *   POST   /follow/:userId             DELETE the same to unfollow
+ *   GET    /people/search?q=           people by handle or name, for Search's people strip (open to all)
  *   GET    /comments?subject=          a narrative's, a coin's or a post's comments, threaded
  *   POST   /comments { subject, parentId?, body, proofUrl? }
  *   POST   /comments/:id/like          DELETE the same to unlike
@@ -137,6 +138,22 @@ export const forgetKept = (): void => {
 };
 
 /* ── profiles ─────────────────────────────────────────────────────── */
+
+/** Search's people strip shows this many at most: a swipeable row, not a directory. */
+const PEOPLE_SEARCH_LIMIT = 20;
+
+/**
+ * A people search term: an @ in front is the way people write a handle, so it is dropped; handles
+ * are stored lower case, so the term is too. Under 2 or over 40 characters is refused, as the
+ * read service refuses a coin search that short.
+ */
+export function peopleTerm(raw: string | null): string | null {
+  const t = (raw ?? '').trim().replace(/^@+/, '').toLowerCase();
+  return t.length < 2 || t.length > 40 ? null : t;
+}
+
+/** The term with LIKE's own characters escaped, so "a_b" finds a_b and not every a?b. */
+export const likeEscaped = (term: string): string => term.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 interface ProfileRow {
   userId: string;
@@ -464,6 +481,28 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
     }
     const comments = await deps.db.query<CommentRow>(`${COMMENT_SELECT} and c.author_id = $1 order by c.created_at desc limit 30`, [p.userId, me?.userId ?? '']);
     return json(200, { profile: await card(deps, p, me?.userId ?? null), comments: await shaped(deps, comments, me?.userId ?? null) });
+  }
+
+  if (m === 'GET' && head === 'people' && id === 'search' && seg.length === 2) {
+    const term = peopleTerm(url.searchParams.get('q'));
+    if (term === null) return bad('A search is 2 to 40 characters.');
+    const like = likeEscaped(term);
+    /* Exact handle first, then a handle that starts with it, then a name or X handle that holds it;
+       within each, the most followed. A missing handle compares as null, and null sorts first under
+       desc, so each test is coalesced to false. The viewer is never in their own results. */
+    const rows = await deps.db.query<ProfileRow & { followers: number; iFollow: boolean }>(
+      `select ${PROFILE_COLS},
+              (select count(*)::int from people.follow f where f.followee_id = p.user_id) as followers,
+              exists (select 1 from people.follow f where f.follower_id = $3 and f.followee_id = p.user_id) as "iFollow"
+         from people.profile p
+        where p.user_id <> $3
+          and (p.handle like $2 || '%' escape '\\' or coalesce(p.display_name, p.name) ilike '%' || $2 || '%' escape '\\' or p.x_handle ilike $2 || '%' escape '\\')
+        order by coalesce(p.handle = $1, false) desc, coalesce(p.handle like $2 || '%' escape '\\', false) desc, followers desc, p.user_id
+        limit ${PEOPLE_SEARCH_LIMIT}`,
+      [term, like, me?.userId ?? ''],
+    );
+    const { map } = await seasonStandings(deps, seasonNow(deps.now(), P).id);
+    return json(200, { people: rows.map((r) => ({ ...personOf(r), rank: rankFor(standingOf(map, r.userId), P), followers: r.followers, iFollow: r.iFollow })) });
   }
 
   if (head === 'follow' && id !== undefined && seg.length === 2) {
