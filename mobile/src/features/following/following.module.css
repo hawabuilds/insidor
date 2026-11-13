@@ -325,3 +325,113 @@
   box-shadow: inset 0 0 0 1px var(--follow-line);
   color: var(--text-1);
 }
+
+/* ── Calls: Insidor's own record (Calls.tsx) ──────────────────────────────────────────────
+   The profile's stats strip (features/profile profile.module.css .stats) for the record, and the
+   Portfolio's coin rows for the calls, so the list reads as the app already does: the ticker at
+   body size, the lines under it secondary, every figure in the number face. */
+
+.record {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 12px;
+  padding: 12px 4px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.recordCell {
+  min-width: 0;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.recordValue {
+  display: block;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
+  color: var(--text-1);
+}
+
+/* --text-2, not the profile strip's --text-3: on --card, --text-3 at the 12px floor is 4.4:1, under
+   the 4.5:1 small text needs; --text-2 reads at about 7:1. */
+.recordLabel {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--type-caption);
+}
+
+.callRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.place {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+  font-weight: 600;
+}
+
+.placeTop {
+  color: var(--text-1);
+}
+
+.callMid {
+  min-width: 0;
+  flex: 1;
+}
+
+.callTicker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.callSub {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}
+
+/* The multiple alone at the right, a step up (the section size): it is the row's one number. */
+.callMultiple {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--type-section);
+  font-weight: var(--type-section-weight);
+  color: var(--text-1);
+}
+
+.callUp {
+  color: var(--up);
+}
+
+.callNone {
+  color: var(--text-3);
+}
+
+.callMoney {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: var(--type-secondary);
+}

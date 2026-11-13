@@ -21,6 +21,7 @@ import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodeCoinOdds, type CoinOdds } from './odds.ts';
 import { decodeCatches, type Catches } from './catches.ts';
 import { decodeRunningCoins, type RunningCoin } from './running.ts';
+import { decodeCalls, type Calls, type CallsWindow } from './calls.ts';
 import { decodeSellCard, type SellCard } from './sell-card.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeCoinTheses, type CoinTheses } from './theses.ts';
@@ -302,6 +303,11 @@ export async function fetchSellCard(signature: string, signal?: AbortSignal): Pr
 /** The running coins strip on For You and the Narratives tab (GET /running/coins), in the server's order. */
 export async function fetchRunningCoins(signal?: AbortSignal): Promise<readonly RunningCoin[]> {
   return decodeRunningCoins(await read('/running/coins', signal));
+}
+
+/** Insidor's own calls for a window (GET /calls/:window), the Feed tab's Calls list, in the server's order. */
+export async function fetchCalls(window: CallsWindow, signal?: AbortSignal): Promise<Calls> {
+  return decodeCalls(await read(`/calls/${window}`, signal));
 }
 
 /** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */

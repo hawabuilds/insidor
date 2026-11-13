@@ -51,16 +51,25 @@ import { usePeopleFeed } from './list.ts';
 import { ScreenHeader, ScreenTitle } from '../../shared/ui/ScreenHeader.tsx';
 import styles from './following.module.css';
 import { Nums } from '../../shared/ui/Num.tsx';
+import { CallsList } from './Calls.tsx';
 
-const TABS: readonly { readonly key: FeedTab; readonly label: string }[] = [
+/* The Feed's three chips (the owner, 2026-11-13): Insidor's own calls first, then the people you
+   follow, then everyone's takes. Community holds what were Top calls and Latest, as its three views. */
+type Chip = 'calls' | 'following' | 'community';
+
+const CHIPS: readonly { readonly key: Chip; readonly label: string }[] = [
+  { key: 'calls', label: 'Calls' },
   { key: 'following', label: 'Following' },
-  { key: 'top', label: 'Top calls' },
-  { key: 'latest', label: 'Latest' },
+  { key: 'community', label: 'Community' },
 ];
 
-const WINDOWS: readonly { readonly key: FeedWindow; readonly label: string }[] = [
-  { key: 'week', label: 'This week' },
-  { key: 'all', label: 'All time' },
+/** Community's views: everyone's takes newest first, or ranked by the holders' likes over a window. */
+type CommunityView = 'latest' | FeedWindow;
+
+const COMMUNITY_VIEWS: readonly { readonly key: CommunityView; readonly label: string }[] = [
+  { key: 'latest', label: 'Newest' },
+  { key: 'week', label: 'Top this week' },
+  { key: 'all', label: 'Top all time' },
 ];
 
 const age = (at: number, now: number) => <Value r={formatAge({ known: true, at: at as never }, now as never)} />;
@@ -70,9 +79,12 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
   const active = useScreenActive();
   const { state } = useWallet();
   const account = state.kind === 'connected' ? state.account : 'signed-out';
-  const [tab, setTab] = useState<FeedTab>('following');
-  const [period, setPeriod] = useState<FeedWindow>('week');
-  const feed = usePeopleFeed(tab, account, true, period);
+  const [chip, setChip] = useState<Chip>('calls');
+  const [view, setView] = useState<CommunityView>('latest');
+  const tab: FeedTab = chip === 'following' ? 'following' : view === 'latest' ? 'latest' : 'top';
+  const period: FeedWindow = view === 'latest' ? 'week' : view;
+  /* The calls are their own read (Calls.tsx); the people's feed is not asked while they show. */
+  const feed = usePeopleFeed(tab, account, chip !== 'calls', period);
   /* Following nobody: People to follow in the list's place, so the first visit is not a dead end. */
   const nobody = tab === 'following' && feed.list.state === 'ready' && feed.list.value.following === 0;
   const { pull, refreshing } = usePullToRefresh(async () => {
@@ -81,7 +93,7 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
   }, active);
 
   /* Trador's sentences for an empty tab, and its "See all time" on a quiet week. */
-  const empty = tab === 'following' ? 'Follow a few people and their buys, sells and takes land here.' : tab === 'top' ? (period === 'week' ? 'No calls this week yet.' : 'No calls yet.') : 'No takes yet. Open a coin and post the first one.';
+  const empty = tab === 'following' ? 'Follow a few people and their buys, sells and takes land here.' : tab === 'top' ? (period === 'week' ? 'No top takes this week yet.' : 'No top takes yet.') : 'No takes yet. Open a coin and post the first one.';
 
   return (
     <>
@@ -92,8 +104,8 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
             <NotificationBell />
           </ScreenHeader>
           <div className={styles['chips']} role="tablist" aria-label="Feed">
-            {TABS.map((t) => (
-              <button key={t.key} type="button" role="tab" aria-selected={t.key === tab} className={`${styles['chip']} ${t.key === tab ? styles['chipOn'] : ''}`} onClick={() => setTab(t.key)}>
+            {CHIPS.map((t) => (
+              <button key={t.key} type="button" role="tab" aria-selected={t.key === chip} className={`${styles['chip']} ${t.key === chip ? styles['chipOn'] : ''}`} onClick={() => setChip(t.key)}>
                 {t.label}
               </button>
             ))}
@@ -104,11 +116,11 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
             spinner sits in the gap it opens, above the first row. */}
         <PullIndicator pull={pull} refreshing={refreshing} />
         <div style={pullStyle(pull)}>
-        {tab === 'top' ? (
+        {chip === 'community' ? (
           <div className={styles['windowRow']}>
             <div className={styles['windows']} role="group">
-              {WINDOWS.map((w) => (
-                <button key={w.key} type="button" aria-pressed={w.key === period} className={w.key === period ? styles['windowOn'] : ''} onClick={() => setPeriod(w.key)}>
+              {COMMUNITY_VIEWS.map((w) => (
+                <button key={w.key} type="button" aria-pressed={w.key === view} className={w.key === view ? styles['windowOn'] : ''} onClick={() => setView(w.key)}>
                   {w.label}
                 </button>
               ))}
@@ -116,10 +128,12 @@ export function FollowingScreen({ onRefreshed }: { onRefreshed: () => void }) {
           </div>
         ) : null}
 
-        {nobody ? (
+        {chip === 'calls' ? (
+          <CallsList />
+        ) : nobody ? (
           <PeopleToFollow onFollowed={() => void feed.refresh()} />
         ) : (
-          <Listed feed={feed} now={now} empty={empty} {...(tab === 'top' && period === 'week' ? { emptyAction: { label: 'See all time', onAct: () => setPeriod('all') } } : {})} />
+          <Listed feed={feed} now={now} empty={empty} {...(view === 'week' ? { emptyAction: { label: 'See all time', onAct: () => setView('all') } } : {})} />
         )}
         </div>
       </section>
