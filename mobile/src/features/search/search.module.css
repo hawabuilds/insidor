@@ -192,6 +192,8 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
+  /* Without this the snap lines the first card up with the screen's edge, past the gutter. */
+  scroll-padding-inline: var(--gutter);
   scrollbar-width: none;
   list-style: none;
 }
