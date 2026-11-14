@@ -178,6 +178,7 @@ import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 import { addOwnerCoins } from './work/owner-coins.ts';
 import { checkOlderCoins } from './work/older-coins.ts';
+import { readCallHistory } from './work/call-history.ts';
 import type { DiscoverDeps } from './work/discover.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { sourceHandles } from './work/handle-cache.ts';
@@ -1659,6 +1660,13 @@ export async function withRuntime<T>(
               await checkOlderCoins({ older: new PgOlderCoinRepo(db), candles: onChainMarket, log: log.child({ step: 'older-coins' }), now: () => Date.now() as Millis });
             } catch (e) {
               log.warn('older coins could not be measured this pass; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
+            }
+            /* Every call's hourly history from its own pool, a few coins a pass, for the calls board's
+               peaks (work/call-history.ts, 0171); on the same on-chain instance and its minute. */
+            try {
+              await readCallHistory({ db, market: onChainMarket, log: log.child({ step: 'call-history' }), now: () => Date.now() });
+            } catch (e) {
+              log.warn("calls' price history could not be read this pass; tried again next pass", { err: e instanceof Error ? e.message : String(e) });
             }
             return looked;
           },
