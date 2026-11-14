@@ -8,14 +8,14 @@
  */
 
 import { hrefFor, type Tab } from '../route.ts';
-import { ChatIcon, HomeIcon, LayersIcon, SearchIcon, WalletIcon } from './icons.tsx';
+import { CrownIcon, HomeIcon, LayersIcon, SearchIcon, WalletIcon } from './icons.tsx';
 import styles from './ui.module.css';
 
 const TABS = [
   { key: 'feed', label: 'For you', Icon: HomeIcon },
   { key: 'narratives', label: 'Narratives', Icon: LayersIcon },
   { key: 'search', label: 'Search', Icon: SearchIcon },
-  { key: 'alerts', label: 'Feed', Icon: ChatIcon },
+  { key: 'alerts', label: 'Feed', Icon: CrownIcon },
   { key: 'portfolio', label: 'Portfolio', Icon: WalletIcon },
 ] as const;
 

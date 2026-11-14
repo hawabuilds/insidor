@@ -56,10 +56,16 @@ export const SearchIcon = (p: IconProps) => (
   </Stroke>
 );
 
-/* The Feed tab's glyph, Trador's Feed tab's own: a rounded speech bubble with its tail at the bottom left. */
-export const ChatIcon = (p: IconProps) => (
+/* The Feed tab's glyph since it opens on Insidor's Calls leaderboard (the owner, 2026-11-14: "change
+   the chat icon to a crown"): a three-point crown with a ball on each point and a band under it. The
+   balls are filled so they still read at tab size; everything is currentColor like every glyph. */
+export const CrownIcon = (p: IconProps) => (
   <Stroke {...p}>
-    <path d="M4.5 17.5V7a2.5 2.5 0 0 1 2.5-2.5h10A2.5 2.5 0 0 1 19.5 7v6a2.5 2.5 0 0 1-2.5 2.5H9l-4.5 3.5z" />
+    <path d="M5.2 17 4 8.6l4.6 3.9L12 6.4l3.4 6.1L20 8.6 18.8 17z" />
+    <path d="M5.5 20h13" />
+    <circle cx="4" cy="7.1" r="1.25" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="4.9" r="1.25" fill="currentColor" stroke="none" />
+    <circle cx="20" cy="7.1" r="1.25" fill="currentColor" stroke="none" />
   </Stroke>
 );
 
