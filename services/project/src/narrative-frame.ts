@@ -416,7 +416,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     else coinOf.set(n.id, picked === null || call?.wrong.has(picked) === true ? { kind: 'none' } : { kind: 'proven', addresses: [picked] });
   }
   const addresses = [...new Set([...coinOf.values()].flatMap((c) => (c.kind === 'confirmed' ? [c.address] : c.kind === 'proven' || c.kind === 'fitting' ? c.addresses : [])))];
-  const coinFacts = await loadCoinFactsByAddress(db, addresses);
+  /* ★ A coin we hold no ticker and no name for is not shown (the owner, 2026-11-14): the Jensen
+     narrative's card drew an empty name and ticker for the Roadster's coin. With no facts it is no
+     candidate, so the page shows no coin rather than a blank one. */
+  const named = (t: string | null | undefined): boolean => typeof t === 'string' && t.trim() !== '';
+  const coinFacts = new Map([...(await loadCoinFactsByAddress(db, addresses))].filter(([, f]) => named(f.ticker) || named(f.name)));
 
   const readingsOf = (id: string): readonly ReachReading[] => reach.get(id) ?? [];
   const facts: StoryFacts[] = [];
