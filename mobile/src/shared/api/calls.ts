@@ -1,11 +1,12 @@
 /**
  * INSIDOR'S CALLS, AS THE PHONE HOLDS THEM — GET /calls/:window (services/read calls.ts decides what
- * a call is, where its price starts and the order). Apart from client.ts so `node --test` can hold
- * the decoding without the network.
+ * a call is, that it starts at the market cap we told people, and the order). Apart from client.ts so
+ * `node --test` can hold the decoding without the network.
  *
  * ★ A MISSING NUMBER STAYS MISSING. A call the server could not price arrives with `{ v: null, why }`
  * and is kept as null here, so the row draws a dash with its reason; it is never turned into 0 or 1x.
- * A row missing its address or times is a broken row and is dropped. The order is the server's.
+ * A row missing its address or times is a broken row and is dropped alone; so is one carrying one of
+ * our internal words, never the whole list. The order is the server's.
  *
  * What breaks if changed carelessly: re-sorting here. The ranking is the server's; a phone that sorts
  * by something else shows a different record from everyone else's.
@@ -19,11 +20,10 @@ export interface CallRow {
   readonly address: string;
   readonly ticker: string | null;
   readonly imageUrl: string | null;
-  readonly foundAt: number;
+  /** When we told people, ms. */
+  readonly notifiedAt: number;
   readonly mintedAt: number;
-  /** Found strictly before the coin launched. */
-  readonly early: boolean;
-  /** Market caps in dollars; null when not recorded. */
+  /** Market caps in dollars: the one we told people, and the highest since; null when not recorded. */
   readonly startUsd: number | null;
   readonly peakUsd: number | null;
   readonly multiple: number | null;
@@ -33,9 +33,8 @@ export interface CallRow {
 
 export interface CallsRecord {
   readonly calls: number;
+  readonly twoX: number;
   readonly tenX: number;
-  /** 0–1; null when there are no calls. */
-  readonly earlyShare: number | null;
   readonly best: number | null;
 }
 
@@ -46,6 +45,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
 /** A Measured from the wire: its number, or null for `{ v: null, why }` and anything unreadable. */
 const measured = (v: unknown): number | null => num(obj(v)['v']);
+const positive = (v: number | null) => (v !== null && v > 0 ? v : null);
 
 /** Whether a row is free of our internal words; one that is not is dropped alone, never the whole list. */
 function clean(row: unknown, i: number): boolean {
@@ -67,28 +67,27 @@ export function decodeCalls(raw: unknown): Calls {
     if (!clean(x, i)) return [];
     const c = obj(x);
     const address = text(c['address']);
-    const foundAt = num(c['foundAt']);
+    const notifiedAt = num(c['notifiedAt']);
     const mintedAt = num(c['mintedAt']);
-    if (address === null || foundAt === null || mintedAt === null || seen.has(address)) return [];
+    if (address === null || notifiedAt === null || mintedAt === null || seen.has(address)) return [];
     seen.add(address);
     const image = text(c['imageUrl']);
-    const positive = (v: number | null) => (v !== null && v > 0 ? v : null);
+    const multiple = positive(measured(c['multiple']));
     return [{
       address,
       ticker: text(c['ticker'])?.replace(/^\$/, '') ?? null,
       imageUrl: image !== null && image.startsWith('https://') ? image : null,
-      foundAt,
+      notifiedAt,
       mintedAt,
-      early: c['early'] === true,
       startUsd: positive(measured(c['startUsd'])),
       peakUsd: positive(measured(c['peakUsd'])),
-      multiple: positive(measured(c['multiple'])),
-      missing: positive(measured(c['multiple'])) !== null ? null : obj(c['multiple'])['why'] === 'thin_trading' ? 'thin_trading' : 'not_recorded',
+      multiple,
+      missing: multiple !== null ? null : obj(c['multiple'])['why'] === 'thin_trading' ? 'thin_trading' : 'not_recorded',
     }];
   });
   return {
     state: 'ready',
-    record: { calls: num(r['calls']) ?? rows.length, tenX: num(r['tenX']) ?? 0, earlyShare: measured(r['earlyShare']), best: measured(r['best']) },
+    record: { calls: num(r['calls']) ?? rows.length, twoX: num(r['twoX']) ?? 0, tenX: num(r['tenX']) ?? 0, best: measured(r['best']) },
     rows,
   };
 }
