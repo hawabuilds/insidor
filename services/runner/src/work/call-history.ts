@@ -14,6 +14,12 @@
  * and at most `perPass` a pass. A call older than MONTH_MS is not read again: its run is over, and
  * the vendor's hourly history reaches back only about six weeks, so a read would add nothing.
  *
+ * ★ ONLY THE CALLS OUR OWN CANDLES MISS. A call chainwatch has charted from its notified hour, in a
+ * token we price (0144), already has every trade in our candles, which the board reads beside this
+ * history; reading the vendor for it would spend the minute for nothing. The first deploy (14 Nov)
+ * found the lookups' instance spending every minute, so this step lives on what they leave: about a
+ * quarter of new calls, a few coins an hour.
+ *
  * ★ WHOLE HOURS FROM THE COIN'S OWN POOL, WITH THE MONEY. Each read is the last ~1,000 hours of the
  * pool the vendor ranks first, as open, high, low, close and dollars traded, and replaces the hours
  * it already holds (the newest hour was unfinished last time). The board needs the dollars as well
@@ -81,10 +87,15 @@ select c.address, (extract(epoch from n.notified_at) * 1000)::bigint as notified
   from calls c
   join public.coin_notified n on n.address = c.address
   left join internal.coin_hour_read r on r.address = c.address, now_
- where r.address is null
+ where not exists (
+         select 1 from internal.chart_coin ch
+          where ch.address = c.address
+            and ch.recorded_from <= n.notified_at + interval '1 hour'
+            and (ch.quote_mint is null or ch.quote_mint in ('So11111111111111111111111111111111111111112', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')))
+   and (r.address is null
     or (r.status <> 'read' and r.read_at < now_.at - make_interval(secs => $2::double precision / 1000))
     or (n.notified_at > now_.at - make_interval(secs => $3::double precision / 1000) and r.read_at < now_.at - make_interval(secs => $4::double precision / 1000))
-    or (n.notified_at > now_.at - make_interval(secs => $5::double precision / 1000) and r.read_at < now_.at - make_interval(secs => $6::double precision / 1000))
+    or (n.notified_at > now_.at - make_interval(secs => $5::double precision / 1000) and r.read_at < now_.at - make_interval(secs => $6::double precision / 1000)))
  order by (r.address is null) desc, r.read_at asc nulls first, n.notified_at desc
  limit $7`;
 
