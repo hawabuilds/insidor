@@ -86,6 +86,7 @@ export const CALLS_SQL = `
 select distinct on (f.payload #>> '{coins,coin,address}')
        f.payload #>> '{coins,coin,address}' as address,
        (extract(epoch from n.notified_at) * 1000)::bigint as notified,
+       (extract(epoch from f.first_shown_at) * 1000)::bigint as found,
        n.mc_usd as notified_cap,
        (extract(epoch from coalesce(a.minted_at, to_timestamp((f.payload #>> '{coins,coin,mintedAt,at}')::float8 / 1000))) * 1000)::bigint as minted,
        coalesce(nullif(f.payload #>> '{coins,coin,ticker}', ''), a.symbol) as ticker,
@@ -141,6 +142,8 @@ export interface Call {
   readonly imageUrl: string | null;
   /** When we told people, ms. */
   readonly notifiedAt: number;
+  /** When the post was first on For You, ms (catches.ts's moment): before the launch, we saw it first. */
+  readonly foundAt: number | null;
   /** The market cap we told them, dollars; null when that moment carried none. */
   readonly notifiedCapUsd: number | null;
   readonly mintedAt: number;
@@ -181,8 +184,9 @@ export function callsFrom(rows: readonly Row[]): readonly Call[] {
     const mintedAt = num(r['minted']);
     if (address === null || notifiedAt === null || mintedAt === null) return [];
     const cap = num(r['notified_cap']);
+    const foundAt = num(r['found']);
     const image = text(r['image_url']);
-    return [{ address, ticker: text(r['ticker']), imageUrl: image !== null && image.startsWith('https://') ? image : null, notifiedAt, notifiedCapUsd: cap !== null && cap > 0 ? cap : null, mintedAt }];
+    return [{ address, ticker: text(r['ticker']), imageUrl: image !== null && image.startsWith('https://') ? image : null, notifiedAt, foundAt, notifiedCapUsd: cap !== null && cap > 0 ? cap : null, mintedAt }];
   });
 }
 
@@ -307,7 +311,7 @@ export function createCalls(deps: CallsDeps) {
       const rows = listed.flatMap((c) => {
         const k = kept.get(c.address);
         /* The ticker and picture are the list's newest; the numbers the last read's. */
-        return k === undefined ? [] : [{ ...k.row, ticker: c.ticker, imageUrl: c.imageUrl }];
+        return k === undefined ? [] : [{ ...k.row, ticker: c.ticker, imageUrl: c.imageUrl, foundAt: c.foundAt }];
       });
       return board(rows, window, now());
     },

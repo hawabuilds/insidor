@@ -18,7 +18,7 @@ const DAY = 24 * 60 * MIN;
 
 function call(over: Partial<Call> = {}): Call {
   const notifiedAt = over.notifiedAt ?? NOW - DAY;
-  return { address: 'Coin1pump', ticker: 'COIN', imageUrl: null, notifiedAt, notifiedCapUsd: 10_000, mintedAt: notifiedAt - 3 * MIN, ...over };
+  return { address: 'Coin1pump', ticker: 'COIN', imageUrl: null, notifiedAt, foundAt: notifiedAt - 40 * MIN, notifiedCapUsd: 10_000, mintedAt: notifiedAt - 3 * MIN, ...over };
 }
 
 function row(c: Call, multiple: number | null): CallRow {
