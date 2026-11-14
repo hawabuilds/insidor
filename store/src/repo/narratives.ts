@@ -1046,6 +1046,27 @@ export class PgNarrativeRepo {
     return done;
   }
 
+  /**
+   * ★ POSTS TAKEN OUT OF A NARRATIVE THEY ARE NOT ABOUT (tools/narrative-subject-split.ts, the owner,
+   * 2026-11-14): each listed post leaves the narrative named, and nothing else. It is then in no
+   * narrative, so the next pass may group it again by the subject rule. Only from an open narrative;
+   * the narrative is recounted. Returns how many posts left.
+   */
+  async release(narrativeId: string, items: readonly string[]): Promise<number> {
+    if (items.length === 0 || !(await this.migrated())) return 0;
+    const gone = await this.#db.query<{ item_id: string }>(
+      `delete from internal.narrative_member m using internal.narrative n
+        where m.narrative_id = $1 and m.item_id = any($2::text[]) and n.narrative_id = m.narrative_id and n.state = 'open'
+        returning m.item_id`,
+      [narrativeId, [...items]],
+    );
+    if (gone.length > 0) {
+      await this.#db.query(`update internal.narrative set posts_changed_at = now(), updated_at = now() where narrative_id = $1`, [narrativeId]);
+      await this.#recount([narrativeId]);
+    }
+    return gone.length;
+  }
+
   readonly #columns = new Map<string, Promise<boolean>>();
   /** Whether internal.<table>.<column> is there; asked once, never caught (as `migrated`). */
   /** Whether merged_by's check names `value` (0126 adds 'same_story'); asked once. */
