@@ -16,9 +16,13 @@
  *
  * ★ ONLY THE CALLS OUR OWN CANDLES MISS. A call chainwatch has charted from its notified hour, in a
  * token we price (0144), already has every trade in our candles, which the board reads beside this
- * history; reading the vendor for it would spend the minute for nothing. The first deploy (14 Nov)
- * found the lookups' instance spending every minute, so this step lives on what they leave: about a
- * quarter of new calls, a few coins an hour.
+ * history; reading the vendor for it would spend the minute for nothing. In the week to 14 November
+ * that left 32 of 255 calls, all of them pools quoted in a token chainwatch does not price.
+ *
+ * ★ FIRST IN THE PASS, ONE COIN. The first deploy (14 Nov) ran this after the lookups and found their
+ * minute spent every time, so nothing was read. It now runs before them and reads one coin, two
+ * requests — about 2 of the instance's 25 a minute on a pass that owes a read, none on one that does
+ * not — and the older backlog is filled once by tools/call-history.ts, not here.
  *
  * ★ WHOLE HOURS FROM THE COIN'S OWN POOL, WITH THE MONEY. Each read is the last ~1,000 hours of the
  * pool the vendor ranks first, as open, high, low, close and dollars traded, and replaces the hours
@@ -44,14 +48,16 @@ const DAY_MS = 24 * HOUR_MS;
 
 export const RETRY_MS = HOUR_MS;
 export const RECENT_MS = 7 * DAY_MS;
-export const RECENT_EVERY_MS = 3 * HOUR_MS;
+export const RECENT_EVERY_MS = 6 * HOUR_MS;
 export const MONTH_MS = 30 * DAY_MS;
 export const OLD_EVERY_MS = DAY_MS;
 /**
- * Coins read a pass: two requests each, beside everything else the lookup's minute pays for. Five
- * reads the 813 calls of 14 November in a few hours, then keeps up with the recent ones easily.
+ * Coins read a pass: two requests each, taken before the lookups spend the minute (wiring.ts runs
+ * this step first). One: on 14 November the only calls our candles missed were the ones whose pool
+ * trades in a token we do not price — 32 in a week, about five a day — so one a pass keeps up, and a
+ * pass that owes nothing costs the lookups nothing.
  */
-export const PER_PASS = 5;
+export const PER_PASS = 1;
 
 export interface CallHistoryDb {
   query(sql: string, params?: readonly unknown[]): Promise<readonly Record<string, unknown>[]>;

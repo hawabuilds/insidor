@@ -1606,6 +1606,14 @@ export async function withRuntime<T>(
              whether the older coins it saw are trading since their posts (work/older-coins.ts),
              read through the lookup's own on-chain instance so one per-minute count covers both. */
           lookUpCoins: async () => {
+            /* A call's hourly history from its own pool, for the calls board's peaks
+               (work/call-history.ts, 0171): one coin a pass, and only a call our own candles miss.
+               First, on the same on-chain instance, because after the lookups the minute is spent. */
+            try {
+              await readCallHistory({ db, market: onChainMarket, log: log.child({ step: 'call-history' }), now: () => Date.now() });
+            } catch (e) {
+              log.warn("calls' price history could not be read this pass; tried again next pass", { err: e instanceof Error ? e.message : String(e) });
+            }
             const looked = await lookUpCoins({
               older: new PgOlderCoinRepo(db),
               coins: new PgCoinUniverseRepo(db),
@@ -1660,13 +1668,6 @@ export async function withRuntime<T>(
               await checkOlderCoins({ older: new PgOlderCoinRepo(db), candles: onChainMarket, log: log.child({ step: 'older-coins' }), now: () => Date.now() as Millis });
             } catch (e) {
               log.warn('older coins could not be measured this pass; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
-            }
-            /* Every call's hourly history from its own pool, a few coins a pass, for the calls board's
-               peaks (work/call-history.ts, 0171); on the same on-chain instance and its minute. */
-            try {
-              await readCallHistory({ db, market: onChainMarket, log: log.child({ step: 'call-history' }), now: () => Date.now() });
-            } catch (e) {
-              log.warn("calls' price history could not be read this pass; tried again next pass", { err: e instanceof Error ? e.message : String(e) });
             }
             return looked;
           },
