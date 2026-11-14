@@ -257,6 +257,22 @@ export const multipleSpacing = (px: number): number => MULTIPLE_SPACING * px;
 export const LABEL_LETTER_SPACING = LABEL_SPACING;
 export const TICKER_LETTER_SPACING = -0.4;
 
+/** The picture folders the site passes through at `/pics/<folder>/…` (mobile/vercel.json). */
+const PASSED_FOLDERS = ['author-pics', 'post-pics', 'member-pics', 'coin-logos'] as const;
+
+/**
+ * A picture in our storage, as the card must load it: through the site's own `/pics/` route. The
+ * storage's public address sends no CORS header (seen 14 Nov 2026), so a canvas refuses every
+ * picture loaded from it, and a face that has no other source (the person's own uploaded picture)
+ * drew as a letter. Same-site, the canvas needs no header at all. Anything else is returned as it
+ * is: a source's link, or a storage path outside the passed folders.
+ */
+export function throughSite(src: string, storageOrigin: string): string {
+  if (storageOrigin === '' || !src.startsWith(`${storageOrigin}/`)) return src;
+  const path = src.slice(storageOrigin.length + 1);
+  return PASSED_FOLDERS.some((f) => path.startsWith(`${f}/`)) ? `/pics/${path}` : src;
+}
+
 /** The background a card is drawn on. */
 export type Backdrop = 'post' | 'insidor' | 'mine';
 

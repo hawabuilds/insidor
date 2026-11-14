@@ -22,8 +22,8 @@
  * What breaks if changed carelessly: pictures go through flex-draw.ts `loadPicture` (CORS-safe: our
  * copy, then the source's link, or the person's own file). An <img> loaded without crossOrigin and
  * drawn on the canvas would taint it, and Save and Share would fail with nothing to show for it. Our
- * picture bucket does not send the CORS header (14 Nov 2026), so the source's link after it is what
- * puts the post's picture and the faces on the card today.
+ * picture bucket does not send the CORS header (14 Nov 2026), so every stored picture is loaded
+ * through the site's own `/pics/` route (`viaSite`), same-site, where the canvas needs no header.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -36,12 +36,22 @@ import { Button } from '../../shared/ui/Button.tsx';
 import { POST_PIC_BASE } from '../../shared/ui/post-pic-base.ts';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { faceSources } from '../../shared/ui/usePosterPic.ts';
-import { backdropChoices, fileName, leftOff, type Backdrop, type FlexFacts } from './flex-card.ts';
+import { backdropChoices, fileName, leftOff, throughSite, type Backdrop, type FlexFacts } from './flex-card.ts';
 import { cardPng, drawCard, firstPicture, loadFonts, loadPicture } from './flex-draw.ts';
 import { ASK_EVERY_MS, ASK_FOR_MS } from './sell-landed.ts';
 import styles from './share.module.css';
 
 const LOGO_BASE = ((import.meta.env?.['VITE_COIN_LOGO_BASE'] as string | undefined) ?? '').replace(/\/+$/, '');
+/** Our picture storage's origin: its pictures load through the site's `/pics/` (flex-card.ts `throughSite`). */
+const STORAGE_ORIGIN = (() => {
+  try {
+    return LOGO_BASE === '' ? '' : new URL(LOGO_BASE).origin;
+  } catch {
+    return '';
+  }
+})();
+/** Each source as the canvas may load it, in the same order. */
+const viaSite = (sources: readonly string[]): readonly string[] => [...new Set(sources.map((s) => throughSite(s, STORAGE_ORIGIN)))];
 
 type Read = { readonly kind: 'loading' } | { readonly kind: 'waiting' } | { readonly kind: 'unseen' } | { readonly kind: 'failed' } | Extract<SellCard, { kind: 'read' }> | { readonly kind: 'none' };
 
@@ -127,10 +137,10 @@ export function ShareTradeSheet({ signature, mint, ticker, subline, signedIn, on
     const post = card.post;
     const postSources = post === null ? [] : [postPicCopy(post.pictureFile, POST_PIC_BASE, 'sheet'), postPicCopy(post.pictureFile, POST_PIC_BASE, 'card'), post.pictureUrl].flatMap((u) => (u === null ? [] : [u]));
     void Promise.all([
-      firstPicture(postSources),
-      firstPicture(logoSources(mint, null, LOGO_BASE)),
-      firstPicture(post === null ? [] : faceSources(post.authorPictureFile, post.authorPictureUrl)),
-      firstPicture(me?.pictures ?? []),
+      firstPicture(viaSite(postSources)),
+      firstPicture(viaSite(logoSources(mint, null, LOGO_BASE))),
+      firstPicture(viaSite(post === null ? [] : faceSources(post.authorPictureFile, post.authorPictureUrl))),
+      firstPicture(viaSite(me?.pictures ?? [])),
     ]).then(([p, coin, author, mePic]) => {
       if (live) setPictures({ post: p, coin, author, me: mePic });
     });

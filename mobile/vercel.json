@@ -13,6 +13,10 @@
       "destination": "https://read-production-a6c0.up.railway.app/:path*"
     },
     {
+      "source": "/pics/:folder(author-pics|post-pics|member-pics|coin-logos)/:path*",
+      "destination": "https://pub-4a48d947a0584b948f54f35aea911c13.r2.dev/:folder/:path*"
+    },
+    {
       "source": "/api/fn/:service(read|trade|social|notify)/:path*",
       "destination": "/api/proxy?service=:service&path=:path*"
     },
@@ -24,6 +28,15 @@
   "headers": [
     {
       "source": "/api/read/:path*",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "source": "/pics/:path*",
       "headers": [
         {
           "key": "x-vercel-enable-rewrite-caching",

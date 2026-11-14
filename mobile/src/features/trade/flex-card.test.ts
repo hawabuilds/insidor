@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CARD_H, CARD_W, COLOURS, backdropChoices, capText, clockText, coverCrop, fileName, layoutCard, leftOff, multipleText, profitText, type FlexFacts, type Measure } from './flex-card.ts';
+import { CARD_H, CARD_W, COLOURS, backdropChoices, capText, clockText, coverCrop, fileName, layoutCard, leftOff, multipleText, profitText, throughSite, type FlexFacts, type Measure } from './flex-card.ts';
 
 /* A stand-in for the canvas's measure: every character 0.6 of the font's size, plus the spacing. */
 const measure: Measure = (text, font, spacing = 0) => {
@@ -135,4 +135,15 @@ test('★ what the card leaves off is said in one plain line each', () => {
   assert.match(leftOff({ ...base, profitSol: { v: null, why: 'bought_elsewhere' } }, true)[0] ?? '', /sold more than you bought/);
   const elsewhere = leftOff({ ...base, boughtCapUsd: { v: null, why: 'not_bought_here' }, multiple: { v: null, why: 'not_bought_here' }, profitSol: { v: null, why: 'not_bought_here' } }, true);
   assert.equal(elsewhere.length, 1);
+});
+
+test('★ our stored pictures load through the site, so the canvas needs no CORS header; other links are left alone', () => {
+  const R2 = 'https://pub-x.r2.dev';
+  assert.equal(throughSite(`${R2}/member-pics/98dc9d4b40d6305aead1a7323513467b`, R2), '/pics/member-pics/98dc9d4b40d6305aead1a7323513467b');
+  assert.equal(throughSite(`${R2}/post-pics/sheet/abc`, R2), '/pics/post-pics/sheet/abc');
+  assert.equal(throughSite(`${R2}/author-pics/abc`, R2), '/pics/author-pics/abc');
+  assert.equal(throughSite(`${R2}/other/abc`, R2), `${R2}/other/abc`, 'only the passed folders');
+  assert.equal(throughSite('https://pbs.twimg.com/media/a.png', R2), 'https://pbs.twimg.com/media/a.png');
+  assert.equal(throughSite(`${R2}.evil.com/post-pics/a`, R2), `${R2}.evil.com/post-pics/a`, 'a look-alike host is not ours');
+  assert.equal(throughSite(`${R2}/post-pics/a`, ''), `${R2}/post-pics/a`, 'no storage set: as it is');
 });
