@@ -78,6 +78,13 @@ export interface LiveTick {
   readonly pool: string;
   /** The pool's own account; null when the relay gave none. */
   readonly poolAddress: string | null;
+  /**
+   * How deep the pool is after the trade, in the quote token: its quote reserve, or on a curve its
+   * virtual reserve when that is larger (the curve prices from it). Null when the relay gave neither.
+   * A coin can trade in a pool someone seeded with a dollar at a third of the price; this is how a
+   * reader tells that pool from the one the coin really trades in (chainwatch main-pool.ts).
+   */
+  readonly poolQuote: number | null;
   /** The chain's time of the trade, ms. */
   readonly atMs: number;
   /** When it reached us, ms. */
@@ -171,6 +178,8 @@ export function liveTicksOf(frame: Record<string, unknown>, seenAtMs: number): L
   const priceQuote = num(frame['price']);
   const pool = str(frame['pool']) ?? '';
   const poolAddress = str(frame['poolId']);
+  const depth = Math.max(num(frame['quoteInPool']) ?? 0, num(frame['virtualQuoteInPool']) ?? 0);
+  const poolQuote = depth > 0 ? depth : null;
   const out: LiveTick[] = [];
   for (const leg of frame['breakdown'] as unknown[]) {
     if (leg === null || typeof leg !== 'object') continue;
@@ -180,7 +189,7 @@ export function liveTicksOf(frame: Record<string, unknown>, seenAtMs: number): L
     const quoteAmount = num(l['quoteAmount']);
     const tokens = num(l['tokenAmount']);
     if ((side !== 'buy' && side !== 'sell') || trader === null || quoteAmount === null || tokens === null) continue;
-    out.push({ coin, signature, side, quoteAmount, tokens, trader, capQuote: capQuote !== null && capQuote > 0 ? capQuote : null, priceQuote: priceQuote !== null && priceQuote > 0 ? priceQuote : null, quoteMint, pool, poolAddress, atMs: ts, seenAtMs });
+    out.push({ coin, signature, side, quoteAmount, tokens, trader, capQuote: capQuote !== null && capQuote > 0 ? capQuote : null, priceQuote: priceQuote !== null && priceQuote > 0 ? priceQuote : null, quoteMint, pool, poolAddress, poolQuote, atMs: ts, seenAtMs });
   }
   return out;
 }

@@ -168,3 +168,15 @@ test('★ the charts see every coin\'s trades, watched or not, with its pool and
   ]);
   assert.equal(x.sock.drain().trades.length, 0, 'the watch list is unchanged: nothing watched, nothing kept');
 });
+
+test('★ each tick carries its pool\'s depth: the quote reserve, or a curve\'s larger virtual one; none given is null', () => {
+  const depths: (number | null)[] = [];
+  const x = harness({ onTrades: (_coin, ticks) => depths.push(ticks[0]?.poolQuote ?? null) });
+  x.sock.start();
+  x.h().onOpen();
+  x.h().onMessage(JSON.stringify(tradeFrame({ quoteInPool: 611.0098 })));
+  x.h().onMessage(JSON.stringify(tradeFrame({ quoteInPool: 0.015087 })));
+  x.h().onMessage(JSON.stringify(tradeFrame({ quoteInPool: 4.2, virtualQuoteInPool: 34.2 })));
+  x.h().onMessage(JSON.stringify(tradeFrame()));
+  assert.deepEqual(depths, [611.0098, 0.015087, 34.2, null]);
+});

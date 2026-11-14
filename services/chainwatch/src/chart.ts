@@ -63,6 +63,8 @@ export interface ChartTick {
   readonly quoteMint: string;
   readonly pool: string;
   readonly poolAddress: string | null;
+  /** The pool's depth in the quote token after the trade (main-pool.ts); absent when not known. */
+  readonly poolQuote?: number | null;
   readonly atMs: number;
 }
 

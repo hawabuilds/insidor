@@ -92,6 +92,7 @@ import { createStreamFeed } from './stream-feed.ts';
 import { createTradeWatch, type ChainPort, type TradeWatch } from './trade-watch.ts';
 import { createLiveHub, type LiveHub } from './live.ts';
 import { createCharts, type Charts } from './chart.ts';
+import { MainPools } from './main-pool.ts';
 import { createLaunchArchive, type LaunchArchive } from './launch-archive.ts';
 import { archiveGet, archivePut, readArchiveConfig } from '@insidor/storage-supabase/r2-archive.ts';
 
@@ -352,6 +353,7 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, 
   };
   /* The free relay when its address is set (the owner's switch, 2026-10-26: the billed socket hit
      its day cap by 06:00 UTC daily); the keyed chain socket otherwise. */
+  const pools = new MainPools();
   const socket =
     cfg.tradeRelayUrl !== null
       ? createRelayTradeSocket({
@@ -363,10 +365,13 @@ function buildTrades(cfg: ChainwatchConfig, db: Db, log: Logger, live: LiveHub, 
           open: openWebSocket,
           schedule,
           note: (msg, fields) => tradeLog.warn(msg, fields),
-          live: live.hooks,
+          /* ★ The chart and the live feed take only trades in a pool the coin really trades in
+             (main-pool.ts: a seeded crumb of a pool drew wicks to a third of the price); the launch
+             archive keeps every trade. */
+          live: { ...live.hooks, onTick: (t) => { if (pools.admit(t)) live.hooks.onTick(t); } },
           ...(relayLaunches === null ? {} : { launches: relayLaunches.hooks }),
           /* The candles first, then the launch archive, from the same trades; the archive never throws. */
-          chart: { onTrades: (coin, ticks, launch, seenAtMs) => { charts.hooks.onTrades(coin, ticks, launch, seenAtMs); archive.onTrades(coin, ticks, launch, seenAtMs); } },
+          chart: { onTrades: (coin, ticks, launch, seenAtMs) => { charts.hooks.onTrades(coin, ticks.filter((t) => pools.admit(t)), launch, seenAtMs); archive.onTrades(coin, ticks, launch, seenAtMs); } },
         })
       : createTradeSocket({
           url: TRADE_SOCKET_URL + cfg.tradeFeedKey,
