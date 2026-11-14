@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
-import { detailOf, foldNarrativeCalls, groupNarratives, narrativeCoin, sharedDetail, type NarrativeMemberCoin, type NarrativePair, type NarrativePost } from './narrative.ts';
+import { detailOf, foldNarrativeCalls, groupNarratives, narrativeCoin, pickFitsNarrative, sharedDetail, type NarrativeMemberCoin, type NarrativePair, type NarrativePost } from './narrative.ts';
 import { traceStories, type OriginInput } from './narrative-origin.ts';
 
 const P: Policy = withMeasuredBars(DEFAULT_POLICY);
@@ -160,4 +160,20 @@ test('★ a coin most of the posts carry is the narrative\'s; one post alone nee
 test('the owner\'s call on the narrative itself is never held to the share', () => {
   const call = { right: { address: 'JENSEN', atMs: 1 }, wrong: new Map<string, number>(), members: [] };
   assert.deepEqual(narrativeCoin(many(20, null), call, 3, P.narrative.coin), { kind: 'confirmed', address: 'JENSEN' });
+});
+
+test('★ the runner\'s pick stands when its posts carry it or it is named for the subject; otherwise no coin', () => {
+  const names = (n: number, name: string) => Array.from({ length: n }, () => [name]);
+  /* Starship: one post of 23 picked ELON, and ELON is not Starship. */
+  assert.equal(pickFitsNarrative({ names: names(23, 'STARSHIP'), coinNames: ['ELON', 'Elon Musk'], carrying: 1 }, P), false);
+  /* The Turkey and China war's posts are named for its cats; "Huang" is no one's. */
+  assert.equal(pickFitsNarrative({ names: [...names(20, 'CATHAT'), ...names(28, 'PATRICK')], coinNames: ['Huang', 'Huang'], carrying: 3 }, P), false);
+  /* Jensen: few posts picked it, but the coin is named for the subject. */
+  assert.equal(pickFitsNarrative({ names: [...names(300, 'JENSEN'), ...names(28, 'JENSENHUANG')], coinNames: ['JENSEN', 'Jensen Huang'], carrying: 6 }, P), true);
+  /* GTA: the coin's ticker starts the subject. */
+  assert.equal(pickFitsNarrative({ names: names(561, 'GTA 6'), coinNames: ['GTA', 'GTA memes'], carrying: 26 }, P), true);
+  /* Doctor Doom: five of eight posts picked it. */
+  assert.equal(pickFitsNarrative({ names: names(8, 'VICTOR'), coinNames: ['DOOM', 'Doom'], carrying: 5 }, P), true);
+  /* A narrative of generic kinds has no subject to be named for. */
+  assert.equal(pickFitsNarrative({ names: names(4, 'CAT'), coinNames: ['CAT', 'cat'], carrying: 0 }, P), false);
 });

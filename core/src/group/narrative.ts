@@ -893,6 +893,40 @@ export function narrativeCoin(
   return searched ? { kind: 'none' } : { kind: 'pending' };
 }
 
+/**
+ * ★ THE RUNNER'S PICK IS THE NARRATIVE'S COIN ONLY WHEN IT FITS THE NARRATIVE (policy.v243; the
+ * owner, 2026-11-14: "narratives where you are coin matching it with the wrong token"). The runner
+ * picks a narrative's coin from every candidate any of its posts has, so one post's tie can name the
+ * whole story's coin: Starship's page showed ELON, the Turkey and China meme war "Huang", a spelling
+ * joke GTA6. Its pick stands when either
+ *
+ *   carried   at least `coin.minShare` of the posts, and `coin.minPosts` of them, picked it themselves
+ *   named     the coin's own ticker or name is one of the narrative's subjects: the distinctive judge
+ *             name most of its posts carry (narrative-same.ts `subjectName`), or any other on `minShare`
+ *             of them — the same, one family with it, or one starting the other ("GTA" before "gta6")
+ *
+ * and is no coin otherwise — "we cannot tell" is a dash, never the higher guess. The owner's own call
+ * never comes here. `names` are the posts' judge names, each post's own list.
+ */
+export function pickFitsNarrative(input: { readonly names: readonly (readonly string[])[]; readonly coinNames: readonly (string | null)[]; readonly carrying: number }, p: Policy): boolean {
+  const share = p.narrative.coin;
+  const posts = input.names.length;
+  if (input.carrying >= share.minPosts && input.carrying >= share.minShare * posts) return true;
+  const count = new Map<string, number>();
+  for (const names of input.names) for (const key of new Set(names.map((n) => subjectName(n, p)).filter((k): k is string => k !== null))) count.set(key, (count.get(key) ?? 0) + 1);
+  const ranked = [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  /* Its subjects: the top one, and any other carried by `minShare` of its posts (GTA6 beside JASON). */
+  const subjects = ranked.filter(([, c], i) => i === 0 || (c >= share.minShare * posts && c >= share.minPosts)).map(([k]) => k);
+  if (subjects.length === 0) return false;
+  const min = p.narrative.same.minNameChars;
+  return input.coinNames.some((raw) => {
+    if (raw === null) return false;
+    const k = compactName(raw);
+    if (k.length < min) return false;
+    return subjects.some((main) => oneFamily(k, main, p.narrative.same.familyMinChars) || main.startsWith(k) || k.startsWith(main));
+  });
+}
+
 /* ── views ────────────────────────────────────────────────────────────── */
 
 export interface MemberReach {

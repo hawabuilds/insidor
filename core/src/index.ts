@@ -60,7 +60,7 @@ export { NO_PICTURE_INPUTS, nameKey } from './group/picture.ts';
 export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from './group/name-span.ts';
 export type { PictureInputs } from './group/picture.ts';
 /* Narratives: the posts the judge passed, grouped by meaning and one shared detail (group/narrative.ts). */
-export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries, totalReachSeries, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, reachGained, sameSubjectNamed, sharedDetail } from './group/narrative.ts';
+export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries, totalReachSeries, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, pickFitsNarrative, reachGained, sameSubjectNamed, sharedDetail } from './group/narrative.ts';
 /* The early posts: stored posts the regroup could not see, matched back into its narratives (group/narrative-early.ts). */
 export { earlyMatches, earlyShortlist } from './group/narrative-early.ts';
 export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';

@@ -71,7 +71,8 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { barWindowMs, coinCallFor, foldNarrativeCalls, totalReachSeries, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { barWindowMs, coinCallFor, foldNarrativeCalls, totalReachSeries, linkReach, standsOnViralPost, withReproductions, gainedSeries, hiddenByOwner, isShillText, narrativeCoin,
+  pickFitsNarrative, narrativeDead, narrativeReach, narrativeShown, narrativeSpeeds, reachGained, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgCoinPostCheckRepo, PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -403,6 +404,8 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const live = policy.oneCoin.mode === 'live';
   const narrativePicks = live ? await loadNarrativePicks(db, shown.map((n) => n.id)) : new Map<string, string | null>();
   const coinOf = new Map<string, NarrativeCoin>();
+  /* The narratives whose coin is the runner's pick, held to core `pickFitsNarrative` once the coins' names are read. */
+  const fromPick = new Set<string>();
   for (const n of shown) {
     const members = n.members.map((m) => cards.get(m) ?? { itemId: m, confirmed: null, proven: null, listed: null });
     const call = coinCallFor(n.id, new Set(n.members), calls);
@@ -413,7 +416,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     }
     const picked = narrativePicks.get(n.id);
     if (picked === undefined) coinOf.set(n.id, decided.kind === 'pending' ? decided : { kind: 'none' });
-    else coinOf.set(n.id, picked === null || call?.wrong.has(picked) === true ? { kind: 'none' } : { kind: 'proven', addresses: [picked] });
+    else if (picked === null || call?.wrong.has(picked) === true) coinOf.set(n.id, { kind: 'none' });
+    else {
+      coinOf.set(n.id, { kind: 'proven', addresses: [picked] });
+      fromPick.add(n.id);
+    }
   }
   const addresses = [...new Set([...coinOf.values()].flatMap((c) => (c.kind === 'confirmed' ? [c.address] : c.kind === 'proven' || c.kind === 'fitting' ? c.addresses : [])))];
   /* ★ A coin we hold no ticker and no name for is not shown (the owner, 2026-11-14): the Jensen
@@ -421,6 +428,26 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
      candidate, so the page shows no coin rather than a blank one. */
   const named = (t: string | null | undefined): boolean => typeof t === 'string' && t.trim() !== '';
   const coinFacts = new Map([...(await loadCoinFactsByAddress(db, addresses))].filter(([, f]) => named(f.ticker) || named(f.name)));
+  /* ★ THE RUNNER'S PICK, HELD TO THE NARRATIVE (core `pickFitsNarrative`, policy.v243): carried by
+     enough of its posts' own picks, or named for its subject; otherwise no coin. */
+  if (policy.narrative.coin.pickMustFit) {
+    for (const n of shown) {
+      if (!fromPick.has(n.id)) continue;
+      const c = coinOf.get(n.id);
+      const address = c?.kind === 'proven' ? c.addresses[0] : undefined;
+      if (address === undefined) continue;
+      const f = coinFacts.get(address);
+      const fits = pickFitsNarrative({
+        names: n.members.map((m) => {
+          const r = standing.get(m);
+          return [r?.proposedName ?? null, ...(r?.alternateNames ?? [])].filter((x): x is string => x !== null && x.trim() !== '');
+        }),
+        coinNames: [f?.ticker ?? null, f?.name ?? null],
+        carrying: n.members.filter((m) => { const k = cards.get(m); return k?.proven === address || k?.confirmed?.address === address; }).length,
+      }, policy);
+      if (!fits) coinOf.set(n.id, { kind: 'none' });
+    }
+  }
 
   const readingsOf = (id: string): readonly ReachReading[] => reach.get(id) ?? [];
   const facts: StoryFacts[] = [];

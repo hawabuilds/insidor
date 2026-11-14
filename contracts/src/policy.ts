@@ -4785,7 +4785,12 @@ export interface NarrativePolicy {
    * least `minPosts` unless the owner said it on one of them himself. The owner's call on the
    * narrative itself is never held to it.
    */
-  readonly coin: { readonly minShare: number; readonly minPosts: number };
+  /**
+   * `pickMustFit` (policy.v243): the runner's narrative pick is shown only when it is carried by that
+   * share of the posts' own picks, or its ticker or name is the narrative's subject (core
+   * `pickFitsNarrative`); otherwise no coin.
+   */
+  readonly coin: { readonly minShare: number; readonly minPosts: number; readonly pickMustFit: boolean };
   /**
    * A group (or a post) whose posts are on average at least this alike to another group's average
    * vector, and that shares a detail with it — a link between their posts, or a name — is one story
@@ -6364,7 +6369,7 @@ const POLICY_V1: Policy = {
      v241 (2026-11-13, the owner: our model replaces Nemotron as the judge) adds the `memeable` target
      to `judge.coinModel` in shadow, scored on every answered post, refitted by its own nightly job;
      drops `viral` from its targets; adds `learning.seenKept.notReviewing` and `.guard`. */
-  version: 'policy.v242',
+  version: 'policy.v243',
 
   admit: {
     maxAgeMin: 240,
@@ -8629,7 +8634,9 @@ const POLICY_V1: Policy = {
     subject: { on: true, pictureLikely: 0.93 },
     /* policy.v242, the live board of 14 Nov: the wrong coins came from 1 of 21 (Starship), 1 of 14 (cats),
        3 of 14 (snow leopard), 3 of 18 (cute animals), 3 of 193 and 15 of 429 posts (Jensen). */
-    coin: { minShare: 0.3, minPosts: 2 },
+    /* policy.v243, the live board after v242: the runner's pick named Starship ELON (1 of 23 posts picked it),
+       the Turkey and China war "Huang" (3 of 48) and a spelling joke GTA6 (0 of 3). */
+    coin: { minShare: 0.3, minPosts: 2, pickMustFit: true },
     /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
        average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49
