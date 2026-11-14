@@ -327,10 +327,10 @@
 }
 
 /* ── Calls: Insidor's own record (Calls.tsx) ──────────────────────────────────────────────
-   Laid out as a premium money app's home (the owner, 2026-11-14): a full-width segmented control, a
-   headline card with the one big figure, then one card holding the list with hairlines between rows.
-   Only the app's tokens: grounds --card and --card-line, the segment track, the type scale, the
-   number face for every figure, and green only where a price went up (tokens.css rule 1). */
+   Version 20 (the owner, 2026-11-14): a full-width segmented control, a slim four-figure strip, then
+   flat rows. Every figure is .fig — the token page's number face (Inter, heavy, tight, figures that
+   line up) — so a multiple here reads like the market cap on the chart it opens. Green only where a
+   price went up (tokens.css rule 1). */
 
 .segment {
   display: grid;
@@ -356,143 +356,91 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / 40%);
 }
 
-.hero {
-  margin-top: 14px;
-  padding: 18px 18px 16px;
-  border: 1px solid var(--card-line);
-  border-radius: var(--r-card);
+/* The token page's number face. */
+.fig {
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.up {
+  color: var(--up);
+}
+
+.flat {
+  color: var(--text-2);
+}
+
+.none {
+  color: var(--text-3);
+}
+
+.strip {
+  display: flex;
+  margin: 12px 0 4px;
+  padding: 10px 4px;
+  border-radius: 14px;
   background: var(--card);
 }
 
-.heroSkeleton {
+.stripCell {
   display: flex;
+  flex: 1;
   flex-direction: column;
-}
-
-.heroEyebrow {
-  color: var(--text-2);
-  font-size: var(--type-secondary);
-  font-weight: 500;
-}
-
-.heroBest {
-  display: block;
-  margin-top: 6px;
-  color: inherit;
-  text-decoration: none;
-}
-
-/* The one figure above the type scale, as a balance on a money app's home. */
-.heroMultiple {
-  display: block;
-  color: var(--up);
-  font-size: 40px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-}
-
-.heroEmpty {
-  margin-top: 6px;
-  color: var(--text-3);
-  font-size: 40px;
-  line-height: 1.1;
-}
-
-.heroCoin {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
   min-width: 0;
 }
 
-.heroTicker {
-  flex-shrink: 0;
-  color: var(--text-1);
-  font-size: var(--type-secondary);
-  font-weight: 600;
-}
-
-.heroMoney {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-2);
-  font-size: var(--type-secondary);
-}
-
-.heroStats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--card-line);
-}
-
-.heroStat + .heroStat {
-  padding-left: 14px;
+.stripCell + .stripCell {
   border-left: 1px solid var(--card-line);
 }
 
-.heroStatValue {
-  display: block;
-  color: var(--text-1);
+.stripValue {
   font-size: var(--type-section);
-  font-weight: var(--type-section-weight);
+  font-weight: 800;
 }
 
-/* --text-2, not --text-3: on --card, --text-3 at the 12px floor is 4.4:1, under the 4.5:1 small text
-   needs; --text-2 reads at about 7:1. */
-.heroStatLabel {
-  margin-top: 3px;
+.stripValue:not(.up) {
+  color: var(--text-1);
+}
+
+/* --text-2: on --card, --text-3 at the 12px floor is under the 4.5:1 small text needs. */
+.stripLabel {
+  max-width: 100%;
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-2);
   font-size: var(--type-caption);
-}
-
-.listHead {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 22px 4px 8px;
-  color: var(--text-2);
-  font-size: var(--type-caption);
-  font-weight: 500;
 }
 
 .callList {
   margin: 0;
-  padding: 0 10px;
+  padding: 0;
   list-style: none;
-  border: 1px solid var(--card-line);
-  border-radius: var(--r-card);
-  background: var(--card);
-}
-
-.callList > li + li {
-  border-top: 1px solid var(--card-line);
 }
 
 .callRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 13px 0;
+  padding: 12px 0;
   color: var(--text-1);
   text-decoration: none;
 }
 
 .place {
-  width: 14px;
+  width: 16px;
   flex-shrink: 0;
   text-align: center;
   color: var(--text-2);
-  font-size: var(--type-caption);
-  font-weight: 500;
+  font-size: var(--type-secondary);
+  font-weight: 600;
+}
+
+.placeTop {
+  color: var(--text-1);
 }
 
 .callMid {
@@ -517,42 +465,28 @@
   font-size: var(--type-secondary);
 }
 
-/* On --card every grey line is --text-2: --text-3 there is 4.4:1, under the 4.5:1 small text needs.
-   The money line stays apart from the words above it by its face, not by a dimmer grey. */
-.callMoney {
-  display: block;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-2);
-  font-size: var(--type-secondary);
-}
-
-/* The multiple: a pill, as a change is on a money app's list. Green up, grey when it never rose, a
-   quiet dash when there is none. */
-.pill {
-  display: inline-flex;
+.callRight {
+  display: flex;
   flex-shrink: 0;
-  justify-content: center;
-  min-width: 52px;
-  padding: 6px 8px;
-  border-radius: 10px;
-  font-size: var(--type-body);
-  font-weight: 600;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.pillUp {
-  background: var(--up-wash);
-  color: var(--up);
+.callMultiple {
+  font-size: var(--type-section);
+  font-weight: 800;
 }
 
-.pillFlat {
-  background: var(--tag-bg);
+/* Quiet so the green leads (the owner: "turn that down a little so the focus can be on the green"). */
+.callMoney {
+  margin-top: 3px;
   color: var(--text-2);
+  font-size: var(--type-caption);
+  font-weight: 500;
 }
 
-.pillNone {
-  background: transparent;
-  color: var(--text-3);
+.callMissing {
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: var(--type-caption);
 }

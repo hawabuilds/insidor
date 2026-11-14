@@ -22,6 +22,8 @@ export interface CallRow {
   readonly imageUrl: string | null;
   /** When we told people, ms. */
   readonly notifiedAt: number;
+  /** When the post was first on For You, ms; null when not sent. Before mintedAt: we saw it before the coin. */
+  readonly foundAt: number | null;
   readonly mintedAt: number;
   /** Market caps in dollars: the one we told people, and the highest since; null when not recorded. */
   readonly startUsd: number | null;
@@ -78,6 +80,7 @@ export function decodeCalls(raw: unknown): Calls {
       ticker: text(c['ticker'])?.replace(/^\$/, '') ?? null,
       imageUrl: image !== null && image.startsWith('https://') ? image : null,
       notifiedAt,
+      foundAt: num(c['foundAt']),
       mintedAt,
       startUsd: positive(measured(c['startUsd'])),
       peakUsd: positive(measured(c['peakUsd'])),
