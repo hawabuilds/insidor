@@ -3,7 +3,11 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
+/* These tests pin the rules before the subject rule (policy.v242 `narrative.subject`), which they were
+   written for: links on a topic word, stories merged across names. narrative-subject.test.ts tests the rule. */
+const P = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, subject: { ...DEFAULT_POLICY.narrative.subject, on: false } } };
 
 import { earlyMatches, earlyShortlist, type EarlyInput } from './narrative-early.ts';
 import { foldNarrativeCalls, type NarrativePost } from './narrative.ts';

@@ -66,7 +66,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 
 import { pairKey, type NarrativeCalls, type NarrativePost } from './narrative.ts';
 import { contentWords, phrasesOf, rarePhrases, storyWords } from './narrative-phrase.ts';
-import { subjectName } from './narrative-same.ts';
+import { oneFamily, subjectName } from './narrative-same.ts';
 import { clearsReachBar, type ReachLevel } from '../qualify/reach-bar.ts';
 
 export type OriginTie = 'quoted' | 'root' | 'picture' | 'name' | 'phrase' | 'words';
@@ -193,6 +193,48 @@ function averageOf(members: readonly string[], vectors: ReadonlyMap<string, Arra
 const TIE_ORDER: Readonly<Record<OriginTie, number>> = { quoted: 0, root: 1, picture: 2, name: 3, phrase: 4, words: 5 }; // policy-allow: an order of preference, not a threshold
 
 /**
+ * ★ THE SUBJECT RULE (`narrative.subject`, the owner, 2026-11-14): a post's distinctive subjects, a
+ * set of posts' main subject (the one most of them carry), and whether a post or another set is about
+ * it. With the rule on, a merge as one story and a loose post's join both need the same subject: on
+ * 4-13 Nov the quotes-and-closeness merge folded 90 narratives — Moo Deng's nephew, Otter Kira, the
+ * Pope's anti-AI meme, an AI lab's mascot — into one blob of crypto chatter, whose average read like
+ * the feed's and so was close to everything. With the rule off, every answer is yes.
+ */
+interface SubjectGate {
+  readonly post: (id: string, members: readonly string[]) => boolean;
+  readonly sets: (a: readonly string[], b: readonly string[]) => boolean;
+}
+function subjectGate(input: OriginInput, p: Policy): SubjectGate {
+  if (!p.narrative.subject.on) return { post: () => true, sets: () => true };
+  const minChars = p.narrative.same.familyMinChars;
+  const own = new Map<string, ReadonlySet<string>>();
+  const subjectsOf = (id: string): ReadonlySet<string> => {
+    let got = own.get(id);
+    if (got === undefined) {
+      got = new Set((input.posts.get(id)?.names ?? []).map((nm) => subjectName(nm, p)).filter((x): x is string => x !== null));
+      own.set(id, got);
+    }
+    return got;
+  };
+  const mainOf = (members: readonly string[]): string | null => {
+    const count = new Map<string, number>();
+    for (const m of members) for (const x of subjectsOf(m)) count.set(x, (count.get(x) ?? 0) + 1);
+    return [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
+  };
+  return {
+    post: (id, members) => {
+      const main = mainOf(members);
+      return main !== null && [...subjectsOf(id)].some((x) => oneFamily(x, main, minChars));
+    },
+    sets: (a, b) => {
+      const x = mainOf(a);
+      const y = mainOf(b);
+      return x !== null && y !== null && oneFamily(x, y, minChars);
+    },
+  };
+}
+
+/**
  * The merges and each lead narrative's earlier posts. Narratives are merged first, so a starting
  * post two narratives quote goes to the one they become.
  */
@@ -282,6 +324,7 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
   });
   /* ★ THE MERGE ON THE STORY'S OWN WORDS (`origin.words*`, policy.v149) — see `wordsEvidence`. */
   const said = wordsEvidence(input, p);
+  const gate = subjectGate(input, p);
   type Candidate = { readonly a: string; readonly b: string; readonly why: StoryMerge['why']; readonly bar: number; readonly via: readonly string[]; readonly words?: readonly string[] };
   const candidates: Candidate[] = [
     ...allowed.map((e): Candidate => (e.shared.size > 0 ? { a: e.a, b: e.b, why: 'shared_start', bar: o.mergeMeaning, via: [...e.shared].sort() } : { a: e.a, b: e.b, why: 'quotes', bar: o.mergeMeaning, via: [...e.posts].sort() })),
@@ -310,6 +353,7 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
       if (a === b) continue;
       /* The words' merge reads the owner's calls on each side as it now stands: a side may have grown by an earlier merge. */
       if (e.why === 'words' && keptApart(input.calls, membersOf.get(a) ?? [], membersOf.get(b) ?? [])) continue;
+      if (!gate.sets(membersOf.get(a) ?? [], membersOf.get(b) ?? [])) continue;
       const va = averageOf(membersOf.get(a) ?? [], input.vectors);
       const vb = averageOf(membersOf.get(b) ?? [], input.vectors);
       if (va === null || vb === null) continue;
@@ -392,7 +436,7 @@ export function traceStories(input: OriginInput, p: Policy): StoryPlan {
       if (avg === null || v === undefined) continue;
       const meaning = dot(v, avg);
       if (input.eligible.has(r)) {
-        if (meaning >= o.linkMeaning) offer(id, r, 'quoted');
+        if (meaning >= o.linkMeaning && gate.post(r, membersOf.get(lead(id)) ?? [])) offer(id, r, 'quoted');
       } else if (o.rootOn && rootable.has(r) && meaning >= o.rootMeaning && quotersOf(r, lead(id)) >= o.rootMinQuoters) {
         offer(id, r, 'root');
       }
@@ -638,6 +682,7 @@ function joinLoose(
   for (const [l, own] of ownOf) for (const m of own) for (const x of phrases.get(m) ?? []) if (rare.has(x)) sayers.set(x, (sayers.get(x) ?? new Set<string>()).add(l));
 
   const single = looseWordsOf(input, p, { loose, ownOf, leads });
+  const gate = subjectGate(input, p);
   const offers: { post: string; lead: string; tie: OriginTie; meaning: number }[] = [];
   for (const c of loose) {
     const v = input.vectors.get(c);
@@ -656,6 +701,7 @@ function joinLoose(
     for (const l of new Set([...quoted, ...said, ...worded])) {
       const avg = t.leadAverage(l);
       if (avg === null || t.ownerKeepsOut(c, ownOf.get(l) ?? [])) continue;
+      if (!gate.post(c, t.membersOf.get(l) ?? [])) continue;
       const meaning = dot(v, avg);
       const tie: OriginTie | null = quoted.has(l) && meaning >= o.linkMeaning ? 'quoted' : said.has(l) && meaning >= o.phraseMeaning ? 'phrase' : worded.has(l) && meaning >= o.looseWordsMeaning ? 'words' : null;
       if (tie === null) continue;

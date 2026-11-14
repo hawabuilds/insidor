@@ -13,7 +13,9 @@ import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 import { foldNarrativeCalls, type NarrativePost } from './narrative.ts';
 import { linkReach, standsOnViralPost, traceStories, type OriginInput } from './narrative-origin.ts';
 
-const P: Policy = withMeasuredBars(DEFAULT_POLICY);
+/* These tests pin the rules before the subject rule (policy.v242 `narrative.subject`), which they were
+   written for: links on a topic word, stories merged across names. narrative-subject.test.ts tests the rule. */
+const P: Policy = withMeasuredBars({ ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, subject: { ...DEFAULT_POLICY.narrative.subject, on: false } } });
 const H = 3_600_000;
 const DAY = 24 * H;
 const T0 = 100 * DAY;

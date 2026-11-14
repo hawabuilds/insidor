@@ -4772,6 +4772,14 @@ export interface NarrativePolicy {
    */
   readonly rareName: { readonly on: boolean; readonly maxPosts: number; readonly minConfidence: number; readonly maxGapMs: number; readonly minMeaning: number };
   /**
+   * ★ THE SUBJECT RULE (the owner, 2026-11-14: posts in one narrative must share "the same exact
+   * character or meme"). On, two posts link, two parts of a story join, two narratives merge as one
+   * story and a loose post joins a narrative only on the same distinctive subject name (core
+   * group/narrative.ts `sameSubjectNamed`) or the same picture at `pictureLikely` — never on a shared
+   * topic word, a generic name or closeness of meaning alone. Off: the rules before policy.v242.
+   */
+  readonly subject: { readonly on: boolean; readonly pictureLikely: number };
+  /**
    * A group (or a post) whose posts are on average at least this alike to another group's average
    * vector, and that shares a detail with it — a link between their posts, or a name — is one story
    * told in parts, and joins it; a post under this from its own narrative's average leaves it.
@@ -6349,7 +6357,7 @@ const POLICY_V1: Policy = {
      v241 (2026-11-13, the owner: our model replaces Nemotron as the judge) adds the `memeable` target
      to `judge.coinModel` in shadow, scored on every answered post, refitted by its own nightly job;
      drops `viral` from its targets; adds `learning.seenKept.notReviewing` and `.guard`. */
-  version: 'policy.v241',
+  version: 'policy.v242',
 
   admit: {
     maxAgeMin: 240,
@@ -8611,6 +8619,7 @@ const POLICY_V1: Policy = {
     /* 0.5: measured 4 Nov in the post space, the Aragorn pair 0.647 and two random posts 0.686 at the
        median, so meaning cannot tell them; the floor only stops posts with nothing in common (~0.1). */
     rareName: { on: true, maxPosts: 6, minConfidence: 0.8, maxGapMs: 172_800_000, minMeaning: 0.5 },
+    subject: { on: true, pictureLikely: 0.93 },
     /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
        average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49

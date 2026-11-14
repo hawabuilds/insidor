@@ -86,7 +86,7 @@ export function earlyShortlist(input: EarlyInput, p: Policy): ReadonlyMap<string
       for (const w of d.said) for (const id of byKey.get(`w:${w}`) ?? []) near.add(id);
       for (const id of near) {
         const s = stored.get(id);
-        if (s !== undefined && !hits.has(id) && sharedDetail(s.d, d, false) !== null) hits.add(id);
+        if (s !== undefined && !hits.has(id) && sharedDetail(s.d, d, false, p) !== null) hits.add(id);
       }
     }
     if (hits.size > 0) out.set(n.id, [...hits].sort());
@@ -145,7 +145,7 @@ export function earlyMatches(input: EarlyInput, shortlist: ReadonlyMap<string, r
       /* ★ The regroup's own pair rule, gap included: a link counts only inside `maxGapMs`. Without the
          gap, a post that shares the word "Tesla" four days before the Roadster's first post (a dog
          named Tesla, a bus ticket) became the story's first post on the live data of 2026-10-18. */
-      const linked = linkable.some((l) => Math.abs(l.atMs - post.atMs) <= n.maxGapMs && dot(v, l.v) >= n.sameMeaning && sharedDetail(d, l.d, false) !== null);
+      const linked = linkable.some((l) => Math.abs(l.atMs - post.atMs) <= n.maxGapMs && dot(v, l.v) >= n.sameMeaning && sharedDetail(d, l.d, false, p) !== null);
       if (!linked) continue;
       linkable.push({ id, atMs: post.atMs, d, v });
       const had = best.get(id);

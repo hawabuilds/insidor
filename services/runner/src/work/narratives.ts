@@ -286,7 +286,7 @@ export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: 
       if (meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
       const pa = pictureVectors.get(a.itemId);
       const pb = pictureVectors.get(b.itemId);
-      pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: pa !== undefined && pb !== undefined && dot(pa, pb) >= p.group.image.likely });
+      pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: pa !== undefined && pb !== undefined && dot(pa, pb) >= (n.subject.on ? n.subject.pictureLikely : p.group.image.likely) });
     }
   }
   return pairs;

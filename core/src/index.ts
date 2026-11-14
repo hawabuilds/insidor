@@ -60,7 +60,7 @@ export { NO_PICTURE_INPUTS, nameKey } from './group/picture.ts';
 export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from './group/name-span.ts';
 export type { PictureInputs } from './group/picture.ts';
 /* Narratives: the posts the judge passed, grouped by meaning and one shared detail (group/narrative.ts). */
-export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries, totalReachSeries, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, reachGained, sharedDetail } from './group/narrative.ts';
+export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries, totalReachSeries, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, reachGained, sameSubjectNamed, sharedDetail } from './group/narrative.ts';
 /* The early posts: stored posts the regroup could not see, matched back into its narratives (group/narrative-early.ts). */
 export { earlyMatches, earlyShortlist } from './group/narrative-early.ts';
 export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';
@@ -68,7 +68,7 @@ export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';
 export { keepNarratives, narrativeDead, ownerAdds, ownerMerges, ownerSplits, removedPosts, survivorOf } from './group/narrative-keep.ts';
 export type { KeepInput, KeptPass, NarrativeState, OwnerAdd, OwnerSplit } from './group/narrative-keep.ts';
 /* One story, one narrative: a new group joins the narrative it is the same subject as; a newer duplicate merges into the older (group/narrative-same.ts). */
-export { joinExisting, sameSubject, sameSubjectMerges, subjectName, subjectOf, subjectPosts } from './group/narrative-same.ts';
+export { joinExisting, oneFamily, sameSubject, sameSubjectMerges, subjectName, subjectOf, subjectPosts } from './group/narrative-same.ts';
 export type { NarrativeSubject, SubjectPost } from './group/narrative-same.ts';
 /* The starting post, one story across languages, and the viral floor (group/narrative-origin.ts). */
 export { barWindowMs, linkReach, standsOnViralPost, traceStories, withReproductions } from './group/narrative-origin.ts';

@@ -110,7 +110,7 @@ function namedIn(name: string, words: readonly string[], generic: ReadonlySet<st
 }
 
 /** The same name, or one holding the other whole with the shorter at least `familyMinChars` long. */
-function oneFamily(a: string, b: string, minChars: number): boolean {
+export function oneFamily(a: string, b: string, minChars: number): boolean {
   if (a === b) return true;
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   return short.length >= minChars && long.includes(short);

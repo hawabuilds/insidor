@@ -30,7 +30,9 @@ import {
 import type { MemberReach } from './narrative.ts';
 
 /* The held kinds these cases were written against (policy.v196); v197 holds only SPORT, a choice of the policy's. */
-const P = withMeasuredBars({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] } });
+/* These tests pin the rules before the subject rule (policy.v242 `narrative.subject`), which they were
+   written for: links on a topic word, stories merged across names. narrative-subject.test.ts tests the rule. */
+const P = withMeasuredBars({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'] }, narrative: { ...DEFAULT_POLICY.narrative, subject: { ...DEFAULT_POLICY.narrative.subject, on: false } } });
 const HOUR = 3_600_000;
 const yes = { coinable: true, confidence: 0.99, lookedAt: 'picture' as const, proposedName: 'GTA 6' };
 const NO_CALLS = foldNarrativeCalls([]);

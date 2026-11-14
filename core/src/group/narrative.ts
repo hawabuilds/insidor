@@ -49,6 +49,7 @@ import { MS_PER_MINUTE } from '../math.ts';
 import { compactName } from '../match/post-coin.ts';
 import { isCommonWord, postWords, topicWords } from '../match/story-coin.ts';
 import { heldKind } from '../qualify/kinds.ts';
+import { oneFamily, subjectName } from './narrative-same.ts';
 import { postScoreReason } from '../qualify/post-score.ts';
 
 /* ── who counts ───────────────────────────────────────────────────────── */
@@ -111,6 +112,12 @@ export interface PostDetail {
   /** Fewer words than the story coins' `minWords` once hashtags, mentions and links are gone. */
   readonly thin: boolean;
   readonly hasPicture: boolean;
+  /**
+   * Its distinctive subject names (narrative-same.ts `subjectName`: generic kinds such as CAT, DOG,
+   * ELON out), and each one's own words, for the subject rule (`narrative.subject`).
+   */
+  readonly subjects: ReadonlySet<string>;
+  readonly subjectWords: readonly (readonly string[])[];
 }
 
 export function detailOf(post: NarrativePost, p: Policy): PostDetail {
@@ -120,11 +127,18 @@ export function detailOf(post: NarrativePost, p: Policy): PostDetail {
   const words = postWords(post.text);
   const names = new Set<string>();
   const nameWords: string[][] = [];
+  const subjects = new Set<string>();
+  const subjectWords: string[][] = [];
   for (const n of post.names) {
     const key = compactName(n);
     if (key.length >= bars.minNameChars && !genericKeys.has(key)) names.add(key);
     const w = postWords(n).filter((x) => x.length >= bars.minTopicChars && !isCommonWord(x, generic));
     if (w.length > 0) nameWords.push(w);
+    const subject = subjectName(n, p);
+    if (subject !== null) {
+      subjects.add(subject);
+      if (w.length > 0) subjectWords.push(w);
+    }
   }
   return {
     names,
@@ -133,6 +147,8 @@ export function detailOf(post: NarrativePost, p: Policy): PostDetail {
     said: new Set(words),
     thin: words.length < bars.minWords,
     hasPicture: post.hasPicture,
+    subjects,
+    subjectWords,
   };
 }
 
@@ -142,12 +158,35 @@ export const groupable = (d: PostDetail): boolean => !d.thin || d.hasPicture;
 export type SharedDetailKind = 'name' | 'picture' | 'topic';
 
 /**
+ * Whether two posts name the same subject: a distinctive name of one is the other's, or of one
+ * family with it ("jensen" in "jensenhuang", narrative-same.ts `oneFamily`), or one post's subject
+ * is said word for word in the other's text ("Liftoff of Starship!" beside a post named STARSHIP).
+ */
+export function sameSubjectNamed(a: PostDetail, b: PostDetail, familyMinChars: number): boolean {
+  for (const x of a.subjects) for (const y of b.subjects) if (oneFamily(x, y, familyMinChars)) return true;
+  const says = (names: readonly (readonly string[])[], said: ReadonlySet<string>) => names.some((ws) => ws.every((w) => said.has(w)));
+  return says(a.subjectWords, b.said) || says(b.subjectWords, a.said);
+}
+
+/**
  * The one detail two posts share besides their meaning, or null: the same name, the same picture
  * (the caller's picture check), a name one of them gives that the other says in plain words, or a
  * topic word both say. Hashtags are not words here, so two posts that share only hashtags share
  * nothing; a thin post (a picture and a few words) shares only a name or its picture.
+ *
+ * ★ THE SUBJECT RULE (`narrative.subject`, the owner, 2026-11-14: "posts grouped into the same
+ * narrative where they don't share the same exact character or meme"). With `p` given and the rule
+ * on, only two details make two posts one narrative: the same distinctive subject
+ * (`sameSubjectNamed`), or the same picture — the caller's picture check, made at
+ * `subject.pictureLikely` (near-identical, not two cats that look alike). A shared topic word, a
+ * shared generic name (CAT, KITTEN, ELON) and closeness of meaning never do: they are how "Cute Cat
+ * Photos" held a dozen different cats and the "don't ignore this cat" posts held a dog and a monkey.
  */
-export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean): SharedDetailKind | null {
+export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean, p?: Policy): SharedDetailKind | null {
+  if (p !== undefined && p.narrative.subject.on) {
+    if (samePicture && a.hasPicture && b.hasPicture) return 'picture';
+    return sameSubjectNamed(a, b, p.narrative.same.familyMinChars) ? 'name' : null;
+  }
   for (const n of a.names) if (b.names.has(n)) return 'name';
   if (samePicture && a.hasPicture && b.hasPicture) return 'picture';
   const says = (names: readonly (readonly string[])[], said: ReadonlySet<string>) => names.some((ws) => ws.every((w) => said.has(w)));
@@ -400,7 +439,7 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
     if (da === undefined || db === undefined) continue;
     if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.maxGapMs) continue;
     if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
-    const kind = sharedDetail(da, db, pair.samePicture);
+    const kind = sharedDetail(da, db, pair.samePicture, p);
     /* ★ A shared name links at `nameMeaning`; a shared topic word or picture only at `sameMeaning`. */
     if (kind === null || pair.meaning < (kind === 'name' ? n.nameMeaning : n.sameMeaning)) continue;
     links[kind] += 1;
@@ -529,12 +568,27 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
     }
     return k === 0 ? null : total / k;
   };
+  /* ★ THE SUBJECT RULE (`narrative.subject`): a group's main subject is the distinctive name most of
+     its named posts carry. Two parts join only when both have one and they are one family: an
+     average of many posts reads like the feed's own average, so closeness alone let a blob of
+     crypto chatter take every cat, hippo and pope that came near it. */
+  const strict = n.subject.on;
+  const mainSubject = (members: readonly string[]): string | null => {
+    const count = new Map<string, number>();
+    for (const m of members) for (const s of details.get(m)?.subjects ?? []) count.set(s, (count.get(s) ?? 0) + 1);
+    return [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
+  };
+  const sameMainSubject = (a: readonly string[], b: readonly string[]): boolean => {
+    const x = mainSubject(a);
+    const y = mainSubject(b);
+    return x !== null && y !== null && oneFamily(x, y, n.same.familyMinChars);
+  };
   if (vectors !== undefined) {
     for (;;) {
       const candidates = new Set<string>();
       for (const [x, row] of between) for (const y of row.keys()) if (x < y) candidates.add(`${x}|${y}`);
       const byName = new Map<string, Set<number>>();
-      for (const [g, group] of groups) for (const m of group.members) for (const name of details.get(m)?.names ?? []) {
+      for (const [g, group] of groups) for (const m of group.members) for (const name of (strict ? details.get(m)?.subjects : details.get(m)?.names) ?? []) {
         const set = byName.get(name) ?? new Set<number>();
         set.add(g);
         byName.set(name, set);
@@ -550,6 +604,8 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
         const gy = groups.get(y);
         if (gx === undefined || gy === undefined) continue;
         if (Math.max(gx.maxAt, gy.maxAt) - Math.min(gx.minAt, gy.minAt) > n.maxSpanMs) continue;
+        /* ★ Under the subject rule, two parts are one story only when their main subjects are one. */
+        if (strict && !sameMainSubject(gx.members, gy.members)) continue;
         /* The smaller part's posts, against the bigger part's average: an average of many posts drifts
            toward the feed's own average, so two big groups' averages look alike when their posts do not. */
         const [small, big] = gx.members.length <= gy.members.length ? [gx, y] : [gy, x];
