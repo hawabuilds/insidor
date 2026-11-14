@@ -23,15 +23,15 @@ import { billingReason } from './billing.ts';
 
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
-import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles, type Candle, type Pool, type Trade, type VolumeCandle } from './read.ts';
+import { aggregate, primaryPool, readCandles, readFullCandles, readPools, readTrades, readVolumeCandles, type Candle, type FullCandle, type Pool, type Trade, type VolumeCandle } from './read.ts';
 import { readSearch, SEARCH_PAGE } from './search.ts';
 import { readNewLaunches, type NewLaunch } from './new-pools.ts';
 
-export { aggregate, ownSide, pairedWith, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
+export { aggregate, ownSide, pairedWith, primaryPool, readCandles, readFullCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 export { readSearch, SEARCH_PAGE } from './search.ts';
 export { NEW_POOLS_PAGE, readNewLaunches } from './new-pools.ts';
 export type { NewLaunch, PairedToken } from './new-pools.ts';
-export type { Candle, Pool, PoolToken, Trade, VolumeCandle } from './read.ts';
+export type { Candle, FullCandle, Pool, PoolToken, Trade, VolumeCandle } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
 /** Trador's six views, plus six hours, which the search and the history pilot read a coin's peak from. */
@@ -147,6 +147,13 @@ export interface MarketData extends CoinSearch {
    * Not kept: each call asks about a different stretch of time.
    */
   history(mint: string, untilMs: number, bucketMinutes: number, limit: number): Promise<{ readonly pool: Pool | null; readonly candles: readonly VolumeCandle[] }>;
+  /**
+   * The coin's last `CANDLE_LIMIT` hours in its primary pool — about six weeks — as whole candles with
+   * their dollar volume, oldest first: what the calls board's peaks are read from (the runner's
+   * work/call-history.ts, 0171). `pool: null` when the vendor lists no pool for the coin. Not kept:
+   * each read is for writing down, and the last hour is still moving.
+   */
+  hourly(mint: string, options?: { readonly background?: boolean }): Promise<{ readonly pool: Pool | null; readonly candles: readonly FullCandle[] }>;
 }
 
 /** The vendor serves this many pages of a listing and no more. */
@@ -263,6 +270,14 @@ export function geckoterminal(config: GeckoConfig): MarketData {
       const until = Math.floor(untilMs / 1_000);
       const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/minute?aggregate=${bucketMinutes}&limit=${Math.min(limit, CANDLE_LIMIT)}&before_timestamp=${until}&token=${mint}&currency=usd`);
       return { pool, candles: readVolumeCandles(raw) };
+    },
+
+    async hourly(mint, options) {
+      const background = options?.background === true;
+      const pool = await coinPool(mint, background);
+      if (pool === null) return { pool: null, candles: [] };
+      const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/hour?aggregate=1&limit=${CANDLE_LIMIT}&token=${mint}&currency=usd`, background);
+      return { pool, candles: readFullCandles(raw) };
     },
 
     pool(mint) {

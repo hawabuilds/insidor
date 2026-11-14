@@ -175,6 +175,25 @@ export function readVolumeCandles(raw: unknown): readonly VolumeCandle[] {
     .sort((a, b) => a.t - b.t);
 }
 
+/** A whole candle with its dollar volume: a called coin's hour, for the calls board's peaks (0171). */
+export interface FullCandle extends Candle {
+  /** The bucket's volume in dollars (`currency=usd`); null when the row did not carry it. */
+  readonly v: number | null;
+}
+
+/**
+ * Whole candles with their volume, oldest first: the high AND the dollars behind it, so a reader can
+ * tell a real top from one thin print. A row missing any price is dropped, as `readCandles` drops it.
+ */
+export function readFullCandles(raw: unknown): readonly FullCandle[] {
+  return arr(rec(rec(rec(raw).data).attributes).ohlcv_list)
+    .flatMap((row) => {
+      const [t, o, h, l, c, v] = arr(row).map((x) => num(x));
+      return t == null || o == null || h == null || l == null || c == null ? [] : [{ t: t * 1_000, o, h, l, c, v: v ?? null }];
+    })
+    .sort((a, b) => a.t - b.t);
+}
+
 /** Merge each run of `factor` consecutive candles into one: the 6-hour view from hourly candles. */
 export function aggregate(candles: readonly Candle[], bucketMs: number): readonly Candle[] {
   const out: Candle[] = [];
