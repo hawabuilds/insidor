@@ -290,6 +290,6 @@ export function leftOff(card: Extract<SellCard, { kind: 'read' }>, hasPostPictur
     else if (card.profitSol.v === null) out.push("The amounts for this trade weren't recorded, so the profit is left off.");
   }
   if (card.post === null) out.push("No post is matched to this coin, so the card uses the Insidor background.");
-  else if (!hasPostPicture) out.push("The post's picture isn't stored with us, so the card uses the Insidor background.");
+  else if (!hasPostPicture) out.push(card.post.pictureFile === null && card.post.pictureUrl === null ? "The post has no picture, so the card uses the Insidor background." : "The post's picture couldn't be loaded, so the card uses the Insidor background.");
   return out;
 }

@@ -8,9 +8,9 @@
  *
  * ★ ONLY PICTURES A CANVAS MAY EXPORT. A picture from a host that does not send the CORS header
  * "taints" the canvas and the PNG can no longer be made. So every picture is loaded with
- * `crossOrigin = 'anonymous'` from our own storage only — the coin's logo copy, the post's stored
- * picture, the author's stored face — or from the person's own chosen file. A picture that fails is
- * left out (a letter in its circle, the Insidor background for the card), never the source's link.
+ * `crossOrigin = 'anonymous'` — our stored copy first, then the source's link (X's picture host sends
+ * the header), or the person's own chosen file. A picture that loads from none of them is left out
+ * (a letter in its circle, the Insidor background for the card), never drawn tainted.
  *
  * The Keyhole Eye is drawn from its path (reports/brand/logo-keyhole-eye.svg), with the pupil moved
  * right to 58.5 and the glint to 60.7,33.6 so the eye looks at the number beside it, as the approved

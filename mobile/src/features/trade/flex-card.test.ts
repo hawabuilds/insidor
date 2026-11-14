@@ -126,11 +126,12 @@ test('★ what the card leaves off is said in one plain line each', () => {
     soldCapUsd: { v: 1, why: null },
     multiple: { v: 1, why: null },
     profitSol: { v: 1, why: null },
-    post: { postedAt: 1, author: '@a', authorPictureFile: null, pictureFile: 'f'.repeat(32) },
+    post: { postedAt: 1, author: '@a', authorPictureFile: null, authorPictureUrl: null, pictureFile: 'f'.repeat(32), pictureUrl: null },
   };
   assert.deepEqual(leftOff(base, true), []);
   assert.equal(leftOff({ ...base, post: null }, false).length, 1);
-  assert.match(leftOff({ ...base, post: { ...base.post, pictureFile: null } }, false)[0] ?? '', /Insidor background/);
+  assert.match(leftOff({ ...base, post: { ...base.post, pictureFile: null } }, false)[0] ?? '', /post has no picture/);
+  assert.match(leftOff({ ...base, post: { ...base.post, pictureFile: null, pictureUrl: 'https://pic.example/a.jpg' } }, false)[0] ?? '', /couldn't be loaded/);
   assert.match(leftOff({ ...base, profitSol: { v: null, why: 'bought_elsewhere' } }, true)[0] ?? '', /sold more than you bought/);
   const elsewhere = leftOff({ ...base, boughtCapUsd: { v: null, why: 'not_bought_here' }, multiple: { v: null, why: 'not_bought_here' }, profitSol: { v: null, why: 'not_bought_here' } }, true);
   assert.equal(elsewhere.length, 1);

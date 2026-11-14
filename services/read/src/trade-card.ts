@@ -47,10 +47,15 @@
  * tell it did not happen.
  *
  * ★ THE POST IS THE EARLIEST POST WHOSE CARD WAS MATCHED TO THIS COIN on a feed (public.feed_post's
- * `coins.kind = 'matched'`): the post the coin came from, the same match the post sheet's Buy uses.
- * Its picture is named only by our stored copy (public.post_picture, 0119), never the source's link,
- * because the phone draws it onto a canvas and only our storage answers with the CORS header that
- * allows that. No copy: no picture, and the phone uses the Insidor background.
+ * `coins.kind = 'matched'`) THAT HAS A PICTURE, else the earliest with none: the post the coin came
+ * from, the same match the post sheet's Buy uses. A coin's first matched post is often a text-only
+ * one (JENSEN, 14 Nov 2026: @unusual_whales's words, with @Polymarket's picture two hours later), and
+ * the card is a picture card, so a post with a picture wins over an earlier one without.
+ * Its picture and its author's face are named twice: our stored copy (public.post_picture 0119,
+ * author.picture_copy 0079) and the source's own link. The phone draws them onto a canvas, which
+ * needs the CORS header; our picture bucket does not send it (seen 14 Nov 2026: every copy refused,
+ * the card drew letters and the Insidor background), while X's picture host does. So the phone
+ * tries the copy, then the link, and a picture neither answers for is left off.
  *
  * Public facts only (a signature, and trades already on the chain), so no sign-in; a reply is kept
  * ten minutes once the sell landed, and each client may ask `PER_CLIENT` times a minute.
@@ -106,16 +111,16 @@ select (select a.decimals from public.asset a where a.chain = 'solana' and a.add
 /** The coin's decimals only, when its market readings cannot be read. */
 export const DECIMALS_SQL = `select a.decimals, null::float8 as supply from public.asset a where a.chain = 'solana' and a.address = $1`;
 
-/** The earliest-posted post whose card was matched to the coin, with its poster. */
+/** The earliest-posted post with a picture whose card was matched to the coin (else the earliest), with its poster. */
 export const COIN_POST_SQL = `
 select f.item_id, (extract(epoch from i.posted_at) * 1000)::bigint as posted_ms,
        f.payload ->> 'authorLabel' as author, f.payload ->> 'thumbUrl' as thumb,
-       to_jsonb(a) ->> 'picture_copy' as author_file
+       to_jsonb(a) ->> 'picture_copy' as author_file, a.picture_url as author_url
   from public.feed_post f
   join public.item i on i.item_id = f.item_id
   left join public.author a on a.author_key = i.author_key
  where f.payload #>> '{coins,kind}' = 'matched' and f.payload #>> '{coins,coin,address}' = $1
- order by i.posted_at asc nulls last, f.item_id asc
+ order by (coalesce(f.payload ->> 'thumbUrl', '') = '') asc, i.posted_at asc nulls last, f.item_id asc
  limit 1`;
 
 export const COIN_NAME_SQL = `select ticker, name from public.coin_name where address = $1`;
@@ -323,6 +328,8 @@ export interface TradeCardDeps {
 
 const json = (status: number, value: unknown) => ({ status, body: JSON.stringify(value) });
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+/** A source's picture link, https only: the phone tries it after our copy. */
+const link = (v: unknown): string | null => (typeof v === 'string' && v.startsWith('https://') ? v : null);
 const ms = (v: unknown): number | null => {
   const n = Number(v);
   return v !== null && v !== undefined && Number.isFinite(n) && n > 0 ? n : null;
@@ -368,7 +375,9 @@ export function createTradeCard(deps: TradeCardDeps) {
       postedAt: ms(row['posted_ms']),
       author: author !== null && author.startsWith('@') ? author : null,
       authorPictureFile: authorFile !== null && FILE.test(authorFile) ? authorFile : null,
+      authorPictureUrl: link(row['author_url']),
       pictureFile,
+      pictureUrl: link(thumb),
     };
   }
 

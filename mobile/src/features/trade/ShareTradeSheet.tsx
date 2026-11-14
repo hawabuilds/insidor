@@ -19,9 +19,11 @@
  * TODO(phase 2): a video post's clip as a moving background, exported as a short video. Not offered
  * until it works — there is no chip for it, so nothing on the sheet promises it.
  *
- * What breaks if changed carelessly: pictures go through flex-draw.ts `loadPicture` (CORS-safe, our
- * storage or the person's own file). An <img> from anywhere else drawn on the canvas would taint it,
- * and Save and Share would fail with nothing to show for it.
+ * What breaks if changed carelessly: pictures go through flex-draw.ts `loadPicture` (CORS-safe: our
+ * copy, then the source's link, or the person's own file). An <img> loaded without crossOrigin and
+ * drawn on the canvas would taint it, and Save and Share would fail with nothing to show for it. Our
+ * picture bucket does not send the CORS header (14 Nov 2026), so the source's link after it is what
+ * puts the post's picture and the faces on the card today.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -33,7 +35,7 @@ import { postPicCopy } from '../../shared/post-pic.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { POST_PIC_BASE } from '../../shared/ui/post-pic-base.ts';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
-import { facesFileUrl } from '../../shared/ui/usePosterPic.ts';
+import { faceSources } from '../../shared/ui/usePosterPic.ts';
 import { backdropChoices, fileName, leftOff, type Backdrop, type FlexFacts } from './flex-card.ts';
 import { cardPng, drawCard, firstPicture, loadFonts, loadPicture } from './flex-draw.ts';
 import { ASK_EVERY_MS, ASK_FOR_MS } from './sell-landed.ts';
@@ -45,7 +47,8 @@ type Read = { readonly kind: 'loading' } | { readonly kind: 'waiting' } | { read
 
 interface Me {
   readonly handle: string | null;
-  readonly picture: string | null;
+  /** Our copy, then the sign-in's link: tried in order. */
+  readonly pictures: readonly string[];
 }
 
 const BACKDROP_LABEL: Record<Backdrop, string> = { post: 'The post', insidor: 'Insidor', mine: 'My picture' };
@@ -106,8 +109,7 @@ export function ShareTradeSheet({ signature, mint, ticker, subline, signedIn, on
       (card) => {
         if (!live) return;
         const handle = card.handle === null || card.handle.trim() === '' ? null : `@${card.handle.replace(/^@/, '')}`;
-        const picture = facesFileUrl(card.pictureFile ?? null) ?? (card.pictureUrl !== null && card.pictureUrl.startsWith('https://') ? card.pictureUrl : null);
-        setMe({ handle, picture });
+        setMe({ handle, pictures: faceSources(card.pictureFile ?? null, card.pictureUrl) });
       },
       () => undefined,
     );
@@ -123,19 +125,19 @@ export function ShareTradeSheet({ signature, mint, ticker, subline, signedIn, on
     if (card === null) return;
     let live = true;
     const post = card.post;
-    const postSources = post?.pictureFile == null ? [] : [postPicCopy(post.pictureFile, POST_PIC_BASE, 'sheet'), postPicCopy(post.pictureFile, POST_PIC_BASE, 'card')].flatMap((u) => (u === null ? [] : [u]));
+    const postSources = post === null ? [] : [postPicCopy(post.pictureFile, POST_PIC_BASE, 'sheet'), postPicCopy(post.pictureFile, POST_PIC_BASE, 'card'), post.pictureUrl].flatMap((u) => (u === null ? [] : [u]));
     void Promise.all([
       firstPicture(postSources),
       firstPicture(logoSources(mint, null, LOGO_BASE)),
-      loadPicture(post === null ? null : facesFileUrl(post.authorPictureFile)),
-      loadPicture(me?.picture ?? null),
+      firstPicture(post === null ? [] : faceSources(post.authorPictureFile, post.authorPictureUrl)),
+      firstPicture(me?.pictures ?? []),
     ]).then(([p, coin, author, mePic]) => {
       if (live) setPictures({ post: p, coin, author, me: mePic });
     });
     return () => {
       live = false;
     };
-  }, [card, mint, me?.picture]);
+  }, [card, mint, me?.pictures]);
 
   const choices = backdropChoices(pictures?.post != null);
   const chosen: Backdrop = backdrop !== null && choices.includes(backdrop) && (backdrop !== 'mine' || mine !== null) ? backdrop : choices[0] ?? 'insidor';

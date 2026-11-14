@@ -29,3 +29,8 @@ export function usePosterPic(file: string | null, link: string | null): { readon
 export function facesFileUrl(file: string | null | undefined): string | null {
   return posterPicSources(file ?? null, null, BASE)[0] ?? null;
 }
+
+/** Every address to try for a face, in order: our copy, then the source's link (its sharp size first). */
+export function faceSources(file: string | null | undefined, link: string | null | undefined): readonly string[] {
+  return posterPicSources(file ?? null, link ?? null, BASE);
+}

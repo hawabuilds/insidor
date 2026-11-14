@@ -29,8 +29,12 @@ export interface SellCardPost {
   /** "@handle"; null when the post's author has none. */
   readonly author: string | null;
   readonly authorPictureFile: string | null;
+  /** The author's face at the source, tried after our copy; null when none. */
+  readonly authorPictureUrl: string | null;
   /** Our stored copy of the post's picture; null when there is none to draw. */
   readonly pictureFile: string | null;
+  /** The post's picture at the source, tried after our copy; null when the post has none. */
+  readonly pictureUrl: string | null;
 }
 
 export type SellCard =
@@ -54,6 +58,7 @@ const FILE = /^[0-9a-f]{32}$/;
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
 const file = (v: unknown): string | null => (typeof v === 'string' && FILE.test(v) ? v : null);
+const link = (v: unknown): string | null => (typeof v === 'string' && v.startsWith('https://') ? v : null);
 const time = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
 
 function fact(v: unknown): SellFact {
@@ -86,7 +91,9 @@ export function decodeSellCard(raw: unknown): SellCard {
           postedAt: time(post['postedAt']),
           author: author !== null && /^@[^\s]{1,60}$/.test(author) ? author : null,
           authorPictureFile: file(post['authorPictureFile']),
+          authorPictureUrl: link(post['authorPictureUrl']),
           pictureFile: file(post['pictureFile']),
+          pictureUrl: link(post['pictureUrl']),
         },
   };
 }

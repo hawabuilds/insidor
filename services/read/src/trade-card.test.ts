@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cardNumbers, cardTrade, coinScale, createTradeCard, executionCapUsd, solRequests, solUsdNear, type CardScale, type CardTrade } from './trade-card.ts';
+import { COIN_POST_SQL, cardNumbers, cardTrade, coinScale, createTradeCard, executionCapUsd, solRequests, solUsdNear, type CardScale, type CardTrade } from './trade-card.ts';
 import type { Row } from './queries.ts';
 
 const SOL = 1_000_000_000n;
@@ -171,13 +171,13 @@ test('★ a sell not yet landed is pending, asked again next time; one that fail
   assert.deepEqual(JSON.parse((await route(buyRow.db).card(SIG, 'c')).body), { kind: 'none', why: 'not_a_sell' });
 });
 
-test("★ a landed sell: the trades' own caps, the coin and the post with our stored picture copies only", async () => {
+test("★ a landed sell: the trades' own caps, the coin and the post with our stored picture copies and the source's links", async () => {
   const sellAt = 1_792_800_000_000;
   const f = fakeDb(
     { wallet: 'W', kind: 'sell', status: 'confirmed', mint: 'M', in_amount: '1000', out_amount: '2000000000', market_cap_usd: 40_000, settled_ms: String(sellAt) },
     {
       earlier: [{ kind: 'buy', in_amount: '500000000', out_amount: '1000', market_cap_usd: 9_000, settled_ms: String(sellAt - 120_000) }],
-      post: { item_id: 'x:1', posted_ms: '1792700000000', author: '@teeelatricee', thumb: 'https://pic.example/a.jpg?sig=1', author_file: 'df94874b9a4fcbbb8e9eda7c2f871da6' },
+      post: { item_id: 'x:1', posted_ms: '1792700000000', author: '@teeelatricee', thumb: 'https://pic.example/a.jpg?sig=1', author_file: 'df94874b9a4fcbbb8e9eda7c2f871da6', author_url: 'https://pic.example/face.jpg' },
       files: [{ link_path: 'https://pic.example/a.jpg', file: 'f6c9a08a0b96f1bd86b9c8af91630c58' }],
       scale: { decimals: 0, supply: 1_000 },
     },
@@ -195,7 +195,7 @@ test("★ a landed sell: the trades' own caps, the coin and the post with our st
   assert.deepEqual(body.soldCapUsd, { v: 220 });
   assert.ok(near(body.multiple.v, 4.4));
   assert.deepEqual(body.profitSol, { v: 1.5 });
-  assert.deepEqual(body.post, { id: 'x:1', postedAt: 1792700000000, author: '@teeelatricee', authorPictureFile: 'df94874b9a4fcbbb8e9eda7c2f871da6', pictureFile: 'f6c9a08a0b96f1bd86b9c8af91630c58' });
+  assert.deepEqual(body.post, { id: 'x:1', postedAt: 1792700000000, author: '@teeelatricee', authorPictureFile: 'df94874b9a4fcbbb8e9eda7c2f871da6', authorPictureUrl: 'https://pic.example/face.jpg', pictureFile: 'f6c9a08a0b96f1bd86b9c8af91630c58', pictureUrl: 'https://pic.example/a.jpg?sig=1' });
   assert.equal(asked.length, 1, 'one candle page covers both trades');
 });
 
@@ -222,11 +222,11 @@ test("★ SOL's price not answering: no caps, the price-ratio multiple stands, a
   assert.equal(calls, 2, 'asked again: an unread price is not kept');
 });
 
-test('a post with no stored picture copy names none, and no post is null', async () => {
+test('a post with no stored picture copy names only its links, and no post is null', async () => {
   const sellRow = { wallet: 'W', kind: 'sell', status: 'confirmed', mint: 'M', in_amount: '1', out_amount: '1', market_cap_usd: 1, settled_ms: '1' };
-  const noCopy = fakeDb(sellRow, { post: { item_id: 'x:1', posted_ms: null, author: 'Some Channel', thumb: 'https://pic.example/a.jpg', author_file: null } });
+  const noCopy = fakeDb(sellRow, { post: { item_id: 'x:1', posted_ms: null, author: 'Some Channel', thumb: 'https://pic.example/a.jpg', author_file: null, author_url: 'http://pic.example/face.jpg' } });
   const body = JSON.parse((await route(noCopy.db).card(SIG, 'c')).body);
-  assert.deepEqual(body.post, { id: 'x:1', postedAt: null, author: null, authorPictureFile: null, pictureFile: null });
+  assert.deepEqual(body.post, { id: 'x:1', postedAt: null, author: null, authorPictureFile: null, authorPictureUrl: null, pictureFile: null, pictureUrl: 'https://pic.example/a.jpg' });
   const none = fakeDb(sellRow, { post: null });
   assert.equal(JSON.parse((await route(none.db).card(SIG, 'c')).body).post, null);
 });
@@ -235,4 +235,8 @@ test('a signature that is not one is refused before any read', async () => {
   const f = fakeDb(null);
   assert.equal((await route(f.db).card("x' or 1=1", 'c')).status, 400);
   assert.equal(f.asked.length, 0);
+});
+
+test('★ the post with a picture is preferred over an earlier one without: the card is a picture card', () => {
+  assert.match(COIN_POST_SQL, /order by \(coalesce\(f\.payload ->> 'thumbUrl', ''\) = ''\) asc, i\.posted_at asc/);
 });

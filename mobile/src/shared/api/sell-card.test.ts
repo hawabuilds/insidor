@@ -36,10 +36,10 @@ test('a reason this build does not know reads as not recorded; a negative profit
 });
 
 test('★ only our stored copies\' file names are kept; a link or a bad handle is dropped', () => {
-  const c = decodeSellCard({ kind: 'read', mint: 'M', post: { postedAt: 'soon', author: 'Some Channel', authorPictureFile: 'https://pic.example/a.jpg', pictureFile: '../coin-logos/x' } });
+  const c = decodeSellCard({ kind: 'read', mint: 'M', post: { postedAt: 'soon', author: 'Some Channel', authorPictureFile: 'https://pic.example/a.jpg', pictureFile: '../coin-logos/x', pictureUrl: 'javascript:x', authorPictureUrl: 'http://x' } });
   assert.equal(c.kind, 'read');
   if (c.kind !== 'read') return;
-  assert.deepEqual(c.post, { postedAt: null, author: null, authorPictureFile: null, pictureFile: null });
+  assert.deepEqual(c.post, { postedAt: null, author: null, authorPictureFile: null, authorPictureUrl: null, pictureFile: null, pictureUrl: null });
 });
 
 test('pending is pending; anything else that is not a card is none', () => {
