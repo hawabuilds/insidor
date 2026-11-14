@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SILENT } from './log.ts';
-import { CALLS_SQL, board, callsFrom, createCalls, due, measure, type Call, type CallRow } from './calls.ts';
+import { CALLS_SQL, CALL_PRICES_SQL, board, callsFrom, createCalls, due, measure, type Call, type CallRow } from './calls.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
 
@@ -18,7 +18,7 @@ const DAY = 24 * 60 * MIN;
 
 function call(over: Partial<Call> = {}): Call {
   const notifiedAt = over.notifiedAt ?? NOW - DAY;
-  return { address: 'Coin1pump', ticker: 'COIN', imageUrl: null, notifiedAt, foundAt: notifiedAt - 40 * MIN, notifiedCapUsd: 10_000, mintedAt: notifiedAt - 3 * MIN, ...over };
+  return { address: 'Coin1pump', ticker: 'COIN', imageUrl: null, notifiedAt, moved: false, foundAt: notifiedAt - 40 * MIN, notifiedCapUsd: 10_000, mintedAt: notifiedAt - 3 * MIN, ...over };
 }
 
 function row(c: Call, multiple: number | null): CallRow {
@@ -26,46 +26,81 @@ function row(c: Call, multiple: number | null): CallRow {
   return { ...c, startUsd: { v: 10_000 }, peakUsd: multiple === null ? m : { v: 10_000 * multiple }, multiple: m };
 }
 
-test('a call starts at the market cap we told people, and runs to its highest close since', () => {
-  const r = measure(call({ notifiedCapUsd: 12_500 }), { supply: 1e9, charted: true, peak_price: 0.0025, traded_usd: 900_000 });
+/** A price row with the coin's own pool history only (prices per coin; supply 1e9 → $1 a coin is $1B). */
+const hist = (over: Row = {}): Row => ({ supply: 1e9, hist_peak: 0.0025, hist_traded: 900_000, hist_hour_high: 0.000012, hist_hour_close: 0.000011, charted: false, ...over });
+
+test('a call starts at the market cap we told people, and runs to the peak in its own pool since', () => {
+  const r = measure(call({ notifiedCapUsd: 12_500 }), hist());
   assert.deepEqual(r.startUsd, { v: 12_500 });
   assert.deepEqual(r.peakUsd, { v: 2_500_000 });
   assert.deepEqual(r.multiple, { v: 200 });
 });
 
-test('a notified moment that carried no market cap is a dash with its reason, never a guess', () => {
-  const r = measure(call({ notifiedCapUsd: null }), { supply: 1e9, charted: true, peak_price: 0.0025, traded_usd: 900_000 });
+test("the peak is the higher of the pool's history and our own candles", () => {
+  /* $Kim: our candles began after the run; the pool's history has it. */
+  const kim = measure(call({ notifiedCapUsd: 571_000 }), hist({ hist_peak: 0.0156, hist_traded: 9e6, hist_hour_high: 0.0006, own_peak: 0.000588, charted: true }));
+  assert.equal(Math.round(kim.multiple.v ?? 0), 27);
+  const ours = measure(call(), hist({ hist_peak: 0.00004, own_peak: 0.0001, own_traded: 100_000, charted: true }));
+  assert.deepEqual(ours.peakUsd, { v: 100_000 });
+  const notOurs = measure(call(), hist({ hist_peak: 0.00004, own_peak: 0.0001, charted: false }));
+  assert.deepEqual(notOurs.peakUsd, { v: 40_000 }, 'our candles count only when they cover the call');
+});
+
+test("a told cap far above its hour on the chart is not a price the coin traded at: the hour's high starts it", () => {
+  /* $CHUNGUS: the card read $42K in an hour its pool traded no higher than $15K, and closed near $2K. */
+  const chungus = measure(call({ notifiedCapUsd: 42_074 }), hist({ hist_peak: 0.000128, hist_traded: 2e6, hist_hour_high: 0.000015, hist_hour_close: 0.000002 }));
+  assert.deepEqual(chungus.startUsd, { v: 15_000 }, 'the high, the most anyone could have paid — never the dumped close');
+  assert.equal(Math.round(chungus.multiple.v ?? 0), 9);
+  const fair = measure(call({ notifiedCapUsd: 70_000 }), hist({ hist_hour_high: 0.00004 }));
+  assert.deepEqual(fair.startUsd, { v: 70_000 }, 'within twice the hour high, the told cap stands');
+});
+
+test('an old call moved to its For You moment is priced by the first reading after it', () => {
+  /* $FTR: on For You a minute after launch at $12.5K; its first alert five hours later at $465K. */
+  const ftr = measure(call({ moved: true, notifiedCapUsd: null }), hist({ start_reading: 12_505, hist_peak: 0.0065, hist_traded: 30e6, hist_hour_high: 0.00006 }));
+  assert.deepEqual(ftr.startUsd, { v: 12_505 });
+  assert.equal(Math.round(ftr.multiple.v ?? 0), 520);
+  const noReading = measure(call({ moved: true, notifiedCapUsd: null }), hist({ start_reading: null }));
+  assert.deepEqual(noReading.startUsd, { v: 12_000 }, "no reading: the hour's high");
+});
+
+test('no told cap and no chart for its hour is a dash with its reason, never a guess', () => {
+  const r = measure(call({ notifiedCapUsd: null }), hist({ hist_hour_high: null, hist_hour_close: null }));
   assert.deepEqual(r.startUsd, { v: null, why: 'not_recorded' });
   assert.deepEqual(r.multiple, { v: null, why: 'not_recorded' });
   assert.deepEqual(measure(call(), undefined).multiple, { v: null, why: 'not_recorded' });
 });
 
-test("the coin's own supply makes a candle price a market cap; a coin off the launchpad without one is not recorded", () => {
-  const own = measure(call(), { supply: 2e9, charted: true, peak_price: 0.0001, traded_usd: 100_000 });
+test("the coin's own supply makes a price a market cap; a coin off the launchpad without one is not recorded", () => {
+  const own = measure(call(), hist({ supply: 2e9, hist_peak: 0.0001, hist_traded: 100_000 }));
   assert.deepEqual(own.peakUsd, { v: 200_000 });
-  const off = measure(call({ address: 'Elsewhere111' }), { supply: null, charted: true, peak_price: 0.0001, traded_usd: 100_000 });
+  const off = measure(call({ address: 'Elsewhere111' }), hist({ supply: null, hist_peak: 0.0001 }));
   assert.deepEqual(off.multiple, { v: null, why: 'not_recorded' });
 });
 
-test('a coin we chart is measured on our candles alone; readings answer only for a coin we do not', () => {
-  const charted = measure(call(), { supply: 1e9, charted: true, peak_price: null, peak_reading: 13_800_000, reading_traded_usd: 9e9 });
-  assert.equal(charted.multiple.v, null);
-  const uncharted = measure(call(), { supply: null, charted: null, peak_reading: 100_000, reading_traded_usd: 30_000 });
-  assert.deepEqual(uncharted.multiple, { v: 10 });
+test('readings answer only for a coin no history covers', () => {
+  const covered = measure(call(), hist({ hist_peak: 0.00002, hist_traded: 1e6, peak_reading: 13_800_000, reading_traded_usd: 9e9 }));
+  assert.deepEqual(covered.peakUsd, { v: 20_000 });
+  const uncovered = measure(call(), { supply: null, charted: false, hist_peak: null, peak_reading: 100_000, reading_traded_usd: 30_000 });
+  assert.deepEqual(uncovered.multiple, { v: 10 });
 });
 
 test('a peak with little money behind it is thin trading, never a run', () => {
-  /* $mihao: a $150M close on about $1M traded. */
-  const scam = measure(call(), { supply: 1e9, charted: true, peak_price: 0.15, traded_usd: 990_000 });
+  /* $mihao: a $150M top on about $1M traded. */
+  const scam = measure(call(), hist({ hist_peak: 0.15, hist_traded: 990_000 }));
   assert.deepEqual(scam.multiple, { v: null, why: 'thin_trading' });
   assert.deepEqual(scam.peakUsd, { v: null, why: 'thin_trading' });
   assert.deepEqual(scam.startUsd, { v: 10_000 });
-  assert.deepEqual(measure(call(), { supply: 1e9, charted: true, peak_price: 0.001, traded_usd: null }).multiple, { v: null, why: 'thin_trading' });
-  assert.deepEqual(measure(call(), { supply: 1e9, charted: true, peak_price: 0.001, traded_usd: 150_000 }).multiple, { v: 100 });
+  assert.deepEqual(measure(call(), hist({ hist_peak: 0.001, hist_traded: null })).multiple, { v: null, why: 'thin_trading' });
+  assert.deepEqual(measure(call(), hist({ hist_peak: 0.001, hist_traded: 150_000 })).multiple, { v: 100 });
 });
 
-test('the peak is never under the cap we told people: that cap was a price the coin traded at', () => {
-  assert.deepEqual(measure(call(), { supply: 1e9, charted: true, peak_price: 0.000002, traded_usd: 10 }).multiple, { v: 1 });
+test('the peak is never under the start: the start was a price the coin traded at', () => {
+  assert.deepEqual(measure(call(), hist({ hist_peak: 0.000002, hist_traded: 10 })).multiple, { v: 1 });
+});
+
+test('the spike guard is in the price query: an hour counts at its high only when it traded enough of it', () => {
+  assert.match(CALL_PRICES_SQL, /when k\.volume_usd >= \$4::double precision \* k\.h \* sup\.supply then k\.h else k\.c end/);
 });
 
 test('a row the database sends without a notified moment is not a call', () => {
@@ -127,7 +162,7 @@ function fakeDb(listed: () => readonly Row[], prices: Row) {
 test('the first ask is answered "counting"; after a pass the board is served from memory; a moved notified moment is read again', async () => {
   let notified = NOW - DAY;
   const listed = () => [{ address: 'Coin1pump', notified, notified_cap: 5_000, minted: NOW - DAY - MIN, ticker: 'COIN', image_url: null }];
-  const { db, asked } = fakeDb(listed, { supply: 1e9, charted: true, peak_price: 0.00005, traded_usd: 40_000 });
+  const { db, asked } = fakeDb(listed, hist({ hist_peak: 0.00005, hist_traded: 40_000 }));
   const calls = createCalls({ db, log: SILENT, now: () => NOW, origins: ['live_stream'] });
   assert.deepEqual(calls.read('week'), { state: 'counting' });
   await calls.passNow();
