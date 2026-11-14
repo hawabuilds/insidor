@@ -814,8 +814,12 @@ export function narrativeShown(goodPosts: number, single: boolean, hidden: boole
 
 export interface NarrativeMemberCoin {
   readonly itemId: string;
-  /** The owner's own coin on the post ("This is the coin"), or the coin he confirmed for its story. */
-  readonly confirmed: { readonly address: string; readonly atMs: number } | null;
+  /**
+   * The owner's own coin on the post ("This is the coin"), or the coin he confirmed for its story.
+   * `owner` is true when he said it on this post himself, false when the post took it from a story
+   * like it (match/story-coin.ts); absent is read as his own.
+   */
+  readonly confirmed: { readonly address: string; readonly atMs: number; readonly owner?: boolean } | null;
   /** The coin the post's own evidence proves (it links the post, the same picture after it…). */
   readonly proven: string | null;
   /** The post's plausible coins by its name ("See N coins"), best first; null when not searched yet. */
@@ -841,14 +845,30 @@ export function narrativeCoin(
   members: readonly NarrativeMemberCoin[],
   call: NarrativeCoinCall | null,
   maxListed: number,
+  share?: Policy['narrative']['coin'],
 ): NarrativeCoin {
   const wrong = call?.wrong ?? new Map<string, number>();
   if (call?.right !== null && call?.right !== undefined && !wrong.has(call.right.address)) return { kind: 'confirmed', address: call.right.address };
-  const confirmed = members
-    .map((m) => m.confirmed)
-    .filter((c): c is { address: string; atMs: number } => c !== null && !wrong.has(c.address))
-    .sort((a, b) => b.atMs - a.atMs)[0];
-  if (confirmed !== undefined) return { kind: 'confirmed', address: confirmed.address };
+  /* ★ A POST'S CONFIRMED COIN IS THE NARRATIVE'S ONLY WHEN ENOUGH OF ITS POSTS CARRY IT (`share`,
+     policy.v242; the owner, 2026-11-14: "narratives where you are coin matching it with the wrong
+     token"). One kitten post's coin was the 2,000-post Jensen narrative's, one "Liftoff!" post from
+     October named Starship's, one Korean cat post a whole page of cats' — each a story coin on one
+     or a few posts of many. Now the coin most posts carry must be on `minShare` of the posts and,
+     unless the owner said it on one of them himself, on `minPosts`. Short of that it is not the
+     narrative's confirmed coin; the caller's next answer (the runner's pick, or none) stands. */
+  const backers = new Map<string, { count: number; owner: boolean; atMs: number }>();
+  for (const m of members) {
+    const c = m.confirmed;
+    if (c === null || wrong.has(c.address)) continue;
+    const have = backers.get(c.address) ?? { count: 0, owner: false, atMs: c.atMs };
+    backers.set(c.address, { count: have.count + 1, owner: have.owner || c.owner !== false, atMs: Math.max(have.atMs, c.atMs) });
+  }
+  const top = [...backers].sort((x, y) => (share === undefined ? y[1].atMs - x[1].atMs : 0) || y[1].count - x[1].count || y[1].atMs - x[1].atMs || x[0].localeCompare(y[0]))[0];
+  if (top !== undefined) {
+    const [address, b] = top;
+    const enough = share === undefined || (b.count >= share.minShare * members.length && (b.owner || b.count >= share.minPosts));
+    if (enough) return { kind: 'confirmed', address };
+  }
   const provenBy = new Map<string, number>();
   for (const m of members) if (m.proven !== null && !wrong.has(m.proven)) provenBy.set(m.proven, (provenBy.get(m.proven) ?? 0) + 1);
   if (provenBy.size > 0) {

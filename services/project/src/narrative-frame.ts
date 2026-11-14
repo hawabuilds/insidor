@@ -265,7 +265,7 @@ async function cardCoins(db: Db, itemIds: readonly string[], nowMs: number): Pro
     out.set(c.item_id, {
       itemId: c.item_id,
       /* The card does not say when the owner confirmed it; the newest call is decided on the card. */
-      confirmed: confirmed && address !== null ? { address, atMs: 0 } : null,
+      confirmed: confirmed && address !== null ? { address, atMs: 0, owner: evidence['ownerChecked'] === true } : null,
       proven: matched && !confirmed ? address : null,
       listed: kind === 'pending' || kind === 'unchecked' || kind === undefined ? null : listed.get(c.item_id) ?? [],
     });
@@ -406,7 +406,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   for (const n of shown) {
     const members = n.members.map((m) => cards.get(m) ?? { itemId: m, confirmed: null, proven: null, listed: null });
     const call = coinCallFor(n.id, new Set(n.members), calls);
-    const decided = narrativeCoin(members, call, policy.postCoin.list.maxCoins);
+    const decided = narrativeCoin(members, call, policy.postCoin.list.maxCoins, policy.narrative.coin);
     if (!live || decided.kind === 'confirmed') {
       coinOf.set(n.id, decided);
       continue;

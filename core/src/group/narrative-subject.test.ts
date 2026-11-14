@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { withMeasuredBars } from '@insidor/contracts/policy-measured-bars.ts';
 
-import { detailOf, foldNarrativeCalls, groupNarratives, sharedDetail, type NarrativePair, type NarrativePost } from './narrative.ts';
+import { detailOf, foldNarrativeCalls, groupNarratives, narrativeCoin, sharedDetail, type NarrativeMemberCoin, type NarrativePair, type NarrativePost } from './narrative.ts';
 import { traceStories, type OriginInput } from './narrative-origin.ts';
 
 const P: Policy = withMeasuredBars(DEFAULT_POLICY);
@@ -131,3 +131,33 @@ test('★ the same-story merge: quotes and closeness never merge two subjects; t
   assert.equal(traceStories(blob(['KITTEN', 'CAT']), P).merges.length, 0, 'a generic kind is no subject to merge on');
 });
 
+/* ── the narrative's coin (policy.v242 `narrative.coin`) ─────────────────── */
+
+const member = (itemId: string, coin: string | null, owner = false): NarrativeMemberCoin => ({
+  itemId,
+  confirmed: coin === null ? null : { address: coin, atMs: 0, owner },
+  proven: null,
+  listed: [],
+});
+const many = (n: number, coin: string | null, owner = false) => Array.from({ length: n }, (_, i) => member(`${coin ?? 'x'}${i}`, coin, owner));
+
+test('★ one story-coin post of many is not the narrative\'s coin: Starship 1 of 21, the cats 1 of 14', () => {
+  const share = P.narrative.coin;
+  assert.equal(narrativeCoin([...many(1, 'LIFTOFF'), ...many(20, null)], null, 3, share).kind, 'none');
+  assert.equal(narrativeCoin([...many(1, 'HIMMEL'), ...many(13, null)], null, 3, share).kind, 'none');
+  assert.equal(narrativeCoin([...many(3, 'PAWS'), ...many(11, null)], null, 3, share).kind, 'none');
+  assert.deepEqual(narrativeCoin([...many(1, 'LIFTOFF'), ...many(20, null)], null, 3), { kind: 'confirmed', address: 'LIFTOFF' }, 'without the share: as before');
+});
+
+test('★ a coin most of the posts carry is the narrative\'s; one post alone needs the owner\'s own word', () => {
+  const share = P.narrative.coin;
+  assert.deepEqual(narrativeCoin([...many(8, 'GTA'), ...many(2, 'LUCKY'), ...many(5, null)], null, 3, share), { kind: 'confirmed', address: 'GTA' });
+  /* Two posts, one carrying a story coin: not enough. The owner's own "This is the coin" on it is. */
+  assert.equal(narrativeCoin([member('a', 'LUCKY'), member('b', null)], null, 3, share).kind, 'none');
+  assert.deepEqual(narrativeCoin([member('a', 'LUCKY', true), member('b', null)], null, 3, share), { kind: 'confirmed', address: 'LUCKY' });
+});
+
+test('the owner\'s call on the narrative itself is never held to the share', () => {
+  const call = { right: { address: 'JENSEN', atMs: 1 }, wrong: new Map<string, number>(), members: [] };
+  assert.deepEqual(narrativeCoin(many(20, null), call, 3, P.narrative.coin), { kind: 'confirmed', address: 'JENSEN' });
+});

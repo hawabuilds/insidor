@@ -4780,6 +4780,13 @@ export interface NarrativePolicy {
    */
   readonly subject: { readonly on: boolean; readonly pictureLikely: number };
   /**
+   * ★ WHEN A POST'S CONFIRMED COIN IS THE NARRATIVE'S (core group/narrative.ts `narrativeCoin`,
+   * policy.v242): the coin most of its posts carry, on at least `minShare` of its posts, and on at
+   * least `minPosts` unless the owner said it on one of them himself. The owner's call on the
+   * narrative itself is never held to it.
+   */
+  readonly coin: { readonly minShare: number; readonly minPosts: number };
+  /**
    * A group (or a post) whose posts are on average at least this alike to another group's average
    * vector, and that shares a detail with it — a link between their posts, or a name — is one story
    * told in parts, and joins it; a post under this from its own narrative's average leaves it.
@@ -8620,6 +8627,9 @@ const POLICY_V1: Policy = {
        median, so meaning cannot tell them; the floor only stops posts with nothing in common (~0.1). */
     rareName: { on: true, maxPosts: 6, minConfidence: 0.8, maxGapMs: 172_800_000, minMeaning: 0.5 },
     subject: { on: true, pictureLikely: 0.93 },
+    /* policy.v242, the live board of 14 Nov: the wrong coins came from 1 of 21 (Starship), 1 of 14 (cats),
+       3 of 14 (snow leopard), 3 of 18 (cute animals), 3 of 193 and 15 of 429 posts (Jensen). */
+    coin: { minShare: 0.3, minPosts: 2 },
     /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
        average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
        biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49
